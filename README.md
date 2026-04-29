@@ -8,7 +8,7 @@ This project is an AI-powered Security Operations Centre (SOC) assistant that au
 
 The system integrates with NetWitness SIEM and simulates real-world SOC workflows through multiple AI agents that replicate Tier 1, Tier 2, and Tier 3 analysts.
 
-It is designed to handle high-volume security alerts and transform them into structured, actionable intelligence. :contentReference[oaicite:0]{index=0}
+It is designed to handle high-volume security alerts and transform them into structured, actionable intelligence.
 
 ---
 
