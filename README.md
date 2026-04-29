@@ -1,65 +1,169 @@
 # 🛡️ Agentic Threat Hunting & Autonomous Investigation Assistant  
 ### Integrated with RSA NetWitness SIEM
 
+---
+
 ## 📌 Overview
-This project is an AI-powered Security Operations Centre (SOC) assistant designed to automate alert triage, investigation, and incident reporting.
+This project is an AI-powered Security Operations Centre (SOC) assistant that automates alert triage, investigation, and incident reporting.
 
-The system integrates with NetWitness SIEM APIs and leverages agentic AI to replicate real-world SOC workflows across Tier 1, Tier 2, and Tier 3 analysts.
+The system integrates with NetWitness SIEM and simulates real-world SOC workflows through multiple AI agents that replicate Tier 1, Tier 2, and Tier 3 analysts.
 
-It aims to:
-- Reduce manual investigation effort  
-- Improve threat context understanding  
-- Accelerate incident response time  
+It is designed to handle high-volume security alerts and transform them into structured, actionable intelligence.
 
 ---
 
-## 🎯 Objectives
-The system will:
-1. Fetch alerts from NetWitness via REST APIs  
-2. Perform automated investigation pivots  
-3. Enrich alerts using threat intelligence platforms  
-4. Correlate evidence across multiple sources  
-5. Compute risk scores dynamically  
-6. Generate analyst-ready incident reports  
-7. Recommend response actions based on playbooks  
+## 🎯 System Objectives
+The system is designed to:
+
+- Fetch alerts from NetWitness via REST APIs  
+- Perform automated investigation pivots  
+- Enrich alerts using multiple threat intelligence sources  
+- Correlate logs and indicators across datasets  
+- Compute dynamic risk scores  
+- Execute playbook-driven analysis  
+- Generate analyst-ready incident reports  
+- Recommend response and remediation actions  
 
 ---
 
-## 🧠 System Architecture
+## 🧠 System Architecture Overview
 
-### Core Components
-- **Backend Orchestrator**: FastAPI  
-- **Agent Framework**: LangChain  
-- **Database**: PostgreSQL  
-- **Vector Store**: Chroma  
-- **SIEM Integration**: RSA NetWitness  
+The system follows a modular, agent-driven architecture:
+
+```
+NetWitness SIEM → FastAPI Backend → AI Agents → Data Layer → Dashboard
+```
+
+### Flow Breakdown
+
+1. Alerts are generated in NetWitness  
+2. FastAPI retrieves alerts via API  
+3. Triage Agent validates and enriches alerts  
+4. Investigation Agent performs correlation and deep analysis  
+5. Response Agent calculates risk and generates reports  
+6. Results are stored and displayed on dashboard  
 
 ---
 
-## ⚙️ Key Features
+## 🔴 Agentic SOC Workflow
 
-### 🔴 Agentic SOC Workflow
-The system is designed around three specialised AI agents:
-
-#### Triage Agent (Tier 1)
-- Validates alerts  
+### 1. Triage Agent (Tier 1)
 - Filters false positives  
-- Performs initial enrichment  
-
-#### Investigation Agent (Tier 2)
-- Executes deep-dive analysis  
-- Correlates logs and indicators  
-- Maps activity to Cyber Kill Chain and MITRE ATT&CK  
-
-#### Response Agent (Tier 3)
-- Calculates risk score  
-- Recommends containment and remediation  
-- Generates final incident report  
+- Validates alert authenticity  
+- Performs initial enrichment (IP, URL, hash checks)  
+- Prioritises alerts  
 
 ---
 
-### 🌐 Threat Intelligence Enrichment
-The system integrates with external platforms:
+### 2. Investigation Agent (Tier 2)
+- Executes multi-step investigation workflows  
+- Correlates logs across sources  
+- Identifies attack patterns  
+- Maps activity to:
+  - Cyber Kill Chain  
+  - MITRE ATT&CK  
+
+---
+
+### 3. Response Agent (Tier 3)
+- Computes risk scores  
+- Determines severity levels  
+- Recommends containment and remediation  
+- Generates final incident reports  
+
+---
+
+## 🌐 Threat Intelligence Integration
+
+The system integrates multiple intelligence sources:
+
+- VirusTotal  
+- AbuseIPDB  
+- AlienVault OTX  
+- GreyNoise  
+- URLhaus  
+
+These sources provide:
+- IP reputation  
+- Malware indicators  
+- URL classification  
+- Threat validation  
+
+---
+
+## 📊 Risk Scoring Model
+
+Risk scores are computed based on:
+
+- Indicator severity (malicious, suspicious, benign)  
+- Number of correlated indicators  
+- Attack progression stage  
+- Confidence level from enrichment sources  
+
+### Output:
+- Severity: Low / Medium / High  
+- Confidence Score  
+- Recommended Actions  
+
+---
+
+## 📄 Automated Reporting
+
+The system generates structured reports containing:
+
+- Incident summary  
+- Timeline of events  
+- Indicators of Compromise (IOCs)  
+- MITRE ATT&CK mapping  
+- Risk assessment  
+- Response recommendations  
+
+---
+
+# 🛠️ Tech Stack
+
+## 1. Core Environment
+- Python 3.x  
+- Git  
+- VS Code / PyCharm  
+
+---
+
+## 2. Backend & Orchestration
+- FastAPI  
+
+---
+
+## 3. Agentic AI Layer
+- LangChain  
+
+---
+
+## 4. Data Layer
+- PostgreSQL (Relational Database)  
+- ChromaDB (Vector Database)  
+
+---
+
+## 5. Data Processing & Detection
+- Pandas  
+- NumPy  
+- Scikit-learn  
+
+---
+
+## 6. Frontend Layer (Hybrid)
+- Streamlit (Development & Testing Interface)  
+- React (SOC Dashboard)  
+
+---
+
+## 7. LLM Engine
+- LLM API (e.g. OpenAI GPT)  
+
+---
+
+## 8. Threat Intelligence APIs
 - VirusTotal  
 - AbuseIPDB  
 - AlienVault OTX  
@@ -68,73 +172,79 @@ The system integrates with external platforms:
 
 ---
 
-### 📊 Risk Scoring Engine
-Risk is calculated based on:
-- Indicator reputation (malicious, suspicious, clean)  
-- Number of correlated events  
-- Attack stage (Kill Chain progression)  
-- Confidence level from enrichment sources  
-
-Outputs:
-- Low / Medium / High severity classification  
-- Confidence score  
-- Recommended actions  
-
----
-
-### 📄 Automated Incident Reporting
-The system generates:
-- Human-readable summaries  
-- Indicators of Compromise (IOCs)  
-- Attack timeline  
-- MITRE ATT&CK mapping  
-- Recommended response actions  
-
----
-
-## 🔄 Workflow Overview
-1. Alert generated in NetWitness  
-2. Alert fetched via API  
-3. Triage Agent validates and enriches data  
-4. Investigation Agent performs correlation and analysis  
-5. Response Agent computes risk and generates report  
-6. Final output delivered to analyst dashboard  
-
----
-
-## 🛠️ Tech Stack
-
-| Category        | Technology        |
-|----------------|------------------|
-| Backend        | FastAPI          |
-| AI / Agents    | LangChain        |
-| Database       | PostgreSQL       |
-| Vector DB      | Chroma           |
-| SIEM           | RSA NetWitness   |
-| Data Processing| Pandas, NumPy, Scikit-learn |
-| Version Control| GitHub           |
-
----
-
 ## 📁 Project Structure
+
 ```bash
 /backend
   /api              # FastAPI routes
   /agents           # Triage, Investigation, Response agents
-  /services         # Threat intel integrations
+  /services         # Threat intelligence integrations
   /models           # Data schemas
   /utils            # Helper functions
 
 /database
   schema.sql        # PostgreSQL schema
 
+/vector_db
+  chroma_store/     # Embeddings storage
+
 /playbooks
-  incident_response_playbooks.json
+  incident_playbooks.json
+
+/frontend
+  /react-dashboard  # Main SOC UI
+  /streamlit-app    # Testing & debugging UI
 
 /docs
-  architecture_diagram.png
-  workflow_diagram.png
+  architecture.png
+  workflow.png
 ```
+
+---
+
+## 🔄 End-to-End Workflow
+
+1. Alert generated in NetWitness  
+2. Alert retrieved via API  
+3. Triage Agent validates alert  
+4. Threat intelligence enrichment performed  
+5. Investigation Agent correlates data  
+6. Risk scoring computed  
+7. Response Agent generates report  
+8. Results stored in database  
+9. Output displayed on dashboard  
+
+---
+
+## 📌 Use Cases
+
+- Phishing / Malspam Detection  
+- Suspicious IP Activity  
+- Malware Callback Detection  
+- Brute Force Login Attempts  
+- Anomalous Network Behaviour  
+
+---
+
+## 📊 Expected Impact
+
+- Reduction in manual SOC workload  
+- Improved investigation speed  
+- Better threat visibility  
+- Consistent and structured incident reporting  
+
+---
+
+## 👥 Team Members
+
+- Kho Soong Yang  
+  Agentic Investigation & Reporting Engine  
+
+- Shahrul Gunawan  
+  Integration & Dashboard Module  
+
+- Teo Rui Xuan  
+  Threat Hunting & Detection Engine  
 
 ---
 
@@ -149,8 +259,9 @@ cd fyp-agentic-soc
 ### 2. Create Virtual Environment
 ```bash
 python -m venv venv
-source venv/bin/activate     # macOS/Linux
-venv\Scripts\activate        # Windows
+source venv/bin/activate
+# Windows:
+venv\Scripts\activate
 ```
 
 ### 3. Install Dependencies
@@ -159,49 +270,28 @@ pip install -r requirements.txt
 ```
 
 ### 4. Configure Environment Variables
-Create a `.env` file:
 ```env
 NETWITNESS_API_KEY=your_key
 VT_API_KEY=your_key
 ABUSEIPDB_API_KEY=your_key
 ```
 
-### 5. Run Application
+### 5. Run Backend
 ```bash
 uvicorn main:app --reload
 ```
 
 ---
 
-## 📌 Use Cases
-- Phishing / Malspam Detection  
-- Suspicious IP Communication  
-- Malware Callback Detection  
-- Brute Force Login Attempts  
+## 📚 Future Enhancements
 
----
-
-## 📊 Expected Impact
-- Reduce manual SOC workload by ~50%  
-- Improve threat context visibility by ~40%  
-- Faster incident detection and response  
-
----
-
-## 👥 Team Members
-- KHO SOONG YANG (Team Leader) — Agentic Investigation & Reporting Engine  
-- SHAHRUL GUNAWAN — Integration & Dashboard Module  
-- TEO RUI XUAN — Threat Hunting & Detection Engine  
-
----
-
-## 📚 Future Improvements
-- Real-time streaming detection  
-- Integration with SOAR platforms  
+- Real-time alert streaming  
+- SOAR integration  
 - Automated response execution  
-- Fine-tuned LLM for cybersecurity reasoning  
+- Fine-tuned cybersecurity LLM  
+- Advanced anomaly detection models  
 
 ---
 
 ## 📜 License
-This project is developed for academic purposes under Republic Polytechnic.
+Developed for academic purposes under Republic Polytechnic.
