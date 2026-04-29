@@ -8,7 +8,7 @@ This project is an AI-powered Security Operations Centre (SOC) assistant that au
 
 The system integrates with NetWitness SIEM and simulates real-world SOC workflows through multiple AI agents that replicate Tier 1, Tier 2, and Tier 3 analysts.
 
-It is designed to handle high-volume security alerts and transform them into structured, actionable intelligence.
+It is designed to handle high-volume security alerts and transform them into structured, actionable intelligence. :contentReference[oaicite:0]{index=0}
 
 ---
 
@@ -34,48 +34,96 @@ The system follows a modular, agent-driven architecture:
 NetWitness SIEM → FastAPI Backend → AI Agents → Data Layer → Dashboard
 ```
 
-### Flow Breakdown
+### 🔍 Internal Data Flow
 
-1. Alerts are generated in NetWitness  
-2. FastAPI retrieves alerts via API  
-3. Triage Agent validates and enriches alerts  
-4. Investigation Agent performs correlation and deep analysis  
-5. Response Agent calculates risk and generates reports  
-6. Results are stored and displayed on dashboard  
+1. **Alert Ingestion**
+   - Alerts are retrieved from NetWitness via REST APIs  
+   - Raw logs are normalised into structured JSON format  
+
+2. **Pre-processing Layer**
+   - Key fields extracted (IP, domain, hash, user activity)  
+   - Data cleaned and standardised for downstream processing  
+
+3. **Agent Pipeline Execution**
+   - Data passed sequentially through:
+     - Triage Agent → Investigation Agent → Response Agent  
+
+4. **Data Storage**
+   - Structured results stored in PostgreSQL  
+   - Contextual embeddings stored in ChromaDB  
+
+5. **Output Layer**
+   - Results displayed in dashboard  
+   - Reports generated for analysts  
 
 ---
 
 ## 🔴 Agentic SOC Workflow
 
+### 🧩 Agent Design Concept
+Each agent operates as:
+- A reasoning unit (LLM)
+- A tool user (API calls, database queries)
+- A playbook executor (structured workflow)
+
+---
+
 ### 1. Triage Agent (Tier 1)
-- Filters false positives  
-- Validates alert authenticity  
-- Performs initial enrichment (IP, URL, hash checks)  
-- Prioritises alerts  
+
+**Input:**
+- Raw alert from NetWitness  
+
+**Process:**
+- Extract indicators (IP, URL, hash)  
+- Query threat intelligence APIs  
+- Validate whether alert is a false positive  
+
+**Output:**
+- Enriched alert  
+- Initial severity classification  
 
 ---
 
 ### 2. Investigation Agent (Tier 2)
-- Executes multi-step investigation workflows  
-- Correlates logs across sources  
-- Identifies attack patterns  
-- Maps activity to:
-  - Cyber Kill Chain  
-  - MITRE ATT&CK  
+
+**Input:**
+- Enriched alert  
+
+**Process:**
+- Perform correlation:
+  - Cross-log correlation  
+  - Indicator relationship mapping  
+- Query historical data from database  
+- Retrieve similar past incidents from ChromaDB (RAG)  
+- Map findings to:
+  - Cyber Kill Chain stages  
+  - MITRE ATT&CK techniques  
+
+**Output:**
+- Investigation findings  
+- Attack pattern identification  
 
 ---
 
 ### 3. Response Agent (Tier 3)
-- Computes risk scores  
-- Determines severity levels  
-- Recommends containment and remediation  
-- Generates final incident reports  
+
+**Input:**
+- Investigation results  
+
+**Process:**
+- Compute risk score  
+- Evaluate impact and likelihood  
+- Apply predefined playbooks  
+
+**Output:**
+- Final incident report  
+- Recommended actions (containment, eradication, recovery)  
 
 ---
 
 ## 🌐 Threat Intelligence Integration
 
-The system integrates multiple intelligence sources:
+Integrated APIs:
 
 - VirusTotal  
 - AbuseIPDB  
@@ -83,22 +131,39 @@ The system integrates multiple intelligence sources:
 - GreyNoise  
 - URLhaus  
 
-These sources provide:
-- IP reputation  
-- Malware indicators  
-- URL classification  
-- Threat validation  
+### 🔍 Enrichment Process
+For each indicator:
+1. Query multiple APIs  
+2. Aggregate responses  
+3. Assign confidence score  
+4. Store enrichment results  
 
 ---
 
 ## 📊 Risk Scoring Model
 
-Risk scores are computed based on:
+### 🧮 Risk Calculation Logic
 
-- Indicator severity (malicious, suspicious, benign)  
-- Number of correlated indicators  
-- Attack progression stage  
-- Confidence level from enrichment sources  
+Risk Score is derived from:
+
+```
+Risk = (Severity Weight × Indicator Score) 
+     + (Correlation Weight × Event Frequency)
+     + (Attack Stage Weight × Kill Chain Progression)
+```
+
+### Factors Explained:
+
+- **Indicator Score**  
+  Based on reputation from threat intelligence  
+
+- **Event Frequency**  
+  Number of related logs/events  
+
+- **Kill Chain Stage**
+  Later stages = higher risk  
+
+---
 
 ### Output:
 - Severity: Low / Medium / High  
@@ -109,14 +174,15 @@ Risk scores are computed based on:
 
 ## 📄 Automated Reporting
 
-The system generates structured reports containing:
+Each report includes:
 
-- Incident summary  
-- Timeline of events  
+- Executive summary  
+- Detailed investigation steps  
+- Timeline of attack  
 - Indicators of Compromise (IOCs)  
 - MITRE ATT&CK mapping  
-- Risk assessment  
-- Response recommendations  
+- Risk analysis  
+- Recommended response actions  
 
 ---
 
@@ -183,17 +249,17 @@ The system generates structured reports containing:
   /utils            # Helper functions
 
 /database
-  schema.sql        # PostgreSQL schema
+  schema.sql
 
 /vector_db
-  chroma_store/     # Embeddings storage
+  chroma_store/
 
 /playbooks
   incident_playbooks.json
 
 /frontend
-  /react-dashboard  # Main SOC UI
-  /streamlit-app    # Testing & debugging UI
+  /react-dashboard
+  /streamlit-app
 
 /docs
   architecture.png
@@ -202,17 +268,19 @@ The system generates structured reports containing:
 
 ---
 
-## 🔄 End-to-End Workflow
+## 🔄 End-to-End Workflow (Detailed)
 
 1. Alert generated in NetWitness  
 2. Alert retrieved via API  
-3. Triage Agent validates alert  
-4. Threat intelligence enrichment performed  
-5. Investigation Agent correlates data  
-6. Risk scoring computed  
-7. Response Agent generates report  
-8. Results stored in database  
-9. Output displayed on dashboard  
+3. Logs normalised into structured format  
+4. Indicators extracted  
+5. Threat intelligence enrichment executed  
+6. Triage Agent validates alert  
+7. Investigation Agent correlates evidence  
+8. Risk score computed  
+9. Response Agent generates report  
+10. Data stored in database  
+11. Results displayed on dashboard  
 
 ---
 
@@ -229,9 +297,9 @@ The system generates structured reports containing:
 ## 📊 Expected Impact
 
 - Reduction in manual SOC workload  
-- Improved investigation speed  
-- Better threat visibility  
-- Consistent and structured incident reporting  
+- Faster investigation cycles  
+- Improved detection accuracy  
+- Consistent reporting standards  
 
 ---
 
@@ -248,48 +316,13 @@ The system generates structured reports containing:
 
 ---
 
-## 🚀 Setup Instructions
-
-### 1. Clone Repository
-```bash
-git clone https://github.com/your-repo/fyp-agentic-soc.git
-cd fyp-agentic-soc
-```
-
-### 2. Create Virtual Environment
-```bash
-python -m venv venv
-source venv/bin/activate
-# Windows:
-venv\Scripts\activate
-```
-
-### 3. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-### 4. Configure Environment Variables
-```env
-NETWITNESS_API_KEY=your_key
-VT_API_KEY=your_key
-ABUSEIPDB_API_KEY=your_key
-```
-
-### 5. Run Backend
-```bash
-uvicorn main:app --reload
-```
-
----
-
 ## 📚 Future Enhancements
 
 - Real-time alert streaming  
 - SOAR integration  
-- Automated response execution  
+- Automated containment scripts  
 - Fine-tuned cybersecurity LLM  
-- Advanced anomaly detection models  
+- Advanced anomaly detection  
 
 ---
 
