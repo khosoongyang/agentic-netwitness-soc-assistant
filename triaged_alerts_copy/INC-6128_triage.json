@@ -1,0 +1,37 @@
+{
+  "incident_id": "INC-6128",
+  "classification": {
+    "alert_type": "Lateral Movement With Credentials Using Net Utility",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for Lateral Movement",
+    "timestamp": "2026-01-17T18:03:22.667Z",
+    "mitre_att&ck": {
+      "tactic": "lateral-movement",
+      "id": "T1021"
+    }
+  },
+  "endpoint_indicators": {
+    "host": "RP-SOC-WS-Win14",
+    "calling_process": "cmd.exe",
+    "calling_process_sha256": "ff79d3c4a0b7eb191783c323ab8363ebd1fd10be58d8bcc96b07067743ca81d5",
+    "target_utility": "net.exe",
+    "command_line": "net  use y: \\\\10.100.20.74\\shared_files /user:RP-SOC-WS-WIN19\\admin2 Republic1"
+  },
+  "exposed_credentials": {
+    "target_host": "10.100.20.74",
+    "domain_context": "RP-SOC-WS-WIN19",
+    "username": "admin2",
+    "password_string_exposed": "Republic1"
+  },
+  "threat_intelligence_enrichment": {
+    "target_host_10.100.20.74": {
+      "abuseipdb": {
+        "status": "skipped",
+        "reason": "RFC 1918 Private IP"
+      }
+    }
+  }
+}

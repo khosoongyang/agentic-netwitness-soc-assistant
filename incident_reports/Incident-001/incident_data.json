@@ -1,0 +1,108 @@
+{
+  "id": "Incident-001",
+  "metadata": {
+    "severity": "HIGH",
+    "status": "TRIAGED",
+    "assigned_analyst": "Automated Agent",
+    "created_at": 1784713765.5196798,
+    "updated_at": 1784713799.5011394,
+    "source_type": "Network",
+    "similar_to_incident": null
+  },
+  "raw_alerts": [
+    {
+      "id": "INC-6125",
+      "document": "Incident INC-6125 details are as follows: The classification alert type is Spearphishing Attachment. The classification risk score is 70. The classification severity is High. The email artifacts attachment extension is exe. The email artifacts attachment filename is winupdate.exe. The email artifacts attachment filetype is windows executable. The email artifacts attachment size bytes is 56240. The email artifacts client is Microsoft Outlook Express 6.00.2900.5512. The email artifacts recipient is jolin_j@rp-soc.com. The email artifacts sender is itadmin@rp-soc.com. The email artifacts subject is URGENT: Windows Update Patching Required!. The incident details direction is lateral. The incident details mitre att&ck id is T1566.001. The incident details mitre att&ck tactic is initial-access. The incident details mitre att&ck technique is spearphishing attachment. The incident details timestamp is 2026-01-17T17:20:19Z. The incident details title is High Risk Alerts: Event Stream Analysis for Email with Suspicious Attachment Detected. The incident id is INC-6125. The network indicators destination ip address is 10.100.10.7. The network indicators destination mac address is 7c:c0:25:3e:6c:11. The network indicators destination port is 110. The network indicators destination service is POP3. The network indicators source hostname is RPSOCWSWin2. The network indicators source ip address is 10.100.20.16. The network indicators source mac address is 00:50:56:bf:6e:f4. The network indicators source port is 49861. The threat intelligence enrichment attachment winupdate.exe virustotal reason is No cryptographic hash (MD5/SHA1/SHA256) present in raw log payload; file type matching rules identify application/x-msdownload threat category as 'malware' and 'suspicious'.. The threat intelligence enrichment attachment winupdate.exe virustotal status is partial_search. The threat intelligence enrichment destination ip 10.100.10.7 abuseipdb reason is RFC 1918 Private IP address. The threat intelligence enrichment destination ip 10.100.10.7 abuseipdb status is skipped. The threat intelligence enrichment destination ip 10.100.10.7 alienvault otx reason is RFC 1918 Private IP address. The threat intelligence enrichment destination ip 10.100.10.7 alienvault otx status is skipped. The threat intelligence enrichment source ip 10.100.20.16 abuseipdb reason is RFC 1918 Private IP address. The threat intelligence enrichment source ip 10.100.20.16 abuseipdb status is skipped. The threat intelligence enrichment source ip 10.100.20.16 alienvault otx reason is RFC 1918 Private IP address. The threat intelligence enrichment source ip 10.100.20.16 alienvault otx status is skipped.",
+      "metadata": {
+        "incident_id": "INC-6125",
+        "source_type": "Network",
+        "username": "Unknown",
+        "hostname": "RPSOCWSWin2",
+        "timestamp_str": "2026-01-17T17:20:19Z",
+        "timestamp_epoch": 1768670419,
+        "tactic": "initial-access",
+        "technique": "spearphishing attachment",
+        "ips": "10.100.20.16,10.100.10.7",
+        "sha256s": "",
+        "md5s": "",
+        "emails": "jolin_j@rp-soc.com,itadmin@rp-soc.com",
+        "domains": "rp-soc.com"
+      }
+    },
+    {
+      "id": "INC-6126",
+      "document": "Incident INC-6126 details are as follows: The classification alert type is Outbound from Unsigned AppData Directory. The classification risk score is 70. The classification severity is High. The endpoint indicators agent id is 2D5215DE-376E-4418-BB1C-D278975E7FB8. The endpoint indicators binary name is wzOCcAIIZg.exe. The endpoint indicators host is RP-SOC-WS-Win14. The endpoint indicators md5 is 80ecee3ff083deeb191728f4630d6a78. The endpoint indicators process directory is C:\\Users\\Admin2\\AppData\\Local\\Temp\\. The endpoint indicators sha256 is ed5223b41ff3d70a5f4f01e8c3cdcc675005e6c38f2211755e2785a9dd8143b2. The incident details mitre att&ck id is T1564.001. The incident details mitre att&ck tactic is defense-evasion. The incident details timestamp is 2026-01-17T17:31:39.294Z. The incident details title is High Risk Alerts: Event Stream Analysis for Outbound from Unsigned AppData Directory. The incident id is INC-6126. The network indicators destination ip is 155.140.254.18. The network indicators destination isp is BNP Paribas SG, Transit AS, Singapore. The network indicators source ip is 10.100.20.16. The threat intelligence enrichment binary wzOCcAIIZg.exe virustotal lookup hash is ed5223b41ff3d70a5f4f01e8c3cdcc675005e6c38f2211755e2785a9dd8143b2. The threat intelligence enrichment binary wzOCcAIIZg.exe virustotal status is search_ready. The threat intelligence enrichment destination ip 155.140.254.18 abuseipdb context is External enterprise entity routing address space.. The threat intelligence enrichment destination ip 155.140.254.18 abuseipdb status is monitored. The threat intelligence enrichment destination ip 155.140.254.18 alienvault otx pulses found is 0. The threat intelligence enrichment destination ip 155.140.254.18 alienvault otx status is clean. The threat intelligence enrichment source ip 10.100.20.16 abuseipdb reason is RFC 1918 Private IP. The threat intelligence enrichment source ip 10.100.20.16 abuseipdb status is skipped. The threat intelligence enrichment source ip 10.100.20.16 alienvault otx reason is RFC 1918 Private IP. The threat intelligence enrichment source ip 10.100.20.16 alienvault otx status is skipped.",
+      "metadata": {
+        "incident_id": "INC-6126",
+        "source_type": "Network",
+        "username": "Unknown",
+        "hostname": "RP-SOC-WS-Win14",
+        "timestamp_str": "2026-01-17T17:31:39.294Z",
+        "timestamp_epoch": 1768671099,
+        "tactic": "defense-evasion",
+        "technique": "Unknown",
+        "ips": "155.140.254.18,10.100.20.16",
+        "sha256s": "ed5223b41ff3d70a5f4f01e8c3cdcc675005e6c38f2211755e2785a9dd8143b2",
+        "md5s": "80ecee3ff083deeb191728f4630d6a78",
+        "emails": "",
+        "domains": ""
+      }
+    },
+    {
+      "id": "INC-6127",
+      "document": "Incident INC-6127 details are as follows: The classification alert type is Windows Executable Runs Command Shell. The classification risk score is 70. The classification severity is High. The endpoint indicators agent id is 2D5215DE-376E-4418-BB1C-D278975E7FB8. The endpoint indicators execution argument is cmd.exe /c echo ovtjyi > \\\\.\\pipe\\ovtjyi. The endpoint indicators host is RP-SOC-WS-Win14. The endpoint indicators parent directory is C:\\Windows\\System32\\. The endpoint indicators parent process is services.exe. The endpoint indicators parent sha256 is 9090e0e44e14709fb09b23b98572e0e61c810189e2de8f7156021bc81c3b1bb6. The endpoint indicators spawned process is cmd.exe. The incident details mitre att&ck id is T1569.002. The incident details mitre att&ck tactic is execution. The incident details timestamp is 2026-01-17T17:46:35.698Z. The incident details title is High Risk Alerts: Event Stream Analysis for Windows Executable Runs Command Shell. The incident id is INC-6127. The threat intelligence enrichment execution argument analyst note is Suspicious execution payload. Spawning cmd.exe to pipe strings to named pipes natively is standard behavior for remote service execution toolkits (e.g., PsExec, Cobalt Strike).. The threat intelligence enrichment parent sha256 virustotal note is Known system binary signature match (services.exe). The threat intelligence enrichment parent sha256 virustotal status is clean.",
+      "metadata": {
+        "incident_id": "INC-6127",
+        "source_type": "Endpoint",
+        "username": "Unknown",
+        "hostname": "RP-SOC-WS-Win14",
+        "timestamp_str": "2026-01-17T17:46:35.698Z",
+        "timestamp_epoch": 1768671995,
+        "tactic": "execution",
+        "technique": "Unknown",
+        "ips": "",
+        "sha256s": "9090e0e44e14709fb09b23b98572e0e61c810189e2de8f7156021bc81c3b1bb6",
+        "md5s": "",
+        "emails": "",
+        "domains": ""
+      }
+    },
+    {
+      "id": "INC-6128",
+      "document": "Incident INC-6128 details are as follows: The classification alert type is Lateral Movement With Credentials Using Net Utility. The classification risk score is 70. The classification severity is High. The endpoint indicators calling process is cmd.exe. The endpoint indicators calling process sha256 is ff79d3c4a0b7eb191783c323ab8363ebd1fd10be58d8bcc96b07067743ca81d5. The endpoint indicators command line is net  use y: \\\\10.100.20.74\\shared_files /user:RP-SOC-WS-WIN19\\admin2 Republic1. The endpoint indicators host is RP-SOC-WS-Win14. The endpoint indicators target utility is net.exe. The exposed credentials domain context is RP-SOC-WS-WIN19. The exposed credentials password string exposed is Republic1. The exposed credentials target host is 10.100.20.74. The exposed credentials username is admin2. The incident details mitre att&ck id is T1021. The incident details mitre att&ck tactic is lateral-movement. The incident details timestamp is 2026-01-17T18:03:22.667Z. The incident details title is High Risk Alerts: Event Stream Analysis for Lateral Movement. The incident id is INC-6128. The threat intelligence enrichment target host 10.100.20.74 abuseipdb reason is RFC 1918 Private IP. The threat intelligence enrichment target host 10.100.20.74 abuseipdb status is skipped.",
+      "metadata": {
+        "incident_id": "INC-6128",
+        "source_type": "Endpoint",
+        "username": "admin2",
+        "hostname": "RP-SOC-WS-Win14",
+        "timestamp_str": "2026-01-17T18:03:22.667Z",
+        "timestamp_epoch": 1768673002,
+        "tactic": "lateral-movement",
+        "technique": "Unknown",
+        "ips": "10.100.20.74",
+        "sha256s": "ff79d3c4a0b7eb191783c323ab8363ebd1fd10be58d8bcc96b07067743ca81d5",
+        "md5s": "",
+        "emails": "",
+        "domains": ""
+      }
+    }
+  ],
+  "summary_text": "2026-01-17T17:20:19Z: Phishing email received by jolin_j@rp-soc.com from itadmin@rp-soc.com with subject 'URGENT: Windows Update Patching Required!' containing attachment winupdate.exe. The attachment is a Windows executable (size: 56240 bytes). The email is classified as Spearphishing Attachment (T1566.001). 2026-01-17T17:31:39Z: Malicious process wzOCcAIIZg.exe detected running from AppData directory on RP-SOC-WS-Win14. 2026-01-17T17:46:35Z: cmd.exe spawned by services.exe, executing command to create a named pipe, indicating potential malicious activity. 2026-01-17T18:03:22Z: Lateral movement detected using net.exe with exposed credentials (username: admin2, password: Republic1) targeting 10.100.20.74.",
+  "indicators": [
+    "155.140.254.18",
+    "10.100.10.",
+    "155.140.254.",
+    "10.100.10.7",
+    "rpsocwswin2",
+    "ff79d3c4a0b7eb191783c323ab8363ebd1fd10be58d8bcc96b07067743ca81d5",
+    "80ecee3ff083deeb191728f4630d6a78",
+    "10.100.20.74",
+    "admin2",
+    "10.100.20.16",
+    "rp-soc-ws-win14",
+    "rp-soc.com",
+    "ed5223b41ff3d70a5f4f01e8c3cdcc675005e6c38f2211755e2785a9dd8143b2",
+    "9090e0e44e14709fb09b23b98572e0e61c810189e2de8f7156021bc81c3b1bb6",
+    "10.100.20."
+  ]
+}

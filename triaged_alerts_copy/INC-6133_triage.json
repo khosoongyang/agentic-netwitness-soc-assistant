@@ -1,0 +1,45 @@
+{
+  "incident_id": "INC-6133",
+  "classification": {
+    "alert_type": "Brute Force Login From Same Source",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for Brute Force Login",
+    "timestamp": "2026-01-30T10:47:40.890Z",
+    "mitre_att&ck": {
+      "tactic": "credential-access",
+      "id": "T1110"
+    }
+  },
+  "network_indicators": {
+    "source_ip": "5.1.57.22",
+    "source_country": "Czechia",
+    "source_city": "Chodov",
+    "source_asn": 198161,
+    "source_isp": "Sokolovska uhelna, pravni nastupce, a.s.",
+    "destination_ip": "155.140.254.100",
+    "destination_port": 443,
+    "destination_country": "France",
+    "destination_domain": "bnpparibasgroup.com",
+    "firewall_device_type": "checkpointfw1"
+  },
+  "authentication_details": {
+    "attempted_target_user": "sally",
+    "outcome": "Failure",
+    "category": "Auth.Failures.User Errors"
+  },
+  "threat_intelligence_enrichment": {
+    "source_ip_5.1.57.22": {
+      "abuseipdb": {
+        "status": "active_threat",
+        "malicious_score": "Pending check on dynamic validation engine"
+      },
+      "alienvault_otx": {
+        "status": "flagged",
+        "reason": "Associated with brute force scanning telemetry"
+      }
+    }
+  }
+}

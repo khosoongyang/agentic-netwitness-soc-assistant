@@ -1,0 +1,40 @@
+{
+  "id": "Incident-006",
+  "metadata": {
+    "severity": "HIGH",
+    "status": "TRIAGED",
+    "assigned_analyst": "Automated Agent",
+    "created_at": 1784713767.9394763,
+    "updated_at": 1784713799.671661,
+    "source_type": "Network",
+    "similar_to_incident": null
+  },
+  "raw_alerts": [
+    {
+      "id": "INC-6143",
+      "document": "Incident INC-6143 details are as follows: The classification alert type is DNS Tunneling over TCP Port. The classification risk score is 70. The classification severity is High. The incident details mitre att&ck id is T1572. The incident details mitre att&ck tactic is command-and-control. The incident details timestamp is 2026-01-31T02:46:02.394Z. The incident details title is High Risk Alerts: Event Stream Analysis for DNS Tunneling. The incident id is INC-6143. The network indicators destination ip is 64.64.211.3. The network indicators destination port is 53. The network indicators source ip is 155.140.254.2. The network indicators source port is 30692. The network indicators tunnel payload file context is googleclient.txt. The threat intelligence enrichment destination ip 64.64.211.3 abuseipdb reports is Flagged for non-standard DNS query tunnels. The threat intelligence enrichment destination ip 64.64.211.3 abuseipdb status is monitored. The threat intelligence enrichment destination ip 64.64.211.3 alienvault otx status is suspicious.",
+      "metadata": {
+        "incident_id": "INC-6143",
+        "source_type": "Network",
+        "username": "Unknown",
+        "hostname": "Unknown",
+        "timestamp_str": "2026-01-31T02:46:02.394Z",
+        "timestamp_epoch": 1769827562,
+        "tactic": "command-and-control",
+        "technique": "Unknown",
+        "ips": "155.140.254.2,64.64.211.3",
+        "sha256s": "",
+        "md5s": "",
+        "emails": "",
+        "domains": ""
+      }
+    }
+  ],
+  "summary_text": "1. An internal system at IP 155.140.254.2 initiated a connection to external IP 64.64.211.3. 2. DNS tunneling traffic was detected over a TCP port, potentially transferring payload 'googleclient.txt'. 3. The non-standard tunneling activity was flagged for command-and-control evasion.",
+  "indicators": [
+    "155.140.254.2",
+    "155.140.254.",
+    "64.64.211.3",
+    "64.64.211."
+  ]
+}

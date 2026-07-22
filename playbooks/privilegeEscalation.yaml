@@ -1,0 +1,23 @@
+name: Privilege Escalation Playbook
+version: 1.1
+
+steps:
+  step_1:
+    instructions: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System
+    routing: step_2
+
+  step_2:
+    instructions: Was it horizontal or vertical 
+    routing: step_3
+
+  step_3:
+    instructions: Was any malicious process spawned on the victim's machine?
+    routing: step_4
+
+  step_4:
+    instructions: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.
+    routing: step_5
+
+  step_5:
+    instructions: Based on the analysis, determine if further investigation is necessary and the containment steps
+    routing: complete

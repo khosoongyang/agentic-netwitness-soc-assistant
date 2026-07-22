@@ -1,0 +1,34 @@
+{
+  "incident_id": "INC-6143",
+  "classification": {
+    "alert_type": "DNS Tunneling over TCP Port",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for DNS Tunneling",
+    "timestamp": "2026-01-31T02:46:02.394Z",
+    "mitre_att&ck": {
+      "tactic": "command-and-control",
+      "id": "T1572"
+    }
+  },
+  "network_indicators": {
+    "source_ip": "155.140.254.2",
+    "source_port": 30692,
+    "destination_ip": "64.64.211.3",
+    "destination_port": 53,
+    "tunnel_payload_file_context": "googleclient.txt"
+  },
+  "threat_intelligence_enrichment": {
+    "destination_ip_64.64.211.3": {
+      "abuseipdb": {
+        "status": "monitored",
+        "reports": "Flagged for non-standard DNS query tunnels"
+      },
+      "alienvault_otx": {
+        "status": "suspicious"
+      }
+    }
+  }
+}

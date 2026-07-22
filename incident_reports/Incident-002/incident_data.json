@@ -1,0 +1,40 @@
+{
+  "id": "Incident-002",
+  "metadata": {
+    "severity": "HIGH",
+    "status": "TRIAGED",
+    "assigned_analyst": "Automated Agent",
+    "created_at": 1784713766.5488436,
+    "updated_at": 1784713799.0159378,
+    "source_type": "LogIndicators",
+    "similar_to_incident": null
+  },
+  "raw_alerts": [
+    {
+      "id": "INC-6131",
+      "document": "Incident INC-6131 details are as follows: The classification alert type is Multiple Failed Privilege Escalations. The classification risk score is 70. The classification severity is High. The incident details mitre att&ck id is T1068. The incident details mitre att&ck tactic is privilege-escalation. The incident details timestamp is 2026-01-30T10:02:13.433Z. The incident details title is High Risk Alerts: Event Stream Analysis for Failed Privilege Escalations. The incident id is INC-6131. The log indicators computer name is RP-SOC/PHILLYVDI. The log indicators device ip is 10.100.30.37. The log indicators domain is CORP. The log indicators event category is Privilege Use. The log indicators log source is Security. The log indicators requested privilege is SeSecurityPrivilege. The log indicators target user is philly. The log indicators windows message id is Security_578_Security. The threat intelligence enrichment device ip 10.100.30.37 abuseipdb reason is RFC 1918 Private IP. The threat intelligence enrichment device ip 10.100.30.37 abuseipdb status is skipped.",
+      "metadata": {
+        "incident_id": "INC-6131",
+        "source_type": "LogIndicators",
+        "username": "philly",
+        "hostname": "RP-SOC/PHILLYVDI",
+        "timestamp_str": "2026-01-30T10:02:13.433Z",
+        "timestamp_epoch": 1769767333,
+        "tactic": "privilege-escalation",
+        "technique": "Unknown",
+        "ips": "10.100.30.37",
+        "sha256s": "",
+        "md5s": "",
+        "emails": "",
+        "domains": ""
+      }
+    }
+  ],
+  "summary_text": "1. An unauthorized attempt was made to escalate privileges on host 'RP-SOC/PHILLYVDI' (10.100.30.37) by user 'philly'. 2. The user account requested administrative privilege 'SeSecurityPrivilege'. 3. The privilege escalation requests failed and were flagged by local security auditing.",
+  "indicators": [
+    "10.100.30.",
+    "rp-soc/phillyvdi",
+    "10.100.30.37",
+    "philly"
+  ]
+}

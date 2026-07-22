@@ -1,0 +1,34 @@
+{
+  "incident_id": "INC-6131",
+  "classification": {
+    "alert_type": "Multiple Failed Privilege Escalations",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for Failed Privilege Escalations",
+    "timestamp": "2026-01-30T10:02:13.433Z",
+    "mitre_att&ck": {
+      "tactic": "privilege-escalation",
+      "id": "T1068"
+    }
+  },
+  "log_indicators": {
+    "log_source": "Security",
+    "device_ip": "10.100.30.37",
+    "computer_name": "RP-SOC/PHILLYVDI",
+    "target_user": "philly",
+    "domain": "CORP",
+    "requested_privilege": "SeSecurityPrivilege",
+    "event_category": "Privilege Use",
+    "windows_message_id": "Security_578_Security"
+  },
+  "threat_intelligence_enrichment": {
+    "device_ip_10.100.30.37": {
+      "abuseipdb": {
+        "status": "skipped",
+        "reason": "RFC 1918 Private IP"
+      }
+    }
+  }
+}

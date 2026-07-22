@@ -1,0 +1,37 @@
+{
+  "incident_id": "INC-6141",
+  "classification": {
+    "alert_type": "HTTP GET Flood",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for HTTP GET Flood",
+    "timestamp": "2026-01-31T02:18:00.721Z",
+    "mitre_att&ck": {
+      "tactic": "exfiltration",
+      "id": "T1041"
+    }
+  },
+  "network_indicators": {
+    "source_ip": "10.100.20.142",
+    "source_port": 49441,
+    "destination_ip": "46.28.69.220",
+    "destination_port": 80,
+    "destination_domain": "grossform.ru",
+    "uri_resource": "gate.php",
+    "payload_transfer_volume_bytes": 5543306
+  },
+  "threat_intelligence_enrichment": {
+    "destination_ip_46.28.69.220": {
+      "abuseipdb": {
+        "status": "malicious"
+      }
+    },
+    "domain_grossform.ru": {
+      "virustotal": {
+        "status": "malicious"
+      }
+    }
+  }
+}

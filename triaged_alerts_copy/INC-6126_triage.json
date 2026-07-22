@@ -1,0 +1,57 @@
+{
+  "incident_id": "INC-6126",
+  "classification": {
+    "alert_type": "Outbound from Unsigned AppData Directory",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for Outbound from Unsigned AppData Directory",
+    "timestamp": "2026-01-17T17:31:39.294Z",
+    "mitre_att&ck": {
+      "tactic": "defense-evasion",
+      "id": "T1564.001"
+    }
+  },
+  "endpoint_indicators": {
+    "host": "RP-SOC-WS-Win14",
+    "process_directory": "C:\\Users\\Admin2\\AppData\\Local\\Temp\\",
+    "binary_name": "wzOCcAIIZg.exe",
+    "sha256": "ed5223b41ff3d70a5f4f01e8c3cdcc675005e6c38f2211755e2785a9dd8143b2",
+    "md5": "80ecee3ff083deeb191728f4630d6a78",
+    "agent_id": "2D5215DE-376E-4418-BB1C-D278975E7FB8"
+  },
+  "network_indicators": {
+    "source_ip": "10.100.20.16",
+    "destination_ip": "155.140.254.18",
+    "destination_isp": "BNP Paribas SG, Transit AS, Singapore"
+  },
+  "threat_intelligence_enrichment": {
+    "source_ip_10.100.20.16": {
+      "abuseipdb": {
+        "status": "skipped",
+        "reason": "RFC 1918 Private IP"
+      },
+      "alienvault_otx": {
+        "status": "skipped",
+        "reason": "RFC 1918 Private IP"
+      }
+    },
+    "destination_ip_155.140.254.18": {
+      "abuseipdb": {
+        "status": "monitored",
+        "context": "External enterprise entity routing address space."
+      },
+      "alienvault_otx": {
+        "status": "clean",
+        "pulses_found": 0
+      }
+    },
+    "binary_wzOCcAIIZg.exe": {
+      "virustotal": {
+        "status": "search_ready",
+        "lookup_hash": "ed5223b41ff3d70a5f4f01e8c3cdcc675005e6c38f2211755e2785a9dd8143b2"
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "incident_id": "INC-6142",
+  "classification": {
+    "alert_type": "Multiple DNS Response on the Same Hostname",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for Anomalous DNS Activity",
+    "timestamp": "2026-01-31T02:30:46.024Z",
+    "mitre_att&ck": {
+      "tactic": "command-and-control",
+      "id": "T1071.004"
+    }
+  },
+  "network_indicators": {
+    "source_ip": "10.100.20.121",
+    "source_port": 53,
+    "destination_ip": "10.100.10.3",
+    "destination_port": 64659,
+    "queried_domain": "bankofmoney.com"
+  },
+  "threat_intelligence_enrichment": {
+    "domain_bankofmoney.com": {
+      "virustotal": {
+        "status": "suspicious",
+        "category": "Lookalike/Phishing Domain Asset"
+      }
+    }
+  }
+}

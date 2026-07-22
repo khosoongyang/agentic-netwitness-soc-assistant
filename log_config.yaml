@@ -1,0 +1,68 @@
+source_detection:
+  - key: "authentication_details"
+    source_type: "Authentication"
+  - key: "log_indicators"
+    source_type: "LogIndicators"
+  - key: "network_indicators"
+    source_type: "Network"
+  - key: "endpoint_indicators"
+    source_type: "Endpoint"
+
+mappings:
+  Authentication:
+    username:
+      - "authentication_details.attempted_target_user"
+      - "log_indicators.target_user"
+      - "exposed_credentials.username"
+    hostname:
+      - "log_indicators.computer_name"
+      - "endpoint_indicators.host"
+      - "network_indicators.source.hostname"
+    timestamp:
+      - "incident_details.timestamp"
+  LogIndicators:
+    username:
+      - "log_indicators.target_user"
+      - "authentication_details.attempted_target_user"
+      - "exposed_credentials.username"
+    hostname:
+      - "log_indicators.computer_name"
+      - "endpoint_indicators.host"
+      - "network_indicators.source.hostname"
+    timestamp:
+      - "incident_details.timestamp"
+  Network:
+    username:
+      - "log_indicators.target_user"
+      - "authentication_details.attempted_target_user"
+      - "exposed_credentials.username"
+    hostname:
+      - "log_indicators.computer_name"
+      - "endpoint_indicators.host"
+      - "network_indicators.source_host"
+      - "network_indicators.source.hostname"
+    timestamp:
+      - "incident_details.timestamp"
+  Endpoint:
+    username:
+      - "exposed_credentials.username"
+      - "log_indicators.target_user"
+      - "authentication_details.attempted_target_user"
+    hostname:
+      - "endpoint_indicators.host"
+      - "log_indicators.computer_name"
+      - "network_indicators.source.hostname"
+    timestamp:
+      - "incident_details.timestamp"
+  Default:
+    username:
+      - "log_indicators.target_user"
+      - "authentication_details.attempted_target_user"
+      - "exposed_credentials.username"
+    hostname:
+      - "log_indicators.computer_name"
+      - "endpoint_indicators.host"
+      - "network_indicators.source_host"
+      - "network_indicators.source.hostname"
+    timestamp:
+      - "incident_details.timestamp"

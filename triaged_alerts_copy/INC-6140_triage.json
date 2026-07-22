@@ -1,0 +1,45 @@
+{
+  "incident_id": "INC-6140",
+  "classification": {
+    "alert_type": "Detection of Cryptomining File",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for Detection of Cryptomining File",
+    "timestamp": "2026-01-31T02:18:00.693Z",
+    "mitre_att&ck": {
+      "tactic": "command-and-control",
+      "id": "T1071.001"
+    }
+  },
+  "network_indicators": {
+    "source_ip": "10.100.20.142",
+    "source_port": 49444,
+    "destination_ip": "46.28.69.220",
+    "destination_port": 80,
+    "destination_domain": "grossform.ru",
+    "uri_resource": "gate.php"
+  },
+  "threat_intelligence_enrichment": {
+    "destination_ip_46.28.69.220": {
+      "abuseipdb": {
+        "status": "malicious",
+        "reports": "High count for malicious script hosting/C2 activity"
+      },
+      "alienvault_otx": {
+        "status": "malicious",
+        "associated_threats": [
+          "Cryptomining C2",
+          "Malware Infiltration"
+        ]
+      }
+    },
+    "domain_grossform.ru": {
+      "virustotal": {
+        "status": "malicious",
+        "category": "Phishing/Malware Drop Gate"
+      }
+    }
+  }
+}
