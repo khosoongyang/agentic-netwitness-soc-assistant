@@ -1,0 +1,523 @@
+{
+  "errors": {},
+  "stages": {
+    "triage": "completed",
+    "investigation": "completed",
+    "reporting": "completed"
+  },
+  "triage": {
+    "mock": true,
+    "metakeys_payload": {
+      "incident_id": "TEST-DNS-001",
+      "incident_title": "Sustained high-entropy DNS queries to single external resolver",
+      "timestamp": "2026-07-13T13:51:25.687618",
+      "matched_metakeys": [
+        "ip.src",
+        "ip.dst",
+        "user.name",
+        "host.name"
+      ],
+      "metakey_values": {},
+      "ioc_summary": "MOCK: brute-force authentication pattern with unusual privileged account activity.",
+      "risk_level": "high",
+      "classification": "high"
+    },
+    "ticket": {
+      "unc": "#99999Z",
+      "incident_id": "TEST-DNS-001",
+      "title": "Sustained high-entropy DNS queries to single external resolver",
+      "incident_time": "2024-03-02T11:02:44Z",
+      "created_at": "2026-07-13T13:51:25.687618",
+      "classification": "HIGH",
+      "risk_rating": {
+        "likelihood_initiation": "High",
+        "likelihood_occurrence": "High",
+        "likelihood_adverse_impact": "Medium",
+        "overall_risk": "High",
+        "rationale": "MOCK rationale for offline workflow testing."
+      },
+      "incident_category": "Internal Hacking (attempted)",
+      "initial_response_time": "<= 30 minutes",
+      "summary": "MOCK: repeated failed logons followed by a successful privileged logon from the same source address.",
+      "recommended_actions": [
+        "Isolate the affected host",
+        "Reset the targeted account credentials"
+      ],
+      "matched_ioc_count": 3,
+      "metakeys": [
+        "ip.src",
+        "ip.dst",
+        "user.name",
+        "host.name"
+      ]
+    },
+    "trace": [
+      {
+        "step": "IOC Checklist",
+        "status": "ok",
+        "ioc_summary": "MOCK ioc summary",
+        "total_ioc_count": 3,
+        "matched_metakeys": [
+          "ip.src",
+          "ip.dst",
+          "user.name",
+          "host.name"
+        ],
+        "per_category": {}
+      }
+    ],
+    "error": null
+  },
+  "investigation": {
+    "agent": "Investigation Agent",
+    "subprocess": {
+      "started_at": "2026-07-13T21:51:25",
+      "returncode": 0,
+      "success": true,
+      "stdout": "[+] CorrelationEngine: Loaded 3 active incidents into memory cache.\n[*] CorrelationEngine: Processing alert TEST-DNS-001 through two-tier engine...\n[*] CorrelationEngine: Tier 1 took 211.44ms. Decision: MERGE (Score: 0.761)\n",
+      "stderr": "\u001b[96m[*] Initializing SOC Incident Response Pipeline...\u001b[0m\n\u001b[96m[*] Starting Bulk Ingestion of 1 raw alert logs...\u001b[0m\n\u001b[92m[+] Bulk Ingestion completed. Vector store populated with 1 items.\u001b[0m\n\u001b[96m[*] Evaluating remaining queue. Picked investigative Seed Alert: TEST-DNS-001_alert.json\u001b[0m\n\u001b[96m[*] Auto-selected Privilege Escalation playbook (alert type: 'internal hacking (attempted)', tactic: 'unknown')\u001b[0m\n\u001b[92m[+] Confirmed Match. Merging alert TEST-DNS-001 into Incident Incident-003\u001b[0m\n2026-07-13 21:51:33,724 - SyncEngine - INFO - [sync_engine.py:514] - IncidentSyncManager: Initiating update of incident Incident-003\n2026-07-13 21:51:33,947 - SyncEngine - INFO - [sync_engine.py:383] - ChromaIncidentVectorStore: Upserted incident Incident-003\n2026-07-13 21:51:33,949 - SyncEngine - INFO - [sync_engine.py:178] - Saved incident file: incident_reports/Incident-003\\incident_data.json\n2026-07-13 21:51:33,950 - SyncEngine - INFO - [sync_engine.py:558] - IncidentSyncManager: Successfully updated and synced incident Incident-003\n\u001b[91m[!] ERROR: Failed to delete items from ChromaDB: Expected IDs to be unique, found duplicates of: INC-53018 in delete.\u001b[0m\n\u001b[92m[+] All alert files in 'triaged_alerts/' have been handled. Queue is empty!\u001b[0m\n\u001b[96m[*] Running parallel report generation and enrichment for 1 incidents...\u001b[0m\n\u001b[96m[*] [LLM CALL] Pass 1: Lightweight Playbook Evaluation & Pivot Extraction for INC-53018...\u001b[0m\n\u001b[91m[!] ERROR: Pass 1 LLM call failed: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.\u001b[0m\n\u001b[96m[*] [LLM CALL] Pass 2: Re-evaluating playbook and compiling final report for INC-53018...\u001b[0m\n\u001b[91m[!] ERROR: Pass 2 LLM call failed: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.\u001b[0m\n2026-07-13 21:51:34,567 - SyncEngine - INFO - [sync_engine.py:514] - IncidentSyncManager: Initiating update of incident Incident-003\n2026-07-13 21:51:34,808 - SyncEngine - INFO - [sync_engine.py:383] - ChromaIncidentVectorStore: Upserted incident Incident-003\n2026-07-13 21:51:34,810 - SyncEngine - INFO - [sync_engine.py:178] - Saved incident file: incident_reports/Incident-003\\incident_data.json\n2026-07-13 21:51:34,810 - SyncEngine - INFO - [sync_engine.py:558] - IncidentSyncManager: Successfully updated and synced incident Incident-003\n\u001b[92m[+] Case report stored securely inside: incident_reports/Incident-003\\final_analysis_report.md\u001b[0m\n\u001b[96m[*] SOC Incident Response Pipeline shut down successfully.\u001b[0m\n"
+    },
+    "incident_id": "TEST-DNS-001",
+    "status": "completed",
+    "incident_folder": "Incident-003",
+    "summary": "Analysis failed due to error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.. Timeline: [2025-11-18 03:18:37 UTC] INC-53018: Incident INC-53018 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The incident details description is High-risk NetWitness Endpoint alerts (risk score 70) indicate active internal hacking with system disruption, data exfiltration risks, and unauthorized software modifications. Immediate containment and investigation are required.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2025-11-18 03:18:37 UTC. The incident id is INC-53018. The log indicators computer name is Unknown. The log indicators target user is Unknown. The source incident summary is High-risk NetWitness Endpoint alerts (risk score 70) indicate active internal hacking with system disruption, data exfiltration risks, and unauthorized software modifications. Immediate containment and investigation are required.. The source incident title is High Risk Alerts: NetWitness Endpoint for KELLYWANG. The triage ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and security tool alert suggest system disruption from malicious activity.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device — High risk score and security tool alert indicate potential data exfiltration or unauthorized access.\n[INTEGRITY] Unknown binaries installed, Unknown process running, Unexplained changes from privileged accounts — High risk score and security tool alert suggest unauthorized software or process modifications.. The triage matched ioc count is 7. The triage matched metakeys lists: alert.type, bytes.out, bytes.transferred, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, high_risk, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, security_tool_alert, user.name, user.role. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is Critical. The triage risk rating rationale is High risk score (70), active alerts (2), and critical IOCs (high CPU, core dumps, network changes, unauthorized binaries/processes) indicate a sophisticated attack in progress with severe potential impacts.. The triage ticket unc is #00027A.\n[2025-11-18 03:18:37 UTC] INC-53018: Incident INC-53018 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The incident details description is High-risk NetWitness Endpoint alerts (risk score 70) indicate active internal hacking with system disruption, data exfiltration risks, and unauthorized software modifications. Immediate containment and investigation are required.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2025-11-18 03:18:37 UTC. The incident id is INC-53018. The log indicators computer name is Unknown. The log indicators target user is Unknown. The source incident summary is . The source incident title is High Risk Alerts: NetWitness Endpoint for KELLYWANG. The triage ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and security tool alert suggest system disruption from malicious activity.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device — High risk score and security tool alert indicate potential data exfiltration or unauthorized access.\n[INTEGRITY] Unknown binaries installed, Unknown process running, Unexplained changes from privileged accounts — High risk score and security tool alert suggest unauthorized software or process modifications.. The triage matched ioc count is 7. The triage matched metakeys lists: alert.type, bytes.out, bytes.transferred, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, high_risk, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, security_tool_alert, user.name, user.role. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is Critical. The triage risk rating rationale is High risk score (70), active alerts (2), and critical IOCs (high CPU, core dumps, network changes, unauthorized binaries/processes) indicate a sophisticated attack in progress with severe potential impacts.. The triage ticket unc is #00027A.\n[2024-03-02T11:02:44Z] TEST-DNS-001: Incident TEST-DNS-001 details are as follows: The classification alert type is Internal Hacking (attempted). The classification soc classification is HIGH. The incident details description is MOCK: repeated failed logons followed by a successful privileged logon from the same source address.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2024-03-02T11:02:44Z. The incident id is TEST-DNS-001. The log indicators computer name is LABWKS-19. The log indicators target user is lab-user7. The network indicators destination ip is 203.0.113.99. The network indicators source ip is 172.22.140.55. The source incident summary is Endpoint LABWKS-19 issued 12,400 TXT queries with high-entropy subdomains to resolver 203.0.113.99 over 3 hours, consistent with DNS tunneling.. The source incident title is Sustained high-entropy DNS queries to single external resolver. The triage ioc summary is MOCK: brute-force authentication pattern with unusual privileged account activity.. The triage matched ioc count is 3. The triage matched metakeys lists: ip.src, ip.dst, user.name, host.name. The triage risk rating likelihood adverse impact is Medium. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is MOCK rationale for offline workflow testing.. The triage ticket unc is #99999Z.",
+    "severity": "HIGH",
+    "indicators": [
+      "labwks-19",
+      "cpu.usage",
+      "bytes.out",
+      "file.hash",
+      "172.22.140.55",
+      "process.path",
+      "user.name",
+      "alert.type",
+      "user.role",
+      "203.0.113.",
+      "lab-user7",
+      "port.dst",
+      "172.22.140.",
+      "process.pid",
+      "process.name",
+      "ip.dst",
+      "file.path",
+      "event.time",
+      "file.name",
+      "event.type",
+      "203.0.113.99",
+      "host.name",
+      "ip.src",
+      "device.type"
+    ],
+    "narrative_report": "# EXECUTIVE INCIDENT OUTCOME REPORT: INC-53018 (Incident-003)\n\n**Final Severity:** High\n**Confidence Level:** Low\n\n## Technical Chronology Summary\nAnalysis failed due to error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.. Timeline: [2025-11-18 03:18:37 UTC] INC-53018: Incident INC-53018 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The incident details description is High-risk NetWitness Endpoint alerts (risk score 70) indicate active internal hacking with system disruption, data exfiltration risks, and unauthorized software modifications. Immediate containment and investigation are required.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2025-11-18 03:18:37 UTC. The incident id is INC-53018. The log indicators computer name is Unknown. The log indicators target user is Unknown. The source incident summary is High-risk NetWitness Endpoint alerts (risk score 70) indicate active internal hacking with system disruption, data exfiltration risks, and unauthorized software modifications. Immediate containment and investigation are required.. The source incident title is High Risk Alerts: NetWitness Endpoint for KELLYWANG. The triage ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and security tool alert suggest system disruption from malicious activity.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device — High risk score and security tool alert indicate potential data exfiltration or unauthorized access.\n[INTEGRITY] Unknown binaries installed, Unknown process running, Unexplained changes from privileged accounts — High risk score and security tool alert suggest unauthorized software or process modifications.. The triage matched ioc count is 7. The triage matched metakeys lists: alert.type, bytes.out, bytes.transferred, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, high_risk, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, security_tool_alert, user.name, user.role. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is Critical. The triage risk rating rationale is High risk score (70), active alerts (2), and critical IOCs (high CPU, core dumps, network changes, unauthorized binaries/processes) indicate a sophisticated attack in progress with severe potential impacts.. The triage ticket unc is #00027A.\n[2025-11-18 03:18:37 UTC] INC-53018: Incident INC-53018 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The incident details description is High-risk NetWitness Endpoint alerts (risk score 70) indicate active internal hacking with system disruption, data exfiltration risks, and unauthorized software modifications. Immediate containment and investigation are required.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2025-11-18 03:18:37 UTC. The incident id is INC-53018. The log indicators computer name is Unknown. The log indicators target user is Unknown. The source incident summary is . The source incident title is High Risk Alerts: NetWitness Endpoint for KELLYWANG. The triage ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and security tool alert suggest system disruption from malicious activity.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device — High risk score and security tool alert indicate potential data exfiltration or unauthorized access.\n[INTEGRITY] Unknown binaries installed, Unknown process running, Unexplained changes from privileged accounts — High risk score and security tool alert suggest unauthorized software or process modifications.. The triage matched ioc count is 7. The triage matched metakeys lists: alert.type, bytes.out, bytes.transferred, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, high_risk, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, security_tool_alert, user.name, user.role. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is Critical. The triage risk rating rationale is High risk score (70), active alerts (2), and critical IOCs (high CPU, core dumps, network changes, unauthorized binaries/processes) indicate a sophisticated attack in progress with severe potential impacts.. The triage ticket unc is #00027A.\n[2024-03-02T11:02:44Z] TEST-DNS-001: Incident TEST-DNS-001 details are as follows: The classification alert type is Internal Hacking (attempted). The classification soc classification is HIGH. The incident details description is MOCK: repeated failed logons followed by a successful privileged logon from the same source address.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2024-03-02T11:02:44Z. The incident id is TEST-DNS-001. The log indicators computer name is LABWKS-19. The log indicators target user is lab-user7. The network indicators destination ip is 203.0.113.99. The network indicators source ip is 172.22.140.55. The source incident summary is Endpoint LABWKS-19 issued 12,400 TXT queries with high-entropy subdomains to resolver 203.0.113.99 over 3 hours, consistent with DNS tunneling.. The source incident title is Sustained high-entropy DNS queries to single external resolver. The triage ioc summary is MOCK: brute-force authentication pattern with unusual privileged account activity.. The triage matched ioc count is 3. The triage matched metakeys lists: ip.src, ip.dst, user.name, host.name. The triage risk rating likelihood adverse impact is Medium. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is MOCK rationale for offline workflow testing.. The triage ticket unc is #99999Z.\n\n## Playbook Execution Trace\n| Step ID | Instruction | Status | Findings |\n| --- | --- | --- | --- |\n| `step_1` | Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n| `step_2` | Was it horizontal or vertical | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n| `step_3` | Was any malicious process spawned on the victim's machine? | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n| `step_4` | Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n| `step_5` | Based on the analysis, determine if further investigation is necessary and the containment steps | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n\n## Actions Taken\n- Triage\n\n## Lessons Learnt\nCheck LLM API status.\n\n## Recommended Containment Actions\n- Isolate system and review manually.\n",
+    "artifacts": {
+      "incident_folder": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_investigation_agent\\incident_reports\\Incident-003",
+      "incident_data": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_investigation_agent\\incident_reports\\Incident-003\\incident_data.json",
+      "report_markdown": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_investigation_agent\\incident_reports\\Incident-003\\final_analysis_report.md"
+    }
+  },
+  "reporting": {
+    "schema_version": "reporting-result-v1",
+    "incident_id": "TEST-DNS-001",
+    "alert_id": "TEST-DNS-001",
+    "report_status": "Generated for analyst review",
+    "report_generation_mode": "deterministic_facts_plus_template_export",
+    "validation_status": "Requires analyst validation",
+    "missing_required_fields": [],
+    "recovered_fields": [
+      {
+        "field": "host",
+        "value": "LABWKS-19",
+        "recovered_from": "enriched_alert",
+        "source_path": "host",
+        "confidence": "High",
+        "evidence_id": null,
+        "reason": "Recovered from deterministic merged report context."
+      },
+      {
+        "field": "source_ip",
+        "value": "172.22.140.55",
+        "recovered_from": "enriched_alert",
+        "source_path": "source_ip",
+        "confidence": "High",
+        "evidence_id": null,
+        "reason": "Recovered from deterministic merged report context."
+      },
+      {
+        "field": "severity",
+        "value": "HIGH",
+        "recovered_from": "investigation_result",
+        "source_path": "severity",
+        "confidence": "High",
+        "evidence_id": null,
+        "reason": "Recovered from deterministic merged report context."
+      },
+      {
+        "field": "classification",
+        "value": "HIGH",
+        "recovered_from": "triage_result",
+        "source_path": "classification",
+        "confidence": "High",
+        "evidence_id": null,
+        "reason": "Recovered from deterministic merged report context."
+      },
+      {
+        "field": "asset_ip",
+        "value": "172.22.140.55",
+        "recovered_from": "enriched_alert",
+        "source_path": "source_ip",
+        "confidence": "High",
+        "evidence_id": null,
+        "reason": "Recovered from deterministic merged report context."
+      }
+    ],
+    "report_completeness_score": null,
+    "report_completeness_status": "not_recorded",
+    "report_completeness": {},
+    "quality_checks": {
+      "conflicting_severity_values_detected": "Not Detected",
+      "conflicting_confidence_values_detected": "Not Detected",
+      "stale_context_detected": "Not Detected",
+      "triage_result_available": "Yes",
+      "investigation_result_available": "Yes",
+      "threat_intelligence_result_available": "Yes",
+      "fallback_logic_used": "Yes",
+      "fields_recovered_from_fallback_sources": 1,
+      "iocs_deduplicated": 53,
+      "evidence_links_recovered": 0,
+      "placeholders_reduced": 1,
+      "fields_still_unavailable_from_source_telemetry": 97,
+      "final_placeholder_count": 97,
+      "evidence_register_placeholders": 0.0,
+      "approval_section_placeholders": 0.7,
+      "containment_section_placeholders": 0.2857142857142857,
+      "data_impact_placeholders": 1.0,
+      "chain_of_custody_placeholders": 1.0,
+      "columns_hidden_due_to_low_information_value": 22,
+      "rows_hidden_due_to_no_useful_values": 0,
+      "missing_fields_summarised_into_evidence_gaps": 0,
+      "ai_narrative_sections_used_to_reduce_placeholder_repetition": 0
+    },
+    "field_provenance": {
+      "host": {
+        "value": "LABWKS-19",
+        "source": "enriched_alert",
+        "source_path": "host",
+        "confidence": "High",
+        "evidence_id": null
+      },
+      "source_ip": {
+        "value": "172.22.140.55",
+        "source": "enriched_alert",
+        "source_path": "source_ip",
+        "confidence": "High",
+        "evidence_id": null
+      },
+      "severity": {
+        "value": "HIGH",
+        "source": "investigation_result",
+        "source_path": "severity",
+        "confidence": "High",
+        "evidence_id": null
+      },
+      "classification": {
+        "value": "HIGH",
+        "source": "triage_result",
+        "source_path": "classification",
+        "confidence": "High",
+        "evidence_id": null
+      },
+      "asset_ip": {
+        "value": "172.22.140.55",
+        "source": "enriched_alert",
+        "source_path": "source_ip",
+        "confidence": "High",
+        "evidence_id": null
+      }
+    },
+    "evidence_index": {},
+    "report_quality_score": null,
+    "report_quality_status": "not_recorded",
+    "report_quality": {},
+    "generated_reports": {
+      "executive_summary": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\executive_summary.txt",
+      "executive_summary_structured": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\executive_summary.json",
+      "technical_findings": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\technical_findings.txt",
+      "technical_findings_structured": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\technical_findings.json",
+      "soc_analyst_review": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_analyst_review.txt",
+      "soc_analyst_review_structured": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_analyst_review.json",
+      "soc_triage_review": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_triage_review.txt",
+      "soc_triage_review_structured": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_triage_review.json",
+      "final_incident_report": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\final_incident_report.txt",
+      "final_incident_report_structured": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\final_incident_report.json",
+      "final_report_text": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\final_report.txt",
+      "report_manifest": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\report_manifest.json"
+    },
+    "warnings": [],
+    "data_consistency_status": "passed",
+    "data_consistency": {},
+    "input_context_hash": null,
+    "rag_used": true,
+    "rag_status": "Local template export context built",
+    "llm_used": false,
+    "llm_provider": "not_used",
+    "llm_model": "not_used",
+    "llm_status": "llm_disabled_deterministic_generation",
+    "llm_quality_status": "not_used",
+    "llm_quality_issues": [],
+    "llm_section_results": {
+      "executive_summary": {
+        "status": "not_used",
+        "hard_fail_issues": [],
+        "soft_warnings": [],
+        "repair_actions": [],
+        "retry_attempted": false,
+        "issues": []
+      },
+      "technical_analysis": {
+        "status": "not_used",
+        "hard_fail_issues": [],
+        "soft_warnings": [],
+        "repair_actions": [],
+        "retry_attempted": false,
+        "issues": []
+      },
+      "business_impact_explanation": {
+        "status": "not_used",
+        "hard_fail_issues": [],
+        "soft_warnings": [],
+        "repair_actions": [],
+        "retry_attempted": false,
+        "issues": []
+      },
+      "attack_narrative": {
+        "status": "not_used",
+        "hard_fail_issues": [],
+        "soft_warnings": [],
+        "repair_actions": [],
+        "retry_attempted": false,
+        "issues": []
+      },
+      "conclusion": {
+        "status": "not_used",
+        "hard_fail_issues": [],
+        "soft_warnings": [],
+        "repair_actions": [],
+        "retry_attempted": false,
+        "issues": []
+      },
+      "analyst_friendly_explanation": {
+        "status": "not_used",
+        "hard_fail_issues": [],
+        "soft_warnings": [],
+        "repair_actions": [],
+        "retry_attempted": false,
+        "issues": []
+      },
+      "soc_analyst_review_checklist": {
+        "status": "not_used",
+        "hard_fail_issues": [],
+        "soft_warnings": [],
+        "repair_actions": [],
+        "retry_attempted": false,
+        "issues": []
+      }
+    },
+    "llm_enhancement_score": 0,
+    "llm_enhancement_score_detail": {
+      "score": 0,
+      "max_score": 100,
+      "status": "not_used",
+      "accepted_sections": 0,
+      "fallback_sections": 0,
+      "warning_sections": 0,
+      "total_sections": 0
+    },
+    "llm_attempt_count": 0,
+    "llm_cache_status": "not_used",
+    "created_at": "2026-07-13T13:51:36.461053+00:00",
+    "report_status_display": "Generated For Analyst Review",
+    "report_status_explanation": "No detailed explanation is configured for technical status 'Generated for analyst review'.",
+    "report_status_workflow_impact": "Review the technical status if this affects the workflow.",
+    "validation_status_display": "Requires Analyst Validation",
+    "validation_status_explanation": "No detailed explanation is configured for technical status 'Requires analyst validation'.",
+    "validation_status_workflow_impact": "Review the technical status if this affects the workflow.",
+    "rag_status_display": "Local Template Export Context Built",
+    "rag_status_explanation": "No detailed explanation is configured for technical status 'Local template export context built'.",
+    "rag_status_workflow_impact": "Review the technical status if this affects the workflow.",
+    "llm_status_display": "LLM disabled, deterministic report generated",
+    "llm_status_explanation": "LLM usage is turned off in configuration. The report was generated without LLM enhancement.",
+    "llm_status_workflow_impact": "Workflow can continue with deterministic reporting only.",
+    "llm_cache_status_display": "Cache not used",
+    "llm_cache_status_explanation": "Report cache was not used for this run.",
+    "llm_cache_status_workflow_impact": "No impact on current report generation.",
+    "report_completeness_status_display": "Not Recorded",
+    "report_completeness_status_explanation": "No detailed explanation is configured for technical status 'not_recorded'.",
+    "report_completeness_status_workflow_impact": "Review the technical status if this affects the workflow.",
+    "data_consistency_status_display": "Data consistency passed",
+    "data_consistency_status_explanation": "Incident identifiers and key assessment fields are consistent across loaded inputs.",
+    "data_consistency_status_workflow_impact": "Workflow can continue to analyst review.",
+    "postgres_used": false,
+    "postgres_status": "postgres_disabled",
+    "postgres_status_display": "PostgreSQL storage disabled",
+    "postgres_status_explanation": "Database storage is turned off. The report was still saved locally.",
+    "postgres_status_workflow_impact": "No impact on local report generation.",
+    "agent": "Reporting Agent",
+    "agent_source": "agents/reporting_agent.py",
+    "status": "completed",
+    "ticket_id": "TKT-99999Z",
+    "title": "Sustained high-entropy DNS queries to single external resolver",
+    "reporting_mode": "standard",
+    "investigation_status": "completed",
+    "investigation_limitations": [],
+    "limitations": [],
+    "report_manifest": {
+      "schema_version": "editable-report-manifest-v2",
+      "incident_id": "TEST-DNS-001",
+      "report_status": "draft_ready_for_analyst_review",
+      "display_status": "Draft ready for analyst review",
+      "sections": {
+        "executive_summary": {
+          "key": "executive_summary",
+          "title": "Executive Summary",
+          "description": "Management-level incident summary for handover and leadership review.",
+          "template": "executive_summary_template.md.j2",
+          "filename": "executive_summary.txt",
+          "status": "draft",
+          "draft_path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\drafts\\executive_summary.txt",
+          "draft_relative_path": "outputs\\TEST-DNS-001\\reports\\drafts\\executive_summary.txt",
+          "structured_draft_path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\drafts\\executive_summary.json",
+          "structured_draft_relative_path": "outputs\\TEST-DNS-001\\reports\\drafts\\executive_summary.json",
+          "confirmed_path": null,
+          "confirmed_relative_path": null,
+          "structured_confirmed_path": null,
+          "structured_confirmed_relative_path": null,
+          "exports": {},
+          "last_saved_at": "2026-07-13T13:51:36.743701+00:00",
+          "last_saved_by": "Reporting Agent",
+          "confirmed_at": null,
+          "confirmed_by": null,
+          "draft_history": []
+        },
+        "technical_findings": {
+          "key": "technical_findings",
+          "title": "Technical Findings",
+          "description": "Evidence, IOCs, technical observations, and validation points.",
+          "template": "technical_findings_template.md.j2",
+          "filename": "technical_findings.txt",
+          "status": "draft",
+          "draft_path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\drafts\\technical_findings.txt",
+          "draft_relative_path": "outputs\\TEST-DNS-001\\reports\\drafts\\technical_findings.txt",
+          "structured_draft_path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\drafts\\technical_findings.json",
+          "structured_draft_relative_path": "outputs\\TEST-DNS-001\\reports\\drafts\\technical_findings.json",
+          "confirmed_path": null,
+          "confirmed_relative_path": null,
+          "structured_confirmed_path": null,
+          "structured_confirmed_relative_path": null,
+          "exports": {},
+          "last_saved_at": "2026-07-13T13:51:36.792758+00:00",
+          "last_saved_by": "Reporting Agent",
+          "confirmed_at": null,
+          "confirmed_by": null,
+          "draft_history": []
+        },
+        "soc_analyst_review": {
+          "key": "soc_analyst_review",
+          "title": "SOC Analyst Review",
+          "description": "Analyst judgement, limitations, approval notes, and review checklist.",
+          "template": "soc_analyst_review_template.md.j2",
+          "filename": "soc_analyst_review.txt",
+          "status": "draft",
+          "draft_path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\drafts\\soc_analyst_review.txt",
+          "draft_relative_path": "outputs\\TEST-DNS-001\\reports\\drafts\\soc_analyst_review.txt",
+          "structured_draft_path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\drafts\\soc_analyst_review.json",
+          "structured_draft_relative_path": "outputs\\TEST-DNS-001\\reports\\drafts\\soc_analyst_review.json",
+          "confirmed_path": null,
+          "confirmed_relative_path": null,
+          "structured_confirmed_path": null,
+          "structured_confirmed_relative_path": null,
+          "exports": {},
+          "last_saved_at": "2026-07-13T13:51:36.847008+00:00",
+          "last_saved_by": "Reporting Agent",
+          "confirmed_at": null,
+          "confirmed_by": null,
+          "draft_history": []
+        },
+        "final_incident_report": {
+          "key": "final_incident_report",
+          "title": "Final Incident Report",
+          "description": "Complete incident report for analyst confirmation and export.",
+          "template": "incident_report_template.md.j2",
+          "filename": "final_incident_report.txt",
+          "status": "draft",
+          "draft_path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\drafts\\final_incident_report.txt",
+          "draft_relative_path": "outputs\\TEST-DNS-001\\reports\\drafts\\final_incident_report.txt",
+          "structured_draft_path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\drafts\\final_incident_report.json",
+          "structured_draft_relative_path": "outputs\\TEST-DNS-001\\reports\\drafts\\final_incident_report.json",
+          "confirmed_path": null,
+          "confirmed_relative_path": null,
+          "structured_confirmed_path": null,
+          "structured_confirmed_relative_path": null,
+          "exports": {},
+          "last_saved_at": "2026-07-13T13:51:36.871161+00:00",
+          "last_saved_by": "Reporting Agent",
+          "confirmed_at": null,
+          "confirmed_by": null,
+          "draft_history": []
+        }
+      },
+      "section_order": [
+        "executive_summary",
+        "technical_findings",
+        "soc_analyst_review",
+        "final_incident_report"
+      ],
+      "support_sections": {
+        "soc_triage_review": {
+          "key": "soc_triage_review",
+          "title": "SOC Triage Review",
+          "template": "soc_triage_review_template.md.j2",
+          "path": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_triage_review.txt",
+          "relative_path": "outputs\\TEST-DNS-001\\reports\\editable\\soc_triage_review.txt"
+        }
+      },
+      "draft_reports": [
+        "executive_summary",
+        "technical_findings",
+        "soc_analyst_review",
+        "final_incident_report"
+      ],
+      "confirmed_reports": [],
+      "created_at": "2026-07-13T13:51:36.871161+00:00",
+      "updated_at": "2026-07-13T13:51:36.871161+00:00",
+      "confirmed_by": null,
+      "confirmed_at": null,
+      "exports": {},
+      "source_context": {
+        "report_status": "Generated for analyst review",
+        "validation_status": "Requires analyst validation",
+        "data_consistency_status": null
+      }
+    },
+    "dashboard_copy_created_at": "2026-07-13T13:51:36.994429+00:00",
+    "real_reporting_result_path": "outputs\\TEST-DNS-001\\reporting_result.json",
+    "final_report_text_path": "outputs\\TEST-DNS-001\\reports\\editable\\final_incident_report.txt",
+    "subprocess": {
+      "started_at": "2026-07-13T13:51:35.722238+00:00",
+      "finished_at": "2026-07-13T13:51:36.916511+00:00",
+      "returncode": 0,
+      "success": true,
+      "stdout": "[Reporting Agent] Starting reporting workflow...\n[Reporting Agent] Input directory: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\inputs\n[Reporting Agent] Output directory: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\n[Reporting Agent] LLM provider: disabled\n[Reporting Agent] LLM model: not used\n\n[Reporting Agent] Context sources:\n- processed_alert.json: Not found or empty\n- enriched_alert.json: Loaded\n- triage_result.json: Loaded\n- investigation_result.json: Loaded\n- approval_result.json: Not found, optional\n\n[Reporting Agent] Reports generated.\n[Reporting Agent] Incident ID: TEST-DNS-001\n[Reporting Agent] Final report status: Generated For Analyst Review\n[Reporting Agent] Final report status explanation: No detailed explanation is configured for technical status 'Generated for analyst review'.\n[Reporting Agent] Final report status workflow impact: Review the technical status if this affects the workflow.\n[Reporting Agent] Validation status: Requires Analyst Validation\n[Reporting Agent] Validation status explanation: No detailed explanation is configured for technical status 'Requires analyst validation'.\n[Reporting Agent] Validation status workflow impact: Review the technical status if this affects the workflow.\n[Reporting Agent] Data consistency status: Data consistency passed\n[Reporting Agent] Data consistency status explanation: Incident identifiers and key assessment fields are consistent across loaded inputs.\n[Reporting Agent] Data consistency status workflow impact: Workflow can continue to analyst review.\n[Reporting Agent] Context recovery: 5 field(s) recovered from earlier agent outputs\n- host: recovered from enriched_alert (Recovered from deterministic merged report context.)\n- source_ip: recovered from enriched_alert (Recovered from deterministic merged report context.)\n- severity: recovered from investigation_result (Recovered from deterministic merged report context.)\n- classification: recovered from triage_result (Recovered from deterministic merged report context.)\n- asset_ip: recovered from enriched_alert (Recovered from deterministic merged report context.)\n[Reporting Agent] Report completeness score: not recorded/100\n[Reporting Agent] Report completeness status: Not Recorded\n[Reporting Agent] Report completeness status explanation: No detailed explanation is configured for technical status 'not_recorded'.\n[Reporting Agent] Report completeness status workflow impact: Review the technical status if this affects the workflow.\n[Reporting Agent] RAG status: Local Template Export Context Built\n[Reporting Agent] RAG status explanation: No detailed explanation is configured for technical status 'Local template export context built'.\n[Reporting Agent] RAG status workflow impact: Review the technical status if this affects the workflow.\n[Reporting Agent] LLM enhancement status: LLM disabled, deterministic report generated\n[Reporting Agent] LLM enhancement status explanation: LLM usage is turned off in configuration. The report was generated without LLM enhancement.\n[Reporting Agent] LLM enhancement status workflow impact: Workflow can continue with deterministic reporting only.\n[Reporting Agent] LLM selected provider/model: not_used / not_used\n[Reporting Agent] LLM attempts: 0\n[Reporting Agent] LLM enhancement score: 0/100\n[Reporting Agent] LLM cache status: Cache not used\n[Reporting Agent] LLM cache status explanation: Report cache was not used for this run.\n[Reporting Agent] LLM cache status workflow impact: No impact on current report generation.\n[Reporting Agent] PostgreSQL storage status: PostgreSQL storage disabled\n[Reporting Agent] PostgreSQL storage status explanation: Database storage is turned off. The report was still saved locally.\n[Reporting Agent] PostgreSQL storage status workflow impact: No impact on local report generation.\n[Reporting Agent] LLM section results:\n- Executive Summary: LLM not used for this section\n- Technical Analysis: LLM not used for this section\n- Business Impact Explanation: LLM not used for this section\n- Attack Narrative: LLM not used for this section\n- Conclusion: LLM not used for this section\n- Analyst Friendly Explanation: LLM not used for this section\n- Soc Analyst Review Checklist: LLM not used for this section\n[Reporting Agent] Generated reports:\n- Executive summary: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\executive_summary.txt\n- Executive Summary Structured: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\executive_summary.json\n- Technical findings report: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\technical_findings.txt\n- Technical Findings Structured: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\technical_findings.json\n- SOC analyst review report: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_analyst_review.txt\n- Soc Analyst Review Structured: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_analyst_review.json\n- SOC triage review report: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_triage_review.txt\n- Soc Triage Review Structured: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\soc_triage_review.json\n- Final Incident Report: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\final_incident_report.txt\n- Final Incident Report Structured: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\editable\\final_incident_report.json\n- Final Report Text: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\final_report.txt\n- Report Manifest: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\report_manifest.json\n- Reporting result JSON: C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reporting_result.json\n",
+      "stderr": "",
+      "script": "agents\\reporting_agent.py"
+    },
+    "orchestrator_subprocess": {
+      "returncode": 0,
+      "success": true
+    },
+    "document_exports": {
+      "incident_id": "TEST-DNS-001",
+      "docx": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\exports\\combined_incident_report.docx",
+      "pdf": "C:\\RP\\AY26S1\\C300 - Project\\netwitness-agent_prototype\\soc_reporting_agent\\outputs\\TEST-DNS-001\\reports\\exports\\combined_incident_report.pdf"
+    }
+  }
+}

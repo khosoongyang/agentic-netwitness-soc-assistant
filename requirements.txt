@@ -1,0 +1,32 @@
+# ── Core app (app.py) ─────────────────────────────────────────────
+streamlit>=1.35.0
+requests>=2.31.0
+protobuf==3.20.3
+python-dotenv>=1.0.0
+
+# ChromaDB — MUST stay in sync across every environment that opens the
+# same store (app venv, system Python, teammates' machines). A newer
+# chromadb silently migrates the sqlite schema one-way; an older version
+# then crashes with "no such column: collections.topic".
+chromadb==1.5.9
+
+# ── Triage agent (soc_triage_agent/) ──────────────────────────────
+langchain-core>=0.3.0
+langchain-openai>=0.3.0
+openai>=1.90.0
+
+# ── Investigation agent (soc_investigation_agent/) ────────────────
+pyyaml>=6.0.0
+pydantic>=2.0.0
+
+# ── Reporting agent (soc_reporting_agent/) + document exports ─────
+jinja2>=3.1.0
+python-docx>=1.1.2
+reportlab>=4.2.0
+
+# ── Deploy-only: Streamlit Community Cloud (Linux) ────────────────
+# chromadb needs sqlite3 >= 3.35; Streamlit Cloud's Debian image ships an
+# older one. pysqlite3-binary supplies a newer bundled sqlite that app.py
+# swaps in at startup. Linux-only marker so a local Windows/macOS
+# `pip install -r requirements.txt` skips it (no Windows wheel exists).
+pysqlite3-binary>=0.5.0; platform_system == "Linux"

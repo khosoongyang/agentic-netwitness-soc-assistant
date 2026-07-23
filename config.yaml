@@ -1,0 +1,65 @@
+# ============================================================
+#  SOC Triage Agent — Configuration
+#  Edit this file to match your environment
+# ============================================================
+
+chromadb:
+  host: "localhost"
+  port: 8000
+  # Set to null to use in-memory / persistent local path instead
+  persist_directory: "./chroma_store"
+  collection_name: "netwitness_logs"
+
+embedding:
+  # Lightweight security-aware sentence embedder
+  model: "sentence-transformers/all-MiniLM-L6-v2"
+  # Alternatively for better security context:
+  # model: "sentence-transformers/all-mpnet-base-v2"
+  batch_size: 64
+  chunk_size: 512          # characters per log chunk
+
+cisco_foundation_ai:
+  # Model from HuggingFace — downloaded locally
+  model_id: "cisco-foundation-ai/Foundation-sec-8B-Instruct"
+  # Local path if already downloaded:
+  # model_id: "/models/foundation-sec-8b"
+  device: "cuda"           # cuda | cpu | auto
+  load_in_4bit: true       # Set false if you have >24GB VRAM
+  max_new_tokens: 1024
+  temperature: 0.1         # Low temp for deterministic triage
+  top_p: 0.9
+
+sklearn:
+  # Paths where trained models are saved/loaded
+  severity_model_path: "./models/severity_classifier.joblib"
+  anomaly_model_path:  "./models/anomaly_detector.joblib"
+  cluster_model_path:  "./models/log_clusterer.joblib"
+  # IsolationForest contamination ratio (tune to your environment)
+  anomaly_contamination: 0.05
+  n_clusters: 8            # K-Means clusters for attack-type grouping
+
+retrieval:
+  top_k: 10                # How many similar logs to pull from ChromaDB
+  relevance_threshold: 0.4 # Cosine similarity cutoff
+
+triage:
+  # MITRE ATT&CK Tactic categories the agent classifies into
+  mitre_tactics:
+    - "Initial Access"
+    - "Execution"
+    - "Persistence"
+    - "Privilege Escalation"
+    - "Defense Evasion"
+    - "Credential Access"
+    - "Discovery"
+    - "Lateral Movement"
+    - "Collection"
+    - "Exfiltration"
+    - "Command and Control"
+    - "Impact"
+  severity_levels:
+    - "CRITICAL"
+    - "HIGH"
+    - "MEDIUM"
+    - "LOW"
+    - "INFORMATIONAL"
