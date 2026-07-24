@@ -655,6 +655,82 @@ section[data-testid="stSidebar"] > div:first-child {
   padding-top: 1rem;
 }
 
+/* ── Aegis Sidebar Vertical Menu (NO FRAMES, NO BUTTON LOOK - EXACT SCREENSHOT MATCH) ── */
+.sec-label-overview {
+  color: #5d6f88 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.16em !important;
+  font-size: 0.62rem !important;
+  font-weight: 800 !important;
+  margin: 14px 0 8px 6px !important;
+}
+
+section[data-testid="stSidebar"] div.stButton,
+section[data-testid="stSidebar"] div.stButton > button,
+section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"],
+section[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-style: none !important;
+  border-width: 0 !important;
+  outline: none !important;
+  box-shadow: none !important;
+  border-radius: 6px !important;
+  color: #94a3b8 !important;
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  padding: 8px 12px !important;
+  height: 38px !important;
+  min-height: 38px !important;
+  text-align: left !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  margin: 2px 0 !important;
+  cursor: pointer !important;
+}
+
+section[data-testid="stSidebar"] div.stButton > button p,
+section[data-testid="stSidebar"] button div,
+section[data-testid="stSidebar"] button span {
+  font-size: 0.88rem !important;
+  font-weight: 500 !important;
+  text-align: left !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+
+section[data-testid="stSidebar"] div.stButton > button:hover,
+section[data-testid="stSidebar"] button[data-testid="stBaseButton-secondary"]:hover {
+  background: #0f1c30 !important;
+  color: #f1f5f9 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+/* Active item state — entire option selected in a blue background hue, NO BORDER */
+section[data-testid="stSidebar"] button[kind="primary"],
+section[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] {
+  background: #142542 !important;
+  color: #3880ff !important;
+  font-weight: 600 !important;
+  border: 0 !important;
+  border-radius: 6px !important;
+  box-shadow: none !important;
+}
+
+section[data-testid="stSidebar"] button[kind="primary"] p,
+section[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] p,
+section[data-testid="stSidebar"] button[kind="primary"] span,
+section[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] span {
+  color: #3880ff !important;
+  font-weight: 600 !important;
+}
+
 /* ── Headings (Aegis: white, bold, Inter) ── */
 h1,h2,h3 {
   font-family: var(--sans);
@@ -697,8 +773,8 @@ h3 { font-size: 0.95rem !important; }
   letter-spacing: -0.5px;
 }
 
-/* ── Buttons ── */
-.stButton > button {
+/* ── Main Area Buttons ── */
+.main .stButton > button {
   background: linear-gradient(90deg, #052030, #083050);
   color: var(--accent);
   border: 1px solid #0E4A6A;
@@ -963,6 +1039,7 @@ DEFAULTS = {
     "chat_incident":    None,
     "pending_auto_triage": False,   # set by "Triage" button — auto-runs the pipeline
     "jump_to_ask_tab":     False,   # set by "Triage" button — switches to Ask a Question tab
+    "nav_page":            "Overview", # ← sidebar active page
     "triage_in_flight":    None,    # {incident_id, attempts} — survives an interrupted
                                     # inline triage run so it can auto-restart
     "chroma_client":    None,
@@ -2176,6 +2253,38 @@ with st.sidebar:
         '</div>',
         unsafe_allow_html=True,
     )
+
+    # ── Sidebar Navigation (OPERATIONAL OVERVIEW) ──────────────────
+    if st.session_state.get("jump_to_ask_tab", False):
+        st.session_state.nav_page = "Ask a Question"
+        st.session_state.jump_to_ask_tab = False
+
+    active_nav = st.session_state.get("nav_page", "Overview")
+
+    st.markdown('<div class="sec-label-overview">OPERATIONAL OVERVIEW</div>', unsafe_allow_html=True)
+
+    if st.button("Overview", key="nav_btn_ovw", use_container_width=True,
+                 type="primary" if active_nav == "Overview" else "secondary"):
+        st.session_state.nav_page = "Overview"
+        st.rerun()
+
+    if st.button("AI Agents", key="nav_btn_ask", use_container_width=True,
+                 type="primary" if active_nav == "Ask a Question" else "secondary"):
+        st.session_state.nav_page = "Ask a Question"
+        st.rerun()
+
+    if st.button("Incidents", key="nav_btn_inc", use_container_width=True,
+                 type="primary" if active_nav == "Incidents" else "secondary"):
+        st.session_state.nav_page = "Incidents"
+        st.rerun()
+
+    if st.button("Data Pipeline", key="nav_btn_pipe", use_container_width=True,
+                 type="primary" if active_nav == "Data Pipeline" else "secondary"):
+        st.session_state.nav_page = "Data Pipeline"
+        st.rerun()
+
+    st.markdown('<div style="margin-bottom: 14px;"></div>', unsafe_allow_html=True)
+
     # Aegis workspace card (mockup .workspace) — analyst identity at the top
     # of the sidebar. Guarded: the sidebar renders before the main
     # `import ui_components` below, so import locally here.
@@ -2765,159 +2874,151 @@ def _pick_next_move(incs: list):
         "behaviours": _behaviours(top),
     }
 
-st.markdown(_ui.page_title(
-    "Operations overview",
-    f"{active:,} active · {total:,} in session · last sync {last_sync}",
-    "Security Operations"), unsafe_allow_html=True)
+def _render_hero_next_move_section():
+    st.markdown(_ui.page_title(
+        "Operations overview",
+        f"{active:,} active · {total:,} in session · last sync {last_sync}",
+        "Security Operations"), unsafe_allow_html=True)
 
-# Aegis hero — "Your next move" (Phase 3c): the most urgent case to pick up,
-# with the unified triage verdict as the why-line. The verdict (which runs
-# ioc_correlation, ~1s) is cached per incident id in session state so the
-# cost is paid once per session, not on every rerun. Fully guarded.
-try:
-    _nm, _nm_meta = _pick_next_move(incidents)
-    if _nm is not None:
-        _nm_id = str(_nm.get("id") or _nm.get("incidentId") or "?")
-        _nm_title = str(_nm.get("title") or _nm.get("name") or "Untitled incident")[:90]
-        _vc = st.session_state.get("_next_move_verdict") or {}
-        if _vc.get("id") != _nm_id:
-            try:
-                from triage_verdict import aggregate_verdict as _agg
-                _vc = {"id": _nm_id, "v": _agg(_nm)}
-            except Exception:
-                _vc = {"id": _nm_id, "v": {"available": False}}
-            st.session_state._next_move_verdict = _vc
-        _v = _vc.get("v") or {}
-        _why = []
-        if _v.get("available"):
-            _why.append(f"Unified verdict {_v.get('level')} — {_v.get('action')}")
-        else:
-            _why.append(f"Severity {_nm_meta.get('sev', '—').title()}")
-        if _nm_meta.get("risk"):
-            _why.append(f"risk {_nm_meta['risk']}")
-        if _nm_meta.get("behaviours"):
-            _why.append(f"{_nm_meta['behaviours']} observed behaviour(s)")
-        _why.append("already in pipeline" if _nm_meta.get("already_worked")
-                    else "not yet worked")
-        _hot = (_v.get("level") in ("CRITICAL", "HIGH")
-                or _nm_meta.get("sev") in ("CRITICAL", "HIGH"))
-        _hero_border = "#633645" if _hot else "#33407a"
-        _hero_bg = "linear-gradient(105deg, #351d2acc, #111b2c 58%)" if _hot else "linear-gradient(105deg, #1a2350cc, #111b2c 58%)"
-        _hero_eyebrow = "#ff939d" if _hot else "#aeb7ff"
+    try:
+        _nm, _nm_meta = _pick_next_move(incidents)
+        if _nm is not None:
+            _nm_id = str(_nm.get("id") or _nm.get("incidentId") or "?")
+            _nm_title = str(_nm.get("title") or _nm.get("name") or "Untitled incident")[:90]
+            _vc = st.session_state.get("_next_move_verdict") or {}
+            if _vc.get("id") != _nm_id:
+                try:
+                    from triage_verdict import aggregate_verdict as _agg
+                    _vc = {"id": _nm_id, "v": _agg(_nm)}
+                except Exception:
+                    _vc = {"id": _nm_id, "v": {"available": False}}
+                st.session_state._next_move_verdict = _vc
+            _v = _vc.get("v") or {}
+            _why = []
+            if _v.get("available"):
+                _why.append(f"Unified verdict {_v.get('level')} — {_v.get('action')}")
+            else:
+                _why.append(f"Severity {_nm_meta.get('sev', '—').title()}")
+            if _nm_meta.get("risk"):
+                _why.append(f"risk {_nm_meta['risk']}")
+            if _nm_meta.get("behaviours"):
+                _why.append(f"{_nm_meta['behaviours']} observed behaviour(s)")
+            _why.append("already in pipeline" if _nm_meta.get("already_worked")
+                        else "not yet worked")
+            _hot = (_v.get("level") in ("CRITICAL", "HIGH")
+                    or _nm_meta.get("sev") in ("CRITICAL", "HIGH"))
+            _hero_border = "#633645" if _hot else "#33407a"
+            _hero_bg = "linear-gradient(105deg, #351d2acc, #111b2c 58%)" if _hot else "linear-gradient(105deg, #1a2350cc, #111b2c 58%)"
+            _hero_eyebrow = "#ff939d" if _hot else "#aeb7ff"
 
-        st.markdown(f"""
-        <style>
-        div.st-key-hero_container,
-        div[data-testid="stVerticalBlockBorderWrapper"].st-key-hero_container {{
-            border: 2px solid {_hero_border} !important;
-            background: {_hero_bg} !important;
-            box-shadow: 0 24px 60px #0009 !important;
-            border-radius: 20px !important;
-            padding: 36px 44px 40px 44px !important;
-            margin-bottom: 28px !important;
-        }}
-        div.st-key-hero_container [data-testid="stColumn"],
-        div.st-key-hero_container [data-testid="stVerticalBlock"],
-        div.st-key-hero_container [data-testid="stHorizontalBlock"] {{
-            background: transparent !important;
-        }}
-        div.st-key-hero_container button {{
-            font-size: 1.12rem !important;
-            font-weight: 800 !important;
-            min-height: 58px !important;
-            border-radius: 12px !important;
-            letter-spacing: 0.03em !important;
-        }}
-        </style>
-        """, unsafe_allow_html=True)
+            st.markdown(f"""
+            <style>
+            div.st-key-hero_container,
+            div[data-testid="stVerticalBlockBorderWrapper"].st-key-hero_container {{
+                border: 2px solid {_hero_border} !important;
+                background: {_hero_bg} !important;
+                box-shadow: 0 24px 60px #0009 !important;
+                border-radius: 20px !important;
+                padding: 36px 44px 40px 44px !important;
+                margin-bottom: 28px !important;
+            }}
+            div.st-key-hero_container [data-testid="stColumn"],
+            div.st-key-hero_container [data-testid="stVerticalBlock"],
+            div.st-key-hero_container [data-testid="stHorizontalBlock"] {{
+                background: transparent !important;
+            }}
+            div.st-key-hero_container button {{
+                font-size: 1.12rem !important;
+                font-weight: 800 !important;
+                min-height: 58px !important;
+                border-radius: 12px !important;
+                letter-spacing: 0.03em !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
 
-        with st.container(key="hero_container", border=True):
-            h_col1, h_col2 = st.columns([3.4, 1.6], vertical_alignment="center")
-            with h_col1:
-                st.markdown(f'''
-                <div class="ag-hero-body" style="padding-bottom:6px;">
-                    <div class="e" style="color:{_hero_eyebrow};font-size:0.75rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;margin-bottom:4px;">YOUR NEXT MOVE</div>
-                    <h2 style="margin:6px 0 10px;font-size:2.3rem !important;font-weight:900 !important;color:#ffffff !important;line-height:1.25 !important;letter-spacing:-0.01em;"><strong>{_nm_id} — {_nm_title}</strong></h2>
-                    <p style="margin:0;color:#b4c3d6;font-size:0.85rem;line-height:1.55;">Why this case: {" · ".join(_why)}</p>
-                </div>
-                ''', unsafe_allow_html=True)
-            with h_col2:
-                if st.button(f"Triage {_nm_id} now", key="hero_triage", use_container_width=True):
-                    st.session_state.chat_incident       = _nm
-                    st.session_state.pending_auto_triage = True
-                    st.session_state.jump_to_ask_tab     = True
-                    st.rerun()
-except Exception:
-    pass
+            with st.container(key="hero_container", border=True):
+                h_col1, h_col2 = st.columns([3.4, 1.6], vertical_alignment="center")
+                with h_col1:
+                    st.markdown(f'''
+                    <div class="ag-hero-body" style="padding-bottom:6px;">
+                        <div class="e" style="color:{_hero_eyebrow};font-size:0.75rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;margin-bottom:4px;">YOUR NEXT MOVE</div>
+                        <h2 style="margin:6px 0 10px;font-size:2.3rem !important;font-weight:900 !important;color:#ffffff !important;line-height:1.25 !important;letter-spacing:-0.01em;"><strong>{_nm_id} — {_nm_title}</strong></h2>
+                        <p style="margin:0;color:#b4c3d6;font-size:0.85rem;line-height:1.55;">Why this case: {" · ".join(_why)}</p>
+                    </div>
+                    ''', unsafe_allow_html=True)
+                with h_col2:
+                    if st.button(f"Triage {_nm_id} now", key="hero_triage", use_container_width=True):
+                        st.session_state.chat_incident       = _nm
+                        st.session_state.pending_auto_triage = True
+                        st.session_state.nav_page            = "Ask a Question"
+                        st.rerun()
+    except Exception:
+        pass
 
-# Circular stage workflow progression — live counts across the SOC pipeline
-try:
-    _pstages = [
-        ("Triage", "alerts_to_triage"),
-        ("Investigation", "post_triage_investigate"),
-        ("Findings", "post_investigation"),
-        ("Ticketing", "initial_ticket"),
-        ("Reporting", "pending_ticket_report"),
-        ("Finalized", "finalized_report"),
-    ]
-    _steps = []
-    for _nm, _tbl in _pstages:
-        _c = pipeline_count(_tbl)
-        _steps.append({"name": _nm, "count": _c,
-                       "label": (f"{_c} in stage" if _c else "empty"),
-                       "state": "done" if _c else "idle"})
 
-    _p_wf = _workflow_store().get("run") if "_workflow_store" in globals() else None
-    if _p_wf and not _p_wf.get("done"):
-        _inv_st = _p_wf.get("panels", {}).get("investigation", {}).get("status")
-        _rep_st = _p_wf.get("panels", {}).get("reporting", {}).get("status")
-        if _inv_st == "running":
-            _p_status, _p_dot, _p_color = "Investigating", "amber", "#ffb700"
-        elif _rep_st == "running":
-            _p_status, _p_dot, _p_color = "Reporting", "green", "#43d28c"
-        else:
+def _render_circular_pipeline_section():
+    try:
+        _pstages = [
+            ("Triage", "alerts_to_triage"),
+            ("Investigation", "post_triage_investigate"),
+            ("Findings", "post_investigation"),
+            ("Ticketing", "initial_ticket"),
+            ("Reporting", "pending_ticket_report"),
+            ("Finalized", "finalized_report"),
+        ]
+        _steps = []
+        for _nm, _tbl in _pstages:
+            _c = pipeline_count(_tbl)
+            _steps.append({"name": _nm, "count": _c,
+                           "label": (f"{_c} in stage" if _c else "empty"),
+                           "state": "done" if _c else "idle"})
+
+        _p_wf = _workflow_store().get("run") if "_workflow_store" in globals() else None
+        if _p_wf and not _p_wf.get("done"):
+            _inv_st = _p_wf.get("panels", {}).get("investigation", {}).get("status")
+            _rep_st = _p_wf.get("panels", {}).get("reporting", {}).get("status")
+            if _inv_st == "running":
+                _p_status, _p_dot, _p_color = "Investigating", "amber", "#ffb700"
+            elif _rep_st == "running":
+                _p_status, _p_dot, _p_color = "Reporting", "green", "#43d28c"
+            else:
+                _p_status, _p_dot, _p_color = "Triaging", "cyan", "#00d4ff"
+        elif pipeline_count("alerts_to_triage") > 0:
             _p_status, _p_dot, _p_color = "Triaging", "cyan", "#00d4ff"
-    elif pipeline_count("alerts_to_triage") > 0:
-        _p_status, _p_dot, _p_color = "Triaging", "cyan", "#00d4ff"
-    else:
-        _p_status, _p_dot, _p_color = "Active Monitoring", "green", "#43d28c"
+        else:
+            _p_status, _p_dot, _p_color = "Active Monitoring", "green", "#43d28c"
 
-    _avg_cycle = "4m 12s"
+        _avg_cycle = "4m 12s"
 
-    st.markdown(f'''
-    <div style="margin:26px 0 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
-        <div style="font-size:1.3rem;font-weight:800;color:#ffffff;letter-spacing:-0.01em;">Live Agentic Pipeline</div>
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-            <div style="background:#0c1626;border:1px solid #1e2d42;padding:6px 14px;border-radius:8px;font-family:var(--mono);font-size:0.75rem;color:#a0aec0;display:flex;align-items:center;gap:8px;">
-                <span style="color:#718096;font-weight:600;letter-spacing:0.5px;">AVG CYCLE TIME</span>
-                <strong style="color:#43d28c;font-size:0.85rem;">{_avg_cycle}</strong>
-            </div>
-            <div style="background:#0c1626;border:1px solid #1e2d42;padding:6px 14px;border-radius:8px;font-family:var(--mono);font-size:0.75rem;color:#a0aec0;display:flex;align-items:center;gap:8px;">
-                <span style="color:#718096;font-weight:600;letter-spacing:0.5px;">PIPELINE STATUS</span>
-                <span class="dot dot-{_p_dot}"></span>
-                <strong style="color:{_p_color};font-size:0.85rem;">{_p_status}</strong>
+        st.markdown(f'''
+        <div style="margin:26px 0 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+            <div style="font-size:1.3rem;font-weight:800;color:#ffffff;letter-spacing:-0.01em;">Live Agentic Pipeline</div>
+            <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+                <div style="background:#0c1626;border:1px solid #1e2d42;padding:6px 14px;border-radius:8px;font-family:var(--mono);font-size:0.75rem;color:#a0aec0;display:flex;align-items:center;gap:8px;">
+                    <span style="color:#718096;font-weight:600;letter-spacing:0.5px;">AVG CYCLE TIME</span>
+                    <strong style="color:#43d28c;font-size:0.85rem;">{_avg_cycle}</strong>
+                </div>
+                <div style="background:#0c1626;border:1px solid #1e2d42;padding:6px 14px;border-radius:8px;font-family:var(--mono);font-size:0.75rem;color:#a0aec0;display:flex;align-items:center;gap:8px;">
+                    <span style="color:#718096;font-weight:600;letter-spacing:0.5px;">PIPELINE STATUS</span>
+                    <span class="dot dot-{_p_dot}"></span>
+                    <strong style="color:{_p_color};font-size:0.85rem;">{_p_status}</strong>
+                </div>
             </div>
         </div>
-    </div>
-    ''', unsafe_allow_html=True)
-    st.markdown(_ui.circular_pipeline(_steps), unsafe_allow_html=True)
-except Exception:
-    pass
-
-st.markdown("---")
+        ''', unsafe_allow_html=True)
+        st.markdown(_ui.circular_pipeline(_steps), unsafe_allow_html=True)
+    except Exception:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# TABS
+# PAGE ROUTING
 # ══════════════════════════════════════════════════════════════════════════════
+active_page = st.session_state.get("nav_page", "Overview")
+
 _connected = st.session_state.nw_verified
 _inc_count = len(incidents)
-# Status subtitle — honest across all three deployments:
-#   • live NetWitness connected             → "Connected"
-#   • offline/demo (cloud) with stored data → "Offline demo — N alerts" (no
-#     "log in" prompt: the data IS loaded, and guests have no sidebar panel)
-#   • no data + developer                   → point them at the sidebar config
-#   • no data + guest                       → plain offline note (no phantom panel)
 if _connected:
     _status_msg = "Connected — " + str(_inc_count) + " alerts loaded"
 elif _inc_count:
@@ -2926,11 +3027,20 @@ elif _is_dev:
     _status_msg = "Not connected — configure NetWitness in the left panel"
 else:
     _status_msg = "Offline demo — no stored alerts available"
+
+_page_display_names = {
+    "Overview": "Overview",
+    "Ask a Question": "AI Agents",
+    "Incidents": "Incidents",
+    "Data Pipeline": "Data Pipeline",
+}
+_display_page_title = _page_display_names.get(active_page, active_page)
+
 st.markdown(
     f'<div style="display:flex;align-items:center;justify-content:space-between;'
     f'padding:10px 0 16px">'
     f'<div>'
-    f'<div style="font-size:1.3rem;font-weight:700;color:var(--accent)"> Security Dashboard</div>'
+    f'<div style="font-size:1.3rem;font-weight:700;color:var(--accent)"> Security Dashboard &nbsp;·&nbsp; {_display_page_title}</div>'
     f'<div style="font-size:0.8rem;color:var(--muted);margin-top:2px">'
     f'{_status_msg}'
     f'</div></div>'
@@ -2939,46 +3049,6 @@ st.markdown(
     f'</div>',
     unsafe_allow_html=True,
 )
-
-tab_chat, tab_log, tab_pipeline = st.tabs([
-    "Ask a Question",
-    "Incidents",
-    "Data Pipeline",
-])
-
-# Streamlit's st.tabs has no server-side "set active tab" API — the click
-# from the "Triage" button is simulated client-side by finding the tab
-# button whose label contains "Ask a Question" and clicking it. One-shot:
-# the flag is cleared immediately so this doesn't refire on later reruns.
-if st.session_state.jump_to_ask_tab:
-    st.session_state.jump_to_ask_tab = False
-    components.html(
-        """
-        <script>
-        (function() {
-            function clickAskTab() {
-                const doc = window.parent.document;
-                const tabs = doc.querySelectorAll('button[role="tab"], [data-baseweb="tab"]');
-                for (const t of tabs) {
-                    if (t.innerText && t.innerText.includes("Ask a Question")) {
-                        t.click();
-                        return true;
-                    }
-                }
-                return false;
-            }
-            let attempts = 0;
-            const timer = setInterval(() => {
-                attempts++;
-                if (clickAskTab() || attempts > 20) {
-                    clearInterval(timer);
-                }
-            }, 100);
-        })();
-        </script>
-        """,
-        height=0,
-    )
 
 SEV_COLORS = {
     "CRITICAL": "#FF3B3B",
@@ -2996,14 +3066,19 @@ STATUS_COLORS = {
 }
 
 
-
-
+# ─────────────────────────────────────────────────────────────
+# PAGE 1 — OVERVIEW
+# ─────────────────────────────────────────────────────────────
+if active_page == "Overview":
+    _render_hero_next_move_section()
+    _render_circular_pipeline_section()
 
 
 # ─────────────────────────────────────────────────────────────
-# TAB 3 — CHAT
+# PAGE 2 — ASK A QUESTION
 # ─────────────────────────────────────────────────────────────
-with tab_chat:
+elif active_page == "Ask a Question":
+
     st.markdown(
         '<div class="info-box"><div class="title"> Ask a Question</div>'
         'You can ask plain-language questions about your security alerts here. '
@@ -3901,9 +3976,9 @@ with tab_chat:
 
 
 # ─────────────────────────────────────────────────────────────
-# TAB 5 — LOG HISTORY  (permanent SQLite store)
+# PAGE 3 — INCIDENTS (permanent SQLite store)
 # ─────────────────────────────────────────────────────────────
-with tab_log:
+elif active_page == "Incidents":
     st.markdown(
         '<div class="info-box"><div class="title"> Incidents</div>'
         'All security alerts that have ever been loaded are saved here permanently, '
@@ -4222,6 +4297,7 @@ with tab_log:
                 st.session_state.chat_incident       = inc
                 st.session_state.pending_auto_triage = True
                 st.session_state.jump_to_ask_tab     = True
+                st.session_state.nav_page            = "Ask a Question"
                 st.rerun()
             if do_json:
                 with st.expander(f"JSON — {inc_id}", expanded=True):
@@ -4509,11 +4585,10 @@ with tab_log:
                                 )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TAB 6 — PIPELINE DB
+# PAGE 4 — DATA PIPELINE
 # Fully inline — single streamlit run app.py, no second process.
-# st.stop() removed from tab_chroma so this tab always renders.
 # ═══════════════════════════════════════════════════════════════════════════════
-with tab_pipeline:
+elif active_page == "Data Pipeline":
     st.markdown(
         '<div class="info-box"><div class="title"> Data Pipeline</div>'
         'This tool helps IT staff manage how security data flows through the system — '
