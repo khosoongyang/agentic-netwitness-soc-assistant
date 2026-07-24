@@ -14,6 +14,7 @@ Pure string builders — no Streamlit import, so they unit-test offline.
 from __future__ import annotations
 
 import html as _html
+import math
 from typing import Any, Iterable
 
 # ── shared CSS (inject once) ──────────────────────────────────────────────────
@@ -241,18 +242,178 @@ def stat_row(cards: Iterable[dict]) -> str:
     return f'<div class="ag-stats">{"".join(cells)}</div>'
 
 
+def circular_pipeline(stages: Iterable[dict]) -> str:
+    """Renders a grand, sleek circular workflow progression diagram for the SOC pipeline.
+    Stages flow clockwise from top (Triage) to top-left (Finalized).
+    Progression segments light up in vibrant stage colors when active/completed,
+    and remain unlit dark grey when uncompleted/pending.
+    """
+    stage_list = list(stages)
+    if not stage_list:
+        return ""
+    
+    colors = ["#36c5d3", "#a67af4", "#f4bc5f", "#6f7cff", "#ff7700", "#43d28c"]
+    total_cases = sum(int(s.get("count", 0) or 0) for s in stage_list)
+    
+    # Larger Dimensions for a prominent, spacious circle diagram
+    cx, cy, r = 360, 260, 175
+    angles_deg = [-90, -30, 30, 90, 150, 210]
+    
+    arcs_svg = []
+    arrows_svg = []
+    nodes_svg = []
+    labels_svg = []
+    
+    # 1. Generate 6 Arc Segments & Arrow Markers around the circle (Progression Lit/Unlit)
+    for i in range(6):
+        deg1 = angles_deg[i]
+        deg2 = angles_deg[(i + 1) % 6]
+        if deg2 <= deg1:
+            deg2 += 360
+            
+        cnt_curr = int(stage_list[i].get("count", 0) or 0)
+        
+        # Segment is lit if current stage has active cases in pipeline
+        is_lit = (cnt_curr > 0)
+        
+        # Arc SVG Path
+        rad1 = math.radians(deg1)
+        rad2 = math.radians(deg2)
+        x1 = cx + r * math.cos(rad1)
+        y1 = cy + r * math.sin(rad1)
+        x2 = cx + r * math.cos(rad2)
+        y2 = cy + r * math.sin(rad2)
+        
+        arc_stroke = colors[i % len(colors)] if is_lit else "#1e2d42"
+        stroke_w = "4" if is_lit else "2"
+        opacity = "0.95" if is_lit else "0.45"
+        
+        arcs_svg.append(
+            f'<path d="M {x1:.1f} {y1:.1f} A {r} {r} 0 0 1 {x2:.1f} {y2:.1f}" '
+            f'fill="none" stroke="{arc_stroke}" stroke-width="{stroke_w}" opacity="{opacity}" />'
+        )
+        
+        # Directional Arrowhead at midpoint of arc
+        mid_deg = (deg1 + deg2) / 2.0
+        mid_rad = math.radians(mid_deg)
+        ax = cx + r * math.cos(mid_rad)
+        ay = cy + r * math.sin(mid_rad)
+        tangent_deg = mid_deg + 90
+        
+        arrow_fill = colors[i % len(colors)] if is_lit else "#2a3e59"
+        arrow_op = "1.0" if is_lit else "0.4"
+        
+        arrows_svg.append(
+            f'<g transform="translate({ax:.1f}, {ay:.1f}) rotate({tangent_deg:.1f})">'
+            f'<polygon points="-7,-4.5 7,0 -7,4.5" fill="{arrow_fill}" opacity="{arrow_op}" />'
+            f'</g>'
+        )
+
+    # 2. Nodes & Labels
+    for idx, s in enumerate(stage_list):
+        name = _e(s.get("name", ""))
+        cnt_val = int(s.get("count", 0) or 0)
+        is_finalized = (name.lower() == "finalized")
+        is_active = (cnt_val > 0)
+        
+        # Color & Styling based on stage status
+        if is_finalized and is_active:
+            color = "#43d28c"  # Emerald green for completed phase
+            fill_bg = "#0c261b"
+            stroke_w = "4"
+            stroke_dash = ""
+            display_count = f"✓ {cnt_val}"
+            title_color = "#43d28c"
+            sub_txt = f"{cnt_val} completed"
+        elif is_active:
+            color = colors[idx % len(colors)]
+            fill_bg = "#091424"
+            stroke_w = "3.5"
+            stroke_dash = ""
+            display_count = f"{cnt_val}"
+            title_color = "#f3f6fb"
+            sub_txt = f"{cnt_val} in stage"
+        else:
+            color = "#24364e"  # Unlit / empty stage
+            fill_bg = "#060b14"
+            stroke_w = "2"
+            stroke_dash = 'stroke-dasharray="4,4"'
+            display_count = "0"
+            title_color = "#586d88"
+            sub_txt = "Pending"
+            
+        deg = angles_deg[idx % len(angles_deg)]
+        rad = math.radians(deg)
+        
+        nx = cx + r * math.cos(rad)
+        ny = cy + r * math.sin(rad)
+        
+        # Node SVG circle + count text (Larger radius 26px)
+        nodes_svg.append(
+            f'<g class="ag-circ-node">'
+            f'<circle cx="{nx:.1f}" cy="{ny:.1f}" r="26" fill="{fill_bg}" stroke="{color}" stroke-width="{stroke_w}" {stroke_dash} />'
+            f'<text x="{nx:.1f}" y="{ny + 6:.1f}" text-anchor="middle" fill="{color if not is_active else "#ffffff"}" font-family="Inter, sans-serif" font-size="{13 if is_finalized else 16}" font-weight="700">{_e(display_count)}</text>'
+            f'</g>'
+        )
+        
+        # Label positions (Zero overlap with top node!)
+        if deg == -90:  # Top (Triage)
+            tx, ty = nx, ny - 38
+            anchor = "middle"
+            t1_y, t2_y = ty - 16, ty
+        elif deg == -30:  # Top-Right (Investigation)
+            tx, ty = nx + 38, ny - 6
+            anchor = "start"
+            t1_y, t2_y = ty, ty + 16
+        elif deg == 30:  # Bottom-Right (Findings)
+            tx, ty = nx + 38, ny + 10
+            anchor = "start"
+            t1_y, t2_y = ty, ty + 16
+        elif deg == 90:  # Bottom (Ticketing)
+            tx, ty = nx, ny + 44
+            anchor = "middle"
+            t1_y, t2_y = ty, ty + 16
+        elif deg == 150:  # Bottom-Left (Reporting)
+            tx, ty = nx - 38, ny + 10
+            anchor = "end"
+            t1_y, t2_y = ty, ty + 16
+        else:  # Top-Left (Finalized)
+            tx, ty = nx - 38, ny - 6
+            anchor = "end"
+            t1_y, t2_y = ty, ty + 16
+            
+        labels_svg.append(
+            f'<g class="ag-circ-label" text-anchor="{anchor}">'
+            f'<text x="{tx:.1f}" y="{t1_y:.1f}" fill="{title_color}" font-family="Inter, sans-serif" font-size="14" font-weight="700">{name}</text>'
+            f'<text x="{tx:.1f}" y="{t2_y:.1f}" fill="{color if is_finalized else "#8b9bb2"}" font-family="Inter, sans-serif" font-size="12" font-weight="400">{_e(sub_txt)}</text>'
+            f'</g>'
+        )
+        
+    return (
+        f'<div style="display:flex;justify-content:center;align-items:center;padding:20px 0 12px;background:transparent;">'
+        f'<svg viewBox="0 0 720 520" style="width:100%;max-width:760px;height:auto;">'
+        # Unlit Background Track Ring
+        f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#132032" stroke-width="5" />'
+        # Lit Arc Segments
+        f'{"".join(arcs_svg)}'
+        # Center Badge
+        f'<circle cx="{cx}" cy="{cy}" r="64" fill="#091424" stroke="#1e3048" stroke-width="2" />'
+        f'<text x="{cx}" y="{cy - 14}" text-anchor="middle" fill="#8b9bb2" font-family="Inter, sans-serif" font-size="11" font-weight="800" letter-spacing="1.8">SOC PIPELINE</text>'
+        f'<text x="{cx}" y="{cy + 12}" text-anchor="middle" fill="#6f7cff" font-family="Inter, sans-serif" font-size="20" font-weight="800">{total_cases} Total</text>'
+        f'<text x="{cx}" y="{cy + 30}" text-anchor="middle" fill="#8b9bb2" font-family="Inter, sans-serif" font-size="11" font-weight="500">6 Stages Active</text>'
+        # Directional Arrows
+        f'{"".join(arrows_svg)}'
+        # Nodes
+        f'{"".join(nodes_svg)}'
+        # Labels
+        f'{"".join(labels_svg)}'
+        f'</svg>'
+        f'</div>'
+    )
+
+
 def stepper(stages: Iterable[dict]) -> str:
-    """stages: [{name, count|label, state}]  state ∈ done|current|queued|idle."""
-    cells = []
-    for s in stages:
-        state = _e(s.get("state", "idle"))
-        inner = s.get("count")
-        if state == "done" and inner in (None, "", 0, "0"):
-            inner = "✓"
-        cells.append(
-            f'<div class="ag-step {state}"><div class="ag-node {state}">{_e(inner)}</div>'
-            f'<b>{_e(s.get("name",""))}</b><small>{_e(s.get("label",""))}</small></div>')
-    return f'<div class="ag-stepper">{"".join(cells)}</div>'
+    return circular_pipeline(stages)
 
 
 def case_header_left(ticket: str, title: str, sev: str = "", status: str = "",

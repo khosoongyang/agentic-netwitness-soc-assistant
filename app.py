@@ -2843,19 +2843,7 @@ try:
 except Exception:
     pass
 
-# Aegis attention metrics + pipeline ring (Phase 4c/4d) — the operations
-# mockup's SOC-actionable trio (critical load, cases awaiting finalization,
-# unassigned) plus a conic completion ring across the pipeline. Guarded.
-try:
-    _entered = pipeline_count("alerts_to_triage")
-    _done = pipeline_count("finalized_report")
-    _pct = round(100 * _done / _entered) if _entered else (100 if _done else 0)
-    st.markdown(_ui.agent_ring(_pct, "Pipeline completion",
-                f"{_done} finalized of {_entered} triaged"), unsafe_allow_html=True)
-except Exception:
-    pass
-
-# Signature stage stepper — live counts across the SOC pipeline (Aegis mockup)
+# Circular stage workflow progression — live counts across the SOC pipeline
 try:
     _pstages = [
         ("Triage", "alerts_to_triage"),
@@ -2871,8 +2859,13 @@ try:
         _steps.append({"name": _nm, "count": _c,
                        "label": (f"{_c} in stage" if _c else "empty"),
                        "state": "done" if _c else "idle"})
-    st.markdown(_ui.panel_open("Your cases by stage", "Live counts across the SOC pipeline")
-                + _ui.stepper(_steps) + _ui.panel_close(), unsafe_allow_html=True)
+    st.markdown('''
+    <div style="margin:24px 0 6px;">
+        <div style="font-size:1.05rem;font-weight:700;color:var(--text);margin-bottom:2px;">Your cases by stage</div>
+        <div style="font-size:.78rem;color:#8b9bb2;">Live counts across the SOC pipeline</div>
+    </div>
+    ''', unsafe_allow_html=True)
+    st.markdown(_ui.circular_pipeline(_steps), unsafe_allow_html=True)
 except Exception:
     pass
 
