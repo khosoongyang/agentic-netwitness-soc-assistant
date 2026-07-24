@@ -255,8 +255,8 @@ def circular_pipeline(stages: Iterable[dict]) -> str:
     colors = ["#36c5d3", "#a67af4", "#f4bc5f", "#6f7cff", "#ff7700", "#43d28c"]
     total_cases = sum(int(s.get("count", 0) or 0) for s in stage_list)
     
-    # Larger Dimensions for a prominent, spacious circle diagram
-    cx, cy, r = 360, 260, 175
+    # Larger Dimensions for a prominent, spacious circle diagram (shifted slightly downwards)
+    cx, cy, r = 360, 248, 175
     angles_deg = [-90, -30, 30, 90, 150, 210]
     
     arcs_svg = []
@@ -390,7 +390,7 @@ def circular_pipeline(stages: Iterable[dict]) -> str:
         )
         
     return (
-        f'<div style="display:flex;justify-content:center;align-items:center;padding:20px 0 12px;background:transparent;">'
+        f'<div style="display:flex;justify-content:center;align-items:center;padding:4px 0 10px;margin-top:-6px;background:transparent;">'
         f'<svg viewBox="0 0 720 520" style="width:100%;max-width:760px;height:auto;">'
         # Unlit Background Track Ring
         f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="none" stroke="#132032" stroke-width="5" />'

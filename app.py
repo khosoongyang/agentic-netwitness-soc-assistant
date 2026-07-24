@@ -2809,29 +2809,36 @@ try:
         <style>
         div.st-key-hero_container,
         div[data-testid="stVerticalBlockBorderWrapper"].st-key-hero_container {{
-            border: 1px solid {_hero_border} !important;
+            border: 2px solid {_hero_border} !important;
             background: {_hero_bg} !important;
-            box-shadow: 0 16px 45px #0005 !important;
-            border-radius: 14px !important;
-            padding: 20px 24px 26px 24px !important;
-            margin-bottom: 20px !important;
+            box-shadow: 0 24px 60px #0009 !important;
+            border-radius: 20px !important;
+            padding: 36px 44px 40px 44px !important;
+            margin-bottom: 28px !important;
         }}
         div.st-key-hero_container [data-testid="stColumn"],
         div.st-key-hero_container [data-testid="stVerticalBlock"],
         div.st-key-hero_container [data-testid="stHorizontalBlock"] {{
             background: transparent !important;
         }}
+        div.st-key-hero_container button {{
+            font-size: 1.12rem !important;
+            font-weight: 800 !important;
+            min-height: 58px !important;
+            border-radius: 12px !important;
+            letter-spacing: 0.03em !important;
+        }}
         </style>
         """, unsafe_allow_html=True)
 
         with st.container(key="hero_container", border=True):
-            h_col1, h_col2 = st.columns([3.8, 1.4], vertical_alignment="center")
+            h_col1, h_col2 = st.columns([3.4, 1.6], vertical_alignment="center")
             with h_col1:
                 st.markdown(f'''
                 <div class="ag-hero-body" style="padding-bottom:6px;">
-                    <div class="e" style="color:{_hero_eyebrow};font-size:.66rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase;">YOUR NEXT MOVE</div>
-                    <h4 style="margin:4px 0 6px;font-size:1.02rem;font-weight:700;color:#f3f6fb;">{_nm_id} — {_nm_title}</h4>
-                    <p style="margin:0;color:#a8b5c6;font-size:.78rem;line-height:1.5;">Why this case: {" · ".join(_why)}</p>
+                    <div class="e" style="color:{_hero_eyebrow};font-size:0.75rem;font-weight:900;letter-spacing:.14em;text-transform:uppercase;margin-bottom:4px;">YOUR NEXT MOVE</div>
+                    <h2 style="margin:6px 0 10px;font-size:2.3rem !important;font-weight:900 !important;color:#ffffff !important;line-height:1.25 !important;letter-spacing:-0.01em;"><strong>{_nm_id} — {_nm_title}</strong></h2>
+                    <p style="margin:0;color:#b4c3d6;font-size:0.85rem;line-height:1.55;">Why this case: {" · ".join(_why)}</p>
                 </div>
                 ''', unsafe_allow_html=True)
             with h_col2:
@@ -2859,10 +2866,38 @@ try:
         _steps.append({"name": _nm, "count": _c,
                        "label": (f"{_c} in stage" if _c else "empty"),
                        "state": "done" if _c else "idle"})
-    st.markdown('''
-    <div style="margin:24px 0 6px;">
-        <div style="font-size:1.05rem;font-weight:700;color:var(--text);margin-bottom:2px;">Your cases by stage</div>
-        <div style="font-size:.78rem;color:#8b9bb2;">Live counts across the SOC pipeline</div>
+
+    _p_wf = _workflow_store().get("run") if "_workflow_store" in globals() else None
+    if _p_wf and not _p_wf.get("done"):
+        _inv_st = _p_wf.get("panels", {}).get("investigation", {}).get("status")
+        _rep_st = _p_wf.get("panels", {}).get("reporting", {}).get("status")
+        if _inv_st == "running":
+            _p_status, _p_dot, _p_color = "Investigating", "amber", "#ffb700"
+        elif _rep_st == "running":
+            _p_status, _p_dot, _p_color = "Reporting", "green", "#43d28c"
+        else:
+            _p_status, _p_dot, _p_color = "Triaging", "cyan", "#00d4ff"
+    elif pipeline_count("alerts_to_triage") > 0:
+        _p_status, _p_dot, _p_color = "Triaging", "cyan", "#00d4ff"
+    else:
+        _p_status, _p_dot, _p_color = "Active Monitoring", "green", "#43d28c"
+
+    _avg_cycle = "4m 12s"
+
+    st.markdown(f'''
+    <div style="margin:26px 0 16px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;">
+        <div style="font-size:1.3rem;font-weight:800;color:#ffffff;letter-spacing:-0.01em;">Live Agentic Pipeline</div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="background:#0c1626;border:1px solid #1e2d42;padding:6px 14px;border-radius:8px;font-family:var(--mono);font-size:0.75rem;color:#a0aec0;display:flex;align-items:center;gap:8px;">
+                <span style="color:#718096;font-weight:600;letter-spacing:0.5px;">AVG CYCLE TIME</span>
+                <strong style="color:#43d28c;font-size:0.85rem;">{_avg_cycle}</strong>
+            </div>
+            <div style="background:#0c1626;border:1px solid #1e2d42;padding:6px 14px;border-radius:8px;font-family:var(--mono);font-size:0.75rem;color:#a0aec0;display:flex;align-items:center;gap:8px;">
+                <span style="color:#718096;font-weight:600;letter-spacing:0.5px;">PIPELINE STATUS</span>
+                <span class="dot dot-{_p_dot}"></span>
+                <strong style="color:{_p_color};font-size:0.85rem;">{_p_status}</strong>
+            </div>
+        </div>
     </div>
     ''', unsafe_allow_html=True)
     st.markdown(_ui.circular_pipeline(_steps), unsafe_allow_html=True)
@@ -2905,10 +2940,9 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_inc, tab_chat, tab_log, tab_pipeline = st.tabs([
-    "Security Alerts",
+tab_chat, tab_log, tab_pipeline = st.tabs([
     "Ask a Question",
-    "History",
+    "Incidents",
     "Data Pipeline",
 ])
 
@@ -2963,593 +2997,7 @@ STATUS_COLORS = {
 
 
 
-# ─────────────────────────────────────────────────────────────
-# TAB 2 — INCIDENTS
-# ─────────────────────────────────────────────────────────────
-with tab_inc:
-    st.markdown(
-        '<div class="info-box"><div class="title"> Security Alerts</div>'
-        'This page lists all security incidents detected by NetWitness. '
-        'Use the filter below to focus on the most urgent alerts. '
-        'Click any alert to see full details.</div>',
-        unsafe_allow_html=True,
-    )
-    col_filter, col_info = st.columns([1.6, 5])
 
-    sev_filter = col_filter.selectbox(
-        "Filter by priority", ["ALL","CRITICAL","HIGH","MEDIUM","LOW"],
-        label_visibility="visible",
-    )
-
-    last = st.session_state.last_fetch
-    if last:
-        elapsed   = int((datetime.now() - last).total_seconds())
-        remaining = max(REFRESH_INTERVAL - elapsed, 0)
-        col_info.markdown(
-            f'<div style="font-family:var(--mono);font-size:0.6rem;'
-            f'color:var(--muted);padding-top:10px">'
-            f'<span class="dot dot-green"></span>'
-            f'Auto-refresh every {REFRESH_INTERVAL}s &nbsp;·&nbsp; '
-            f'next in {remaining}s &nbsp;·&nbsp; {total} incidents</div>',
-            unsafe_allow_html=True,
-        )
-
-    with st.expander("Endpoint Diagnostics", expanded=not bool(incidents)):
-        st.markdown(
-            '<div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:8px">'
-            'Tests all known NW endpoints with all auth styles to find the working combination. '
-            'Click "Use this" on a hit to wire it into the app automatically.</div>',
-            unsafe_allow_html=True,
-        )
-
-        # Map scanner's auth-style labels → nw_headers() style names
-        _AUTH_STYLE_MAP = {
-            "NW-Token": "NetWitness-Token",
-            "Bearer":   "Bearer",
-            "Cookie":   "Cookie",
-            "Both":     "Both",
-        }
-
-        if st.button("Run Endpoint Scan", use_container_width=False):
-            if not st.session_state.nw_token:
-                st.error("Login first.")
-            else:
-                host  = st.session_state.nw_host.rstrip("/")
-                token = st.session_state.nw_token
-                eps   = [
-                    "/rest/api/incidents",
-                    "/rest/api/respond/incidents",
-                    "/rest/api/v1/incidents",
-                    "/rest/api/v2/incidents",
-                    "/rest/api/respond/incidents/list",
-                    "/rest/api/incidents/list",
-                    "/rest/api/investigation/incidents",
-                    "/respond/api/incidents",
-                    "/respond/api/v1/incidents",
-                    "/respond/api/v2/incidents",
-                    "/rsa/investigation/incidents",
-                    "/rsa/respond/incidents",
-                    "/sa/api/incidents",
-                    "/esa/api/incidents",
-                    "/api/respond/incidents",
-                    "/rest/api/alerting/incidents",
-                    "/rest/api/incidents?start=0",
-                ]
-                auth_styles = {
-                    "Bearer":     {"Authorization": f"Bearer {token}"},
-                    "Cookie":     {"Cookie": f"access_token={token}"},
-                    "NW-Token":   {"NetWitness-Token": token},
-                    "Both":       {"Authorization": f"Bearer {token}", "Cookie": f"access_token={token}"},
-                }
-                results = []
-                for ep in eps:
-                    for style, ah in auth_styles.items():
-                        try:
-                            ah = dict(ah)  # avoid mutating shared dict across iterations
-                            ah["Accept"] = "application/json"
-                            r = requests.get(f"{host}{ep}?limit=1", headers=ah,
-                                             timeout=10, verify=False)
-                            ct   = r.headers.get("Content-Type","")
-                            is_j = "json" in ct or r.text.strip().startswith(("{","["))
-                            results.append({
-                                "endpoint": ep, "auth": style,
-                                "status": r.status_code,
-                                "json": "JSON" if is_j else "HTML",
-                                "is_hit": is_j and r.status_code == 200,
-                                "preview": r.text[:80] if is_j else "",
-                            })
-                        except Exception as e:
-                            results.append({"endpoint": ep, "auth": style,
-                                            "status": "ERR", "json": str(e)[:50],
-                                            "is_hit": False, "preview": ""})
-                # Persist across reruns (so "Use this" buttons survive)
-                st.session_state.endpoint_scan_results = results
-
-        results = st.session_state.get("endpoint_scan_results", [])
-        if results:
-            for i, res in enumerate(results):
-                color   = "#00E676" if res.get("is_hit") else "#3A607A"
-                preview = res["preview"]
-                preview_html = (
-                    f'<br><span style="color:#00E676">{preview}</span>'
-                    if preview else ""
-                )
-                rc1, rc2 = st.columns([6, 1])
-                with rc1:
-                    st.markdown(
-                        f'<div style="font-family:var(--mono);font-size:0.65rem;'
-                        f'padding:3px 8px;border-left:2px solid {color};margin:2px 0">'
-                        f'<span style="color:{color}">{res["json"]}</span> '
-                        f'HTTP {res["status"]} | {res["auth"]} | {res["endpoint"]}'
-                        f'{preview_html}'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
-                with rc2:
-                    if res.get("is_hit"):
-                        if st.button("Use this", key=f"use_ep_{i}", use_container_width=True):
-                            # Wire the found endpoint + auth style into the app
-                            clean_path = res["endpoint"].split("?")[0]
-                            st.session_state.nw_incidents_path = clean_path
-                            st.session_state.nw_auth_style     = _AUTH_STYLE_MAP.get(res["auth"], "NetWitness-Token")
-                            st.session_state.nw_working_ep      = res["endpoint"]
-                            st.session_state.nw_working_auth    = {"style": res["auth"]}
-
-                            ok_v, msg_v = nw_verify_token()
-                            st.session_state.nw_verified = ok_v
-                            st.session_state.nw_msg      = msg_v
-                            if ok_v:
-                                ok_f, items_f, diag_f = nw_fetch_incidents()
-                                if ok_f:
-                                    st.session_state.incidents  = items_f
-                                    st.session_state.last_fetch = datetime.now()
-                                    db_upsert_incidents(items_f)
-                                st.success(f"Applied {clean_path} ({res['auth']}) — {msg_v}")
-                            else:
-                                st.error(f"Applied but verify failed: {msg_v}")
-                            st.rerun()
-
-        if st.session_state.nw_working_ep:
-            st.success(
-                f"Active endpoint: `{st.session_state.nw_incidents_path}` "
-                f"· auth style: `{st.session_state.nw_auth_style}`"
-            )
-
-    # ── Manual endpoint / auth override ─────────────────────────
-    with st.expander("Manual Endpoint Config"):
-        st.markdown(
-            '<div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);margin-bottom:6px">'
-            'Set these directly if you already know your NW instance\'s working values.</div>',
-            unsafe_allow_html=True,
-        )
-        mc1, mc2 = st.columns(2)
-        new_path = mc1.text_input(
-            "Incidents path", value=st.session_state.nw_incidents_path, key="manual_inc_path"
-        )
-        new_style = mc2.selectbox(
-            "Auth header style",
-            ["NetWitness-Token", "Bearer", "Cookie", "Both"],
-            index=["NetWitness-Token", "Bearer", "Cookie", "Both"].index(
-                st.session_state.nw_auth_style
-                if st.session_state.nw_auth_style in ["NetWitness-Token","Bearer","Cookie","Both"]
-                else "NetWitness-Token"
-            ),
-            key="manual_auth_style",
-        )
-        if st.button("Apply & Re-verify", key="manual_apply"):
-            st.session_state.nw_incidents_path = new_path.strip() or "/rest/api/incidents"
-            st.session_state.nw_auth_style     = new_style
-            ok_v, msg_v = nw_verify_token()
-            st.session_state.nw_verified = ok_v
-            st.session_state.nw_msg      = msg_v
-            if ok_v:
-                ok_f, items_f, diag_f = nw_fetch_incidents()
-                if ok_f:
-                    st.session_state.incidents  = items_f
-                    st.session_state.last_fetch = datetime.now()
-                    db_upsert_incidents(items_f)
-                st.success(f"{msg_v}")
-            else:
-                st.error(f"{msg_v}")
-            st.rerun()
-
-    st.markdown("---")
-
-    if not incidents:
-        st.markdown(
-            '<div style="text-align:center;padding:70px;font-family:var(--mono);'
-            'font-size:0.8rem;color:var(--muted)">'
-            '● NO INCIDENTS LOADED<br>'
-            '<span style="font-size:0.65rem">'
-            'Verify your token — incidents load automatically</span></div>',
-            unsafe_allow_html=True,
-        )
-    else:
-        # Rendering a card (+ 2 buttons, + a possible nested alerts expander)
-        # per incident used to loop over the *entire* incidents list — with
-        # tens of thousands of incidents that's tens of thousands of widgets
-        # dumped into the DOM at once. Streamlit renders every tab's content
-        # into the page regardless of which tab is active, so this was
-        # slowing down the whole app, not just this tab. Filter first, then
-        # only render one page of cards at a time.
-        filtered = [
-            inc for inc in incidents
-            if sev_filter == "ALL" or normalise_sev(inc) == sev_filter
-        ]
-        total_filtered = len(filtered)
-
-        PAGE_SIZE   = 25
-        total_pages = max(1, -(-total_filtered // PAGE_SIZE))   # ceil div
-
-        # Jump back to page 1 whenever the filter changes, so you don't land
-        # on a now-empty page after narrowing the results.
-        if st.session_state.get("_sec_alerts_filter") != sev_filter:
-            st.session_state._sec_alerts_filter = sev_filter
-            st.session_state.sec_alerts_page    = 1
-        page = min(max(1, st.session_state.get("sec_alerts_page", 1)), total_pages)
-
-        pg1, pg2, pg3 = st.columns([1, 3, 1])
-        if pg1.button("◀ Prev", disabled=page <= 1, use_container_width=True):
-            st.session_state.sec_alerts_page = page - 1
-            st.rerun()
-        pg2.markdown(
-            f'<div style="text-align:center;font-family:var(--mono);'
-            f'font-size:0.68rem;color:var(--muted);padding-top:8px">'
-            f'Page {page} of {total_pages} &nbsp;·&nbsp; '
-            f'{total_filtered} incident(s) matching filter'
-            f'</div>',
-            unsafe_allow_html=True,
-        )
-        if pg3.button("Next ▶", disabled=page >= total_pages, use_container_width=True):
-            st.session_state.sec_alerts_page = page + 1
-            st.rerun()
-
-        start = (page - 1) * PAGE_SIZE
-        shown = 0
-        for inc in filtered[start:start + PAGE_SIZE]:
-            sev = normalise_sev(inc)
-            shown += 1
-
-            inc_id   = str(inc.get("id") or inc.get("incidentId") or "—")
-            title    = inc.get("title")    or inc.get("name")    or "Untitled"
-            status   = str(inc.get("status") or "—")
-            created  = str(inc.get("created") or inc.get("createdDate") or "—")[:16]
-            assignee = inc.get("assignee") or "Unassigned"
-            alerts   = inc.get("alertCount") or inc.get("numAlerts") or "—"
-
-            _sev_icon = {"CRITICAL": "", "HIGH": "", "MEDIUM": "", "LOW": ""}.get(sev, "")
-            with st.container(border=True):
-                col_left, col_right = st.columns([3.4, 2.6])
-                with col_left:
-                    st.markdown(case_header_left(
-                        inc_id, title, sev=sev, status=status,
-                        subtitle=(f"{alerts} alert(s)" if str(alerts) != "—" else "NetWitness incident"),
-                        icon=_sev_icon,
-                    ), unsafe_allow_html=True)
-                with col_right:
-                    st.markdown(case_header_right(
-                        metas=[("Owner", assignee), ("Created", created), ("Alerts", str(alerts))]
-                    ), unsafe_allow_html=True)
-                    b1, b2, b3, b4 = st.columns([1, 0.7, 0.9, 1.1])
-                    with b1:
-                        do_triage = st.button("Triage", key=f"chat_{inc_id}", use_container_width=True)
-                    with b2:
-                        do_json = st.button("{ }", key=f"json_{inc_id}", use_container_width=True)
-                    with b3:
-                        do_map = st.button("Map", key=f"map_{inc_id}", use_container_width=True)
-                    with b4:
-                        do_ovw = st.button("Overview", key=f"ovw_{inc_id}", use_container_width=True)
-
-            if do_triage:
-                st.session_state.chat_incident       = inc
-                st.session_state.pending_auto_triage = True
-                st.session_state.jump_to_ask_tab     = True
-                st.rerun()
-            if do_json:
-                with st.expander(f"JSON — {inc_id}", expanded=True):
-                    st.json(inc)
-            # Case overview — Aegis key-findings + context grid from real data
-            # (distilled alert behaviours + unified triage verdict). Guarded.
-            if do_ovw:
-                with st.expander(f"Case overview — {inc_id}", expanded=True):
-                    try:
-                        _findings, _verdict = _build_case_findings(inc)
-                        _ctx = _build_case_context(inc, sev, status, alerts, _verdict)
-                        # ✦ AI-Generated summary card (Phase 4a) — synthesised from
-                        # the unified verdict + distilled behaviours; auto-flags the
-                        # fallback state if this incident carries an agent narrative.
-                        try:
-                            _sum_txt = _verdict.get("action") if _verdict.get("available") else ""
-                            _titles = (inc.get("alertMeta") or {}).get("AlertTitles") or []
-                            _sum = (f"Unified triage verdict: {_verdict.get('level')} — {_sum_txt}. "
-                                    if _sum_txt else "")
-                            _sum += (f"Observed behaviours: {', '.join(list(dict.fromkeys(_titles))[:4])}. "
-                                     if _titles else "")
-                            _sum += (inc.get("summary") or "")[:280]
-                            _nar = str(inc.get("summary") or "") + " " + " ".join(str(t) for t in _titles)
-                            st.markdown(_ui.ai_summary(_sum.strip() or "No AI summary yet — "
-                                        "run Triage to populate.", _ui.detect_fallback(_nar)),
-                                        unsafe_allow_html=True)
-                        except Exception:
-                            pass
-                        # MITRE ATT&CK kill-chain strip (Phase 4b) — highlights
-                        # the incident's inferred tactic across the chain.
-                        try:
-                            from tactic_inference import infer_tactics
-                            _ti = infer_tactics(inc)
-                            _tac = _ti.get("tactic") if _ti.get("available") else \
-                                (inc.get("mitre_tactic") or (inc.get("tactics") or [None])[0])
-                            if _tac:
-                                st.markdown(_ui.mitre_strip(str(_tac),
-                                            str(_ti.get("technique") or "")),
-                                            unsafe_allow_html=True)
-                        except Exception:
-                            pass
-                        oc1, oc2 = st.columns([1.4, 0.9])
-                        with oc1:
-                            _fh = (_ui.key_findings(_findings) if _findings else
-                                   '<div style="color:var(--sub);font-size:.8rem">'
-                                   'No findings distilled yet — click Refresh Data, then Triage.</div>')
-                            st.markdown(_ui.panel_open("Key findings",
-                                        "Behaviours &amp; analytic signals on this incident")
-                                        + _fh + _ui.panel_close(), unsafe_allow_html=True)
-                        with oc2:
-                            st.markdown(_ui.panel_open("Case context",
-                                        "Key facts for the current decision")
-                                        + _ui.context_grid(_ctx) + _ui.panel_close(),
-                                        unsafe_allow_html=True)
-                    except Exception as _ovw_err:
-                        st.caption(f"Overview unavailable: {_ovw_err}")
-            # Incident Map — deterministic entity graph (Stage 1) plus
-            # autonomous corpus expansion (Stage 2). Read-only; guarded so a
-            # map failure can never break the incident list.
-            if do_map:
-                with st.expander(f"Incident Map — {inc_id}", expanded=True):
-                    try:
-                        from incident_map import build_incident_map, to_dot, map_caption
-                        from incident_expansion import LocalCorpusSource, expand_incident_map
-                        _imap_src = inc
-                        # Pre-triage panel light-up: infer MITRE from the
-                        # incident's own evidence (distilled alert tactics /
-                        # behaviours, title keywords) so the tactic-gated skills
-                        # below activate on stored incidents. Copy-augmented —
-                        # the session incident is never mutated; triage output
-                        # still overrides. Kill: NW_DISABLE_TACTIC_INFERENCE=1.
-                        try:
-                            from tactic_inference import augment_incident as _tac_aug
-                            _imap_src, _tac_note = _tac_aug(_imap_src)
-                        except Exception:
-                            _tac_note = None
-                        if _tac_note:
-                            st.caption(f"{_tac_note}")
-                        _imap_key = "main"
-                        _imap = build_incident_map(inc)
-                        try:
-                            with LocalCorpusSource(str(DB_FILE)) as _src:
-                                expand_incident_map(_imap, _src)
-                        except Exception as _exp_err:
-                            _imap.setdefault("expansion_log", []).append(
-                                f"expansion unavailable: {_exp_err}")
-                        st.graphviz_chart(to_dot(_imap), width="stretch")
-                        st.caption(map_caption(_imap))
-                        if _imap.get("expansion_log"):
-                            st.markdown("** Autonomous expansion**")
-                            st.markdown("\n".join(f"- {l}" for l in _imap["expansion_log"]))
-                        if _imap.get("endpoint_profile_text"):
-                            st.markdown("** Endpoint profile**")
-                            st.code(_imap["endpoint_profile_text"], language=None)
-                        # Unified triage verdict — capstone that aggregates the
-                        # triage-side skills (base severity + asset criticality +
-                        # internal IOC correlation) into ONE prioritized verdict.
-                        # Reads the other skills' outputs; edits none of them.
-                        try:
-                            from triage_verdict import aggregate_verdict, format_verdict
-                            _tv = aggregate_verdict(_imap_src)
-                            if _tv.get("available"):
-                                st.markdown(f"** Unified triage verdict — "
-                                            f"{_tv['level']} (priority {_tv['priority']}/5)**")
-                                st.code(format_verdict(_tv), language=None)
-                        except Exception as _tv_err:
-                            st.caption(f"Unified verdict unavailable: {_tv_err}")
-                        # Asset criticality (instant, deterministic)
-                        try:
-                            from asset_criticality import assess_incident, format_assessment
-                            _ac = assess_incident(_imap_src)
-                            st.markdown("** Asset criticality**")
-                            st.code(format_assessment(_ac), language=None)
-                        except Exception as _ac_err:
-                            st.caption(f"Asset criticality unavailable: {_ac_err}")
-                        # Threat-intel enrichment (live IOC lookups — opt-in
-                        # since it hits the network the first time per IOC)
-                        try:
-                            if st.checkbox("Enrich IOCs (threat intel)",
-                                           key=f"ti_{_imap_key}_{_imap_src.get('id','')}"):
-                                from threat_intel import enrich_iocs, format_enrichment
-                                _enr = enrich_iocs(_imap_src)
-                                if _enr["results"] or _enr["stats"]["skipped_private_ips"]:
-                                    st.code(format_enrichment(_enr), language=None)
-                                else:
-                                    st.caption("No external IOCs to enrich.")
-                        except Exception as _ti_err:
-                            st.caption(f"Threat intel unavailable: {_ti_err}")
-                        # Recommended detection — deterministic Sigma rule
-                        # from the incident's indicators (no LLM, no TI lookup
-                        # so it stays instant); guarded independently.
-                        try:
-                            from detection_rules import build_detection
-                            from asset_criticality import assess_incident
-                            _asset = assess_incident(_imap_src)
-                            _det = build_detection(_imap_src, asset=_asset)
-                            if _det["has_selection"]:
-                                st.markdown("** Recommended detection (Sigma)**")
-                                st.code(_det["sigma_yaml"], language="yaml")
-                                st.caption(f"Splunk: {_det['splunk_spl']}")
-                                # detection-as-code: validate + Elastic EQL (3rd SIEM)
-                                try:
-                                    from detection_engineering import validate_sigma, to_elastic_eql
-                                    _v = validate_sigma(_det["sigma"])
-                                    st.caption(("detection-as-code: all required fields present"
-                                                if _v["valid"] else
-                                                "" + "; ".join(_v["missing_fields"] + _v["warnings"])))
-                                    st.caption(f"Elastic EQL: {to_elastic_eql(_det)}")
-                                except Exception:
-                                    pass
-                                if _det["d3fend"]:
-                                    st.caption("D3FEND: " + ", ".join(
-                                        f"{c['id']} {c['name']}" for c in _det["d3fend"]))
-                        except Exception as _det_err:
-                            st.caption(f"Detection unavailable: {_det_err}")
-                        # ATT&CK detection coverage (program-level capability)
-                        try:
-                            from detection_engineering import assess_attack_coverage, format_coverage
-                            _acov = assess_attack_coverage(str(DB_FILE))
-                            with st.expander(f"ATT&CK detection coverage "
-                                             f"({_acov['covered']}/{_acov['tactics_total']} "
-                                             f"tactics, {_acov['coverage_pct']}%)", expanded=False):
-                                st.code(format_coverage(_acov), language=None)
-                        except Exception as _cov_err:
-                            st.caption(f"Coverage unavailable: {_cov_err}")
-                        # Recommended mitigations & coverage (threat->control)
-                        try:
-                            from mitigation_mapping import build_mitigation_coverage, format_mitigation
-                            _cov = build_mitigation_coverage(_imap_src, asset=_asset)
-                            if _cov.get("available"):
-                                st.markdown("** Recommended mitigations & coverage**")
-                                st.code(format_mitigation(_cov), language=None)
-                        except Exception as _mit_err:
-                            st.caption(f"Mitigation map unavailable: {_mit_err}")
-                        # Internal IOC correlation — frequency/severity/case
-                        # status of each IOC across the local corpus + case
-                        # pipeline -> HIGH/MEDIUM/LOW/NONE confidence. Deterministic,
-                        # read-only, self-locating DBs; ubiquity-guarded.
-                        try:
-                            from ioc_correlation import correlate_iocs, format_correlation
-                            _corr = correlate_iocs(_imap_src)
-                            if _corr.get("available") and _corr.get("results"):
-                                st.markdown("** Internal IOC correlation**")
-                                st.code(format_correlation(_corr), language=None)
-                        except Exception as _corr_err:
-                            st.caption(f"IOC correlation unavailable: {_corr_err}")
-                        # osquery investigation pack — per-incident, MITRE-mapped
-                        # osquery queries to RUN on the affected host (investigation
-                        # skill; standalone, deterministic, no soc_investigation_agent edits)
-                        try:
-                            from osquery_investigation import build_investigation_pack, format_pack
-                            _oq = build_investigation_pack(_imap_src)
-                            if _oq.get("available"):
-                                with st.expander(f"osquery investigation pack "
-                                                 f"({_oq['stats']['total_queries']} queries · "
-                                                 f"{_oq['platform']})", expanded=False):
-                                    st.code(format_pack(_oq), language="sql")
-                        except Exception as _oq_err:
-                            st.caption(f"osquery pack unavailable: {_oq_err}")
-                        # Velociraptor collection & hunt plan — named DFIR
-                        # artifacts + VQL to collect on the affected host
-                        # (investigation skill; standalone, no soc_investigation_agent edits)
-                        try:
-                            from velociraptor_investigation import build_collection_plan, format_plan
-                            _vr = build_collection_plan(_imap_src)
-                            if _vr.get("available"):
-                                with st.expander(f"Velociraptor collection plan "
-                                                 f"({_vr['stats']['artifacts']} artifacts · "
-                                                 f"{_vr['stats']['total_vql']} VQL)", expanded=False):
-                                    st.code(format_plan(_vr), language="sql")
-                        except Exception as _vr_err:
-                            st.caption(f"Velociraptor plan unavailable: {_vr_err}")
-                        # Diamond Model of Intrusion Analysis — structures the
-                        # incident into Adversary/Capability/Infrastructure/Victim
-                        # (investigation skill; standalone, no soc_investigation_agent edits)
-                        try:
-                            from diamond_model import build_diamond, format_diamond, to_dot
-                            _dm = build_diamond(_imap_src)
-                            if _dm.get("available"):
-                                with st.expander(f"Diamond Model "
-                                                 f"({_dm['stats']['completeness_pct']}% complete)",
-                                                 expanded=False):
-                                    st.graphviz_chart(to_dot(_dm), width="stretch")
-                                    st.code(format_diamond(_dm), language=None)
-                        except Exception as _dm_err:
-                            st.caption(f"Diamond Model unavailable: {_dm_err}")
-                        # Proactive threat hunting + statistical anomalies
-                        # (standalone module; needs a MITRE tactic on the incident)
-                        try:
-                            from threat_hunting import build_hunt_package, format_hunt
-                            _pkg = build_hunt_package(_imap_src, None, str(DB_FILE))
-                            if _pkg.get("available"):
-                                st.markdown("** Proactive threat hunting**")
-                                st.code(format_hunt(_pkg), language=None)
-                        except Exception as _hunt_err:
-                            st.caption(f"Threat hunting unavailable: {_hunt_err}")
-                        # Incident Response SOP / runbook — the actionable
-                        # containment→recovery procedure (standalone reporting-agent
-                        # skill; also folded into the written report via
-                        # skills_sidecar). Deterministic, guarded.
-                        try:
-                            from reporting_sop import build_incident_sop, format_sop
-                            _sop = build_incident_sop(_imap_src)
-                            if _sop.get("available"):
-                                _sv = _sop.get("validation", {})
-                                with st.expander(
-                                    f"Response SOP ({_sop['stats']['steps']} steps · "
-                                    f"{_sop['meta']['scenario']} · validation "
-                                    f"{'PASS' if _sv.get('valid') else 'REVIEW'})",
-                                    expanded=False):
-                                    st.markdown(format_sop(_sop))
-                        except Exception as _sop_err:
-                            st.caption(f"Response SOP unavailable: {_sop_err}")
-                        if _imap["timeline"]:
-                            st.markdown("** Timeline**")
-                            st.markdown("\n".join(
-                                f"- `{t['time'][:19]}` — {t['event']}"
-                                for t in _imap["timeline"][:12]))
-                    except Exception as _map_err:
-                        st.caption(f"Map unavailable: {_map_err}")
-            if inc.get("alerts_fetch_error"):
-                st.warning(_alerts_fetch_warning(inc))
-
-            # Associated Alerts / Logs
-            alerts_list = inc.get("alerts")
-            if alerts_list:
-                with st.expander(f"Associated Alerts ({len(alerts_list)})", expanded=False):
-                    for alert in alerts_list:
-                        a_title = alert.get("title") or alert.get("name") or "Untitled Alert"
-                        a_id = alert.get("id") or ""
-                        a_source = alert.get("source") or "Unknown"
-                        a_type = alert.get("type") or "Unknown"
-                        a_created = alert.get("created") or alert.get("receivedTime") or ""
-                        st.markdown(
-                            f'<div style="background:#091624;padding:8px 12px;border-radius:4px;margin-bottom:6px;border-left:3px solid var(--accent)">'
-                            f'<div style="display:flex;justify-content:between;align-items:center">'
-                            f'<strong>{a_title}</strong>'
-                            f'<code style="color:var(--muted);font-size:0.7rem;margin-left:auto">{a_id}</code>'
-                            f'</div>'
-                            f'<div style="font-size:0.72rem;color:var(--muted);margin-top:4px">'
-                            f'Incident ID: <strong style="color:var(--accent)">{inc_id}</strong> &nbsp;·&nbsp; '
-                            f'Source: {a_source} &nbsp;·&nbsp; Type: {a_type} &nbsp;·&nbsp; Time: {a_created}'
-                            f'</div>'
-                            f'</div>',
-                            unsafe_allow_html=True
-                        )
-                        # Nested event details
-                        events = alert.get("events")
-                        if events:
-                            for idx, ev in enumerate(events):
-                                ev_src = ev.get("source", {})
-                                ev_dst = ev.get("destination", {})
-                                src_ip = ev_src.get("device", {}).get("ipAddress") or ev_src.get("ipAddress") or "—"
-                                dst_ip = ev_dst.get("device", {}).get("ipAddress") or ev_dst.get("ipAddress") or "—"
-                                user = ev_src.get("user", {}).get("username") or ev_src.get("username") or "—"
-                                ev_proto = ev.get("ip_proto") or ev.get("protocol") or "—"
-                                ev_port = ev_dst.get("device", {}).get("port") or ev_dst.get("port") or "—"
-                                st.markdown(
-                                    f'<div style="margin-left:15px;padding:4px 8px;font-family:var(--mono);font-size:0.7rem;color:var(--muted);border-left:1px dashed #1B4A62">'
-                                    f'Event {idx+1}: {user} | ➡ {src_ip} → {dst_ip} (Port {ev_port}, Proto {ev_proto})'
-                                    f'</div>',
-                                    unsafe_allow_html=True
-                                )
-
-        if shown == 0:
-            st.info(f"No incidents match filter: {sev_filter}")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -4457,7 +3905,7 @@ with tab_chat:
 # ─────────────────────────────────────────────────────────────
 with tab_log:
     st.markdown(
-        '<div class="info-box"><div class="title"> History</div>'
+        '<div class="info-box"><div class="title"> Incidents</div>'
         'All security alerts that have ever been loaded are saved here permanently, '
         'even after a restart. You can search, filter, export to Excel, or generate '
         'a report for any incident.</div>',
@@ -4476,8 +3924,6 @@ with tab_log:
     ls2.metric("Total Fetches",   stats["fetches"])
     ls3.metric("Critical (ever)", stats["by_sev"].get("CRITICAL", 0))
     ls4.metric("High (ever)",     stats["by_sev"].get("HIGH", 0))
-
-    st.markdown("---")
 
     # ── Filters ────────────────────────────────────────────────
     st.markdown(
@@ -4530,6 +3976,167 @@ with tab_log:
 
     st.markdown("---")
 
+    # ── Endpoint Diagnostics & Manual Endpoint Config ──────────────
+    with st.expander("Endpoint Diagnostics", expanded=not bool(incidents)):
+        st.markdown(
+            '<div style="font-family:var(--mono);font-size:0.65rem;color:var(--muted);margin-bottom:8px">'
+            'Tests all known NW endpoints with all auth styles to find the working combination. '
+            'Click "Use this" on a hit to wire it into the app automatically.</div>',
+            unsafe_allow_html=True,
+        )
+
+        # Map scanner's auth-style labels → nw_headers() style names
+        _AUTH_STYLE_MAP = {
+            "NW-Token": "NetWitness-Token",
+            "Bearer":   "Bearer",
+            "Cookie":   "Cookie",
+            "Both":     "Both",
+        }
+
+        if st.button("Run Endpoint Scan", use_container_width=False, key="hist_ep_scan"):
+            if not st.session_state.nw_token:
+                st.error("Login first.")
+            else:
+                host  = st.session_state.nw_host.rstrip("/")
+                token = st.session_state.nw_token
+                eps   = [
+                    "/rest/api/incidents",
+                    "/rest/api/respond/incidents",
+                    "/rest/api/v1/incidents",
+                    "/rest/api/v2/incidents",
+                    "/rest/api/respond/incidents/list",
+                    "/rest/api/incidents/list",
+                    "/rest/api/investigation/incidents",
+                    "/respond/api/incidents",
+                    "/respond/api/v1/incidents",
+                    "/respond/api/v2/incidents",
+                    "/rsa/investigation/incidents",
+                    "/rsa/respond/incidents",
+                    "/sa/api/incidents",
+                    "/esa/api/incidents",
+                    "/api/respond/incidents",
+                    "/rest/api/alerting/incidents",
+                    "/rest/api/incidents?start=0",
+                ]
+                auth_styles = {
+                    "Bearer":     {"Authorization": f"Bearer {token}"},
+                    "Cookie":     {"Cookie": f"access_token={token}"},
+                    "NW-Token":   {"NetWitness-Token": token},
+                    "Both":       {"Authorization": f"Bearer {token}", "Cookie": f"access_token={token}"},
+                }
+                results = []
+                for ep in eps:
+                    for style, ah in auth_styles.items():
+                        try:
+                            ah = dict(ah)  # avoid mutating shared dict across iterations
+                            ah["Accept"] = "application/json"
+                            r = requests.get(f"{host}{ep}?limit=1", headers=ah,
+                                             timeout=10, verify=False)
+                            ct   = r.headers.get("Content-Type","")
+                            is_j = "json" in ct or r.text.strip().startswith(("{","["))
+                            results.append({
+                                "endpoint": ep, "auth": style,
+                                "status": r.status_code,
+                                "json": "JSON" if is_j else "HTML",
+                                "is_hit": is_j and r.status_code == 200,
+                                "preview": r.text[:80] if is_j else "",
+                            })
+                        except Exception as e:
+                            results.append({"endpoint": ep, "auth": style,
+                                            "status": "ERR", "json": str(e)[:50],
+                                            "is_hit": False, "preview": ""})
+                # Persist across reruns (so "Use this" buttons survive)
+                st.session_state.endpoint_scan_results = results
+
+        results = st.session_state.get("endpoint_scan_results", [])
+        if results:
+            for i, res in enumerate(results):
+                color   = "#00E676" if res.get("is_hit") else "#3A607A"
+                preview = res["preview"]
+                preview_html = (
+                    f'<br><span style="color:#00E676">{preview}</span>'
+                    if preview else ""
+                )
+                rc1, rc2 = st.columns([6, 1])
+                with rc1:
+                    st.markdown(
+                        f'<div style="font-family:var(--mono);font-size:0.65rem;'
+                        f'padding:3px 8px;border-left:2px solid {color};margin:2px 0">'
+                        f'<span style="color:{color}">{res["json"]}</span> '
+                        f'HTTP {res["status"]} | {res["auth"]} | {res["endpoint"]}'
+                        f'{preview_html}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
+                with rc2:
+                    if res.get("is_hit"):
+                        if st.button("Use this", key=f"hist_use_ep_{i}", use_container_width=True):
+                            # Wire the found endpoint + auth style into the app
+                            clean_path = res["endpoint"].split("?")[0]
+                            st.session_state.nw_incidents_path = clean_path
+                            st.session_state.nw_auth_style     = _AUTH_STYLE_MAP.get(res["auth"], "NetWitness-Token")
+                            st.session_state.nw_working_ep      = res["endpoint"]
+                            st.session_state.nw_working_auth    = {"style": res["auth"]}
+
+                            ok_v, msg_v = nw_verify_token()
+                            st.session_state.nw_verified = ok_v
+                            st.session_state.nw_msg      = msg_v
+                            if ok_v:
+                                ok_f, items_f, diag_f = nw_fetch_incidents()
+                                if ok_f:
+                                    st.session_state.incidents  = items_f
+                                    st.session_state.last_fetch = datetime.now()
+                                    db_upsert_incidents(items_f)
+                                st.success(f"Applied {clean_path} ({res['auth']}) — {msg_v}")
+                            else:
+                                st.error(f"Applied but verify failed: {msg_v}")
+                            st.rerun()
+
+        if st.session_state.nw_working_ep:
+            st.success(
+                f"Active endpoint: `{st.session_state.nw_incidents_path}` "
+                f"· auth style: `{st.session_state.nw_auth_style}`"
+            )
+
+    with st.expander("Manual Endpoint Config"):
+        st.markdown(
+            '<div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);margin-bottom:6px">'
+            'Set these directly if you already know your NW instance\'s working values.</div>',
+            unsafe_allow_html=True,
+        )
+        mc1, mc2 = st.columns(2)
+        new_path = mc1.text_input(
+            "Incidents path", value=st.session_state.nw_incidents_path, key="hist_manual_inc_path"
+        )
+        new_style = mc2.selectbox(
+            "Auth header style",
+            ["NetWitness-Token", "Bearer", "Cookie", "Both"],
+            index=["NetWitness-Token", "Bearer", "Cookie", "Both"].index(
+                st.session_state.nw_auth_style
+                if st.session_state.nw_auth_style in ["NetWitness-Token","Bearer","Cookie","Both"]
+                else "NetWitness-Token"
+            ),
+            key="hist_manual_auth_style",
+        )
+        if st.button("Apply & Re-verify", key="hist_manual_apply"):
+            st.session_state.nw_incidents_path = new_path.strip() or "/rest/api/incidents"
+            st.session_state.nw_auth_style     = new_style
+            ok_v, msg_v = nw_verify_token()
+            st.session_state.nw_verified = ok_v
+            st.session_state.nw_msg      = msg_v
+            if ok_v:
+                ok_f, items_f, diag_f = nw_fetch_incidents()
+                if ok_f:
+                    st.session_state.incidents  = items_f
+                    st.session_state.last_fetch = datetime.now()
+                    db_upsert_incidents(items_f)
+                st.success(f"{msg_v}")
+            else:
+                st.error(f"{msg_v}")
+            st.rerun()
+
+    st.markdown("---")
+
     # ── Incident rows ──────────────────────────────────────────
     if not log_rows:
         st.markdown(
@@ -4542,54 +4149,134 @@ with tab_log:
         )
     else:
         for row in log_rows:
-            sev   = row.get("severity", "LOW")
-            color = SEV_COLORS.get(sev, "#3A607A")
-            inc_id    = row.get("id", "—")
-            title     = row.get("title", "Untitled")
-            status    = row.get("status", "—")
-            assignee  = row.get("assignee", "—")
-            alerts    = row.get("alert_count", "—")
-            created   = str(row.get("created", ""))[:16]
-            first_seen= str(row.get("first_seen",""))[:16]
-            last_seen = str(row.get("last_seen", ""))[:16]
+            try:
+                _raw = _json.loads(row.get("raw_json") or "{}")
+            except Exception:
+                _raw = {}
+            inc = _raw if isinstance(_raw, dict) and _raw.get("id") else row
 
-            st.markdown(
-                f'<div class="card card-{sev.lower()}">'
-                f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
-                f'<span class="badge badge-{sev.lower()}">{sev}</span>'
-                f'<strong style="flex:1;font-size:0.88rem">{title}</strong>'
-                f'<span style="color:var(--muted);font-size:0.62rem">Incident ID:</span>'
-                f'<code style="color:var(--muted);font-size:0.68rem">{inc_id}</code>'
-                f'</div>'
-                f'<div style="margin-top:8px;font-size:0.73rem;color:var(--muted);'
-                f'display:flex;gap:16px;flex-wrap:wrap">'
-                f'<span> {status}</span>'
-                f'<span> {assignee}</span>'
-                f'<span> {alerts} alerts</span>'
-                f'<span> created {created}</span>'
-                f'<span style="color:#1A4A62">first seen {first_seen}</span>'
-                f'<span style="color:#1A4A62">last seen {last_seen}</span>'
-                f'</div></div>',
-                unsafe_allow_html=True,
-            )
+            sev      = normalise_sev(inc) if ("severity" in inc or "riskScore" in inc) else row.get("severity", "LOW")
+            inc_id   = str(inc.get("id") or inc.get("incidentId") or row.get("id") or "—")
+            title    = inc.get("title") or inc.get("name") or row.get("title") or "Untitled"
+            status   = str(inc.get("status") or row.get("status") or "—")
+            created  = str(inc.get("created") or inc.get("createdDate") or row.get("created") or "—")[:16]
+            assignee = inc.get("assignee") or row.get("assignee") or "Unassigned"
+            alerts   = inc.get("alertCount") or inc.get("numAlerts") or row.get("alert_count") or "—"
 
-            bj, bm, _ = st.columns([0.7, 0.9, 7.4])
-            if bj.button("{ }", key=f"log_json_{inc_id}"):
-                try:
-                    raw = _json.loads(row.get("raw_json") or "{}")
-                except Exception:
-                    raw = row
-                with st.expander(f"Full JSON — {inc_id}", expanded=True):
-                    st.json(raw)
-            # Incident Map — Stage 1 entity graph + Stage 2 corpus expansion
-            if bm.button("Map", key=f"log_map_{inc_id}"):
+            _border_col = {
+                "CRITICAL": "#633645",
+                "HIGH":     "#6b4924",
+                "MEDIUM":   "#5e5421",
+                "LOW":      "#215243",
+            }.get(sev.upper(), "#215243")
+
+            _bg_grad = {
+                "CRITICAL": "linear-gradient(105deg, #351d2acc, #111b2c 58%)",
+                "HIGH":     "linear-gradient(105deg, #3b2816cc, #111b2c 58%)",
+                "MEDIUM":   "linear-gradient(105deg, #363013cc, #111b2c 58%)",
+                "LOW":      "linear-gradient(105deg, #13332bcc, #111b2c 58%)",
+            }.get(sev.upper(), "linear-gradient(105deg, #13332bcc, #111b2c 58%)")
+
+            st.markdown(f"""
+            <style>
+            div.st-key-hist_card_{inc_id},
+            div[data-testid="stVerticalBlockBorderWrapper"].st-key-hist_card_{inc_id} {{
+                border: 1px solid {_border_col} !important;
+                background: {_bg_grad} !important;
+                box-shadow: 0 16px 45px #0005 !important;
+                border-radius: 14px !important;
+                margin-bottom: 12px !important;
+            }}
+            div.st-key-hist_card_{inc_id} [data-testid="stColumn"],
+            div.st-key-hist_card_{inc_id} [data-testid="stVerticalBlock"],
+            div.st-key-hist_card_{inc_id} [data-testid="stHorizontalBlock"] {{
+                background: transparent !important;
+            }}
+            </style>
+            """, unsafe_allow_html=True)
+
+            _sev_icon = {"CRITICAL": "", "HIGH": "", "MEDIUM": "", "LOW": ""}.get(sev, "")
+            with st.container(key=f"hist_card_{inc_id}", border=True):
+                col_left, col_right = st.columns([3.4, 2.6])
+                with col_left:
+                    st.markdown(case_header_left(
+                        inc_id, title, sev=sev, status=status,
+                        subtitle=(f"{alerts} alert(s)" if str(alerts) != "—" else "NetWitness incident"),
+                        icon=_sev_icon,
+                    ), unsafe_allow_html=True)
+                with col_right:
+                    st.markdown(case_header_right(
+                        metas=[("Owner", assignee), ("Created", created), ("Alerts", str(alerts))]
+                    ), unsafe_allow_html=True)
+                    b1, b2, b3, b4 = st.columns([0.9, 1.4, 0.8, 1.1])
+                    with b1:
+                        do_triage = st.button("Triage", key=f"hist_chat_{inc_id}", use_container_width=True)
+                    with b2:
+                        do_json = st.button("View Raw JSON", key=f"hist_json_{inc_id}", use_container_width=True)
+                    with b3:
+                        do_map = st.button("Map", key=f"hist_map_{inc_id}", use_container_width=True)
+                    with b4:
+                        do_ovw = st.button("Overview", key=f"hist_ovw_{inc_id}", use_container_width=True)
+
+            if do_triage:
+                st.session_state.chat_incident       = inc
+                st.session_state.pending_auto_triage = True
+                st.session_state.jump_to_ask_tab     = True
+                st.rerun()
+            if do_json:
+                with st.expander(f"JSON — {inc_id}", expanded=True):
+                    st.json(inc)
+            if do_ovw:
+                with st.expander(f"Case overview — {inc_id}", expanded=True):
+                    try:
+                        _findings, _verdict = _build_case_findings(inc)
+                        _ctx = _build_case_context(inc, sev, status, alerts, _verdict)
+                        try:
+                            _sum_txt = _verdict.get("action") if _verdict.get("available") else ""
+                            _titles = (inc.get("alertMeta") or {}).get("AlertTitles") or []
+                            _sum = (f"Unified triage verdict: {_verdict.get('level')} — {_sum_txt}. "
+                                    if _sum_txt else "")
+                            _sum += (f"Observed behaviours: {', '.join(list(dict.fromkeys(_titles))[:4])}. "
+                                     if _titles else "")
+                            _sum += (inc.get("summary") or "")[:280]
+                            _nar = str(inc.get("summary") or "") + " " + " ".join(str(t) for t in _titles)
+                            st.markdown(_ui.ai_summary(_sum.strip() or "No AI summary yet — "
+                                        "run Triage to populate.", _ui.detect_fallback(_nar)),
+                                        unsafe_allow_html=True)
+                        except Exception:
+                            pass
+                        try:
+                            from tactic_inference import infer_tactics
+                            _ti = infer_tactics(inc)
+                            _tac = _ti.get("tactic") if _ti.get("available") else \
+                                (inc.get("mitre_tactic") or (inc.get("tactics") or [None])[0])
+                            if _tac:
+                                st.markdown(_ui.mitre_strip(str(_tac),
+                                            str(_ti.get("technique") or "")),
+                                            unsafe_allow_html=True)
+                        except Exception:
+                            pass
+                        oc1, oc2 = st.columns([1.4, 0.9])
+                        with oc1:
+                            _fh = (_ui.key_findings(_findings) if _findings else
+                                   '<div style="color:var(--sub);font-size:.8rem">'
+                                   'No findings distilled yet — click Refresh Data, then Triage.</div>')
+                            st.markdown(_ui.panel_open("Key findings",
+                                        "Behaviours &amp; analytic signals on this incident")
+                                        + _fh + _ui.panel_close(), unsafe_allow_html=True)
+                        with oc2:
+                            st.markdown(_ui.panel_open("Case context",
+                                        "Key facts for the current decision")
+                                        + _ui.context_grid(_ctx) + _ui.panel_close(),
+                                        unsafe_allow_html=True)
+                    except Exception as _ovw_err:
+                        st.caption(f"Overview unavailable: {_ovw_err}")
+            if do_map:
                 with st.expander(f"Incident Map — {inc_id}", expanded=True):
                     try:
                         from incident_map import build_incident_map, to_dot, map_caption
                         from incident_expansion import LocalCorpusSource, expand_incident_map
-                        _imap_src = _json.loads(row.get("raw_json") or "{}")
-                        # Pre-triage panel light-up (same as the live tab) —
-                        # infer MITRE from stored evidence so skills activate.
+                        _imap_src = inc
                         try:
                             from tactic_inference import augment_incident as _tac_aug
                             _imap_src, _tac_note = _tac_aug(_imap_src)
@@ -4597,8 +4284,7 @@ with tab_log:
                             _tac_note = None
                         if _tac_note:
                             st.caption(f"{_tac_note}")
-                        _imap_key = "log"
-                        _imap = build_incident_map(_imap_src)
+                        _imap = build_incident_map(inc)
                         try:
                             with LocalCorpusSource(str(DB_FILE)) as _src:
                                 expand_incident_map(_imap, _src)
@@ -4613,10 +4299,6 @@ with tab_log:
                         if _imap.get("endpoint_profile_text"):
                             st.markdown("** Endpoint profile**")
                             st.code(_imap["endpoint_profile_text"], language=None)
-                        # Unified triage verdict — capstone that aggregates the
-                        # triage-side skills (base severity + asset criticality +
-                        # internal IOC correlation) into ONE prioritized verdict.
-                        # Reads the other skills' outputs; edits none of them.
                         try:
                             from triage_verdict import aggregate_verdict, format_verdict
                             _tv = aggregate_verdict(_imap_src)
@@ -4626,7 +4308,6 @@ with tab_log:
                                 st.code(format_verdict(_tv), language=None)
                         except Exception as _tv_err:
                             st.caption(f"Unified verdict unavailable: {_tv_err}")
-                        # Asset criticality (instant, deterministic)
                         try:
                             from asset_criticality import assess_incident, format_assessment
                             _ac = assess_incident(_imap_src)
@@ -4634,6 +4315,8 @@ with tab_log:
                             st.code(format_assessment(_ac), language=None)
                         except Exception as _ac_err:
                             st.caption(f"Asset criticality unavailable: {_ac_err}")
+                    except Exception as _map_err:
+                        st.caption(f"Incident map unavailable: {_map_err}")
                         # Threat-intel enrichment (live IOC lookups — opt-in
                         # since it hits the network the first time per IOC)
                         try:

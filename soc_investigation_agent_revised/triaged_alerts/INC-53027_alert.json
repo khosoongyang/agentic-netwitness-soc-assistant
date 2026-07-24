@@ -1,0 +1,185 @@
+{
+  "incident_id": "INC-53027",
+  "incident_details": {
+    "timestamp": "2026-04-28T11:08:52+00:00",
+    "description": "High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.",
+    "mitre_att&ck": {
+      "tactic": "Unknown",
+      "technique": "Unknown"
+    }
+  },
+  "classification": {
+    "alert_type": [
+      "Unauthorized access",
+      "Compromised asset (non-critical)"
+    ],
+    "soc_classification": "HIGH"
+  },
+  "log_indicators": {
+    "target_user": "Unknown",
+    "computer_name": "premieraccount-netflix.com",
+    "operating_system": "Unknown"
+  },
+  "network_indicators": {
+    "source_ip": "192.168.10.210",
+    "destination_ip": "188.40.170.197",
+    "domain": null
+  },
+  "observed_indicators": {
+    "usernames": [],
+    "hostnames": [
+      "premieraccount-netflix.com"
+    ],
+    "ip_addresses": [
+      "188.40.170.197",
+      "192.168.10.210"
+    ],
+    "source_ips": [
+      "192.168.10.210"
+    ],
+    "destination_ips": [
+      "188.40.170.197"
+    ],
+    "entity_from_alert_title": null
+  },
+  "triage": {
+    "ticket_unc": "#00026A",
+    "risk_rating": {
+      "likelihood_initiation": "High",
+      "likelihood_occurrence": "High",
+      "likelihood_adverse_impact": "High",
+      "overall_risk": "High",
+      "rationale": "High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences."
+    },
+    "ioc_summary": "[AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.",
+    "matched_metakeys": [
+      "alert.type",
+      "automated_detection",
+      "bytes.out",
+      "change.type",
+      "config.change",
+      "cpu.usage",
+      "domain",
+      "file.name",
+      "file.size",
+      "firmware.version",
+      "high_risk",
+      "host.name",
+      "ip.dst",
+      "ip.src",
+      "os.version",
+      "process.name",
+      "protocol",
+      "user.name"
+    ],
+    "metakey_values": {},
+    "matched_ioc_count": 6
+  },
+  "source_incident": {
+    "title": "High Risk Alerts: ESA for 192.168.10.210",
+    "summary": ""
+  },
+  "enrichment": {
+    "endpoint_identity": {
+      "hostnames": [
+        "premieraccount-netflix.com"
+      ],
+      "users": [],
+      "mac_addresses": [
+        "d4:f4:be:6f:c7:11",
+        "02:1a:c5:03:00:03"
+      ],
+      "dns_domains": [],
+      "source_ips": [
+        "192.168.10.210"
+      ],
+      "destination_ips": [
+        "188.40.170.197"
+      ]
+    },
+    "behavioural_alerts": {
+      "alert_titles": [
+        "Phishing email detected(2)-24014126"
+      ],
+      "alert_types": [
+        "Network"
+      ],
+      "mitre_tactics": [],
+      "mitre_techniques": []
+    },
+    "file_indicators": {
+      "hashes": [],
+      "names": [],
+      "paths": []
+    },
+    "process_indicators": {
+      "names": [],
+      "paths": [],
+      "pids": []
+    },
+    "process_tree": {
+      "processes": [],
+      "process_paths": [],
+      "pids": [],
+      "parent_processes": [],
+      "command_lines": [],
+      "lineage": []
+    },
+    "network_activity": {
+      "source_ips": [
+        "192.168.10.210"
+      ],
+      "destination_ips": [
+        "188.40.170.197"
+      ],
+      "ports": [],
+      "protocols": [],
+      "network_services": [],
+      "bytes": [],
+      "geo": [],
+      "domains": []
+    },
+    "host_behaviour": {
+      "config_changes": [],
+      "cpu_usage": [],
+      "device_types": [],
+      "user_roles": [],
+      "operating_systems": []
+    },
+    "event_context": {
+      "event_types": [],
+      "event_times": []
+    },
+    "all_metakey_values": {},
+    "alert_statistics": {
+      "alert_count": 1,
+      "event_count": 1,
+      "risk_score": 70,
+      "average_alert_risk_score": 70,
+      "matched_ioc_count": 6
+    },
+    "matched_metakey_catalog": [
+      "alert.type",
+      "automated_detection",
+      "bytes.out",
+      "change.type",
+      "config.change",
+      "cpu.usage",
+      "domain",
+      "file.name",
+      "file.size",
+      "firmware.version",
+      "high_risk",
+      "host.name",
+      "ip.dst",
+      "ip.src",
+      "os.version",
+      "process.name",
+      "protocol",
+      "user.name"
+    ],
+    "ioc_summary": "[AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.",
+    "triage_summary": "High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.",
+    "_note": "Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple."
+  }
+}

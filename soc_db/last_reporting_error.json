@@ -1,0 +1,12 @@
+{
+  "agent": "Reporting Agent",
+  "status": "failed",
+  "error": "Traceback (most recent call last):\n  File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\run_reporting.py\", line 15, in <module>\n    from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exists, latest_file, now_iso, read_json, run_script, write_json\n  File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\common.py\", line 12, in <module>\n    from dotenv import load_dotenv\nModuleNotFoundError: No module named 'dotenv'\n",
+  "subprocess": {
+    "started_at": "2026-07-24T12:58:27",
+    "returncode": 1,
+    "success": false,
+    "stdout": "Traceback (most recent call last):\n  File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\run_reporting.py\", line 15, in <module>\n    from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exists, latest_file, now_iso, read_json, run_script, write_json\n  File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\common.py\", line 12, in <module>\n    from dotenv import load_dotenv\nModuleNotFoundError: No module named 'dotenv'\n",
+    "stderr": ""
+  }
+}
