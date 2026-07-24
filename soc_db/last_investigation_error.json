@@ -1,7 +1,7 @@
 {
   "agent": "Investigation Agent",
   "subprocess": {
-    "started_at": "2026-07-24T12:58:17",
+    "started_at": "2026-07-24T19:23:51",
     "returncode": 1,
     "success": false,
     "stdout": "Traceback (most recent call last):\n  File \"C:\\C300 FYPIntegrated\\soc_investigation_agent_revised\\main.py\", line 10, in <module>\n    from dotenv import load_dotenv\nModuleNotFoundError: No module named 'dotenv'\n",

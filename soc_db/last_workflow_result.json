@@ -1,12 +1,12 @@
 {
- "run_id": "20260724-125817",
+ "run_id": "20260724-192351",
  "incident_id": "INC-53027",
  "title": "High Risk Alerts: ESA for 192.168.10.210",
  "cls": "HIGH",
  "unc": "#00026A",
  "investigate": true,
- "started_ts": 1784869097.645681,
- "started_hms": "12:58:17",
+ "started_ts": 1784892231.878591,
+ "started_hms": "19:23:51",
  "cached_triage": true,
  "done": true,
  "finalized": false,
@@ -14,33 +14,33 @@
   "investigation": {
    "status": "failed",
    "thinking": [
-    "[12:58:17] Investigation started",
-    "[12:58:17] Alert handed to triaged_alerts queue",
-    "[12:58:18] Traceback (most recent call last):",
-    "[12:58:18]   File \"C:\\C300 FYPIntegrated\\soc_investigation_agent_revised\\main.py\", line 10, in <module>",
-    "[12:58:18]     from dotenv import load_dotenv",
-    "[12:58:18] ModuleNotFoundError: No module named 'dotenv'",
-    "[12:58:18] Investigation run produced no incident folder for this alert."
+    "[19:23:51] Investigation started",
+    "[19:23:51] Alert handed to triaged_alerts queue",
+    "[19:23:52] Traceback (most recent call last):",
+    "[19:23:52]   File \"C:\\C300 FYPIntegrated\\soc_investigation_agent_revised\\main.py\", line 10, in <module>",
+    "[19:23:52]     from dotenv import load_dotenv",
+    "[19:23:52] ModuleNotFoundError: No module named 'dotenv'",
+    "[19:23:52] Investigation run produced no incident folder for this alert."
    ],
    "output": "Investigation failed:\n\n```\nInvestigation run produced no incident folder for this alert.\n```",
-   "updated": "12:58:18",
+   "updated": "19:23:52",
    "progress": 10
   },
   "reporting": {
    "status": "failed",
    "thinking": [
-    "[12:58:18] Reporting started",
-    "[12:58:27] Triage + investigation context handed over",
-    "[12:58:27] Traceback (most recent call last):",
-    "[12:58:27]   File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\run_reporting.py\", line 15, in <module>",
-    "[12:58:27]     from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exists, latest_file, now_iso, read_json, run_script, write_json",
-    "[12:58:27]   File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\common.py\", line 12, in <module>",
-    "[12:58:27]     from dotenv import load_dotenv",
-    "[12:58:27] ModuleNotFoundError: No module named 'dotenv'",
-    "[12:58:27] Traceback (most recent call last):\n  File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\run_reporting.py\", line 15, in <module>\n    from adapter"
+    "[19:23:52] Reporting started",
+    "[19:23:59] Triage + investigation context handed over",
+    "[19:24:00] Traceback (most recent call last):",
+    "[19:24:00]   File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\run_reporting.py\", line 15, in <module>",
+    "[19:24:00]     from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exists, latest_file, now_iso, read_json, run_script, write_json",
+    "[19:24:00]   File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\common.py\", line 12, in <module>",
+    "[19:24:00]     from dotenv import load_dotenv",
+    "[19:24:00] ModuleNotFoundError: No module named 'dotenv'",
+    "[19:24:00] Traceback (most recent call last):\n  File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\run_reporting.py\", line 15, in <module>\n    from adapter"
    ],
    "output": "Reporting failed:\n\n```\nTraceback (most recent call last):\n  File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\run_reporting.py\", line 15, in <module>\n    from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exists, latest_file, now_iso, read_json, run_script, write_json\n  File \"C:\\C300 FYPIntegrated\\soc_reporting_agent\\adapters\\common.py\", line 12, in <module>\n    from dotenv import load_dotenv\nModuleNotFoundError: No module named 'dotenv'\n\n```",
-   "updated": "12:58:27",
+   "updated": "19:24:00",
    "progress": 35
   }
  },
@@ -56,7 +56,7 @@
  ],
  "chroma_queue": [],
  "manual_review": false,
- "gate_report": "<threading.Event at 0x28dc4809fd0: set>",
+ "gate_report": "<threading.Event at 0x28dc61ac1d0: set>",
  "_tri": {
   "metakeys_payload": {
    "incident_id": "INC-53027",
@@ -308,5 +308,5 @@
   "hostname": "premieraccount-netflix.com",
   "_alerts_stripped": 1
  },
- "finished_at": 1784869108.0003674
+ "finished_at": 1784892240.170901
 }
