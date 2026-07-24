@@ -20,6 +20,12 @@ from typing import Any, Iterable
 COMPONENT_CSS = """
 <style>
 /* ===== Aegis components ===== */
+html, body, .stApp, p, div:not([data-testid*="Icon"]), button, input, select, textarea, label, h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', sans-serif;
+}
+[data-testid*="Icon"], [class*="material-symbols"], [class*="material-icons"] {
+  font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
+}
 .ag-eyebrow{color:var(--sub);font-size:.68rem;font-weight:800;letter-spacing:.14em;
   text-transform:uppercase;margin-bottom:2px;}
 .ag-page-title{font-size:1.7rem;font-weight:800;letter-spacing:-.5px;color:var(--text);margin:0 0 2px;}
@@ -78,17 +84,14 @@ COMPONENT_CSS = """
 .ag-step b{display:block;font-size:.74rem;margin-top:8px;color:var(--text);}
 .ag-step small{display:block;font-size:.64rem;color:var(--faint);margin-top:1px;}
 
-/* case header */
-.ag-casehdr{border:1px solid var(--line);border-radius:14px;padding:16px 18px;
-  background:linear-gradient(135deg,#0f1a2b,#0c1523);display:flex;gap:14px;align-items:flex-start;
-  box-shadow:0 15px 45px #0003;margin:6px 0;}
-.ag-casehdr .ico{width:42px;height:42px;min-width:42px;border-radius:12px;display:grid;place-items:center;
+.ag-casehdr-left{display:flex;gap:14px;align-items:flex-start;}
+.ag-casehdr-left .ico{width:42px;height:42px;min-width:42px;border-radius:12px;display:grid;place-items:center;
   font-size:20px;border:1px solid #713744;background:#321b25;color:#ff8b96;}
-.ag-casehdr .body{flex:1;min-width:0;}
-.ag-casehdr .tid{font-family:var(--mono);font-size:.68rem;color:var(--sub);letter-spacing:.05em;}
-.ag-casehdr h3{margin:5px 0 3px;font-size:1.05rem;color:var(--text);}
-.ag-casehdr .sub{color:var(--sub);font-size:.75rem;}
-.ag-metas{display:flex;gap:8px;}
+.ag-casehdr-left .body{flex:1;min-width:0;}
+.ag-casehdr-left .tid{font-family:var(--mono);font-size:.68rem;color:var(--sub);letter-spacing:.05em;}
+.ag-casehdr-left h3{margin:5px 0 3px;font-size:1.05rem;color:var(--text);}
+.ag-casehdr-left .sub{color:var(--sub);font-size:.75rem;}
+.ag-metas{display:flex;gap:8px;justify-content:flex-end;margin-bottom:8px;}
 .ag-meta{border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:#091320;min-width:104px;}
 .ag-meta span{display:block;color:var(--faint);font-size:.6rem;text-transform:uppercase;letter-spacing:.06em;}
 .ag-meta b{font-size:.78rem;color:var(--text);font-weight:600;}
@@ -250,6 +253,25 @@ def stepper(stages: Iterable[dict]) -> str:
             f'<div class="ag-step {state}"><div class="ag-node {state}">{_e(inner)}</div>'
             f'<b>{_e(s.get("name",""))}</b><small>{_e(s.get("label",""))}</small></div>')
     return f'<div class="ag-stepper">{"".join(cells)}</div>'
+
+
+def case_header_left(ticket: str, title: str, sev: str = "", status: str = "",
+                     subtitle: str = "", icon: str = "") -> str:
+    pills = ""
+    if sev:
+        pills += " " + pill(sev, sev_class(sev))
+    if status:
+        pills += " " + pill(status, "open")
+    icon_html = f'<div class="ico">{_e(icon)}</div>' if icon else ""
+    return (f'<div class="ag-casehdr-left">{icon_html}'
+            f'<div class="body"><div class="tid">{_e(ticket)}{pills}</div>'
+            f'<h3>{_e(title)}</h3><div class="sub">{_e(subtitle)}</div></div></div>')
+
+
+def case_header_right(metas: Iterable[tuple] = ()) -> str:
+    meta_html = "".join(
+        f'<div class="ag-meta"><span>{_e(k)}</span><b>{_e(v)}</b></div>' for k, v in metas)
+    return f'<div class="ag-metas">{meta_html}</div>' if meta_html else ""
 
 
 def case_header(ticket: str, title: str, sev: str = "", status: str = "",

@@ -595,7 +595,7 @@ st.set_page_config(
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Share+Tech+Mono&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
   /* Aegis design system — re-skin of the SOC dashboard */
@@ -620,19 +620,21 @@ st.markdown("""
   --faint:   #61738d;
   --text:    #f3f6fb;
   --r:       14px;
-  --mono:    'Share Tech Mono', monospace;
+  --mono:    'Inter', sans-serif;
   --sans:    'Inter', sans-serif;
 }
 
-/* Anchor the rem scale to the visitor's browser/OS default font size
-   (typically 16px) rather than a hard 14px. 87.5% × 16px == the original 14px
-   baseline, so default users see no change — but anyone who raises their
-   browser/OS default font size now gets a proportionally larger UI, since
-   virtually all our type & spacing is already expressed in rem. (Browser zoom
-   already scaled the px bits; this adds OS/browser font-size preference too.) */
+/* Standardized global font enforcement across UI elements while preserving icon fonts */
+html, body, .stApp, p, div:not([data-testid*="Icon"]), button, input, select, textarea, label, h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', sans-serif;
+}
+
+[data-testid*="Icon"], [class*="material-symbols"], [class*="material-icons"] {
+  font-family: 'Material Symbols Rounded', 'Material Icons', sans-serif !important;
+}
+
 html { font-size: 87.5%; }
 html, body, [class*="css"] {
-  font-family: var(--sans);
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
@@ -2606,32 +2608,7 @@ with st.sidebar:
             cisco_env_clear()
             st.rerun()
 
-        # ── ChromaDB ───────────────────────────────────────────────
-        st.markdown('<div class="sec-label">  Knowledge Base</div>', unsafe_allow_html=True)
 
-        chroma_path = st.text_input("Persist path", value="./chroma_db")
-        cc1, cc2 = st.columns(2)
-
-        if cc1.button("Connect", use_container_width=True):
-            ok, msg = chroma_connect(chroma_path)
-            if ok: st.success(msg)
-            else:  st.error(msg)
-            st.rerun()
-
-        if st.session_state.chroma_col is not None:
-            count = st.session_state.chroma_col.count()
-            st.markdown(
-                f'<div style="font-family:var(--mono);font-size:0.64rem;'
-                f'color:var(--green);margin-top:4px">'
-                f'<span class="dot dot-green"></span>{count} vectors stored</div>',
-                unsafe_allow_html=True,
-            )
-            if cc2.button("⬆ Sync", use_container_width=True):
-                if st.session_state.incidents:
-                    n, msg = chroma_sync(st.session_state.incidents)
-                    st.success(msg) if n else st.error(msg)
-                else:
-                    st.warning("No incidents loaded yet.")
 
         st.markdown("---")
         st.markdown(
@@ -2668,7 +2645,10 @@ last_sync = st.session_state.last_fetch.strftime("%H:%M:%S") if st.session_state
 db_total  = db_stats()["total"]
 
 # Aegis design-system components (ui_components.py) — page title + stat cards
+import importlib
 import ui_components as _ui
+importlib.reload(_ui)
+from ui_components import case_header_left, case_header_right
 st.markdown(_ui.COMPONENT_CSS, unsafe_allow_html=True)
 
 
@@ -2790,14 +2770,6 @@ st.markdown(_ui.page_title(
     f"{active:,} active · {total:,} in session · last sync {last_sync}",
     "Security Operations"), unsafe_allow_html=True)
 
-st.markdown(_ui.stat_row([
-    {"label": "Live incidents", "value": f"{total:,}", "sub": "Loaded this session", "tone": "blue"},
-    {"label": "Active", "value": f"{active:,}", "sub": "Not closed / resolved", "tone": "blue"},
-    {"label": "Critical", "value": by_sev.get("CRITICAL", 0), "sub": "Highest severity", "tone": "red"},
-    {"label": "High", "value": by_sev.get("HIGH", 0), "sub": "Elevated severity", "tone": "amber"},
-    {"label": "Knowledge vectors", "value": f"{vectors:,}", "sub": f"DB total {db_total:,}", "tone": "green"},
-]), unsafe_allow_html=True)
-
 # Aegis hero — "Your next move" (Phase 3c): the most urgent case to pick up,
 # with the unified triage verdict as the why-line. The verdict (which runs
 # ioc_correlation, ~1s) is cached per incident id in session state so the
@@ -2829,15 +2801,45 @@ try:
                     else "not yet worked")
         _hot = (_v.get("level") in ("CRITICAL", "HIGH")
                 or _nm_meta.get("sev") in ("CRITICAL", "HIGH"))
-        st.markdown(_ui.hero(
-            "YOUR NEXT MOVE", f"{_nm_id} — {_nm_title}",
-            "Why this case: " + " · ".join(_why),
-            "", "red" if _hot else "blue", ""), unsafe_allow_html=True)
-        if st.button(f"Triage {_nm_id} now", key="hero_triage"):
-            st.session_state.chat_incident       = _nm
-            st.session_state.pending_auto_triage = True
-            st.session_state.jump_to_ask_tab     = True
-            st.rerun()
+        _hero_border = "#633645" if _hot else "#33407a"
+        _hero_bg = "linear-gradient(105deg, #351d2acc, #111b2c 58%)" if _hot else "linear-gradient(105deg, #1a2350cc, #111b2c 58%)"
+        _hero_eyebrow = "#ff939d" if _hot else "#aeb7ff"
+
+        st.markdown(f"""
+        <style>
+        div.st-key-hero_container,
+        div[data-testid="stVerticalBlockBorderWrapper"].st-key-hero_container {{
+            border: 1px solid {_hero_border} !important;
+            background: {_hero_bg} !important;
+            box-shadow: 0 16px 45px #0005 !important;
+            border-radius: 14px !important;
+            padding: 20px 24px 26px 24px !important;
+            margin-bottom: 20px !important;
+        }}
+        div.st-key-hero_container [data-testid="stColumn"],
+        div.st-key-hero_container [data-testid="stVerticalBlock"],
+        div.st-key-hero_container [data-testid="stHorizontalBlock"] {{
+            background: transparent !important;
+        }}
+        </style>
+        """, unsafe_allow_html=True)
+
+        with st.container(key="hero_container", border=True):
+            h_col1, h_col2 = st.columns([3.8, 1.4], vertical_alignment="center")
+            with h_col1:
+                st.markdown(f'''
+                <div class="ag-hero-body" style="padding-bottom:6px;">
+                    <div class="e" style="color:{_hero_eyebrow};font-size:.66rem;font-weight:900;letter-spacing:.12em;text-transform:uppercase;">YOUR NEXT MOVE</div>
+                    <h4 style="margin:4px 0 6px;font-size:1.02rem;font-weight:700;color:#f3f6fb;">{_nm_id} — {_nm_title}</h4>
+                    <p style="margin:0;color:#a8b5c6;font-size:.78rem;line-height:1.5;">Why this case: {" · ".join(_why)}</p>
+                </div>
+                ''', unsafe_allow_html=True)
+            with h_col2:
+                if st.button(f"Triage {_nm_id} now", key="hero_triage", use_container_width=True):
+                    st.session_state.chat_incident       = _nm
+                    st.session_state.pending_auto_triage = True
+                    st.session_state.jump_to_ask_tab     = True
+                    st.rerun()
 except Exception:
     pass
 
@@ -2845,16 +2847,6 @@ except Exception:
 # mockup's SOC-actionable trio (critical load, cases awaiting finalization,
 # unassigned) plus a conic completion ring across the pipeline. Guarded.
 try:
-    _approval = pipeline_count("pending_ticket_report")
-    _unassigned = sum(1 for i in incidents if not str(i.get("assignee") or "").strip())
-    st.markdown(_ui.attention_row([
-        {"label": "Critical cases", "value": by_sev.get("CRITICAL", 0),
-         "sub": "Requires immediate attention", "tone": "red"},
-        {"label": "Awaiting finalization", "value": _approval,
-         "sub": "Pending ticket / report", "tone": "amber"},
-        {"label": "Unassigned", "value": f"{_unassigned:,}",
-         "sub": "Waiting for an owner", "tone": "blue"},
-    ]), unsafe_allow_html=True)
     _entered = pipeline_count("alerts_to_triage")
     _done = pipeline_count("finalized_report")
     _pct = round(100 * _done / _entered) if _entered else (100 if _done else 0)
@@ -2920,51 +2912,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-tab_dash, tab_inc, tab_chat, tab_chroma, tab_log, tab_pipeline = st.tabs([
-    "Overview",
+tab_inc, tab_chat, tab_log, tab_pipeline = st.tabs([
     "Security Alerts",
     "Ask a Question",
-    "Knowledge Base",
     "History",
     "Data Pipeline",
 ])
-
-# ── RBAC: guest by default; developers unlock the Knowledge Base (ChromaDB)
-# inspector tab via a password held in Streamlit Secrets (DEV_PASSWORD) or the
-# APP_DEV_PASSWORD env var. Additive + guarded: if no password is configured the
-# developer sign-in simply doesn't appear and everyone stays a read-only guest.
-def _dev_password() -> str:
-    try:
-        _p = st.secrets.get("DEV_PASSWORD", "")
-    except Exception:
-        _p = ""
-    return str(_p or os.environ.get("APP_DEV_PASSWORD", "")).strip()
-
-st.session_state.setdefault("user_role", "guest")
-_is_dev = st.session_state.user_role == "developer"
-
-with st.sidebar:
-    _devpw = _dev_password()
-    if _is_dev:
-        if st.button("Exit developer mode", use_container_width=True, key="_dev_exit"):
-            st.session_state.user_role = "guest"
-            st.rerun()
-    elif _devpw:
-        with st.expander("Developer access"):
-            _pw = st.text_input("Developer password", type="password", key="_dev_pw")
-            if st.button("Unlock", use_container_width=True, key="_dev_unlock"):
-                if _pw and _pw == _devpw:
-                    st.session_state.user_role = "developer"
-                    st.rerun()
-                elif _pw:
-                    st.error("Incorrect password")
-
-# Guests must not SEE the developer Knowledge Base tab (the 4th tab). Hide its
-# button via CSS (the password gate above governs who can flip to developer).
-if not _is_dev:
-    st.markdown(
-        '<style>[data-baseweb="tab-list"] button:nth-of-type(4){display:none !important;}</style>',
-        unsafe_allow_html=True)
 
 # Streamlit's st.tabs has no server-side "set active tab" API — the click
 # from the "Triage" button is simulated client-side by finding the tab
@@ -3016,322 +2969,6 @@ STATUS_COLORS = {
 }
 
 
-# ─────────────────────────────────────────────────────────────
-# TAB 1 — DASHBOARD
-# ─────────────────────────────────────────────────────────────
-with tab_dash:
-    # ── Live diagnostic banner ─────────────────────────────────
-    if st.session_state.nw_verified:
-        _last = st.session_state.last_fetch
-        _mode = st.session_state.last_fetch_mode
-        _mode_str = {"full": "full", "incremental": "incremental"}.get(_mode, "—")
-        _diag_str = (
-            f"Last fetch: {_last.strftime('%H:%M:%S') if _last else 'never'} "
-            f"({_mode_str}) · "
-            f"Incidents in session: {len(incidents)} · "
-            f"Host: {st.session_state.nw_host}"
-        )
-        st.markdown(
-            f'<div style="background:#04090F;border:1px solid #0E2030;border-radius:5px;'
-            f'padding:7px 12px;font-family:var(--mono);font-size:0.6rem;'
-            f'color:var(--muted);margin-bottom:10px">'
-            f'{_diag_str}</div>',
-            unsafe_allow_html=True,
-        )
-        rc1, rc2 = st.columns([1, 4])
-        if rc1.button("Refresh Data", use_container_width=True, help="Forces a full resync, not incremental"):
-            ok_r, items_r, diag_r = nw_fetch_incidents()
-            if ok_r:
-                st.session_state.incidents       = items_r
-                st.session_state.last_fetch      = datetime.now()
-                st.session_state.last_full_fetch = datetime.now()
-                st.session_state.last_fetch_mode = "full"
-                db_upsert_incidents(items_r)
-                st.success(f"{diag_r}")
-            else:
-                st.error(f"Fetch failed: {diag_r}")
-            st.rerun()
-
-    if not incidents:
-        if st.session_state.nw_verified:
-            st.warning(
-                "Connected successfully, but there are **no security alerts** to show right now. "
-                "This is normal if everything is quiet. If you expected to see data, please "
-                "contact your IT administrator to check your account permissions."
-            )
-        else:
-            # ── Connection Test Panel ──────────────────────────
-            st.markdown(
-                '<div style="font-family:var(--mono);font-size:0.65rem;'
-                'color:var(--muted);letter-spacing:2px;margin-bottom:12px">'
-                'Getting Started — Connection Setup</div>',
-                unsafe_allow_html=True,
-            )
-            st.markdown(
-                '<div style="font-family:var(--sans);font-size:0.78rem;'
-                'color:var(--muted);margin-bottom:14px">'
-                "Let's get you connected. Follow the steps below.</div>",
-                unsafe_allow_html=True,
-            )
-
-            host  = st.session_state.nw_host.strip()
-            token = st.session_state.nw_token.strip()
-
-            # ── Step 1: Check host is set ──────────────────────
-            s1_ok = bool(host)
-            st.markdown(
-                f'<div style="display:flex;align-items:center;gap:10px;'
-                f'font-family:var(--mono);font-size:0.65rem;'
-                f'padding:8px 12px;margin-bottom:6px;border-radius:4px;'
-                f'background:{"#041A0A" if s1_ok else "#1A0505"};'
-                f'border-left:3px solid {"#00E676" if s1_ok else "#FF5252"}">'
-                f'{"" if s1_ok else ""} '
-                f'<strong>Step 1 — Server Address</strong> &nbsp;'
-                f'<span style="color:var(--muted)">'
-                f'{"Set to: " + host if s1_ok else "Not set — enter https://192.168.x.x in the sidebar"}'
-                f'</span></div>',
-                unsafe_allow_html=True,
-            )
-
-            # ── Step 2: Check token is set ─────────────────────
-            s2_ok = bool(token)
-            token_preview = (token[:12] + "…" + token[-6:]) if len(token) > 20 else token
-            st.markdown(
-                f'<div style="display:flex;align-items:center;gap:10px;'
-                f'font-family:var(--mono);font-size:0.65rem;'
-                f'padding:8px 12px;margin-bottom:6px;border-radius:4px;'
-                f'background:{"#041A0A" if s2_ok else "#1A0505"};'
-                f'border-left:3px solid {"#00E676" if s2_ok else "#FF5252"}">'
-                f'{"" if s2_ok else ""} '
-                f'<strong>Step 2 — Login Session</strong> &nbsp;'
-                f'<span style="color:var(--muted)">'
-                f'{"Token present: " + token_preview if s2_ok else "No token — login with credentials in the sidebar"}'
-                f'</span></div>',
-                unsafe_allow_html=True,
-            )
-
-            # ── Step 3: Live connectivity test ─────────────────
-            st.markdown(
-                '<div style="font-family:var(--mono);font-size:0.62rem;'
-                'color:var(--muted);margin:10px 0 6px">Step 3 — Live Tests</div>',
-                unsafe_allow_html=True,
-            )
-            t3a, t3b, t3c = st.columns(3)
-
-            # Test A: Can we reach the host at all?
-            if t3a.button("Check Network", use_container_width=True,
-                          disabled=not s1_ok, key="ping_host"):
-                with st.spinner("Reaching host…"):
-                    try:
-                        r = requests.get(host, timeout=8, verify=False)
-                        st.session_state["_test_ping"] = (True, f"HTTP {r.status_code} — host reachable")
-                    except requests.exceptions.ConnectionError:
-                        st.session_state["_test_ping"] = (False, "Connection refused — check VPN/host")
-                    except requests.exceptions.Timeout:
-                        st.session_state["_test_ping"] = (False, "Timed out — check VPN")
-                    except Exception as e:
-                        st.session_state["_test_ping"] = (False, str(e)[:100])
-
-            # Test B: Does the auth endpoint respond?
-            if t3b.button("Check Login Page", use_container_width=True,
-                          disabled=not s1_ok, key="test_auth"):
-                with st.spinner("Testing auth endpoint…"):
-                    try:
-                        r = requests.post(
-                            f"{host.rstrip('/')}/rest/api/auth/userpass",
-                            data={"username": "test", "password": "test"},
-                            headers={"Content-Type": "application/x-www-form-urlencoded"},
-                            timeout=8, verify=False,
-                        )
-                        if r.status_code == 200:
-                            st.session_state["_test_auth"] = (True, "Auth endpoint OK — credentials accepted")
-                        elif r.status_code in (401, 403):
-                            st.session_state["_test_auth"] = (True, f"Auth endpoint reachable (HTTP {r.status_code} — wrong test creds, expected)")
-                        else:
-                            st.session_state["_test_auth"] = (False, f"Unexpected HTTP {r.status_code}: {r.text[:80]}")
-                    except Exception as e:
-                        st.session_state["_test_auth"] = (False, str(e)[:100])
-
-            # Test C: Does the incidents endpoint respond with the current token?
-            if t3c.button("Check Data Access", use_container_width=True,
-                          disabled=not (s1_ok and s2_ok), key="test_incidents"):
-                with st.spinner("Testing incidents endpoint…"):
-                    try:
-                        r = requests.get(
-                            nw_incidents_url(host),
-                            headers=nw_headers(),
-                            params={"pageSize": 1, "pageNumber": 0},
-                            timeout=10, verify=False,
-                        )
-                        body = r.text[:200]
-                        if r.status_code == 200:
-                            total = r.json().get("totalItems", "?")
-                            st.session_state["_test_inc"] = (True, f"HTTP 200 — {total} incident(s) in NW")
-                        elif r.status_code == 401:
-                            st.session_state["_test_inc"] = (False, "401 Unauthorised — token expired, login again")
-                        elif r.status_code == 403:
-                            st.session_state["_test_inc"] = (False, "403 Forbidden — account needs 'integration-server.api.access' permission in NW Admin → Roles")
-                        elif r.status_code == 400:
-                            st.session_state["_test_inc"] = (False, f"400 Bad Request — {body}")
-                        else:
-                            st.session_state["_test_inc"] = (False, f"HTTP {r.status_code}: {body}")
-                    except Exception as e:
-                        st.session_state["_test_inc"] = (False, str(e)[:120])
-
-            # Show test results
-            for key, label in [("_test_ping","Ping"), ("_test_auth","Auth"), ("_test_inc","Incidents")]:
-                result = st.session_state.get(key)
-                if result:
-                    ok, msg = result
-                    st.markdown(
-                        f'<div style="font-family:var(--mono);font-size:0.62rem;'
-                        f'padding:6px 12px;margin:3px 0;border-radius:4px;'
-                        f'background:{"#041A0A" if ok else "#1A0505"};'
-                        f'border-left:3px solid {"#00E676" if ok else "#FF5252"}">'
-                        f'{label}: {msg}</div>',
-                        unsafe_allow_html=True,
-                    )
-
-            # ── Step 4: One-click fix ──────────────────────────
-            st.markdown(
-                '<div style="font-family:var(--mono);font-size:0.62rem;'
-                'color:var(--muted);margin:12px 0 6px">Step 4 — Quick Fix</div>',
-                unsafe_allow_html=True,
-            )
-            fa, fb = st.columns(2)
-            if fa.button("Connect Automatically",
-                         use_container_width=True, key="quick_relogin",
-                         disabled=not (bool(_env.get("host")) and bool(_env.get("username")) and bool(_env.get("password")))):
-                with st.spinner("Logging in…"):
-                    ok, msg, tok = nw_login(_env["host"], _env["username"], _env["password"])
-                if ok:
-                    st.session_state.nw_token    = tok
-                    st.session_state.nw_verified = True
-                    st.session_state.nw_msg      = msg
-                    ok2, items2, diag2 = nw_fetch_incidents()
-                    if ok2:
-                        st.session_state.incidents  = items2
-                        st.session_state.last_fetch = datetime.now()
-                        db_upsert_incidents(items2)
-                    st.rerun()
-                else:
-                    st.error(f"{msg}")
-
-            if fb.button("Reset",
-                         use_container_width=True, key="clear_tests"):
-                for k in ["_test_ping", "_test_auth", "_test_inc"]:
-                    st.session_state.pop(k, None)
-                st.rerun()
-    else:
-        col_sev, col_status, col_recent = st.columns([1.1, 1.1, 2.2])
-
-        # ── Severity bars ──────────────────────────────────────
-        with col_sev:
-            st.markdown(
-                '<div style="font-family:var(--mono);font-size:0.65rem;'
-                'color:var(--muted);letter-spacing:2px;margin-bottom:12px">'
-                'Alert Priority Breakdown</div>', unsafe_allow_html=True,
-            )
-            sev_total = sum(by_sev.values()) or 1
-            for s in ["CRITICAL","HIGH","MEDIUM","LOW"]:  # shown with friendly labels below
-                cnt   = by_sev.get(s, 0)
-                pct   = cnt / sev_total
-                color = SEV_COLORS[s]
-                st.markdown(
-                    f'<div style="margin:8px 0">'
-                    f'<div style="display:flex;justify-content:space-between;'
-                    f'font-family:var(--mono);font-size:0.63rem;margin-bottom:4px">'
-                    f'<span style="color:{color}">{{"CRITICAL":"Critical","HIGH":"High","MEDIUM":"Medium","LOW":"Low"}}.get(s, s)</span>'
-                    f'<span style="color:var(--muted)">{cnt}</span></div>'
-                    f'<div style="background:#0A1420;border-radius:3px;height:7px">'
-                    f'<div style="width:{pct*100:.1f}%;height:100%;border-radius:3px;'
-                    f'background:{color};box-shadow:0 0 8px {color}50"></div>'
-                    f'</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-        # ── Status bars ────────────────────────────────────────
-        with col_status:
-            st.markdown(
-                '<div style="font-family:var(--mono);font-size:0.65rem;'
-                'color:var(--muted);letter-spacing:2px;margin-bottom:12px">'
-                'Current Status</div>', unsafe_allow_html=True,
-            )
-            status_counts = Counter(
-                str(i.get("status") or "UNKNOWN").upper() for i in incidents
-            )
-            status_total = sum(status_counts.values()) or 1
-            for status, cnt in sorted(status_counts.items(), key=lambda x: -x[1])[:6]:
-                pct   = cnt / status_total
-                color = STATUS_COLORS.get(status, "#3A607A")
-                st.markdown(
-                    f'<div style="margin:8px 0">'
-                    f'<div style="display:flex;justify-content:space-between;'
-                    f'font-family:var(--mono);font-size:0.63rem;margin-bottom:4px">'
-                    f'<span style="color:{color}">{status}</span>'
-                    f'<span style="color:var(--muted)">{cnt}</span></div>'
-                    f'<div style="background:#0A1420;border-radius:3px;height:7px">'
-                    f'<div style="width:{pct*100:.1f}%;height:100%;border-radius:3px;'
-                    f'background:{color}"></div>'
-                    f'</div></div>',
-                    unsafe_allow_html=True,
-                )
-
-        # ── Latest incidents feed ──────────────────────────────
-        with col_recent:
-            st.markdown(
-                '<div style="font-family:var(--mono);font-size:0.65rem;'
-                'color:var(--muted);letter-spacing:2px;margin-bottom:12px">'
-                'Most Recent Alerts</div>', unsafe_allow_html=True,
-            )
-            for inc in incidents[:10]:
-                sev     = normalise_sev(inc)
-                color   = SEV_COLORS.get(sev, "#3A607A")
-                title   = (inc.get("title") or inc.get("name") or "Untitled")[:58]
-                created = str(inc.get("created") or inc.get("createdDate") or "")[:16]
-                st.markdown(
-                    f'<div style="display:flex;align-items:center;gap:10px;'
-                    f'padding:7px 12px;margin:3px 0;background:#060C16;'
-                    f'border-radius:5px;border-left:3px solid {color}">'
-                    f'<span style="font-family:var(--mono);font-size:0.58rem;'
-                    f'color:{color};min-width:52px">{sev[:4]}</span>'
-                    f'<span style="flex:1;font-size:0.8rem">{title}</span>'
-                    f'<span style="font-family:var(--mono);font-size:0.58rem;'
-                    f'color:var(--muted);white-space:nowrap">{created}</span>'
-                    f'</div>',
-                    unsafe_allow_html=True,
-                )
-
-        st.markdown("---")
-
-        # ── Assignee breakdown ─────────────────────────────────
-        st.markdown(
-            '<div style="font-family:var(--mono);font-size:0.65rem;'
-            'color:var(--muted);letter-spacing:2px;margin-bottom:12px">'
-            'Team Workload</div>', unsafe_allow_html=True,
-        )
-        assignee_counts = Counter(
-            str(i.get("assignee") or "Unassigned") for i in incidents
-        )
-        top_assignees = assignee_counts.most_common(6)
-        if top_assignees:
-            max_a  = top_assignees[0][1]
-            cols_a = st.columns(len(top_assignees))
-            for idx, (name, cnt) in enumerate(top_assignees):
-                pct = cnt / max_a
-                with cols_a[idx]:
-                    st.markdown(
-                        f'<div class="stat-mini">'
-                        f'<div class="val">{cnt}</div>'
-                        f'<div class="lbl">{name[:12]}</div>'
-                        f'<div style="background:#0A1420;border-radius:2px;'
-                        f'height:4px;margin-top:7px">'
-                        f'<div style="width:{pct*100:.0f}%;height:100%;'
-                        f'border-radius:2px;background:var(--accent)"></div>'
-                        f'</div></div>',
-                        unsafe_allow_html=True,
-                    )
-
 
 # ─────────────────────────────────────────────────────────────
 # TAB 2 — INCIDENTS
@@ -3344,20 +2981,12 @@ with tab_inc:
         'Click any alert to see full details.</div>',
         unsafe_allow_html=True,
     )
-    col_filter, col_sync, col_info = st.columns([1.4, 1.2, 5])
+    col_filter, col_info = st.columns([1.6, 5])
 
     sev_filter = col_filter.selectbox(
         "Filter by priority", ["ALL","CRITICAL","HIGH","MEDIUM","LOW"],
         label_visibility="visible",
     )
-    if col_sync.button("⬆ Sync to Knowledge Base", use_container_width=True):
-        if not incidents:
-            st.warning("No incidents loaded yet.")
-        elif st.session_state.chroma_col is None:
-            st.error("Connect ChromaDB first (sidebar).")
-        else:
-            n, msg = chroma_sync(incidents)
-            st.success(msg) if n else st.error(msg)
 
     last = st.session_state.last_fetch
     if last:
@@ -3595,34 +3224,40 @@ with tab_inc:
             assignee = inc.get("assignee") or "Unassigned"
             alerts   = inc.get("alertCount") or inc.get("numAlerts") or "—"
 
-            # Aegis case header (ui_components) — mockup "Case Workspace" style
-            try:
-                _sev_icon = {"CRITICAL": "", "HIGH": "", "MEDIUM": "", "LOW": ""}.get(sev, "")
-                st.markdown(_ui.case_header(
-                    inc_id, title, sev=sev, status=status,
-                    subtitle=(f"{alerts} alert(s)" if str(alerts) != "—" else "NetWitness incident"),
-                    metas=[("Owner", assignee), ("Created", created), ("Alerts", str(alerts))],
-                    icon=_sev_icon,
-                ), unsafe_allow_html=True)
-            except Exception:
-                st.markdown(
-                    f'<div class="card card-{sev.lower()}">'
-                    f'<span class="badge badge-{sev.lower()}">{sev}</span> '
-                    f'<strong>{title}</strong> · <code>{inc_id}</code></div>',
-                    unsafe_allow_html=True,
-                )
-            b1, b2, b3, b4, _ = st.columns([0.9, 0.7, 0.9, 1.05, 4.05])
-            if b1.button("Triage", key=f"chat_{inc_id}"):
+            _sev_icon = {"CRITICAL": "", "HIGH": "", "MEDIUM": "", "LOW": ""}.get(sev, "")
+            with st.container(border=True):
+                col_left, col_right = st.columns([3.4, 2.6])
+                with col_left:
+                    st.markdown(case_header_left(
+                        inc_id, title, sev=sev, status=status,
+                        subtitle=(f"{alerts} alert(s)" if str(alerts) != "—" else "NetWitness incident"),
+                        icon=_sev_icon,
+                    ), unsafe_allow_html=True)
+                with col_right:
+                    st.markdown(case_header_right(
+                        metas=[("Owner", assignee), ("Created", created), ("Alerts", str(alerts))]
+                    ), unsafe_allow_html=True)
+                    b1, b2, b3, b4 = st.columns([1, 0.7, 0.9, 1.1])
+                    with b1:
+                        do_triage = st.button("Triage", key=f"chat_{inc_id}", use_container_width=True)
+                    with b2:
+                        do_json = st.button("{ }", key=f"json_{inc_id}", use_container_width=True)
+                    with b3:
+                        do_map = st.button("Map", key=f"map_{inc_id}", use_container_width=True)
+                    with b4:
+                        do_ovw = st.button("Overview", key=f"ovw_{inc_id}", use_container_width=True)
+
+            if do_triage:
                 st.session_state.chat_incident       = inc
                 st.session_state.pending_auto_triage = True
                 st.session_state.jump_to_ask_tab     = True
                 st.rerun()
-            if b2.button("{ }", key=f"json_{inc_id}"):
+            if do_json:
                 with st.expander(f"JSON — {inc_id}", expanded=True):
                     st.json(inc)
             # Case overview — Aegis key-findings + context grid from real data
             # (distilled alert behaviours + unified triage verdict). Guarded.
-            if b4.button("Overview", key=f"ovw_{inc_id}"):
+            if do_ovw:
                 with st.expander(f"Case overview — {inc_id}", expanded=True):
                     try:
                         _findings, _verdict = _build_case_findings(inc)
@@ -3675,7 +3310,7 @@ with tab_inc:
             # Incident Map — deterministic entity graph (Stage 1) plus
             # autonomous corpus expansion (Stage 2). Read-only; guarded so a
             # map failure can never break the incident list.
-            if b3.button("Map", key=f"map_{inc_id}"):
+            if do_map:
                 with st.expander(f"Incident Map — {inc_id}", expanded=True):
                     try:
                         from incident_map import build_incident_map, to_dot, map_caption
@@ -4822,103 +4457,6 @@ with tab_chat:
             st.session_state.chat_history = []
             st.rerun()
 
-
-# ─────────────────────────────────────────────────────────────
-# TAB 4 — CHROMADB
-# ─────────────────────────────────────────────────────────────
-with tab_chroma:
-    st.markdown(
-        '<div class="info-box"><div class="title"> Knowledge Base</div>'
-        'This is where the AI stores its understanding of your security alerts. '
-        'Once synced, the AI can answer questions much more accurately. '
-        'Use the search box below to find specific incidents by description.</div>',
-        unsafe_allow_html=True,
-    )
-    if st.session_state.chroma_col is None:
-        st.warning("The Knowledge Base isn't connected yet. Connect it from the left panel under Knowledge Base.")
-    else:
-        col = st.session_state.chroma_col
-        st.markdown(f"### Knowledge Base — {col.count()} incidents indexed")
-        st.markdown("---")
-
-        st.markdown(
-            '<div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);'
-            'letter-spacing:2px;margin-bottom:8px">■ SEMANTIC SEARCH</div>',
-            unsafe_allow_html=True,
-        )
-        sq, sn = st.columns([5,1])
-        query = sq.text_input("Query", placeholder="e.g. ransomware lateral movement C2",
-                               label_visibility="collapsed")
-        top_n = sn.number_input("N", 1, 20, 5, label_visibility="collapsed")
-
-        if st.button("Search"):
-            st.session_state.search_results = chroma_search(query, n=top_n)
-
-        for r in st.session_state.search_results:
-            m = r["meta"]
-            st.markdown(
-                f'<div style="background:#060C16;border:1px solid var(--border);'
-                f'border-radius:5px;padding:10px 14px;margin:4px 0;'
-                f'font-family:var(--mono);font-size:0.7rem">'
-                f'<span class="badge badge-info">{r["score"]}% match</span>'
-                f'&nbsp;<strong>{r["id"]}</strong>'
-                f'&nbsp;<span style="color:var(--muted)">'
-                f'sev:{m.get("severity","?")} · {m.get("status","?")}</span><br>'
-                f'<span style="font-size:0.67rem;color:var(--text)">'
-                f'{r["text"][:220]}…</span></div>',
-                unsafe_allow_html=True,
-            )
-
-        st.markdown("---")
-        st.markdown(
-            '<div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);'
-            'letter-spacing:2px;margin-bottom:8px">■ ACTIONS</div>',
-            unsafe_allow_html=True,
-        )
-        a1, a2 = st.columns(2)
-
-        if a1.button("⬆ Sync Incidents", use_container_width=True):
-            if not incidents:
-                st.warning("No incidents loaded yet.")
-            else:
-                n, msg = chroma_sync(incidents)
-                st.success(msg) if n else st.error(msg)
-                st.rerun()
-
-        if a2.button("Wipe & Reset", use_container_width=True):
-            try:
-                st.session_state.chroma_client.delete_collection("soc_incidents")
-                chroma_connect("./chroma_db")
-                st.success("Collection wiped and recreated.")
-                st.rerun()
-            except Exception as e:
-                st.error(str(e))
-
-        st.markdown("---")
-        st.markdown(
-            '<div style="font-family:var(--mono);font-size:0.62rem;color:var(--muted);'
-            'letter-spacing:2px;margin-bottom:8px">■ LANGCHAIN WIRING</div>',
-            unsafe_allow_html=True,
-        )
-        st.code("""
-# Replace chat_respond() body with your chain:
-
-from langchain_community.vectorstores import Chroma
-from langchain_anthropic import ChatAnthropic
-from langchain.chains import RetrievalQA
-
-vectorstore = Chroma(
-    client=st.session_state.chroma_client,
-    collection_name="soc_incidents",
-    embedding_function=your_embedder,   # must match sync-time embedder
-)
-llm   = ChatAnthropic(model="claude-sonnet-4-20250514")
-chain = RetrievalQA.from_chain_type(
-    llm=llm,
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 5}),
-)
-return chain.invoke(user_msg)["result"]
-        """, language="python")
 
 
 # ─────────────────────────────────────────────────────────────
