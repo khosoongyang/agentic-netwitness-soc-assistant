@@ -320,6 +320,15 @@ def markdown_to_blocks(markdown_text: Any) -> list[dict[str, Any]]:
             bullets.append({"text": bullet.group(1), "level": level})
             i += 1
             continue
+        # No blockquote rendering exists in this report's exporters — a stray
+        # "> " marker (list-style notes, or an LLM narrative line that starts
+        # with one) always reads as a plain bullet, never a raw ">" glyph.
+        quote = re.match(r"^>\s*(.*)$", line)
+        if quote:
+            _flush_paragraph(blocks, paragraph)
+            bullets.append({"text": quote.group(1), "level": 0})
+            i += 1
+            continue
         table, next_i = parse_pipe_table(lines, i)
         if table:
             _flush_paragraph(blocks, paragraph)

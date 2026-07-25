@@ -41,7 +41,7 @@ try:
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.lib import colors
-    from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import Image, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 except Exception:  # pragma: no cover
     A4 = None
     getSampleStyleSheet = None
@@ -50,6 +50,7 @@ except Exception:  # pragma: no cover
     Paragraph = None
     SimpleDocTemplate = None
     Image = None
+    PageBreak = None
     Spacer = None
     Table = None
     TableStyle = None
@@ -553,7 +554,8 @@ def _apply_report_font(run: Any, name: str = "Georgia") -> None:
         pass
 
 
-def _set_cell_text(cell: Any, text: Any, *, bold: bool = False, font_size: int = 10, color: str = "1f2937") -> None:
+def _set_cell_text(cell: Any, text: Any, *, bold: bool = False, font_size: int = 10, color: str = "1f2937",
+                   align: str | None = None, valign: str | None = None) -> None:
     cell.text = ""
     para = cell.paragraphs[0]
     run = para.add_run(str(text or ""))
@@ -566,8 +568,28 @@ def _set_cell_text(cell: Any, text: Any, *, bold: bool = False, font_size: int =
             run.font.color.rgb = RGBColor.from_string(color.replace("#", ""))
         except Exception:
             pass
+    if WD_ALIGN_PARAGRAPH is not None and align:
+        para.alignment = {"left": WD_ALIGN_PARAGRAPH.LEFT, "center": WD_ALIGN_PARAGRAPH.CENTER,
+                          "right": WD_ALIGN_PARAGRAPH.RIGHT}.get(align, WD_ALIGN_PARAGRAPH.LEFT)
     if WD_CELL_VERTICAL_ALIGNMENT is not None:
-        cell.vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
+        cell.vertical_alignment = (WD_CELL_VERTICAL_ALIGNMENT.CENTER if valign == "center"
+                                   else WD_CELL_VERTICAL_ALIGNMENT.TOP)
+
+
+def _set_column_widths(table: Any, widths_in: list[float]) -> None:
+    """Force fixed column widths (inches). Word can ignore table.columns[i].width
+    unless every cell in that column is also given the same width, so both are set."""
+    if Inches is None:
+        return
+    table.autofit = False
+    table.allow_autofit = False
+    for row in table.rows:
+        for idx, width in enumerate(widths_in):
+            if idx < len(row.cells):
+                row.cells[idx].width = Inches(width)
+    for idx, width in enumerate(widths_in):
+        if idx < len(table.columns):
+            table.columns[idx].width = Inches(width)
 
 
 def _style_table(table: Any, *, header_fill: str = "EAF2FB", first_col_fill: str | None = None) -> None:
@@ -689,7 +711,9 @@ def _docx_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inc
 
     for block in _strip_duplicate_leading_heading(blocks or [], title):
         btype = block.get("type") if isinstance(block, dict) else None
-        if btype == "heading":
+        if btype == "page_break":
+            doc.add_page_break()
+        elif btype == "heading":
             level = int(block.get("level") or 2)
             para = doc.add_paragraph()
             run = para.add_run(str(block.get("text") or ""))
@@ -737,15 +761,28 @@ def _docx_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inc
             rows = block.get("rows") or []
             if not columns:
                 continue
+            is_step_checklist = (len(columns) == 2
+                                 and columns[0].strip().lower() == "step"
+                                 and columns[1].strip().lower() == "analyst action")
             table = doc.add_table(rows=1, cols=len(columns))
             for idx, col in enumerate(columns):
-                _set_cell_text(table.rows[0].cells[idx], col, bold=True, font_size=10, color="1E3A8A")
+                _set_cell_text(table.rows[0].cells[idx], col, bold=True, font_size=10, color="1E3A8A",
+                               align="center" if (is_step_checklist and idx == 0) else None)
             for row in rows:
                 cells = table.add_row().cells
                 row_values = list(row or []) + [""] * (len(columns) - len(row or []))
                 for idx, value in enumerate(row_values[:len(columns)]):
-                    _set_cell_text(cells[idx], value, bold=(idx == 0 and len(columns) == 2), font_size=9, color="172033")
-            _style_table(table, header_fill="EAF2FB", first_col_fill="F3F6FA" if len(columns) == 2 else None)
+                    _set_cell_text(cells[idx], value, bold=(idx == 0 and len(columns) == 2 and not is_step_checklist),
+                                  font_size=9, color="172033",
+                                  align="center" if (is_step_checklist and idx == 0) else None,
+                                  valign="center" if (is_step_checklist and idx == 0) else None)
+            _style_table(table, header_fill="EAF2FB",
+                        first_col_fill="F3F6FA" if (len(columns) == 2 and not is_step_checklist) else None)
+            if is_step_checklist:
+                # Narrow, centered Step column (~10% of the usable page width);
+                # Analyst Action gets the rest. Matches the page's 0.7in side
+                # margins on an 8.5in page (7.1in usable width).
+                _set_column_widths(table, [0.7, 6.4])
             doc.add_paragraph("")
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(path)
@@ -820,7 +857,9 @@ def _pdf_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inci
         if not isinstance(block, dict):
             continue
         btype = block.get("type")
-        if btype == "heading":
+        if btype == "page_break":
+            story.append(PageBreak())
+        elif btype == "heading":
             level = int(block.get("level") or 2)
             style_name = "Heading1" if level <= 1 else ("Heading2" if level == 2 else "Heading3")
             story.extend([Spacer(1, 0.08*inch), _pdf_para(block.get("text") or "", styles[style_name])])
@@ -848,14 +887,30 @@ def _pdf_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inci
             rows = block.get("rows") or []
             if not columns:
                 continue
-            data = [[_pdf_para(c, styles["Heading5"]) for c in columns]]
-            for row in rows:
-                values = list(row or []) + [""] * (len(columns) - len(row or []))
-                data.append([_pdf_para(v, styles["BodyText"]) for v in values[:len(columns)]])
+            is_step_checklist = (len(columns) == 2
+                                 and columns[0].strip().lower() == "step"
+                                 and columns[1].strip().lower() == "analyst action")
+            if is_step_checklist and ParagraphStyle is not None:
+                centered_header = ParagraphStyle("StepHeader", parent=styles["Heading5"], alignment=1)
+                centered_body = ParagraphStyle("StepBody", parent=styles["BodyText"], alignment=1)
+                data = [[_pdf_para(columns[0], centered_header), _pdf_para(columns[1], styles["Heading5"])]]
+                for row in rows:
+                    values = list(row or []) + [""] * (2 - len(row or []))
+                    data.append([_pdf_para(values[0], centered_body), _pdf_para(values[1], styles["BodyText"])])
+            else:
+                data = [[_pdf_para(c, styles["Heading5"]) for c in columns]]
+                for row in rows:
+                    values = list(row or []) + [""] * (len(columns) - len(row or []))
+                    data.append([_pdf_para(v, styles["BodyText"]) for v in values[:len(columns)]])
             usable_width = 7.0 * inch
-            col_width = usable_width / max(1, len(columns))
-            table = Table(data, repeatRows=1, hAlign="LEFT", colWidths=[col_width] * len(columns))
-            table.setStyle(TableStyle([
+            if is_step_checklist:
+                # Narrow, centered Step column (~10% of the usable width);
+                # Analyst Action gets the rest.
+                col_widths = [usable_width * 0.10, usable_width * 0.90]
+            else:
+                col_widths = [usable_width / max(1, len(columns))] * len(columns)
+            table = Table(data, repeatRows=1, hAlign="LEFT", colWidths=col_widths)
+            table_style_cmds = [
                 ("GRID", (0,0), (-1,-1), 0.35, colors.HexColor("#9AA4B2")),
                 ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#E8EEF6")),
                 ("VALIGN", (0,0), (-1,-1), "TOP"),
@@ -863,7 +918,10 @@ def _pdf_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inci
                 ("RIGHTPADDING", (0,0), (-1,-1), 5),
                 ("TOPPADDING", (0,0), (-1,-1), 4),
                 ("BOTTOMPADDING", (0,0), (-1,-1), 4),
-            ]))
+            ]
+            if is_step_checklist:
+                table_style_cmds.append(("VALIGN", (0, 0), (0, -1), "MIDDLE"))
+            table.setStyle(TableStyle(table_style_cmds))
             story.extend([table, Spacer(1, 0.15*inch)])
     path.parent.mkdir(parents=True, exist_ok=True)
     SimpleDocTemplate(str(path), pagesize=A4, rightMargin=0.45*inch, leftMargin=0.45*inch, topMargin=0.5*inch, bottomMargin=0.5*inch).build(story)
@@ -959,32 +1017,39 @@ def export_section_pdf(output_dir: Path, section_key: str, incident_id: str | No
     return {"success": True, "manifest": manifest, "section": section, "path": str(path), "download_url": f"/api/reports/{section_key}/download/pdf", "message": "PDF export ready from confirmed Word document"}
 
 
-def _combined_blocks(output_dir: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
-    blocks: list[dict[str, Any]] = []
-    for key in manifest.get("section_order") or CORE_REPORT_KEYS:
-        section = (manifest.get("sections") or {}).get(key)
-        if not section:
-            continue
-        title = section.get("title") or key.replace("_", " ").title()
-        section_blocks = repair_pipe_tables_in_blocks(load_blocks(section.get("structured_confirmed_path") or section.get("structured_draft_path")))
-        if not section_blocks:
-            text = _read(section.get("confirmed_path") or section.get("draft_path"))
-            section_blocks = blocks_from_text(text)
-        blocks.append({"type": "heading", "level": 1, "text": title})
-        blocks.extend(_strip_duplicate_leading_heading(section_blocks, title))
-    return blocks
+def _final_report_blocks(manifest: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+    """Blocks for the Final Incident Report export.
+
+    This is the standalone output of incident_report_template.md.j2 —
+    the dedicated template already covers executive summary, technical
+    findings, SOC analyst review guidance, conclusions and appendices in
+    one coherent narrative. It is exported as-is, NOT stitched together
+    with the separately-generated Executive Summary / Technical Findings /
+    SOC Analyst Review section reports (those stay independent documents)."""
+    section = (manifest.get("sections") or {}).get("final_incident_report")
+    if not section:
+        raise KeyError("final_incident_report section not found in manifest")
+    title = section.get("title") or "Final Incident Report"
+    section_blocks = repair_pipe_tables_in_blocks(
+        load_blocks(section.get("structured_confirmed_path") or section.get("structured_draft_path")))
+    if not section_blocks:
+        text = _read(section.get("confirmed_path") or section.get("draft_path"))
+        section_blocks = blocks_from_text(text)
+    return _strip_duplicate_leading_heading(section_blocks, title), title
 
 
 def export_docx(output_dir: Path, incident_id: str | None = None) -> dict[str, Any]:
     manifest = load_manifest(output_dir, incident_id)
     if not manifest:
         raise FileNotFoundError("No report manifest found. Run Reporting Agent first.")
-    if manifest.get("draft_reports"):
-        raise PermissionError("All reports must be confirmed before combined DOCX export.")
+    section = (manifest.get("sections") or {}).get("final_incident_report")
+    if not section:
+        raise KeyError("final_incident_report section not found in manifest")
+    _confirmed_required(section)
     incident_id = manifest.get("incident_id") or "INC-0001"
-    blocks = _combined_blocks(output_dir, manifest)
+    blocks, title = _final_report_blocks(manifest)
     path = exports_dir(output_dir, incident_id) / "combined_incident_report.docx"
-    _docx_write_blocks(path, f"Combined Cybersecurity Incident Report - {incident_id}", blocks, incident_id, manifest)
+    _docx_write_blocks(path, f"{title} - {incident_id}", blocks, incident_id, manifest)
     manifest.setdefault("exports", {})["docx"] = {"path": str(path), "relative_path": _rel(output_dir, path), "created_at": utc_now()}
     save_manifest(output_dir, manifest)
     return {"success": True, "path": str(path), "manifest": manifest, "download_url": "/api/reports/download/docx"}
@@ -994,8 +1059,10 @@ def export_pdf(output_dir: Path, incident_id: str | None = None) -> dict[str, An
     manifest = load_manifest(output_dir, incident_id)
     if not manifest:
         raise FileNotFoundError("No report manifest found. Run Reporting Agent first.")
-    if manifest.get("draft_reports"):
-        raise PermissionError("All reports must be confirmed before combined PDF export.")
+    section = (manifest.get("sections") or {}).get("final_incident_report")
+    if not section:
+        raise KeyError("final_incident_report section not found in manifest")
+    _confirmed_required(section)
     incident_id = manifest.get("incident_id") or "INC-0001"
     docx_result = export_docx(output_dir, incident_id=incident_id)
     docx_path = Path(docx_result["path"])
@@ -1004,8 +1071,9 @@ def export_pdf(output_dir: Path, incident_id: str | None = None) -> dict[str, An
         from reporting.template_document_exporter import convert_docx_to_pdf
         convert_docx_to_pdf(docx_path, path)
     except Exception:
-        blocks = _combined_blocks(output_dir, manifest)
-        _pdf_write_blocks(path, f"Combined Cybersecurity Incident Report - {incident_id}", blocks, incident_id, manifest)
+        manifest = load_manifest(output_dir, incident_id)
+        blocks, title = _final_report_blocks(manifest)
+        _pdf_write_blocks(path, f"{title} - {incident_id}", blocks, incident_id, manifest)
     manifest = load_manifest(output_dir, incident_id)
     manifest.setdefault("exports", {})["pdf"] = {"path": str(path), "relative_path": _rel(output_dir, path), "created_at": utc_now(), "source_docx": str(docx_path)}
     save_manifest(output_dir, manifest)
