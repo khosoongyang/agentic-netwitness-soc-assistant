@@ -583,8 +583,7 @@ def supports_temperature(model_name: str) -> bool:
 
 def _invoke_openai_chat(client: Any, selected: str, prompt: str) -> str:
     """Classic chat-completions call. Used for OpenAI-compatible endpoints
-    (e.g. HF/TGI serving Foundation-Sec) that do not implement the newer
-    Responses API."""
+    that do not implement the newer Responses API."""
     request_args: dict[str, Any] = {
         "model": selected,
         "messages": [{"role": "user", "content": prompt}],

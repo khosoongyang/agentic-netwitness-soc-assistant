@@ -84,10 +84,13 @@ def direct_file_retrieval(context: dict[str, Any], kb_dir: Path, max_chunks: int
 
 def chromadb_retrieval(context: dict[str, Any], kb_dir: Path, max_chunks: int = 5) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     import chromadb
+    from chromadb.utils import embedding_functions
 
     _required, excluded = _required_files_for_context(context)
     client = chromadb.PersistentClient(path=str(settings.CHROMA_DB_PATH))
-    collection = client.get_or_create_collection(settings.CHROMA_COLLECTION_NAME)
+    ef = embedding_functions.OpenAIEmbeddingFunction(
+        api_key=settings.OPENAI_API_KEY, model_name="text-embedding-3-small")
+    collection = client.get_or_create_collection(settings.CHROMA_COLLECTION_NAME, embedding_function=ef)
     query = (
         f"Scenario: {context.get('likely_scenario')} Severity: "
         f"{context.get('severity', {}).get('label') if isinstance(context.get('severity'), dict) else context.get('severity')} "

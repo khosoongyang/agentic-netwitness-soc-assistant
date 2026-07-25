@@ -977,9 +977,14 @@ class CaseworkStore:
         if filters.get("stage"):
             clauses.append("current_stage = ?")
             values.append(str(filters["stage"]))
+        if filters.get("severity"):
+            clauses.append("LOWER(severity) = ?")
+            values.append(str(filters["severity"]).lower())
         if filters.get("owner") == "me":
             clauses.append("LOWER(owner) = ?")
             values.append("soong yang")
+        elif _norm_status(filters.get("owner")) == "unassigned":
+            clauses.append("LOWER(COALESCE(owner, '')) IN ('', 'unassigned', 'none')")
         elif filters.get("owner"):
             clauses.append("LOWER(owner) = ?")
             values.append(str(filters["owner"]).lower())
@@ -1070,16 +1075,21 @@ class CaseworkStore:
             rows = con.execute("SELECT * FROM activity WHERE ticket_id=? ORDER BY id DESC LIMIT ?", (ticket_id, limit)).fetchall()
         return [self._row_activity(row) for row in rows]
 
-    def dashboard_summary(self) -> dict[str, Any]:
+    def dashboard_summary(self, owner: str | None = None) -> dict[str, Any]:
         tickets = self.list_tickets({"limit": 500})
         alerts = self.list_alerts({"limit": 500})
+        if owner:
+            owner_key = _norm_status(owner)
+            tickets = [t for t in tickets if _norm_status(t.get("owner")) == owner_key]
         open_tickets = [t for t in tickets if _norm_status(t["status"]) != "closed"]
         pending_correlation = self.list_correlation_recommendations({"status": "pending", "limit": 1000})
         return {
             "pending_correlation": len(pending_correlation),
             "new_alerts": len([a for a in alerts if _norm_status(a.get("status")) in {"new", "open"}]),
             "open_tickets": len(open_tickets),
+            "critical_cases": len([t for t in open_tickets if _norm_status(t.get("severity")) == "critical"]),
             "pending_approval": len([t for t in tickets if t.get("current_stage") in {"triage_approval", "investigation_approval", "investigation_evidence_decision", "soc_analyst_review", "analyst_approval"} or _norm_status(t.get("status")) in {"awaiting_approval", "awaiting_soc_review"}]),
+            "unassigned_cases": len([t for t in open_tickets if _norm_status(t.get("owner")) in {"", "unassigned", "none"}]),
             "multi_alert_cases": len([t for t in tickets if int(t.get("alert_count") or 0) > 1]),
             "closed_cases": len([t for t in tickets if _norm_status(t.get("status")) == "closed"]),
             "stage_counts": {
@@ -1094,6 +1104,7 @@ class CaseworkStore:
                 "soc_analyst_review": len([t for t in tickets if t.get("current_stage") == "soc_analyst_review"]),
                 "case_closure": len([t for t in tickets if t.get("current_stage") == "case_closure" or _norm_status(t.get("status")) == "closed"]),
             },
+            "scope": {"owner": owner or None, "ticket_count": len(tickets)},
         }
 
     def prepare_agent_inputs(self, ticket_id: str, inputs_dir: Path) -> dict[str, Any]:

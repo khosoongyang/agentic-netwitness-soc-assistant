@@ -352,7 +352,10 @@ class ChromaIncidentVectorStore(BaseVectorIndex):
         import chromadb
         from chromadb.utils import embedding_functions
         self.client = chromadb.PersistentClient(path=db_path)
-        self.default_ef = embedding_functions.DefaultEmbeddingFunction()
+        self.default_ef = embedding_functions.OpenAIEmbeddingFunction(
+            api_key=os.environ.get("OPENAI_API_KEY", ""),
+            model_name="text-embedding-3-small",
+        )
         self.collection = self.client.get_or_create_collection(
             name="soc_incidents",
             embedding_function=self.default_ef,

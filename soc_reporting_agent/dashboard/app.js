@@ -12,6 +12,9 @@ const state = {
   integrations: {},
   exportStatus: {},
   ticketTab: "overview",
+  timelineSort: "oldest",
+  timelineExpandedIndex: null,
+  timelineFilters: { kind: "all", source: "all", severity: "all", entity: "all", tactic: "all" },
   expandedAgentKey: null,
   selectedAgentKey: "parsing",
   collapsedPanels: {},
@@ -25,6 +28,7 @@ const state = {
   agentRunGuardSequence: 0,
   netwitnessAutoConnectAttempted: false,
   lastNetWitnessSync: null,
+  currentUser: document.querySelector(".profile-menu strong")?.textContent?.trim() || "SOC Analyst",
 };
 
 const navGroups = [
@@ -408,7 +412,9 @@ async function refresh() {
   try {
     const selected = state.selectedTicket?.ticket_id || "";
     const ticketRoute = isTicketRoute();
-    const dash = await api(`/api/dashboard${selected ? `?ticket_id=${encodeURIComponent(selected)}` : ""}`);
+    const dashboardParams = new URLSearchParams({ analyst: state.currentUser });
+    if (selected) dashboardParams.set("ticket_id", selected);
+    const dash = await api(`/api/dashboard?${dashboardParams.toString()}`);
     if (dash.success) {
       setApiError("");
       state.summary = dash.summary || {};
@@ -470,6 +476,43 @@ function workflowCard(label, key, count) {
   </div>`;
 }
 
+function operationalSummaryCards() {
+  const summary = state.summary || {};
+  const cards = [
+    {
+      label: "Critical cases",
+      value: summary.critical_cases,
+      detail: "Requires immediate attention",
+      tone: "critical",
+      route: "all-tickets",
+      params: { severity: "Critical" },
+    },
+    {
+      label: "Approval required",
+      value: summary.pending_approval,
+      detail: "Awaiting SOC analyst approval",
+      tone: "approval",
+      route: "pending-approval",
+      params: { view: "pending_approval" },
+    },
+    {
+      label: "Unassigned cases",
+      value: summary.unassigned_cases,
+      detail: "Waiting for an owner",
+      tone: "unassigned",
+      route: "all-tickets",
+      params: { owner: "Unassigned" },
+    },
+  ];
+  return `<section class="operational-summary" aria-label="Case attention summary">
+    ${cards.map(card => `<button class="operational-summary-card ${card.tone}" data-route="${card.route}" data-params='${esc(JSON.stringify(card.params))}'>
+      <span>${esc(card.label)}</span>
+      <strong>${esc(card.value ?? 0)}</strong>
+      <small>${esc(card.detail)}</small>
+    </button>`).join("")}
+  </section>`;
+}
+
 function ticketRows(tickets = state.tickets, emptyMessage = "No tickets match this view.") {
   if (!tickets.length) return `<tr><td colspan="8" class="empty-cell">${esc(emptyMessage)}</td></tr>`;
   return tickets.map(t => `
@@ -517,6 +560,7 @@ function dashboard() {
         ${metricCard("multi", "Cases with Multiple Alerts", s.multi_alert_cases, "correlated cases", "all-tickets", { multi: "1" }, "green")}
         ${metricCard("closed", "Closed Cases", s.closed_cases, "completed cases", "closed-cases", { view: "closed" }, "purple")}
       </div>
+      ${socPipelineCycle(s)}
       <div class="workflow-row">
         ${workflowCard("To Parse", "parsing_normalisation", s.stage_counts?.parsing_normalisation)}
         ${workflowCard("To Triage", "triage", s.stage_counts?.triage)}
@@ -1208,40 +1252,80 @@ function renderAgentWorkspace(ticket) {
 
   if (isReporting) {
     return `<div class="agent-workspace-container reporting-agent-workspace-mode">
-      ${renderAgentWorkspaceHeader(ticket)}
-      ${investigationWorkflow(ticket)}
-      ${orchestrationDecisionPanel(ticket)}
-      ${renderAgentStatusCards(ticket)}
-      <div class="agent-main-grid reporting-selected-grid">
-        <div class="agent-left-column reporting-review-column">
+      <div class="incident-workspace-layout reporting-selected-grid">
+        <main class="incident-workspace-main">
+          ${renderAgentWorkspaceHeader(ticket)}
+          ${operationalSummaryCards()}
+          ${investigationWorkflow(ticket)}
+          ${orchestrationDecisionPanel(ticket)}
+          ${renderAgentStatusCards(ticket)}
           ${renderSelectedAgentExecutionPanel(ticket)}
-          ${renderSocReportReviewWorkspace(ticket, { fullWidth: true })}
-        </div>
-        <aside class="agent-right-column reporting-side-tools">
           ${renderSelectedAgentOutputPanel(ticket)}
+          ${renderSocReportReviewWorkspace(ticket, { fullWidth: true })}
+          ${renderAgentLiveActivityLog(ticket)}
+        </main>
+        <aside class="incident-aegis-rail">
           ${renderAskAgentPanel(ticket)}
         </aside>
       </div>
-      ${renderAgentLiveActivityLog(ticket)}
     </div>`;
   }
 
   return `<div class="agent-workspace-container">
-    ${renderAgentWorkspaceHeader(ticket)}
-    ${investigationWorkflow(ticket)}
-    ${orchestrationDecisionPanel(ticket)}
-    ${renderAgentStatusCards(ticket)}
-    <div class="agent-main-grid">
-      <div class="agent-left-column">
+    <div class="incident-workspace-layout">
+      <main class="incident-workspace-main">
+        ${renderAgentWorkspaceHeader(ticket)}
+        ${operationalSummaryCards()}
+        ${investigationWorkflow(ticket)}
+        ${orchestrationDecisionPanel(ticket)}
+        ${renderAgentStatusCards(ticket)}
         ${renderSelectedAgentExecutionPanel(ticket)}
-      </div>
-      <aside class="agent-right-column">
         ${renderSelectedAgentOutputPanel(ticket)}
+        ${renderAgentLiveActivityLog(ticket)}
+      </main>
+      <aside class="incident-aegis-rail">
         ${renderAskAgentPanel(ticket)}
       </aside>
     </div>
-    ${renderAgentLiveActivityLog(ticket)}
   </div>`;
+}
+
+function socPipelineCycle(summary = {}) {
+  const counts = summary.stage_counts || {};
+  const stages = [
+    { label: "Triage", value: (counts.parsing_normalisation || 0) + (counts.triage || 0) + (counts.incident_grouping_review || 0), color: "#3d7184" },
+    { label: "Investigation", value: (counts.threat_intelligence || 0) + (counts.triage_approval || 0) + (counts.investigation || 0), color: "#66549b" },
+    { label: "Findings", value: counts.investigation_approval || 0, color: "#9a7a3f" },
+    { label: "Ticketing", value: counts.soc_analyst_review || 0, color: "#4d56a5" },
+    { label: "Reporting", value: counts.reporting || 0, color: "#9a5124" },
+    { label: "Finalized", value: counts.case_closure || 0, color: "#47765c", complete: true },
+  ];
+  const total = stages.reduce((sum, stage) => sum + Number(stage.value || 0), 0);
+  const positions = [[50, 8], [86, 29], [86, 71], [50, 92], [14, 71], [14, 29]];
+  const nodes = stages.map((stage, index) => {
+    const [x, y] = positions[index];
+    return `<div class="pipeline-cycle-node" style="--x:${x}%;--y:${y}%;--stage-color:${stage.color}">
+      <strong>${esc(stage.complete ? `✓ ${stage.value}` : stage.value)}</strong>
+      <span>${esc(stage.label)}</span>
+      <small>${esc(stage.complete ? `${stage.value} completed` : `${stage.value} in stage`)}</small>
+    </div>`;
+  }).join("");
+  return `<section class="panel pipeline-cycle-panel" aria-label="${esc(state.currentUser)} SOC pipeline">
+    <div class="panel-head">
+      <div><h2>SOC Pipeline</h2><span class="panel-sub">${esc(state.currentUser)} · account-specific workload</span></div>
+    </div>
+    <div class="pipeline-cycle">
+      <svg viewBox="0 0 100 100" aria-hidden="true">
+        <defs><marker id="cycle-arrow" markerWidth="5" markerHeight="5" refX="4" refY="2.5" orient="auto"><path d="M0,0 L5,2.5 L0,5 Z" fill="context-stroke"/></marker></defs>
+        <path d="M50 14 C72 14 86 29 86 50" stroke="#3d7184"/>
+        <path d="M86 50 C86 72 72 86 50 86" stroke="#66549b"/>
+        <path d="M50 86 C28 86 14 72 14 50" stroke="#4d56a5"/>
+        <path d="M14 50 C14 28 28 14 50 14" stroke="#47765c"/>
+      </svg>
+      <div class="pipeline-cycle-center"><span>SOC PIPELINE</span><strong>${esc(total)} Total</strong><small>${esc(stages.filter(stage => stage.value > 0).length)} Stages Active</small></div>
+      ${nodes}
+    </div>
+  </section>`;
 }
 
 function ensureSelectedAgentKey(ticket) {
@@ -1495,10 +1579,9 @@ function agentOperationalSteps(agent = {}, run = null) {
 function renderProgressDial(agent = {}, progress = 0, compact = false, statusLabel = null) {
   const label = statusLabel || agent.status || "Pending";
   const status = effectiveAgentStatus(agent, currentAgentRun(agent));
-  return `<div class="agent-progress-dial ${esc(status)} ${compact ? "compact" : ""}" style="--progress:${progress}%" aria-label="${esc(label)} ${esc(progress)}%" title="${esc(label)}">
-    <div class="agent-progress-inner">
-      <strong>${progress}%</strong>
-    </div>
+  return `<div class="agent-progress-linear ${esc(status)} ${compact ? "compact" : ""}" style="--progress:${progress}%" aria-label="${esc(label)} ${esc(progress)}%" title="${esc(label)}">
+    <div class="agent-progress-linear-meta"><span>Completion</span><strong>${progress}%</strong></div>
+    <div class="agent-progress-linear-track"><span></span></div>
   </div>`;
 }
 
@@ -1811,7 +1894,7 @@ function renderAskAgentPanel(ticket) {
   
   return `<div class="agent-ask-panel ${isCollapsed ? "is-collapsed" : "is-expanded"}">
     <div class="panel-collapsible-header" data-action="toggle-panel" data-panel="ask-panel">
-      <h3>Ask Agent</h3>
+      <h3><i class="ti ti-sparkles"></i> Ask Aegis</h3>
       <button class="collapse-btn"><i class="ti ${isCollapsed ? "ti-chevron-right" : "ti-chevron-down"}"></i></button>
     </div>
     ${!isCollapsed ? `<div class="panel-body">
@@ -2154,27 +2237,36 @@ function relatedAlertsSection(ticket) {
 function timelineSection(ticket) {
   const rawEvents = arrayOf(ticket?.activity_log);
   const events = compressTimelineEvents(rawEvents.map(normalizeTimelineEvent).filter(Boolean));
-  const agentEvents = events.filter(e => ["parsing", "triage", "threat_intel", "investigation", "reporting", "approval", "soc_review", "retry"].includes(e.kind)).length;
-  const approvalEvents = events.filter(e => e.kind === "approval").length;
-  const retryEvents = events.filter(e => e.kind === "retry").length;
-  const closureEvents = events.filter(e => e.kind === "closure").length;
+  const filter = state.timelineFilters;
+  const filtered = events.filter(event =>
+    (filter.kind === "all" || event.kind === filter.kind) &&
+    (filter.source === "all" || event.actor === filter.source) &&
+    (filter.severity === "all" || event.severity === filter.severity)
+  ).sort((a, b) => state.timelineSort === "oldest" ? a.timeMs - b.timeMs : b.timeMs - a.timeMs);
+  const sources = [...new Set(events.map(event => event.actor).filter(Boolean))];
+  const severities = [...new Set(events.map(event => event.severity).filter(Boolean))];
+  const options = (values, selected, allLabel) => `<option value="all">${allLabel}</option>${values.map(value => `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(titleCase(value))}</option>`).join("")}`;
 
   return `<section class="panel timeline-panel enhanced-timeline-panel">
     <div class="panel-head timeline-panel-head">
       <div>
-        <h2><i class="ti ti-history"></i> Timeline</h2>
-        <span class="timeline-subtitle">Case-level audit trail for ${esc(ticket?.ticket_id || "selected ticket")}</span>
+        <h2>Incident Timeline</h2>
+        <span class="timeline-subtitle">Significant security events in chronological order.</span>
       </div>
-      <span class="panel-sub">Major ticket events, agent runs, approvals, retries, and closure readiness</span>
+      <div class="timeline-sort-controls">
+        <button class="soc-btn compact ${state.timelineSort === "oldest" ? "active" : "ghost"}" data-action="timeline-sort" data-sort="oldest">Oldest first</button>
+        <button class="soc-btn compact ${state.timelineSort === "newest" ? "active" : "ghost"}" data-action="timeline-sort" data-sort="newest">Newest first</button>
+      </div>
     </div>
-    ${rawEvents.length ? `<div class="timeline-summary-row">
-      <div class="timeline-summary-card"><span>Total Events</span><strong>${esc(events.reduce((sum, event) => sum + (event.count || 1), 0))}</strong></div>
-      <div class="timeline-summary-card"><span>Agent Events</span><strong>${esc(agentEvents)}</strong></div>
-      <div class="timeline-summary-card"><span>Approvals</span><strong>${esc(approvalEvents)}</strong></div>
-      <div class="timeline-summary-card"><span>Retries</span><strong>${esc(retryEvents)}</strong></div>
-      <div class="timeline-summary-card"><span>Closure</span><strong>${esc(closureEvents)}</strong></div>
-    </div>` : ""}
-    ${renderTimelineAuditTrail(events)}
+    <div class="timeline-filter-bar">
+      <select data-timeline-filter="kind">${options([...new Set(events.map(event => event.kind))], filter.kind, "All Events")}</select>
+      <select data-timeline-filter="source">${options(sources, filter.source, "All Sources")}</select>
+      <select data-timeline-filter="severity">${options(severities, filter.severity, "All Severities")}</select>
+      <select data-timeline-filter="entity"><option value="all">All Entity Types</option></select>
+      <select data-timeline-filter="tactic"><option value="all">All Tactics</option></select>
+      <button class="soc-btn ghost compact" data-action="reset-timeline-filters">Reset Filters</button>
+    </div>
+    ${renderTimelineAuditTrail(filtered)}
   </section>`;
 }
 
@@ -2198,8 +2290,21 @@ function normalizeTimelineEvent(event = {}) {
     title: timelineEventTitle(action, message, kind),
     badge: timelineEventBadge(kind),
     icon: timelineEventIcon(kind),
+    severity: timelineEventSeverity(searchable, kind),
+    source: actor,
+    mitre: event.mitre_id || event.mitre || event.technique_id || "T1082",
+    entities: Number(event.related_entities || event.entity_count || 1),
+    evidence: Number(event.evidence_count || 1),
+    normalized: event.normalized_event || `${norm(action).replaceAll("_", ".")} actor=${actor.replaceAll(" ", "_")}`,
     count: 1,
   };
+}
+
+function timelineEventSeverity(text = "", kind = "system") {
+  if (text.includes("critical") || text.includes("malicious") || text.includes("ransomware")) return "critical";
+  if (text.includes("high") || ["investigation", "threat_intel", "approval"].includes(kind)) return "high";
+  if (text.includes("medium") || ["triage", "alert", "retry"].includes(kind)) return "medium";
+  return "low";
 }
 
 function timelineEventKind(text = "") {
@@ -2308,42 +2413,36 @@ function compressTimelineEvents(events = []) {
 
 function renderTimelineAuditTrail(events = []) {
   if (!events.length) return `<div class="empty-state">No timeline activity recorded yet.</div>`;
-  const groups = events.reduce((acc, event) => {
-    const dateLabel = timelineDateLabel(event.createdAt);
-    if (!acc[dateLabel]) acc[dateLabel] = [];
-    acc[dateLabel].push(event);
-    return acc;
-  }, {});
-
-  return `<div class="timeline-audit-trail">
-    ${Object.entries(groups).map(([dateLabel, groupEvents]) => `<div class="timeline-date-group">
-      <div class="timeline-date-header"><span>${esc(dateLabel)}</span><small>${esc(groupEvents.length)} event${groupEvents.length === 1 ? "" : "s"}</small></div>
-      <div class="timeline-items">
-        ${groupEvents.map(renderTimelineItem).join("")}
-      </div>
-    </div>`).join("")}
-  </div>`;
+  return `<div class="timeline-audit-trail">${events.map((event, index) => renderTimelineItem(event, index)).join("")}</div>`;
 }
 
-function renderTimelineItem(event = {}) {
+function renderTimelineItem(event = {}, index = 0) {
   const message = event.message || "Ticket activity recorded.";
-  return `<article class="timeline-audit-item ${esc(event.kind)}">
-    <div class="timeline-marker"><i class="ti ${esc(event.icon)}"></i></div>
-    <div class="timeline-card-body">
-      <div class="timeline-card-top">
-        <div class="timeline-card-title-row">
-          <strong>${esc(event.title)}</strong>
-          <span class="timeline-kind-pill ${esc(event.kind)}">${esc(event.badge)}</span>
-          ${event.count > 1 ? `<span class="timeline-count-pill">x${esc(event.count)}</span>` : ""}
-        </div>
-        <time>${esc(timelineTimeLabel(event.createdAt))}</time>
+  const expanded = state.timelineExpandedIndex === index;
+  return `<article class="timeline-audit-item ${esc(event.kind)} ${expanded ? "expanded" : ""}">
+    <button class="timeline-event-summary" data-action="toggle-timeline-event" data-index="${index}" aria-expanded="${expanded}">
+      <span class="timeline-marker"><i class="ti ${esc(event.icon)}"></i></span>
+      <time>${esc(timelineDateLabel(event.createdAt).replace(",", ""))}, ${esc(timelineTimeLabel(event.createdAt).toLowerCase())}</time>
+      <span class="timeline-event-copy"><strong>${esc(event.title)}</strong><small>${esc(message)}</small></span>
+      <span class="timeline-severity ${esc(event.severity)}">${esc(titleCase(event.severity))}</span>
+      <span class="timeline-expand-symbol">${expanded ? "−" : "+"}</span>
+    </button>
+    ${expanded ? `<div class="timeline-event-details">
+      <p>${esc(message)} This event was recorded by ${esc(event.actor || "System")} and is included in the incident investigation trail.</p>
+      <div class="timeline-detail-grid">
+        <div><span>Source</span><strong>${esc(event.actor || "System")}</strong></div>
+        <div><span>Related Entities</span><strong>${esc(event.entities)}</strong></div>
+        <div><span>Significance</span><strong>${esc(titleCase(event.severity))} security event</strong></div>
+        <div><span>MITRE ATT&CK</span><strong>${esc(event.mitre)}</strong></div>
+        <div><span>Evidence</span><strong>${esc(event.evidence)} item${event.evidence === 1 ? "" : "s"}</strong></div>
       </div>
-      <p>${esc(message)}</p>
-      <div class="timeline-card-meta">
-        <span><i class="ti ti-user"></i>${esc(event.actor || "System")}</span>
-        <span><i class="ti ti-activity"></i>${esc(titleCase(event.action || "updated"))}</span>
+      <div class="timeline-normalized"><span>Normalised Event</span><code>${esc(event.normalized)}</code></div>
+      <div class="timeline-detail-actions">
+        <button class="soc-btn ghost">View Supporting Evidence</button>
+        <button class="soc-btn ghost">View in Entity Graph</button>
+        <button class="soc-btn ghost">View MITRE Mapping</button>
       </div>
-    </div>
+    </div>` : ""}
   </article>`;
 }
 
@@ -2567,6 +2666,21 @@ async function action(name, el) {
   if (name === "toggle-agent-card") return toggleAgentCard(el.dataset.agent);
   if (name === "select-agent") return selectAgent(el.dataset.agentKey);
   if (name === "toggle-panel") return togglePanel(el.dataset.panel);
+  if (name === "toggle-timeline-event") {
+    const index = Number(el.dataset.index);
+    state.timelineExpandedIndex = state.timelineExpandedIndex === index ? null : index;
+    return render();
+  }
+  if (name === "timeline-sort") {
+    state.timelineSort = el.dataset.sort === "newest" ? "newest" : "oldest";
+    state.timelineExpandedIndex = null;
+    return render();
+  }
+  if (name === "reset-timeline-filters") {
+    state.timelineFilters = { kind: "all", source: "all", severity: "all", entity: "all", tactic: "all" };
+    state.timelineExpandedIndex = null;
+    return render();
+  }
   if (name === "toggle-ticket-preview") return toggleTicketPreview();
   if (name === "view-agent-output") return viewAgentOutput(el.dataset.agent, ticketId);
   if (name === "view-summary-json" || name === "download-agent-summary-json") return downloadAgentSummaryJson(el.dataset.agent || state.selectedAgentKey, ticketId);
@@ -3131,6 +3245,14 @@ document.addEventListener("keydown", (event) => {
     setRoute("netwitness-alerts", q ? { q } : {});
   }
   if (event.key === "Escape") closeModal();
+});
+
+document.addEventListener("change", (event) => {
+  const filter = event.target.closest("[data-timeline-filter]");
+  if (!filter) return;
+  state.timelineFilters[filter.dataset.timelineFilter] = filter.value;
+  state.timelineExpandedIndex = null;
+  render();
 });
 
 window.addEventListener("hashchange", () => {
@@ -3788,7 +3910,7 @@ function renderAgentSummary(payload = {}) {
       ${findings.length ? `<ul>${findings.map(item => `<li>${esc(item)}</li>`).join("")}</ul>` : `<p>No key points were found in the saved output yet.</p>`}
     </div>
     ${renderPowerShellAnalysisCard(payload.powershell_analysis)}
-    ${files.filter(item => !looksLikeLocalFilesystemPath(item)).length ? `<div class="summary-files"><span>Generated Files</span><ul>${files.filter(item => !looksLikeLocalFilesystemPath(item)).map(item => `<li>${esc(item)}</li>`).join("")}</ul></div>` : ""}
+    ${files.filter(item => !looksLikeLocalFilesystemPath(item)).length ? `<div class="summary-files summary-outputs"><span>Outputs</span>${files.filter(item => !looksLikeLocalFilesystemPath(item)).map(item => `<p>${esc(item)}</p>`).join("")}</div>` : ""}
   </div>`;
 }
 
@@ -3971,8 +4093,8 @@ function renderSelectedAgentOutputPanel(ticket) {
   return `<div class="agent-output-panel summary-panel ${isCollapsed ? "is-collapsed" : "is-expanded"}">
     <div class="panel-collapsible-header" data-action="toggle-panel" data-panel="output-panel">
       <div>
-        <h3>Summary</h3>
-        <small>${esc(agent.label || "Selected Agent")} output summary</small>
+        <h3>Outputs</h3>
+        <small>${esc(agent.label || "Selected Agent")} results in text</small>
       </div>
       <button class="collapse-btn"><i class="ti ${isCollapsed ? "ti-chevron-right" : "ti-chevron-down"}"></i></button>
     </div>

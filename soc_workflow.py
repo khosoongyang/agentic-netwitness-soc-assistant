@@ -1,14 +1,20 @@
 """
 soc_workflow.py — SOC multi-agent workflow orchestrator
 ========================================================
-Code-driven "puppet master" connecting the three agents:
+Code-driven "puppet master" connecting four stages:
 
-  1. Triage        soc_triage_agent/         in-process (Cisco Foundation-Sec LLM)
+  0. Parsing       soc_reporting_agent/parser  in-process (regex/rule-based, no LLM
+                                                for the extraction itself)
+  1. Triage        soc_triage_agent/         in-process (OpenAI LLM)
   2. Investigation soc_investigation_agent/  subprocess (file-queue driven)
   3. Reporting     soc_reporting_agent/      subprocess (via its own adapter)
 
 Data handoffs
 -------------
+  parsing -> triage        : processed_alert (flat extracted indicators) passed
+                            as parsed_context into TriageAgent.triage() — skipped
+                            under --mock-triage. Non-fatal: parsing failure just
+                            leaves parsed_context=None and triage runs standalone.
   triage -> investigation : triaged alert JSON dropped into
                             soc_investigation_agent/triaged_alerts/
   triage -> reporting     : triage_result.json + enriched_alert.json +
@@ -43,6 +49,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import workflow_state_store as wss
+import workflow_validation as wv
 
 ROOT       = Path(__file__).resolve().parent
 # Swapped 2026-07-22: the team's revised investigation agent (adds
@@ -284,8 +293,9 @@ def _first(*values, default=None):
 
 def _normalise_llm_url(url: str) -> str:
     """Ensure the base URL ends with /v1 (same rule as app.py's get_cisco_cfg).
-    The HF endpoint answers 401 — not 404 — for unknown routes, so a missing
-    /v1 looks exactly like a bad token. This bit the first live run."""
+    Some OpenAI-compatible gateways answer 401 — not 404 — for unknown
+    routes, so a missing /v1 looks exactly like a bad token. This bit the
+    first live run."""
     url = (url or "").strip().rstrip("/")
     if url and not url.endswith("/v1"):
         url += "/v1"
@@ -295,7 +305,7 @@ def _normalise_llm_url(url: str) -> str:
 def _maybe_b64_decode(value: str) -> str:
     """app.py's sidebar save writes CISCO_LLM_KEY to .env base64-encoded
     ("to avoid special char issues"). Decode when the value is valid base64;
-    hand-edited raw tokens (e.g. "hf_...") fail validation and pass through."""
+    hand-edited raw tokens (e.g. "sk-...") fail validation and pass through."""
     import base64
     try:
         decoded = base64.b64decode(value.encode(), validate=True).decode("utf-8")
@@ -309,8 +319,8 @@ def _openai_compat_env() -> dict[str, str]:
 
     Preference order:
       1. A real OPENAI_API_KEY in the environment — use OpenAI as-is.
-      2. Fall back to the Cisco Foundation-Sec HF endpoint (it speaks the
-         OpenAI chat-completions API), reusing the triage agent's credentials.
+      2. Fall back to a custom OpenAI-compatible endpoint configured via
+         CISCO_LLM_URL/KEY/MODEL, reusing the triage agent's credentials.
       3. Neither present — return {} and the agents use their non-LLM paths.
     """
     if os.environ.get("OPENAI_API_KEY", "").strip():
@@ -338,11 +348,210 @@ def _llm_seed() -> str:
 # 3.  STAGE 1 — TRIAGE  (in-process)
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_triage(incident: dict, progress_fn=None) -> dict:
-    """Run the triage agent in-process. Returns its native result dict."""
+def run_triage(incident: dict, progress_fn=None,
+               parsed_context: dict | None = None,
+               force: bool = False) -> dict:
+    """Run the triage agent in-process. Returns its native result dict.
+
+    parsed_context is Stage 0's processed_alert (see run_parsing) — when
+    present, the IOC/risk/classification phases reuse those already-extracted
+    indicators instead of re-deriving them from the raw incident. force=True
+    bypasses TriageAgent's result cache, for an explicit retry."""
     from soc_triage_agent import CiscoLLMConfig, TriageAgent
     agent = TriageAgent(cfg=CiscoLLMConfig(), progress_fn=progress_fn)
-    return agent.triage(incident)
+    return agent.triage(incident, force=force, parsed_context=parsed_context)
+
+
+def run_parsing(incident: dict) -> dict:
+    """Run the existing Parsing & Normalisation stage in-process, reusing
+    soc_reporting_agent's parser unmodified. Mirrors run_triage()'s pattern:
+    a thin wrapper, no new parsing logic. Also asks the LLM for a plain-
+    English summary of what the parser extracted (see generate_parsing_ai_summary)."""
+    rep_dir = str(REP_DIR)
+    if rep_dir not in sys.path:
+        sys.path.insert(0, rep_dir)
+    from services.parser_normaliser import run_parser_normalisation_for_dashboard
+
+    inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
+    output_dir = REP_DIR / "outputs" / inc_id / "parsing"
+    result = run_parser_normalisation_for_dashboard(incident, output_dir=output_dir)
+    if result.get("status") == "completed":
+        result.update(generate_parsing_ai_summary(result))
+    return result
+
+
+def _split_ai_summary_sections(text: str) -> tuple[str, str]:
+    """Split the LLM's labelled SUMMARY/THINKING reply into two strings.
+    Falls back to treating the whole reply as the summary if the model
+    didn't follow the requested labels."""
+    m = re.search(r"SUMMARY:\s*(.*?)\s*THINKING:\s*(.*)", text, re.IGNORECASE | re.DOTALL)
+    if m:
+        return m.group(1).strip(), m.group(2).strip()
+    return text.strip(), ""
+
+
+def generate_parsing_ai_summary(parsing_result: dict, model: str | None = None) -> dict:
+    """Ask OpenAI for a plain-English summary of what the Parsing &
+    Normalisation stage extracted, based on its processed_alert output.
+    Reuses the existing OpenAI helper (soc_reporting_agent/backend/openai_client.py,
+    already used by the reporting stage) — no separate LLM client is introduced."""
+    rep_dir = str(REP_DIR)
+    if rep_dir not in sys.path:
+        sys.path.insert(0, rep_dir)
+    from backend.openai_client import invoke_openai_text
+
+    processed_alert = parsing_result.get("processed_alert") or {}
+    context = json.dumps(processed_alert, indent=2, default=str)[:4000]
+    selected_model = model or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
+
+    try:
+        raw = invoke_openai_text(
+            f"Parsed alert fields:\n{context}",
+            system=(
+                "You are a SOC analyst assistant. You are given the parsed and "
+                "normalised fields extracted from a NetWitness alert by the "
+                "parsing pipeline. Reply in exactly this format:\n"
+                "SUMMARY: <2-3 plain-English sentences on what this alert is "
+                "and why it matters>\n"
+                "THINKING: <2-4 short bullet points on the specific indicators "
+                "(host, IPs, user, file, process, MITRE technique) that drove "
+                "your read>\n"
+                "Only state facts present in the data below — never invent "
+                "values that aren't there."
+            ),
+            model=selected_model,
+            max_output_tokens=600,
+        )
+        summary, thinking = _split_ai_summary_sections(raw)
+    except Exception as exc:
+        summary = thinking = f"AI summary unavailable — LLM call failed: {exc}"
+
+    return {
+        "ai_summary": summary,
+        "ai_thinking": thinking,
+        "ai_summary_model": selected_model,
+        "ai_summary_generated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def render_triage_thinking_plain(triage_result: dict) -> str:
+    """Connected-narrative 'thinking process' for the Triage panel — built
+    ONLY from TriageAgent.triage()'s own trace (the real IOC Checklist /
+    Risk Rating / SOC Classification phase output), not a secondary LLM
+    re-summarization. An LLM asked to reflect on the finished ticket can
+    misstate or contradict what the agent actually computed; reading the
+    trace directly cannot.
+
+    Written as reasoning ("given this, therefore that"), not a field dump —
+    a bullet-per-field rendering reads as contradictory in cases like "0
+    matched IOC(s)" alongside a non-empty metakeys list, even though that's
+    not actually a contradiction: the IOC phase's LLM call can report a
+    category's `metakeys` (fields it looked at) independently of whether
+    any IOC in that category matched (soc_triage_agent.py's _run_ioc(),
+    where `extra_mkeys` is merged into all_metakeys regardless of
+    matched_iocs). This phrasing makes that relationship explicit instead
+    of implying a false contradiction.
+
+    No markdown — the UI card renders this as escaped plain text with
+    blank-line paragraph breaks preserved, not parsed markdown."""
+    by_step = {s.get("step"): s for s in (triage_result.get("trace") or [])}
+    paragraphs: list[str] = []
+
+    ioc = by_step.get("IOC Checklist")
+    if ioc is not None:
+        count   = ioc.get("total_ioc_count") or 0
+        summary = ioc.get("ioc_summary") or ""
+        mkeys   = ioc.get("matched_metakeys") or []
+        if count:
+            p = f"The IOC checklist matched {count} indicator(s)"
+            p += f": {summary}." if summary else "."
+        else:
+            # Avoid repeating the same "nothing matched" idea twice when
+            # ioc_summary already says so in its own words.
+            p = summary or "The IOC checklist matched no known-bad indicators."
+        if mkeys:
+            p += (f" Fields the review looked at: {', '.join(mkeys)} — "
+                  f"present in the alert, not necessarily indicators of "
+                  f"compromise on their own.")
+        paragraphs.append(p)
+
+    risk = by_step.get("Risk Rating")
+    if risk is not None:
+        d = risk.get("data") or {}
+        p = (f"Based on that, risk was rated {d.get('overall_risk') or '—'} "
+            f"overall — initiation {d.get('likelihood_initiation') or '—'}, "
+            f"occurrence {d.get('likelihood_occurrence') or '—'}, adverse "
+            f"impact {d.get('likelihood_adverse_impact') or '—'}")
+        p += f": {d['rationale']}" if d.get("rationale") else "."
+        paragraphs.append(p)
+
+    cls = by_step.get("SOC Classification")
+    if cls is not None:
+        d = cls.get("data") or {}
+        tactic    = d.get("mitre_tactic") or "Unknown"
+        technique = d.get("mitre_technique") or "Unknown"
+        p = f"This was classified as {(d.get('classification') or '—').upper()}"
+        p += f": {d['summary']}" if d.get("summary") else "."
+        p += f" MITRE mapping: {tactic} ({technique})."
+        paragraphs.append(p)
+
+    return "\n\n".join(paragraphs)
+
+
+def generate_triage_ai_summary(triage_result: dict, model: str | None = None) -> dict:
+    """Ask OpenAI for a plain-English summary of what TriageAgent.triage()
+    produced (the 'AI-Generated Summary' panel). The 'Thinking Process'
+    panel is filled separately and deterministically by
+    render_triage_thinking_plain() from the agent's own trace — not from
+    this LLM call — so it stays accurate even if this call fails or the
+    LLM misreads the data. Reuses the same OpenAI helper as the Parsing
+    stage — no separate LLM client is introduced."""
+    rep_dir = str(REP_DIR)
+    if rep_dir not in sys.path:
+        sys.path.insert(0, rep_dir)
+    from backend.openai_client import invoke_openai_text
+
+    ticket = triage_result.get("ticket") or {}
+    meta   = triage_result.get("metakeys_payload") or {}
+    context = json.dumps({
+        "classification": ticket.get("classification"),
+        "incident_category": ticket.get("incident_category"),
+        "mitre_tactic": ticket.get("mitre_tactic"),
+        "mitre_technique": ticket.get("mitre_technique"),
+        "risk_rating": ticket.get("risk_rating"),
+        "summary": ticket.get("summary"),
+        "recommended_actions": ticket.get("recommended_actions"),
+        "matched_metakeys": ticket.get("metakeys"),
+        "matched_ioc_count": ticket.get("matched_ioc_count"),
+        "ioc_summary": meta.get("ioc_summary"),
+        "risk_level": meta.get("risk_level"),
+    }, indent=2, default=str)[:4000]
+    selected_model = model or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
+
+    try:
+        summary = invoke_openai_text(
+            f"Triage result fields:\n{context}",
+            system=(
+                "You are a SOC analyst assistant. You are given the structured "
+                "output of the Triage agent for a NetWitness incident — its "
+                "classification, MITRE mapping, risk rating, matched IOCs, and "
+                "recommended actions. Reply with 2-3 plain-English sentences on "
+                "what this incident is and why it was classified this way. "
+                "Only state facts present in the data below — never invent "
+                "values that aren't there."
+            ),
+            model=selected_model,
+            max_output_tokens=300,
+        ).strip()
+    except Exception as exc:
+        summary = f"AI summary unavailable — LLM call failed: {exc}"
+
+    return {
+        "ai_summary": summary,
+        "ai_thinking": render_triage_thinking_plain(triage_result),
+        "ai_summary_model": selected_model,
+        "ai_summary_generated_at": datetime.now().isoformat(timespec="seconds"),
+    }
 
 
 def mock_triage_result(incident: dict) -> dict:
@@ -1379,51 +1588,196 @@ def export_report_documents(incident_id: str | None, timeout: int = 180) -> dict
 # 8.  FULL WORKFLOW
 # ══════════════════════════════════════════════════════════════════════════════
 
-def run_full_workflow(incident: dict, *, use_mock_triage: bool = False,
-                      skip_investigation: bool = False,
-                      force_investigation: bool = False,
-                      investigation_timeout: int = 600,
-                      reporting_timeout: int = 480,
-                      progress_fn=None) -> dict:
+def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
+                              force_triage: bool = False, allow_retry: bool = False,
+                              progress_fn=None) -> dict:
+    """The single Parsing -> Triage entry point. Both the Start Process
+    button and the chat trigger in app.py call this through the shared
+    _run_triage_workflow_with_ui() helper — there is no second,
+    independently-sequenced path. Stops after the mandatory SOC Analyst
+    approval pause; does not start Investigation.
+
+    Raises workflow_state_store.WorkflowAlreadyRunningError if a run is
+    already Processing or Awaiting Approval for this incident and
+    allow_retry=False."""
     pipeline_db_init()
-    ctx: dict = {"incident": incident, "errors": {}, "stages": {}}
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
     title  = incident.get("title") or incident.get("name") or "Untitled"
+    ctx: dict = {"incident": incident, "errors": {}, "stages": {}}
     run_started = datetime.now()
-    run_stamp   = run_started.strftime("%Y%m%d-%H%M%S")
+
+    run_id = wss.start_run(inc_id, allow_retry=allow_retry)
+    ctx["run_id"] = run_id
 
     pipeline_insert("alerts_to_triage", {
         "id": inc_id, "incident_id": inc_id, "title": title,
         "severity": str(incident.get("riskScore") or incident.get("severity") or ""),
         "summary": str(incident.get("summary") or "")[:500]})
 
+    def _emit(event: str, label: str, text: str = "") -> None:
+        if progress_fn:
+            try:
+                progress_fn(event, label, text)
+            except Exception:
+                pass
+
+    # ── Stage 0: Parsing & Normalisation ──────────────────────────────────────
+    _emit("phase_start", "Parsing and Normalisation")
+    if use_mock_triage:
+        parsing_result = {"status": "completed", "normalised_alert": {},
+                          "processed_alert": {}, "missing_important_fields": []}
+    else:
+        _log("PARSING", f"running parsing & normalisation for incident {inc_id}")
+        try:
+            parsing_result = run_parsing(incident)
+        except Exception as exc:
+            ctx["stages"]["parsing"] = "failed"
+            ctx["errors"]["parsing"] = str(exc)
+            wss.set_parsing_status(inc_id, run_id, "Failed")
+            wss.set_triage_status(inc_id, run_id, "Blocked")
+            wss.set_workflow_status(inc_id, run_id, "Failed")
+            _emit("phase_error", "Parsing and Normalisation", str(exc))
+            _log("PARSING", f"FAILED: {exc}")
+            return ctx
+
+    ctx["parsing"] = parsing_result
+    if parsing_result.get("status") != "completed":
+        ctx["stages"]["parsing"] = "failed"
+        ctx["errors"]["parsing"] = "parser returned a non-completed status"
+        wss.set_parsing_status(inc_id, run_id, "Failed")
+        wss.set_triage_status(inc_id, run_id, "Blocked")
+        wss.set_workflow_status(inc_id, run_id, "Failed")
+        _emit("phase_error", "Parsing and Normalisation", "non-completed status")
+        _log("PARSING", "FAILED: non-completed status")
+        return ctx
+
+    ctx["stages"]["parsing"] = "completed"
+    wss.set_parsing_status(inc_id, run_id, "Complete")
+    wss.set_triage_status(inc_id, run_id, "Processing")
+    _emit("phase_complete", "Parsing and Normalisation",
+          parsing_result.get("parser_confidence") or "")
+
+    # ── Validate the Parsing -> Triage handoff ────────────────────────────────
+    try:
+        validation = wv.validate_parsing_result(
+            incident_id=inc_id, parsing_result=parsing_result, skip=use_mock_triage)
+    except wv.ParsingValidationError as exc:
+        ctx["stages"]["parsing"] = "failed"
+        ctx["errors"]["parsing"] = str(exc)
+        wss.set_parsing_status(inc_id, run_id, "Failed")
+        wss.set_triage_status(inc_id, run_id, "Blocked")
+        wss.set_workflow_status(inc_id, run_id, "Failed")
+        _log("PARSING", f"VALIDATION FAILED: {exc}")
+        return ctx
+    ctx["parsing_validation"] = validation
+
+    parsed_context = parsing_result.get("processed_alert") or None
+
     # ── Stage 1: Triage ───────────────────────────────────────────────────────
     _log("TRIAGE", f"running triage for incident {inc_id}")
-    triage_result = (mock_triage_result(incident) if use_mock_triage
-                     else run_triage(incident, progress_fn=progress_fn))
+    try:
+        triage_result = (mock_triage_result(incident) if use_mock_triage
+                         else run_triage(incident, progress_fn=progress_fn,
+                                         parsed_context=parsed_context,
+                                         force=force_triage))
+    except Exception as exc:
+        ctx["stages"]["triage"] = "failed"
+        ctx["errors"]["triage"] = str(exc)
+        wss.set_triage_status(inc_id, run_id, "Failed")
+        wss.set_workflow_status(inc_id, run_id, "Failed")
+        _log("TRIAGE", f"FAILED: {exc}")
+        return ctx
+
     ctx["triage"] = triage_result
     if triage_result.get("error"):
+        ctx["stages"]["triage"] = "failed"
         ctx["errors"]["triage"] = triage_result["error"]
+        wss.set_triage_status(inc_id, run_id, "Failed")
+        wss.set_workflow_status(inc_id, run_id, "Failed")
         _log("TRIAGE", f"FAILED: {triage_result['error']}")
-        return ctx  # hard dependency — nothing downstream has valid input
+        return ctx
 
     ticket = triage_result["ticket"]
     cls    = ticket.get("classification", "")
     _log("TRIAGE", f"complete — ticket {ticket.get('unc')} classification={cls}")
 
-    investigate = force_investigation or (not skip_investigation
-                                          and needs_investigation(triage_result))
-    route_stage = "post_triage_investigate" if investigate else "post_triage_no_investigate"
-    pipeline_insert(route_stage, {
-        "id": f"{'inv' if investigate else 'noinv'}_{inc_id}", "incident_id": inc_id,
-        "title": title, "severity": cls,
-        "summary": ticket.get("summary") or ""})
+    # AI-Generated Summary + Thinking Process for the analyst-facing panel —
+    # same SUMMARY:/THINKING: pattern as generate_parsing_ai_summary(), now
+    # applied to the real triage ticket. Skipped under --mock-triage (no LLM
+    # call), same reasoning as the parsing stage.
+    if not use_mock_triage:
+        triage_result.update(generate_triage_ai_summary(triage_result))
+
     pipeline_insert("initial_ticket", {
         "id": ticket.get("unc") or f"TKT_{inc_id}", "incident_id": inc_id,
         "title": f"Ticket {ticket.get('unc')} — {title}", "severity": cls,
         "summary": ticket.get("summary") or "", "ticket": ticket})
-    ctx["stages"]["triage"] = "completed"
 
+    # ── Save Triage result ──────────────────────────────────────────────────────
+    wss.save_triage_result(inc_id, run_id, triage_result)
+
+    # ── Mandatory approval gate — stop here ─────────────────────────────────────
+    gate = wv.mandatory_triage_approval(incident_id=inc_id, triage_result=triage_result)
+    wss.set_triage_status(inc_id, run_id, "Awaiting Approval")
+    wss.set_workflow_status(inc_id, run_id, "Awaiting Approval",
+                            approval_stage=gate["approval_stage"])
+    ctx["approval"] = gate
+    ctx["stages"]["triage"] = "awaiting_approval"      # matches the DB, not "completed"
+    ctx["stages"]["workflow"] = "awaiting_approval"
+    ctx["thinking_process"] = wv.build_thinking_process(
+        incident=incident, inc_id=inc_id, parsing_result=parsing_result,
+        validation=validation, triage_result=triage_result,
+        gate=gate, run_id=run_id)
+
+    dur = int((datetime.now() - run_started).total_seconds())
+    pipeline_insert("workflow_runs", {
+        "id": f"run_{run_started.strftime('%Y%m%d-%H%M%S')}_{inc_id[:20]}",
+        "incident_id": inc_id,
+        "title": f"Run {run_started.strftime('%H:%M:%S')} — {title}",
+        "severity": cls,
+        "summary": f"parsing: completed · triage: awaiting_approval · "
+                   f"ticket {ticket.get('unc')} · {dur}s",
+        "stages": ctx["stages"], "ticket_unc": ticket.get("unc"),
+        "duration_seconds": dur})
+
+    _log("WORKFLOW", f"paused for mandatory SOC analyst approval "
+                     f"(ticket={ticket.get('unc')}, next={gate['next_stage_after_approval']})")
+    return ctx
+
+
+def run_full_workflow(incident: dict, *, use_mock_triage: bool = False,
+                      force_triage: bool = False, progress_fn=None, **_ignored) -> dict:
+    """Backward-compatible alias — grep confirms zero external callers in
+    this repo today, so this exists purely as a safety net for an
+    undiscovered script. Behavior has changed: it now stops at the
+    mandatory Triage approval pause instead of continuing through
+    Investigation/Reporting. New code should call
+    run_until_triage_approval() directly."""
+    return run_until_triage_approval(incident, use_mock_triage=use_mock_triage,
+                                     force_triage=force_triage, progress_fn=progress_fn)
+
+
+def resume_workflow_after_triage_approval(ctx: dict, *, skip_investigation: bool = False,
+                                          force_investigation: bool = False,
+                                          investigation_timeout: int = 600,
+                                          reporting_timeout: int = 480,
+                                          progress_fn=None) -> dict:
+    """Continues a workflow run past the mandatory Triage approval pause.
+    Not called by anything yet — reserved for the next plan phase, which
+    will wire an explicit analyst 'Approve' action to this function. Body
+    is the previous Investigation/Reporting logic, formerly inline in
+    run_full_workflow(), extracted unmodified."""
+    incident = ctx["incident"]
+    triage_result = ctx["triage"]
+    inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
+    title  = incident.get("title") or incident.get("name") or "Untitled"
+    ticket = triage_result["ticket"]
+    cls    = ticket.get("classification", "")
+    run_started = datetime.now()
+    run_stamp   = run_started.strftime("%Y%m%d-%H%M%S")
+
+    investigate = force_investigation or (not skip_investigation
+                                          and needs_investigation(triage_result))
     # ── Stage 2: Investigation (optional per routing) ─────────────────────────
     investigation_result: dict | None = None
     if investigate:
@@ -1523,18 +1877,25 @@ def main() -> int:
     ap.add_argument("--force-investigation", action="store_true")
     ap.add_argument("--investigation-timeout", type=int, default=600)
     ap.add_argument("--reporting-timeout", type=int, default=480)
+    ap.add_argument("--force-triage", action="store_true",
+                    help="Bypass the triage result cache and re-run Triage")
     args = ap.parse_args()
 
     incident = json.loads(Path(args.incident_file).read_text(encoding="utf-8"))
 
-    ctx = run_full_workflow(
-        incident,
-        use_mock_triage=args.mock_triage,
-        skip_investigation=args.skip_investigation,
-        force_investigation=args.force_investigation,
-        investigation_timeout=args.investigation_timeout,
-        reporting_timeout=args.reporting_timeout,
-    )
+    ctx = run_until_triage_approval(
+        incident, use_mock_triage=args.mock_triage, force_triage=args.force_triage)
+
+    _unused = [f"--{f.replace('_', '-')}" for f in
+              ("skip_investigation", "force_investigation") if getattr(args, f, False)]
+    if getattr(args, "investigation_timeout", 600) != 600:
+        _unused.append("--investigation-timeout")
+    if getattr(args, "reporting_timeout", 480) != 480:
+        _unused.append("--reporting-timeout")
+    if _unused:
+        print(f"\nNOTE: this run stops at the mandatory Triage approval pause. "
+              f"These flags were passed but aren't used yet — they'll apply to "
+              f"the future 'resume after approval' command: {', '.join(_unused)}")
 
     print("\n" + "=" * 70)
     print("WORKFLOW SUMMARY")

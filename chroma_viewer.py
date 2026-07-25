@@ -13,16 +13,34 @@ The main app links directly to this page with ?collection=pipeline_<stage>
 
 import streamlit as st
 import json
+import os
 import re
 from pathlib import Path
 from datetime import datetime
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).parent / ".env")
+except ImportError:
+    pass
+
 # ── ChromaDB ───────────────────────────────────────────────────────────────────
 try:
     import chromadb
+    from chromadb.utils import embedding_functions as _chroma_embedding_functions
     CHROMA_OK = True
 except ImportError:
     CHROMA_OK = False
+
+
+def _openai_ef():
+    """OpenAI embedding function — must match the one app.py uses to create
+    these collections, or ChromaDB will reject queries with a dimension
+    mismatch against the stored vectors."""
+    return _chroma_embedding_functions.OpenAIEmbeddingFunction(
+        api_key=os.environ.get("OPENAI_API_KEY", ""),
+        model_name="text-embedding-3-small",
+    )
 
 # ── SQLite (pipeline db) ───────────────────────────────────────────────────────
 import sqlite3
@@ -188,6 +206,7 @@ def get_collection(client, stage: str):
         return client.get_or_create_collection(
             name=f"pipeline_{stage}",
             metadata={"hnsw:space": "cosine"},
+            embedding_function=_openai_ef(),
         )
     except Exception:
         return None

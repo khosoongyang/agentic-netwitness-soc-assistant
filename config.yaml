@@ -11,20 +11,16 @@ chromadb:
   collection_name: "netwitness_logs"
 
 embedding:
-  # Lightweight security-aware sentence embedder
-  model: "sentence-transformers/all-MiniLM-L6-v2"
-  # Alternatively for better security context:
-  # model: "sentence-transformers/all-mpnet-base-v2"
+  # OpenAI embedding model, called via the API (OPENAI_API_KEY required)
+  model: "text-embedding-3-small"
+  # Alternatively for higher-fidelity embeddings:
+  # model: "text-embedding-3-large"
   batch_size: 64
   chunk_size: 512          # characters per log chunk
 
-cisco_foundation_ai:
-  # Model from HuggingFace — downloaded locally
-  model_id: "cisco-foundation-ai/Foundation-sec-8B-Instruct"
-  # Local path if already downloaded:
-  # model_id: "/models/foundation-sec-8b"
-  device: "cuda"           # cuda | cpu | auto
-  load_in_4bit: true       # Set false if you have >24GB VRAM
+foundation_ai:
+  # OpenAI chat model used by the triage agent (see OPENAI_MODEL in .env)
+  model_id: "gpt-4o-mini"
   max_new_tokens: 1024
   temperature: 0.1         # Low temp for deterministic triage
   top_p: 0.9

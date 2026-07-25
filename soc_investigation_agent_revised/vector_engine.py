@@ -6,8 +6,13 @@ from chromadb.utils import embedding_functions
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "ChromaDatabase"))
 client = chromadb.PersistentClient(path=DB_DIR)
 
-# Use default local embedding function (SentenceTransformers / ONNX MiniLM-L6-v2)
-default_ef = embedding_functions.DefaultEmbeddingFunction()
+# OpenAI embeddings — must match whatever embedding function every other
+# collection in this project uses, or ChromaDB rejects queries with a
+# dimension mismatch against already-stored vectors.
+default_ef = embedding_functions.OpenAIEmbeddingFunction(
+    api_key=os.environ.get("OPENAI_API_KEY", ""),
+    model_name="text-embedding-3-small",
+)
 
 # Create or retrieve the collection configured for cosine similarity
 collection = client.get_or_create_collection(

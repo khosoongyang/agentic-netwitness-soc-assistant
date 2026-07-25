@@ -42,31 +42,41 @@ from langchain_openai import ChatOpenAI
 
 @dataclass
 class CiscoLLMConfig:
+    """LLM connection config for the triage agent.
+
+    OPENAI_* env vars are the primary source; CISCO_LLM_* remain as an
+    optional override for pointing the agent at a different OpenAI-compatible
+    endpoint without touching OPENAI_API_KEY (used elsewhere by the reporting
+    agent).
+    """
     base_url: str = field(
-        default_factory=lambda: os.environ.get(
-            "CISCO_LLM_URL", "https://api-inference.huggingface.co/v1"
-        )
+        default_factory=lambda: os.environ.get("CISCO_LLM_URL", "").strip()
+        or os.environ.get("OPENAI_BASE_URL", "").strip()
+        or "https://api.openai.com/v1"
     )
     api_key: str = field(
-        default_factory=lambda: os.environ.get("CISCO_LLM_KEY", "changeme")
+        default_factory=lambda: os.environ.get("CISCO_LLM_KEY", "").strip()
+        or os.environ.get("OPENAI_API_KEY", "").strip()
+        or "changeme"
     )
     model: str = field(
-        default_factory=lambda: os.environ.get(
-            "CISCO_LLM_MODEL", "fdtn-ai/Foundation-Sec-8B-Reasoning"
-        )
+        default_factory=lambda: os.environ.get("CISCO_LLM_MODEL", "").strip()
+        or os.environ.get("OPENAI_MODEL", "").strip()
+        or "gpt-4o-mini"
     )
     # temperature=0 -> greedy decoding, so the same incident produces the same
     # triage output instead of drifting between runs/users. A fixed seed is
-    # sent too, since HF/TGI's Messages API takes it for reproducibility.
+    # sent too, since OpenAI's chat-completions API takes it for
+    # reproducibility.
     temperature: float = 0.0
     seed:        int | None = field(
         default_factory=lambda: int(os.environ["CISCO_LLM_SEED"])
         if os.environ.get("CISCO_LLM_SEED") else 42
     )
-    # Foundation-Sec-8B-Reasoning spends most of its budget on chain-of-
-    # thought BEFORE the final JSON. If max_tokens is too small the response
-    # is cut off mid-reasoning, no JSON is ever emitted, and the IOC phase
-    # parses as empty — which presents as "0 IOCs matched" on every run.
+    # Reasoning models spend most of their budget on chain-of-thought BEFORE
+    # the final JSON. If max_tokens is too small the response is cut off
+    # mid-reasoning, no JSON is ever emitted, and the IOC phase parses as
+    # empty — which presents as "0 IOCs matched" on every run.
     max_tokens:  int   = 3072
     timeout:     int   = 300
 
@@ -79,7 +89,8 @@ def _provider_supports_json_mode(base_url: str) -> bool:
         return True
     if forced == "never":
         return False
-    return "deepseek" in (base_url or "").lower()
+    url = (base_url or "").lower()
+    return "openai.com" in url or "deepseek" in url
 
 
 def build_llm(cfg: CiscoLLMConfig, json_mode: bool = False) -> ChatOpenAI:
@@ -567,7 +578,7 @@ _ALERT_KEEP_KEYS = (
 )
 
 
-def _compact_incident(incident: dict) -> str:
+def _compact_incident(incident: dict, parsed_context: dict | None = None) -> str:
     """
     Compact JSON rendering of an incident for LLM prompts.
 
@@ -576,8 +587,16 @@ def _compact_incident(incident: dict) -> str:
     slows inference, and leaves the reasoning model less budget for the answer.
     Keeps every scalar top-level field, a capped/slimmed sample of alerts, and
     hard-caps the total size.
+
+    parsed_context, when given, is the Parsing & Normalisation stage's flat
+    processed_alert (see soc_workflow.run_parsing) — already-extracted IPs,
+    hashes, users, hosts, files, MITRE hints. It's folded in ahead of the raw
+    alerts sample so the IOC/risk/classification phases reuse that extraction
+    instead of re-deriving indicators from scratch every time.
     """
     slim: dict = {}
+    if parsed_context:
+        slim["parsed_alert_context"] = parsed_context
     for k, v in incident.items():
         if k in ("alerts", "journalEntries", "alertMeta"):
             continue
@@ -855,7 +874,7 @@ class TriageAgent:
 
     # ── Phase 1: IOC Checklists (single combined call) ────────────────────────
 
-    def _run_ioc(self, incident: dict) -> dict:
+    def _run_ioc(self, incident: dict, parsed_context: dict | None = None) -> dict:
         """One LLM call covering all three IOC categories."""
 
         def fmt_list(ioc_list, offset=0):
@@ -887,7 +906,7 @@ class TriageAgent:
                 ' "integrity": {"matched_iocs": [<integers>], "reasoning": "<brief>", "metakeys": [<strings>]}}'
             )),
             HumanMessage(content=(
-                f"INCIDENT:\n{_compact_incident(incident)}\n\n"
+                f"INCIDENT:\n{_compact_incident(incident, parsed_context)}\n\n"
                 f"IOC CHECKLIST — AVAILABILITY:\n{avail_text}\n\n"
                 f"IOC CHECKLIST — CONFIDENTIALITY:\n{conf_text}\n\n"
                 f"IOC CHECKLIST — INTEGRITY:\n{integ_text}\n\n"
@@ -976,7 +995,7 @@ class TriageAgent:
 
     # ── Phase 2: Risk Rating ──────────────────────────────────────────────────
 
-    def _run_risk(self, incident: dict, ioc_summary: str) -> dict:
+    def _run_risk(self, incident: dict, ioc_summary: str, parsed_context: dict | None = None) -> dict:
         messages = [
             SystemMessage(content=(
                 "You are a SOC Risk Analyst. Apply the SOC Risk Rating Methodology. "
@@ -989,7 +1008,7 @@ class TriageAgent:
                 ' "rationale": "<one sentence>"}'
             )),
             HumanMessage(content=(
-                f"INCIDENT:\n{_compact_incident(incident)}\n\n"
+                f"INCIDENT:\n{_compact_incident(incident, parsed_context)}\n\n"
                 f"IOC FINDINGS:\n{ioc_summary}\n\n"
                 f"RATING GUIDANCE:\n{RISK_RATING_GUIDANCE}\n\n"
                 "Rate all three dimensions strictly against the guidance bands, "
@@ -1015,7 +1034,7 @@ class TriageAgent:
 
     # ── Phase 3: SOC Classification ───────────────────────────────────────────
 
-    def _run_cls(self, incident: dict, risk_level: str, ioc_summary: str) -> dict:
+    def _run_cls(self, incident: dict, risk_level: str, ioc_summary: str, parsed_context: dict | None = None) -> dict:
         messages = [
             SystemMessage(content=(
                 "You are a SOC Analyst applying the SOC Classification Template. "
@@ -1032,7 +1051,7 @@ class TriageAgent:
                 'T1110 Brute Force, or Unknown>"}'
             )),
             HumanMessage(content=(
-                f"INCIDENT:\n{_compact_incident(incident)}\n\n"
+                f"INCIDENT:\n{_compact_incident(incident, parsed_context)}\n\n"
                 f"RISK RATING RESULT: {risk_level.upper()}\n\n"
                 f"IOC FINDINGS:\n{ioc_summary}\n\n"
                 f"CLASSIFICATION TABLE:\n{json.dumps(SOC_CLASSIFICATION_TABLE, indent=2)}\n\n"
@@ -1055,7 +1074,8 @@ class TriageAgent:
 
     # ── Main entry point ──────────────────────────────────────────────────────
 
-    def triage(self, incident: dict, force: bool = False) -> dict:
+    def triage(self, incident: dict, force: bool = False,
+               parsed_context: dict | None = None) -> dict:
         inc_id    = str(incident.get("id") or incident.get("incidentId") or "unknown")
         inc_title = incident.get("title") or incident.get("name") or "Untitled"
         timestamp = datetime.utcnow().isoformat()
@@ -1076,7 +1096,7 @@ class TriageAgent:
 
         try:
             # Phase 1 — IOC
-            ioc_data = self._run_ioc(incident)
+            ioc_data = self._run_ioc(incident, parsed_context)
             ioc_step = {
                 "step": "IOC Checklist", "status": "ok",
                 "matched_metakeys": ioc_data["all_metakeys"],
@@ -1096,7 +1116,7 @@ class TriageAgent:
             # between runs. overall_risk = highest dimension (the prompt
             # states this rule — now the code enforces it instead of
             # trusting the model to apply it consistently).
-            risk_data = self._run_risk(incident, ioc_data["ioc_summary"])
+            risk_data = self._run_risk(incident, ioc_data["ioc_summary"], parsed_context)
             dims = {
                 k: _normalize_level(risk_data.get(k), default="medium")
                 for k in ("likelihood_initiation", "likelihood_occurrence",
@@ -1113,7 +1133,7 @@ class TriageAgent:
             # per the SOC Classification Template, so it's derived, not
             # re-judged — the LLM contributes only the parts that genuinely
             # need language: category, summary, recommended actions.
-            cls_data       = self._run_cls(incident, risk_level, ioc_data["ioc_summary"])
+            cls_data       = self._run_cls(incident, risk_level, ioc_data["ioc_summary"], parsed_context)
             classification = risk_level
             cls_meta       = SOC_CLASSIFICATION_TABLE[classification]
             cls_data["classification"] = classification.capitalize()
@@ -1181,10 +1201,11 @@ class TriageAgent:
         _store_ticket(unc, inc_id, classification, ticket)
 
         result = {
-            "metakeys_payload": metakeys_payload,
-            "ticket":           ticket,
-            "trace":            trace,
-            "error":            None,
+            "metakeys_payload":    metakeys_payload,
+            "ticket":              ticket,
+            "trace":               trace,
+            "used_parsed_context": bool(parsed_context),
+            "error":               None,
         }
         _cache_put(fingerprint, inc_id, result)
         return result
@@ -1426,10 +1447,16 @@ def soc_triage_chat_respond(
     progress_fn                      = None,
     thinking_container               = None,
     result_sink:        dict | None  = None,
+    parsed_context:     dict | None  = None,
 ) -> str:
     """result_sink: optional dict — if given, the structured triage result is
     stored under result_sink["result"] so callers (e.g. the app's sequential
-    agent workflow) can hand it to the investigation/reporting agents."""
+    agent workflow) can hand it to the investigation/reporting agents.
+
+    parsed_context: optional processed_alert from the Parsing & Normalisation
+    stage (see soc_workflow.run_parsing / app.py's db_load_parsed_context) —
+    when given, triage reuses those already-extracted indicators instead of
+    re-deriving them from the raw incident."""
     cfg = llm_config or CiscoLLMConfig()
 
     if incident and _TRIAGE_TRIGGER.search(user_msg):
@@ -1438,7 +1465,8 @@ def soc_triage_chat_respond(
             progress_fn        = progress_fn,
             thinking_container = thinking_container,
         )
-        result = agent.triage(incident, force=bool(_FORCE_TRIGGER.search(user_msg)))
+        result = agent.triage(incident, force=bool(_FORCE_TRIGGER.search(user_msg)),
+                              parsed_context=parsed_context)
         if result_sink is not None:
             result_sink["result"] = result
 

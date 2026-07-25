@@ -60,9 +60,8 @@ In the app's **Settings → Secrets**, paste the block from
 real values — at minimum the LLM provider:
 
 ```toml
-CISCO_LLM_URL   = "https://your-llm-endpoint/v1"
-CISCO_LLM_KEY   = "sk-..."
-CISCO_LLM_MODEL = "deepseek-chat"
+OPENAI_API_KEY = "sk-..."
+OPENAI_MODEL   = "gpt-4o-mini"
 ```
 
 `app.py` copies these into `os.environ` at startup, so no code changes are

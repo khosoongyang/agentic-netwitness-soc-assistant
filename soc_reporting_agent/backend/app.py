@@ -1462,13 +1462,15 @@ def _request_filters() -> dict[str, Any]:
 @app.route("/api/dashboard")
 def api_dashboard():
     selected_ticket_id = request.args.get("ticket_id")
+    analyst = (request.args.get("analyst") or "").strip()
     selected = CASEWORK.get_ticket(selected_ticket_id) if selected_ticket_id else None
     if not selected:
         tickets = CASEWORK.list_tickets({"open_only": True, "limit": 1})
         selected = CASEWORK.get_ticket(tickets[0]["ticket_id"]) if tickets else None
     return jsonify({
         "success": True,
-        "summary": CASEWORK.dashboard_summary(),
+        "summary": CASEWORK.dashboard_summary(owner=analyst or None),
+        "analyst": analyst or None,
         "tickets": CASEWORK.list_tickets({"open_only": True, "limit": 100}),
         "selected_ticket": _ticket_response(selected),
         "integrations": {"netwitness": NetWitnessClient().status()},
