@@ -330,6 +330,11 @@ def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
             _wfm.pipeline_insert("finalized_report", rec)
             run["chroma_queue"].append(("finalized_report", rec))
             exports = rep.get("document_exports") or {}
+            # Structured data + export paths for the Generated Files panel
+            # (see _render_generated_files) — kept on the panel dict itself
+            # so it survives the disk fallback (last_workflow_result.json).
+            panels["reporting"]["exports"] = exports
+            panels["reporting"]["reporting_data"] = rec["report"]
             rep_out = [
                 f"**Status:** {rep.get('status')} "
                 f"(mode: {rep.get('reporting_mode', 'standard')})",
@@ -338,10 +343,12 @@ def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
                 f"**Summary:** {rep.get('summary') or '—'}",
                 "",
             ]
-            for f in ("docx", "pdf"):
-                if exports.get(f):
-                    rep_out.append(f"- {'' if f == 'docx' else ''} "
-                                   f"{f.upper()}: `{exports[f]}`")
+            _generated_fmts = [f.upper() for f in ("docx", "pdf") if exports.get(f)]
+            if _generated_fmts:
+                rep_out.append(f"- Documents generated: {' · '.join(_generated_fmts)} "
+                               "— see **Generated Files** below")
+            else:
+                rep_out.append("- No documents were exported (see errors below)")
             rep_out += ["", "Full report suite: **Pipeline DB** tab "
                             "→ *Finalized Report*."]
             bset("reporting", status="done", think="Report finalised",
@@ -350,8 +357,7 @@ def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
                          f"(mode: {rep.get('reporting_mode', 'standard')})")
             for fmt, icon in (("docx", ""), ("pdf", "")):
                 if exports.get(fmt):
-                    wf_md.append(f"- {icon} {fmt.upper()} report: "
-                                 f"`{exports[fmt]}`")
+                    wf_md.append(f"- {icon} {fmt.upper()} report generated")
                 else:
                     err = str(exports.get(f"{fmt}_error") or exports.get("error")
                               or "no file produced")[:150]
@@ -1053,7 +1059,8 @@ DEFAULTS = {
     "agent_board": {
         "triage":        {"status": "idle", "thinking": [], "output": "", "updated": "", "progress": 0},
         "investigation": {"status": "idle", "thinking": [], "output": "", "updated": "", "progress": 0},
-        "reporting":     {"status": "idle", "thinking": [], "output": "", "updated": "", "progress": 0},
+        "reporting":     {"status": "idle", "thinking": [], "output": "", "updated": "", "progress": 0,
+                          "exports": {}, "reporting_data": None},
     },
     "agent_board_sel": None,
     # ── Cisco Foundation LLM ─────────────────────────────────
@@ -3519,6 +3526,167 @@ elif active_page == "Ask a Question":
         else:
             slots["out"].caption("No output yet.")
 
+    # ── Generated Files: real downloadable exports for the Reporting Agent ──
+    # Replaces the raw filesystem paths that used to be printed in the Output
+    # panel with actual st.download_button controls, wired to the paths the
+    # reporting agent's export step already returns in document_exports.
+    def _saved_label(path: str | None) -> str | None:
+        if not path:
+            return None
+        try:
+            p = Path(str(path))
+            if not p.exists():
+                return None
+            ts = datetime.fromtimestamp(p.stat().st_mtime)
+        except Exception:
+            return None
+        hh = ts.strftime("%#I:%M %p") if os.name == "nt" else ts.strftime("%-I:%M %p")
+        if ts.date() == datetime.now().date():
+            return f"Generated today at {hh}"
+        return f"Generated on {ts.strftime('%b %d, %Y')} at {hh}"
+
+    def _gf_badge(text: str, color: str = "#A78BFA") -> str:
+        return (f'<span style="background:{color}1A;color:{color};'
+                f'border:1px solid {color}44;padding:1px 8px;border-radius:10px;'
+                f'font-size:0.6rem;font-weight:600;margin-left:8px">{text}</span>')
+
+    def _render_generated_files(panel: dict) -> None:
+        exports = panel.get("exports") or {}
+        reporting_data = panel.get("reporting_data")
+        if not exports and reporting_data is None:
+            return   # reporting hasn't produced anything yet — nothing to show
+
+        _inc_suffix = ""
+        if isinstance(reporting_data, dict) and reporting_data.get("incident_id"):
+            _inc_suffix = "_" + re.sub(r"[^A-Za-z0-9_\-]", "_",
+                                       str(reporting_data["incident_id"]))[:40]
+
+        st.markdown(
+            '<style>'
+            'div[class*="st-key-gfpdf_"] button{'
+            'border-color:var(--danger) !important;color:var(--danger) !important;'
+            'background:transparent !important;}'
+            'div[class*="st-key-gfpdf_"] button:hover{'
+            'background:#ff6e7c1A !important;}'
+            '</style>', unsafe_allow_html=True)
+        st.markdown(
+            '<div style="font-family:var(--mono);font-size:0.6rem;color:#A78BFA;'
+            'letter-spacing:2px;margin:16px 0 4px"> GENERATED FILES</div>'
+            '<div style="font-size:0.72rem;color:var(--muted);margin-bottom:10px">'
+            'Download the structured stage data or review and export the '
+            'formatted report.</div>',
+            unsafe_allow_html=True)
+
+        combined_saved = (_saved_label(exports.get("docx"))
+                          or _saved_label(exports.get("pdf")))
+
+        _rows = [
+            {"id": "reporting_data", "icon": "", "icon_bg": "#1E293B",
+             "name": "Reporting Data", "badge": None,
+             "desc": "Structured data used to generate the reporting documents.",
+             "saved": combined_saved if reporting_data is not None else None,
+             "kind": "json"},
+            {"id": "executive_summary", "icon": "", "icon_bg": "#1D4ED8",
+             "name": "Executive Summary", "badge": "Draft ready",
+             "desc": "High-level overview of the incident and key findings.",
+             "saved": _saved_label(exports.get("executive_summary_docx")
+                                   or exports.get("executive_summary_pdf")),
+             "kind": "section", "section_key": "executive_summary"},
+            {"id": "technical_findings", "icon": "", "icon_bg": "#15803D",
+             "name": "Technical Findings", "badge": "Draft ready",
+             "desc": "Detailed technical analysis, evidence, and indicators.",
+             "saved": _saved_label(exports.get("technical_findings_docx")
+                                   or exports.get("technical_findings_pdf")),
+             "kind": "section", "section_key": "technical_findings"},
+            {"id": "soc_analyst_review", "icon": "", "icon_bg": "#7E22CE",
+             "name": "SOC Analyst Review", "badge": "Draft ready",
+             "desc": "Analyst assessment, decisions and recommendations.",
+             "saved": _saved_label(exports.get("soc_analyst_review_docx")
+                                   or exports.get("soc_analyst_review_pdf")),
+             "kind": "section", "section_key": "soc_analyst_review"},
+            {"id": "final_incident_report", "icon": "", "icon_bg": "#B45309",
+             "name": "Final Incident Report", "badge": "Draft ready",
+             "desc": "Comprehensive report combining all approved sections.",
+             "saved": combined_saved,
+             "kind": "combined"},
+        ]
+
+        with st.container(border=True):
+            for _i, _row in enumerate(_rows):
+                _c_label, _c_saved, _c_actions = st.columns([3.4, 1.6, 3.4])
+                with _c_label:
+                    _badge_html = _gf_badge(_row["badge"]) if _row["badge"] else ""
+                    st.markdown(
+                        f'<div style="display:flex;gap:10px;align-items:flex-start">'
+                        f'<div style="width:30px;height:30px;border-radius:7px;'
+                        f'background:{_row["icon_bg"]}33;color:{_row["icon_bg"]};'
+                        f'display:flex;align-items:center;justify-content:center;'
+                        f'font-size:0.85rem;flex-shrink:0">{_row["icon"]}</div>'
+                        f'<div><div style="font-size:0.82rem;font-weight:600;'
+                        f'color:var(--text)">{_row["name"]}{_badge_html}</div>'
+                        f'<div style="font-size:0.68rem;color:var(--muted);'
+                        f'margin-top:2px;max-width:320px">{_row["desc"]}</div>'
+                        f'</div></div>',
+                        unsafe_allow_html=True)
+                with _c_saved:
+                    st.markdown(
+                        f'<div style="font-size:0.68rem;color:var(--faint);'
+                        f'padding-top:6px">{_row["saved"] or "Not generated yet"}'
+                        f'</div>', unsafe_allow_html=True)
+                with _c_actions:
+                    if _row["kind"] == "json":
+                        if reporting_data is not None:
+                            st.download_button(
+                                "Download JSON",
+                                data=_json.dumps(reporting_data, indent=2,
+                                                 default=str).encode("utf-8"),
+                                file_name=f"reporting_data{_inc_suffix}.json",
+                                mime="application/json",
+                                key=f"gf_json_{_i}", use_container_width=True)
+                        else:
+                            st.button("Download JSON", disabled=True,
+                                     key=f"gf_json_dis_{_i}",
+                                     use_container_width=True)
+                    else:
+                        _b1, _b2, _b3 = st.columns(3)
+                        _b1.button("Open & Edit", type="primary", disabled=True,
+                                  key=f"gf_edit_{_i}", use_container_width=True,
+                                  help="Section editing lives in the Reporting "
+                                       "Agent's own dashboard — not yet wired "
+                                       "into this view.")
+                        if _row["kind"] == "combined":
+                            _docx_path, _pdf_path = exports.get("docx"), exports.get("pdf")
+                        else:
+                            _sk = _row["section_key"]
+                            _docx_path = exports.get(f"{_sk}_docx")
+                            _pdf_path = exports.get(f"{_sk}_pdf")
+                        if _docx_path and Path(str(_docx_path)).exists():
+                            _b2.download_button(
+                                "Export Word",
+                                data=Path(str(_docx_path)).read_bytes(),
+                                file_name=f"{_row['id']}{_inc_suffix}.docx",
+                                mime=("application/vnd.openxmlformats-officedocument"
+                                      ".wordprocessingml.document"),
+                                key=f"gf_docx_{_i}", use_container_width=True)
+                        else:
+                            _b2.button("Export Word", disabled=True,
+                                      key=f"gf_docx_dis_{_i}", use_container_width=True)
+                        if _pdf_path and Path(str(_pdf_path)).exists():
+                            with _b3:
+                                with st.container(key=f"gfpdf_{_i}"):
+                                    st.download_button(
+                                        "Export PDF",
+                                        data=Path(str(_pdf_path)).read_bytes(),
+                                        file_name=f"{_row['id']}{_inc_suffix}.pdf",
+                                        mime="application/pdf",
+                                        key=f"gf_pdf_{_i}", use_container_width=True)
+                        else:
+                            _b3.button("Export PDF", disabled=True,
+                                      key=f"gf_pdf_dis_{_i}", use_container_width=True)
+                if _i < len(_rows) - 1:
+                    st.markdown('<hr style="border-color:var(--border);opacity:0.4;'
+                               'margin:6px 0">', unsafe_allow_html=True)
+
     # Auto-follow: surface the currently-running agent's live thinking without a
     # manual click (keeps the "live LLM chat" feel as work moves between agents).
     if st.session_state.agent_board_sel is None:
@@ -3544,6 +3712,8 @@ elif active_page == "Ask a Question":
         _board_live_detail[_sel_ag] = {"think": _think_slot,
                                        "token": _token_slot, "out": _out_slot}
         _render_board_detail(_sel_ag)
+        if _sel_ag == "reporting":
+            _render_generated_files(_panel)
 
     # ── File uploader (kept — tucked below the board) ──────────────────────
     with st.expander("Upload incident file (JSON · CSV · TXT · LOG)"):
@@ -3915,7 +4085,8 @@ elif active_page == "Ask a Question":
                         "investigation": {"status": "queued", "thinking": [],
                                           "output": "", "updated": ""},
                         "reporting":     {"status": "queued", "thinking": [],
-                                          "output": "", "updated": ""},
+                                          "output": "", "updated": "",
+                                          "exports": {}, "reporting_data": None},
                     },
                     "wf_md": _wf_md,
                     "chroma_queue": [],

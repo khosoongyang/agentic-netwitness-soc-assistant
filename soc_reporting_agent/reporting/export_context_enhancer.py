@@ -6,6 +6,7 @@ from typing import Any
 
 from reporting.llm_narrative import enhance_narrative
 from reporting.compact_renderer import (
+    approval_summary_table,
     build_approval_summary,
     build_chain_of_custody_note,
     build_data_impact_summary,
@@ -13,6 +14,8 @@ from reporting.compact_renderer import (
     compact_table,
     count_placeholders,
     is_placeholder,
+    split_into_sentences,
+    split_numbered_items,
 )
 
 UNKNOWN_VALUES = {
@@ -1513,6 +1516,18 @@ def apply_llm_narrative(context: dict[str, Any]) -> None:
         checks["fallback_logic_used"] = "No"
 
 
+def build_readable_narrative_sections(context: dict[str, Any]) -> None:
+    """Pre-split long free-text narrative fields into presentation-ready
+    lists so templates can render bullets/tables instead of dense paragraphs.
+    Does not alter any narrative wording — only how it is broken up for
+    display in the exported report."""
+    active = context.get("active_narrative") or {}
+    context["analyst_guidance_bullets"] = split_into_sentences(
+        active.get("analyst_friendly_explanation"))
+    context["soc_analyst_review_checklist_items"] = split_numbered_items(
+        active.get("soc_analyst_review_checklist"))
+
+
 def enhance_export_context(context: dict[str, Any], ticket: dict[str, Any] | None = None) -> dict[str, Any]:
     ticket = ticket or context.get("ticket") or {}
     _quality(context)
@@ -1590,8 +1605,10 @@ def enhance_export_context(context: dict[str, Any], ticket: dict[str, Any] | Non
     approval = context.get("approval") or {}
     containment = context.get("containment") or {}
     context["approval_summary"] = build_approval_summary(approval, containment)
+    context["approval_summary_table"] = approval_summary_table(context["approval_summary"])
 
     apply_llm_narrative(context)
+    build_readable_narrative_sections(context)
     finalise_quality_counters(context)
     finalise_section_placeholder_counts(context)
     return context

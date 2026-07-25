@@ -17,57 +17,88 @@
 
 ## 2. Evidence Summary
 
+{% if evidence_backed_findings %}
+| Finding | Evidence Summary | Evidence Strength | Limitation |
+|---|---|---|---|
 {% for finding in evidence_backed_findings %}
-- **{{ finding.finding }}**: {{ finding.evidence_summary }} Evidence strength: {{ finding.evidence_strength }}. Limitation: {{ finding.limitation }}
-{% else %}
-- No evidence-backed findings were available.
+| {{ finding.finding }} | {{ finding.evidence_summary }} | {{ finding.evidence_strength }} | {{ finding.limitation }} |
 {% endfor %}
+{% else %}
+No evidence-backed findings were available.
+{% endif %}
 
 ## 3. Affected Scope
 
+{% if affected_assets %}
+| Asset | IP | Criticality | Function |
+|---|---|---|---|
 {% for asset in affected_assets %}
-- Asset: {{ asset.hostname }} | IP: {{ asset.ip_address }} | Criticality: {{ asset.criticality }} | Function: {{ asset.business_function }}
-{% else %}
-- No affected assets were confirmed.
+| {{ asset.hostname }} | {{ asset.ip_address }} | {{ asset.criticality }} | {{ asset.business_function }} |
 {% endfor %}
+{% else %}
+No affected assets were confirmed.
+{% endif %}
+
+{% if affected_users %}
+| User | Role | Privilege | MFA |
+|---|---|---|---|
 {% for user in affected_users %}
-- User: {{ user.username }} | Role: {{ user.role }} | Privilege: {{ user.privilege_level }} | MFA: {{ user.mfa_status }}
-{% else %}
-- No affected users were confirmed.
+| {{ user.username }} | {{ user.role }} | {{ user.privilege_level }} | {{ user.mfa_status }} |
 {% endfor %}
+{% else %}
+No affected users were confirmed.
+{% endif %}
 
 ## 4. IOCs and Threat Intelligence
 
+{% if iocs %}
+| IOC | Type | Reputation | Source |
+|---|---|---|---|
 {% for ioc in iocs %}
-- {{ ioc.value }} ({{ ioc.type }}) | Reputation: {{ ioc.reputation }} | Source: {{ ioc.source }}
-{% else %}
-- No IOCs were available.
+| {{ ioc.value }} | {{ ioc.type }} | {{ ioc.reputation }} | {{ ioc.source }} |
 {% endfor %}
+{% else %}
+No IOCs were available.
+{% endif %}
 
 ## 5. Analyst Review Checklist
 
-{{ active_narrative.soc_analyst_review_checklist }}
+| Step | Analyst Action |
+|---|---|
+{% for item in soc_analyst_review_checklist_items %}
+| {{ loop.index }} | {{ item }} |
+{% endfor %}
 
 ## 6. Evidence Gaps
 
+{% if evidence_gaps %}
+| Priority | Gap |
+|---|---|
 {% for gap in evidence_gaps %}
-- {{ gap.priority | default("Medium") }}: {{ gap.gap | default(gap) }}
-{% else %}
-- No evidence gaps were recorded.
+| {{ gap.priority | default("Medium") }} | {{ gap.gap | default(gap) }} |
 {% endfor %}
+{% else %}
+No evidence gaps were recorded.
+{% endif %}
 
 ## 7. Recommended Actions
 
+{% if recommended_actions %}
+| Priority | Action | Owner | Approval Required |
+|---|---|---|---|
 {% for action in recommended_actions %}
-- {{ action.priority }}: {{ action.action }} | Owner: {{ action.owner }} | Approval Required: {{ action.approval_required }}
-{% else %}
-- No recommended actions were provided by upstream agents.
+| {{ action.priority }} | {{ action.action }} | {{ action.owner }} | {{ action.approval_required }} |
 {% endfor %}
+{% else %}
+No recommended actions were provided by upstream agents.
+{% endif %}
 
 ## 8. Decision Required
 
-- Approval status: {{ approval.approval_status }}
-- Containment recommended: {{ containment.recommended }}
-- Containment action: {{ containment.recommended_action }}
-- Containment execution status: {{ containment.execution_status }}
-- Blocking reason: {{ containment.blocking_reason }}
+| Field | Value |
+|---|---|
+| Approval Status | {{ approval.approval_status }} |
+| Containment Recommended | {{ containment.recommended }} |
+| Containment Action | {{ containment.recommended_action }} |
+| Containment Execution Status | {{ containment.execution_status }} |
+| Blocking Reason | {{ containment.blocking_reason }} |

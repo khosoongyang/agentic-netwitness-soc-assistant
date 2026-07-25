@@ -1355,7 +1355,11 @@ def export_report_documents(incident_id: str | None, timeout: int = 180) -> dict
     if not out:
         return {"error": (run.get("stderr") or run.get("stdout") or "no output")[-800:]}
 
-    for fmt in ("docx", "pdf"):
+    export_keys = ["docx", "pdf"]
+    for section_key in ("executive_summary", "technical_findings",
+                        "soc_analyst_review"):
+        export_keys += [f"{section_key}_docx", f"{section_key}_pdf"]
+    for fmt in export_keys:
         path = out.get(fmt)
         if not path:
             continue

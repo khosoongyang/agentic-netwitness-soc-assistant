@@ -38,13 +38,14 @@ except Exception:  # pragma: no cover
 
 try:
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import inch
     from reportlab.lib import colors
     from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 except Exception:  # pragma: no cover
     A4 = None
     getSampleStyleSheet = None
+    ParagraphStyle = None
     inch = None
     Paragraph = None
     SimpleDocTemplate = None
@@ -710,12 +711,27 @@ def _docx_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inc
                 if Pt is not None:
                     para.paragraph_format.space_after = Pt(6)
         elif btype == "bullet_list":
+            bullet_styles = ["List Bullet", "List Bullet 2", "List Bullet 3"]
             for item in block.get("items") or []:
-                item_text = str(item or "").strip()
-                if item_text:
-                    bullet_para = doc.add_paragraph(item_text, style="List Bullet")
-                    for _run in bullet_para.runs:
-                        _apply_report_font(_run)
+                if isinstance(item, dict):
+                    item_text = str(item.get("text") or "").strip()
+                    level = min(2, max(0, int(item.get("level") or 0)))
+                else:
+                    item_text, level = str(item or "").strip(), 0
+                if not item_text:
+                    continue
+                bullet_para = doc.add_paragraph(item_text, style=bullet_styles[level])
+                # Explicit hanging indent per level — belt-and-suspenders on top
+                # of the style's own numbering so wrapped lines stay aligned
+                # under the bullet text (not the bullet glyph) in every viewer,
+                # and each nesting level reads visibly deeper than its parent.
+                if Inches is not None:
+                    bullet_para.paragraph_format.left_indent = Inches(0.25 + level * 0.25)
+                    bullet_para.paragraph_format.first_line_indent = Inches(-0.25)
+                if Pt is not None:
+                    bullet_para.paragraph_format.space_after = Pt(2)
+                for _run in bullet_para.runs:
+                    _apply_report_font(_run)
         elif btype == "table":
             columns = [str(c or "") for c in (block.get("columns") or [])]
             rows = block.get("rows") or []
@@ -770,6 +786,15 @@ def _pdf_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inci
     blocks = repair_pipe_tables_in_blocks(blocks)
     _validate_no_raw_markdown_tables(blocks, title)
     styles = getSampleStyleSheet()
+    # Hanging-indent bullet styles, one per nesting level, so wrapped lines
+    # align under the bullet text (not the glyph) and nested items sit
+    # visibly deeper than their parent.
+    bullet_styles = [
+        ParagraphStyle(f"Bullet{lvl}", parent=styles["BodyText"],
+                       leftIndent=18 + lvl * 18, bulletIndent=lvl * 18,
+                       spaceAfter=3)
+        for lvl in range(3)
+    ] if ParagraphStyle is not None else None
     story = []
     logo_path = _aegis_logo_path()
     if Image is not None and logo_path:
@@ -806,8 +831,18 @@ def _pdf_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inci
                 story.append(Spacer(1, 0.06*inch))
         elif btype == "bullet_list":
             for item in block.get("items") or []:
-                if str(item or "").strip():
-                    story.append(_pdf_para("• " + str(item), styles["BodyText"]))
+                if isinstance(item, dict):
+                    item_text = str(item.get("text") or "").strip()
+                    level = min(2, max(0, int(item.get("level") or 0)))
+                else:
+                    item_text, level = str(item or "").strip(), 0
+                if not item_text:
+                    continue
+                if bullet_styles is not None:
+                    style = bullet_styles[level]
+                    story.append(Paragraph(f"<bullet>&bull;</bullet>{_pdf_escape(item_text)}", style))
+                else:
+                    story.append(_pdf_para(("  " * level) + "• " + item_text, styles["BodyText"]))
         elif btype == "table":
             columns = [str(c or "") for c in (block.get("columns") or [])]
             rows = block.get("rows") or []

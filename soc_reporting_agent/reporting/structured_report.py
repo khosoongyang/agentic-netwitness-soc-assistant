@@ -267,10 +267,11 @@ def _flush_paragraph(blocks: list[dict[str, Any]], paragraph: list[str]) -> None
     paragraph.clear()
 
 
-def _flush_bullets(blocks: list[dict[str, Any]], bullets: list[str]) -> None:
+def _flush_bullets(blocks: list[dict[str, Any]], bullets: list[dict[str, Any]]) -> None:
     if not bullets:
         return
-    items = [clean_inline(x) for x in bullets if clean_inline(x)]
+    items = [{"text": clean_inline(b.get("text")), "level": int(b.get("level") or 0)}
+             for b in bullets if clean_inline(b.get("text"))]
     if items:
         blocks.append({"type": "bullet_list", "items": items})
     bullets.clear()
@@ -288,7 +289,7 @@ def markdown_to_blocks(markdown_text: Any) -> list[dict[str, Any]]:
     lines = text.split("\n")
     blocks: list[dict[str, Any]] = []
     paragraph: list[str] = []
-    bullets: list[str] = []
+    bullets: list[dict[str, Any]] = []
     i = 0
     while i < len(lines):
         raw = lines[i]
@@ -314,7 +315,9 @@ def markdown_to_blocks(markdown_text: Any) -> list[dict[str, Any]]:
         bullet = re.match(r"^[-*+]\s+(.*)$", line)
         if bullet:
             _flush_paragraph(blocks, paragraph)
-            bullets.append(bullet.group(1))
+            indent = len(raw) - len(raw.lstrip(" \t"))
+            level = min(3, indent // 2)
+            bullets.append({"text": bullet.group(1), "level": level})
             i += 1
             continue
         table, next_i = parse_pipe_table(lines, i)
@@ -357,9 +360,13 @@ def blocks_to_plain_text(blocks: list[dict[str, Any]] | Any) -> str:
                 out.append(text)
         elif t == "bullet_list":
             for item in block.get("items") or []:
-                item_text = clean_inline(item)
+                if isinstance(item, dict):
+                    item_text = clean_inline(item.get("text"))
+                    level = int(item.get("level") or 0)
+                else:
+                    item_text, level = clean_inline(item), 0
                 if item_text:
-                    out.append(f"- {item_text}")
+                    out.append(f"{'  ' * level}- {item_text}")
         elif t == "table":
             cols = [clean_inline(c) for c in block.get("columns") or []]
             rows = block.get("rows") or []

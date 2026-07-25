@@ -48,6 +48,24 @@ def main() -> int:
     except Exception as exc:
         result["pdf_error"] = str(exc)
 
+    # Individual section exports — powers per-section downloads in the
+    # dashboard's Generated Files panel. Best-effort: a failure on one
+    # section must not block the combined docx/pdf produced above.
+    for section_key in ("executive_summary", "technical_findings",
+                        "soc_analyst_review"):
+        try:
+            section_docx = er.export_section_docx(output_dir, section_key,
+                                                   incident_id=incident_id)
+            result[f"{section_key}_docx"] = section_docx.get("path")
+        except Exception as exc:
+            result[f"{section_key}_docx_error"] = str(exc)
+        try:
+            section_pdf = er.export_section_pdf(output_dir, section_key,
+                                                 incident_id=incident_id)
+            result[f"{section_key}_pdf"] = section_pdf.get("path")
+        except Exception as exc:
+            result[f"{section_key}_pdf_error"] = str(exc)
+
     print("EXPORT_JSON:" + json.dumps(result, default=str))
     return 0 if (result.get("docx") or result.get("pdf")) else 1
 

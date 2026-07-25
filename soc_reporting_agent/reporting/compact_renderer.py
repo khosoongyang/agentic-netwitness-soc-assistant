@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from typing import Any
 
 PLACEHOLDER_VALUES = {
@@ -281,3 +282,61 @@ def containment_table_summary(containment: dict[str, Any]) -> str | None:
     if not summary:
         return None
     return "\n".join(summary.values())
+
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9])")
+_NUMBERED_ITEM_RE = re.compile(r"(?:^|(?<=\s))(\d{1,2})\.\s+")
+
+
+def split_into_sentences(text: Any) -> list[str]:
+    """Split a narrative paragraph into individual sentences for bullet-list
+    rendering. Presentation-only: every word is preserved, only the layout
+    changes from one dense paragraph to one bullet per sentence."""
+    text = str(text or "").strip()
+    if not text:
+        return []
+    parts = [p.strip() for p in _SENTENCE_SPLIT_RE.split(text) if p.strip()]
+    return parts or [text]
+
+
+def split_numbered_items(text: Any) -> list[str]:
+    """Split an inline-numbered narrative ("1. ... 2. ... 3. ...") into its
+    individual items for checklist/table rendering. Relies on numbering
+    markers already present in the source text; presentation-only."""
+    text = str(text or "").strip()
+    if not text:
+        return []
+    matches = list(_NUMBERED_ITEM_RE.finditer(text))
+    if not matches:
+        return [text]
+    items = []
+    for idx, match in enumerate(matches):
+        start = match.end()
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
+        item = text[start:end].strip()
+        if item:
+            items.append(item)
+    return items or [text]
+
+
+def split_label_value(sentence: Any) -> tuple[str, str]:
+    """Split a "Label: value." sentence into its (label, value) parts for
+    table rendering. Falls back to ("", sentence) if no label is present.
+    Presentation-only: no wording is altered, only relocated into columns."""
+    text = str(sentence or "").strip()
+    if not text:
+        return "", ""
+    label, sep, value = text.partition(": ")
+    if not sep:
+        return "", text
+    return label.strip(), value.strip().rstrip(".").strip()
+
+
+def approval_summary_table(summary: dict[str, Any]) -> list[list[str]]:
+    """Convert build_approval_summary()'s prose sentences into table rows."""
+    rows = []
+    for sentence in (summary or {}).values():
+        label, value = split_label_value(sentence)
+        if label and value:
+            rows.append([label, value])
+    return rows

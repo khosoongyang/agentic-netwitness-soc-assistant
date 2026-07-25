@@ -280,12 +280,22 @@ No timeline was provided. This is recorded as an evidence gap if required.
 | Milestone | Status |
 |---|---|
 | First Alert Generated | {{ alert.timestamp }} |
-| Triage Completed | {{ triage_summary | default("Not Provided") }} |
-| Investigation Completed | {{ investigation_summary | default("Not Provided") }} |
+| Triage Completed | See 5.2 Triage Summary below. |
+| Investigation Completed | See 5.2 Investigation Summary below. |
 | Containment Approval Status | {{ containment.approval_status | default("Requires analyst validation") }} |
 | Containment Execution | {{ containment.execution_status | default(containment.status) | replace("_", " ") }} |
 | Report Generated | {{ created_at }} |
 | Incident Closure | Pending analyst review |
+
+### 5.2 Triage and Investigation Summary
+
+**Triage Summary**
+
+{{ triage_summary | default("Not Provided") }}
+
+**Investigation Summary**
+
+{{ investigation_summary | default("Not Provided") }}
 
 ---
 
@@ -470,11 +480,17 @@ No evidence of data access, data exfiltration, encryption impact, or personal da
 
 ### 9.1 Analyst Review Guidance
 
-{{ active_narrative.analyst_friendly_explanation }}
+{% for point in analyst_guidance_bullets %}
+- {{ point }}
+{% endfor %}
 
 ### 9.2 SOC Analyst Review Checklist
 
-{{ active_narrative.soc_analyst_review_checklist }}
+| Step | Analyst Action |
+|---|---|
+{% for item in soc_analyst_review_checklist_items %}
+| {{ loop.index }} | {{ item }} |
+{% endfor %}
 
 ---
 
@@ -492,9 +508,11 @@ No evidence of data access, data exfiltration, encryption impact, or personal da
 
 ### 10.2 Containment and Approval Status
 
-{% if approval_summary %}
-{% for value in approval_summary.values() %}
-{{ value }}
+{% if approval_summary_table %}
+| Field | Value |
+|---|---|
+{% for label, value in approval_summary_table %}
+| {{ label }} | {{ value }} |
 {% endfor %}
 {% else %}
 | Field | Value |
@@ -712,7 +730,11 @@ No management action plan was generated.
 
 ## 17. Final Assessment
 
+### 17.1 Assessment Narrative
+
 {{ active_narrative.conclusion }}
+
+### 17.2 Closure Checklist
 
 | Closure Requirement | Status |
 |---|---|

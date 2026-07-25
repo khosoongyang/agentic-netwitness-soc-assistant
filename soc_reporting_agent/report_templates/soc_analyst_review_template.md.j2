@@ -34,11 +34,17 @@
 
 ## 3. LLM Analyst Review Guidance
 
-{{ active_narrative.analyst_friendly_explanation }}
+{% for point in analyst_guidance_bullets %}
+- {{ point }}
+{% endfor %}
 
 ### 3.1 LLM-Generated SOC Analyst Review Checklist
 
-{{ active_narrative.soc_analyst_review_checklist }}
+| Step | Analyst Action |
+|---|---|
+{% for item in soc_analyst_review_checklist_items %}
+| {{ loop.index }} | {{ item }} |
+{% endfor %}
 
 ---
 
@@ -85,9 +91,11 @@ No required reporting fields are missing.
 
 ## 7. Approval Decision
 
-{% if approval_summary %}
-{% for value in approval_summary.values() %}
-{{ value }}
+{% if approval_summary_table %}
+| Field | Value |
+|---|---|
+{% for label, value in approval_summary_table %}
+| {{ label }} | {{ value }} |
 {% endfor %}
 {% else %}
 | Field | Value |

@@ -1016,15 +1016,23 @@ def add_code_block(doc, text: str) -> None:
     doc.add_paragraph("")
 
 
-def add_list(doc, items: list[str], *, numbered: bool = False) -> None:
-    style = "List Number" if numbered else "List Bullet"
+def add_list(doc, items: list, *, numbered: bool = False) -> None:
+    styles = ["List Number"] * 3 if numbered else ["List Bullet", "List Bullet 2", "List Bullet 3"]
     for item in items:
-        p = doc.add_paragraph(style=style)
-        p.paragraph_format.left_indent = Inches(0.22)
-        p.paragraph_format.first_line_indent = Inches(-0.05)
+        if isinstance(item, dict):
+            text = str(item.get("text") or "")
+            level = min(2, max(0, int(item.get("level") or 0)))
+        else:
+            text, level = str(item or ""), 0
+        p = doc.add_paragraph(style=styles[level])
+        # Explicit hanging indent (matches the reporting package's DOCX/PDF
+        # exporters) so wrapped lines align under the text, not the glyph,
+        # and nested items sit visibly deeper than their parent.
+        p.paragraph_format.left_indent = Inches(0.25 + level * 0.25)
+        p.paragraph_format.first_line_indent = Inches(-0.25)
         p.paragraph_format.space_after = Pt(4)
         p.paragraph_format.line_spacing = 1.08
-        add_inline_markdown(p, item, base_size=9.8)
+        add_inline_markdown(p, text, base_size=9.8)
         for run in p.runs:
             run.font.name = "Aptos"
             run.font.color.rgb = BRAND_BLUE_DARK
@@ -1118,7 +1126,7 @@ def create_docx_from_blocks(path: Path, *, title: str, subtitle: str, blocks: li
         elif btype == "callout":
             add_callout(doc, str(block.get("text") or ""), block.get("kind") or "info")
         elif btype == "bullet_list":
-            add_list(doc, [str(i or "") for i in (block.get("items") or [])], numbered=False)
+            add_list(doc, block.get("items") or [], numbered=False)
         elif btype == "numbered_list":
             add_list(doc, [str(i or "") for i in (block.get("items") or [])], numbered=True)
         elif btype == "table":
