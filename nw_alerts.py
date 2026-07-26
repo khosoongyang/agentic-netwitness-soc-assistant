@@ -86,26 +86,43 @@ def _distill_alerts(alerts: list) -> dict:
     what lets triage/investigation/skills see a real host/user instead of
     "Unknown". Deterministic, dedup, bounded, null-safe. Pure → unit-testable."""
     def _add(bucket: dict, key: str, val) -> None:
+        if isinstance(val, list):
+            for v_item in val:
+                _add(bucket, key, v_item)
+            return
         v = str(val or "").strip()
-        if v and v.lower() not in ("none", "null", "n/a"):
+        if v and v.lower() not in ("none", "null", "n/a", "na", "undefined", "not available", "unknown", "[]", "{}"):
             bucket.setdefault(key, [])
             if v not in bucket[key]:
                 bucket[key].append(v)
 
     out: dict = {}
-    for a in (alerts or [])[:200]:
+    for a in (alerts or [])[:250]:
         if not isinstance(a, dict):
             continue
-        _add(out, "AlertTitles", a.get("title"))
+        orig = a.get("originalAlert") if isinstance(a.get("originalAlert"), dict) else a
+        _add(out, "AlertTitles", a.get("title") or a.get("name") or orig.get("moduleName"))
         _add(out, "AlertTypes", a.get("type"))
-        for t in (a.get("tactics") or []):
+        for t in (a.get("tactics") or orig.get("tactics") or []):
             _add(out, "AlertTactics", t.get("name") if isinstance(t, dict) else t)
-        for t in (a.get("techniques") or []):
+        for t in (a.get("techniques") or orig.get("techniques") or []):
             _add(out, "AlertTechniques", t.get("id") if isinstance(t, dict) else t)
-        for ev in (a.get("events") or [])[:50]:
+        
+        events = a.get("events") or orig.get("events") or []
+        for ev in (events or [])[:50]:
             if not isinstance(ev, dict):
                 continue
             _add(out, "Hostname", ev.get("domain"))  # ECAT machine/agent name
+            _add(out, "Hostname", ev.get("alias_host"))
+            _add(out, "Hostname", ev.get("host_src"))
+            _add(out, "User", ev.get("user_src"))
+            _add(out, "User", ev.get("owner"))
+            _add(out, "SourceIp", ev.get("ip_src"))
+            _add(out, "DestinationIp", ev.get("ip_dst"))
+            _add(out, "FileHash", ev.get("checksum_src") or ev.get("hash") or ev.get("file_hash"))
+            _add(out, "FileName", ev.get("filename_src") or ev.get("filename") or ev.get("process_name"))
+            _add(out, "BehavioralIOC", ev.get("boc") or ev.get("context_src"))
+            
             for side, ipkey in (("source", "SourceIp"), ("destination", "DestinationIp")):
                 node = ev.get(side) or {}
                 dev = node.get("device") or {}

@@ -1,0 +1,497 @@
+{
+    "parser": "soc_netwitness_parser",
+    "parser_version": "3.4-context-aware-normalised",
+    "input_format": "incident_with_alerts",
+    "selected_alert_index": 3,
+    "selected_alert_id": "6874e839bfd6a31e1df7c39e",
+    "selected_alert_raw_evidence": {
+        "raw_meta_key_count": 337,
+        "field_evidence_paths": {
+            "incident_id": [
+                "incident.id",
+                "alert.incidentId"
+            ],
+            "incident_title": [
+                "incident.name"
+            ],
+            "incident_priority": [
+                "incident.priority"
+            ],
+            "incident_risk_score": [
+                "incident.riskScore",
+                "incident.averageAlertRiskScore"
+            ],
+            "incident_first_alert_time": [
+                "incident.firstAlertTime"
+            ],
+            "alert_id": [
+                "alert._id",
+                "alert.originalAlert.id",
+                "alert.originalAlert.events[0].agent_id",
+                "alert.originalAlert.events[0].msg_id",
+                "alert.originalAlert.events[0].event_source_id",
+                "alert.originalAlert.events[0].nwe_callback_id",
+                "alert.alert.events[0].agent_id",
+                "alert.alert.events[0].event_source_id",
+                "alert.alert.events[0].nwe_callback_id",
+                "alert.alert.signature_id",
+                "alert.alert.groupby_agent_id"
+            ],
+            "alert_name": [
+                "incident.name",
+                "alert.originalHeaders.name",
+                "alert.originalAlert.moduleName",
+                "alert.alert.groupby_filename",
+                "alert.alert.groupby_source_username",
+                "alert.alert.events[0].data[0].filename",
+                "alert.alert.events[0].source.filename",
+                "alert.alert.events[0].source.user.username",
+                "alert.alert.events[0].hostname",
+                "alert.alert.name",
+                "alert.alert.groupby_host_name"
+            ],
+            "alert_time": [
+                "incident.created",
+                "incident.firstAlertTime",
+                "alert.receivedTime",
+                "alert.originalHeaders.timestamp",
+                "alert.originalAlert.time",
+                "alert.originalAlert.events[0].esa_time",
+                "alert.originalAlert.events[0].com_rsa_netwitness_streams_arrival_timestamp",
+                "alert.originalAlert.events[0].time",
+                "alert.originalAlert.events[0].event_time",
+                "alert.alert.events[0].timestamp",
+                "alert.alert.events[0].event_time",
+                "alert.alert.timestamp",
+                "alert.incidentCreated"
+            ],
+            "severity": [
+                "incident.priority",
+                "incident.riskScore",
+                "incident.averageAlertRiskScore",
+                "alert.originalHeaders.severity",
+                "alert.originalAlert.severity",
+                "alert.alert.severity",
+                "alert.alert.risk_score"
+            ],
+            "risk_score": [
+                "incident.riskScore",
+                "incident.averageAlertRiskScore",
+                "alert.alert.risk_score"
+            ],
+            "event_type": [
+                "incident.history[0].type",
+                "alert.originalHeaders.deviceProduct",
+                "alert.originalAlert.moduleType",
+                "alert.originalAlert.events[0].device_type",
+                "alert.originalAlert.events[0].device_disc_type",
+                "alert.alert.type[0]",
+                "alert.alert.events[0].device_type",
+                "alert.alert.events[0].type",
+                "alert.alert.events[0].related_links[0].type",
+                "alert.alert.events[0].related_links[1].type",
+                "alert.alert.groupby_type",
+                "alert.alert.related_links[0].type",
+                "alert.alert.related_links[1].type",
+                "alert.alert.related_links[2].type",
+                "alert.alert.related_links[3].type"
+            ],
+            "detection_name": [
+                "alert.originalHeaders.name",
+                "alert.originalAlert.moduleName",
+                "alert.alert.name"
+            ],
+            "signature_id": [
+                "alert.originalHeaders.signatureId",
+                "alert.alert.signature_id"
+            ],
+            "source_ip": [
+                "alert.originalAlert.events[0].ip_src",
+                "alert.alert.events[0].source.device.ip_address",
+                "alert.alert.groupby_source_ip"
+            ],
+            "destination_ip": [
+                "alert.originalAlert.events[0].ip_dst",
+                "alert.alert.events[0].destination.device.ip_address",
+                "alert.alert.groupby_destination_ip"
+            ],
+            "source_port": [
+                "alert.originalAlert.events[0].port_src",
+                "alert.alert.events[0].port_src"
+            ],
+            "destination_port": [
+                "alert.originalAlert.events[0].port_dst",
+                "alert.alert.events[0].port_dst"
+            ],
+            "protocol": [
+                "alert.originalAlert.events[0].ip_proto"
+            ],
+            "direction": [
+                "alert.originalAlert.events[0].direction"
+            ],
+            "session_id": [
+                "alert.originalAlert.events[0].sessionid"
+            ],
+            "event_source_id": [
+                "alert.originalAlert.eventSourceId",
+                "alert.originalAlert.events[0].event_source_id",
+                "alert.alert.events[0].event_source_id"
+            ],
+            "record_id": [
+                "alert.originalAlert.events[0].rid"
+            ],
+            "username": [
+                "alert.alert.user_summary[0]",
+                "alert.alert.groupby_source_username",
+                "alert.alert.events[0].source.user.username",
+                "alert.alert.events[0].user"
+            ],
+            "source_username": [
+                "alert.originalAlert.events[0].user_src",
+                "alert.alert.groupby_user_src",
+                "alert.alert.groupby_source_username",
+                "alert.alert.events[0].source.user.username",
+                "alert.alert.events[0].user_src"
+            ],
+            "hostname": [
+                "alert.originalAlert.events[0].alias_host[0]",
+                "alert.alert.events[0].hostname",
+                "alert.alert.groupby_host_name"
+            ],
+            "domain": [
+                "alert.alert.events[0].domain",
+                "alert.alert.groupby_domain"
+            ],
+            "file_name": [
+                "alert.alert.groupby_filename",
+                "alert.alert.events[0].data[0].filename",
+                "alert.alert.events[0].source.filename"
+            ],
+            "file_hash": [
+                "alert.alert.events[0].data[0].hash",
+                "alert.alert.events[0].source.file_SHA256",
+                "alert.alert.events[0].source.hash",
+                "alert.alert.groupby_data_hash"
+            ],
+            "file_path": [
+                "alert.alert.events[0].source.path"
+            ],
+            "file_size": [
+                "alert.originalAlert.events[0].size",
+                "alert.alert.events[0].data[0].size"
+            ],
+            "analysis_session": [
+                "alert.originalAlert.events[0].analysis_session[0]",
+                "alert.alert.events[0].analysis_session",
+                "alert.alert.groupby_analysis_session"
+            ],
+            "feed_name": [
+                "alert.originalAlert.events[0].feed_name[0]"
+            ],
+            "url": [
+                "alert.originalAlert.engineUri",
+                "alert.alert.events[0].related_links[0].url",
+                "alert.alert.events[0].related_links[1].url",
+                "alert.alert.related_links[0].url",
+                "alert.alert.related_links[1].url",
+                "alert.alert.related_links[2].url",
+                "alert.alert.related_links[3].url"
+            ],
+            "event_time": [
+                "incident.firstAlertTime",
+                "alert.receivedTime",
+                "alert.originalHeaders.timestamp",
+                "alert.originalAlert.time",
+                "alert.originalAlert.events[0].esa_time",
+                "alert.originalAlert.events[0].com_rsa_netwitness_streams_arrival_timestamp",
+                "alert.originalAlert.events[0].time",
+                "alert.originalAlert.events[0].event_time",
+                "alert.alert.events[0].timestamp",
+                "alert.alert.events[0].event_time",
+                "alert.alert.timestamp"
+            ]
+        },
+        "sample_values": {
+            "incident_id": [
+                "INC-52825"
+            ],
+            "incident_title": [
+                "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU"
+            ],
+            "incident_priority": [
+                "HIGH"
+            ],
+            "incident_risk_score": [
+                70
+            ],
+            "incident_first_alert_time": [
+                "2025-07-14T10:31:54.410+00:00"
+            ],
+            "alert_id": [
+                "6874e839bfd6a31e1df7c39e",
+                "db8d9c58-13aa-4526-814f-d925fe48c92b",
+                "8A4990EF-77DF-CBF5-F833-9DCB4C5EA053",
+                "nwendpoint",
+                "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:913944",
+                "nwe://fc049a04-4bdc-49a2-aa5f-abba25cd12f1",
+                "913944"
+            ],
+            "alert_name": [
+                "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+                "Chu Wen - Lateral Move Detected",
+                "svchost.exe",
+                "NT AUTHORITY\\SYSTEM"
+            ],
+            "alert_time": [
+                "2025-07-14T11:21:34.043+00:00",
+                "2025-07-14T10:31:54.410+00:00",
+                1752492089206,
+                1752489114410,
+                "Jul 14, 2025 10:31:54 AM UTC",
+                1752489113249,
+                1752489107000
+            ],
+            "severity": [
+                "HIGH",
+                70,
+                7,
+                70.0
+            ],
+            "risk_score": [
+                70,
+                70.0
+            ],
+            "event_type": [
+                "CREATED",
+                "Event Stream Analysis",
+                "ESPER",
+                "nwendpoint",
+                "Endpoint"
+            ],
+            "detection_name": [
+                "Chu Wen - Lateral Move Detected"
+            ],
+            "signature_id": [
+                "e58fb6c9dce99a2122407074044e1f44086fe31ae48379e881bd014b84bfa21c"
+            ],
+            "source_ip": [
+                "192.168.10.207"
+            ],
+            "destination_ip": [
+                "4.145.79.81"
+            ],
+            "source_port": [
+                50202
+            ],
+            "destination_port": [
+                443
+            ],
+            "protocol": [
+                6
+            ],
+            "direction": [
+                "outbound"
+            ],
+            "session_id": [
+                913944
+            ],
+            "event_source_id": [
+                "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:913944",
+                "913944"
+            ],
+            "record_id": [
+                913944
+            ],
+            "username": [
+                "NT AUTHORITY\\SYSTEM"
+            ],
+            "source_username": [
+                "NT AUTHORITY\\SYSTEM"
+            ],
+            "hostname": [
+                "BETHANYCHUCHU"
+            ],
+            "domain": [
+                "BETHANYCHUCHU"
+            ],
+            "file_name": [
+                "svchost.exe"
+            ],
+            "file_hash": [
+                "b0b36bff7ae4057f687d839cd4b3d81159ab646f1ee1b22106a927e93decbb61"
+            ],
+            "file_path": [
+                "C:\\Windows\\System32\\"
+            ],
+            "file_size": [
+                41
+            ],
+            "analysis_session": [
+                "not top 20 dst"
+            ],
+            "feed_name": [
+                "investigation"
+            ],
+            "url": [
+                "FYPRSA3-Policies",
+                "/investigation/host/ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005/reconstruction/913944/DETAILS",
+                "/investigation/ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005/navigate/query/alias.host%3D'BETHANYCHUCHU'%2Fdate%2F2025-07-14T10%3A21%3A47.000Z%2F2025-07-14T10%3A41%3A47.000Z",
+                "/investigation/ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005/navigate/query/sessionid%3D913944",
+                "/investigation/ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005/navigate/query/ip.src%3D192.168.10.207%2Fdate%2F2025-07-14T10%3A21%3A47.000Z%2F2025-07-14T10%3A41%3A47.000Z",
+                "/investigation/ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005/navigate/query/ip.dst%3D4.145.79.81%2Fdate%2F2025-07-14T10%3A21%3A47.000Z%2F2025-07-14T10%3A41%3A47.000Z"
+            ],
+            "event_time": [
+                "2025-07-14T10:31:54.410+00:00",
+                1752492089206,
+                1752489114410,
+                "Jul 14, 2025 10:31:54 AM UTC",
+                1752489113249,
+                1752489107000,
+                1751970580
+            ]
+        },
+        "event_evidence_paths": {
+            "event_0": {
+                "source_path": "originalAlert.events[0]",
+                "field_evidence_paths": {
+                    "alert_id": [
+                        "event.agent_id",
+                        "event.msg_id",
+                        "event.event_source_id",
+                        "event.nwe_callback_id"
+                    ],
+                    "alert_time": [
+                        "event.esa_time",
+                        "event.com_rsa_netwitness_streams_arrival_timestamp",
+                        "event.time",
+                        "event.event_time"
+                    ],
+                    "event_type": [
+                        "event.device_type",
+                        "event.device_disc_type"
+                    ],
+                    "source_ip": [
+                        "event.ip_src"
+                    ],
+                    "destination_ip": [
+                        "event.ip_dst"
+                    ],
+                    "source_port": [
+                        "event.port_src"
+                    ],
+                    "destination_port": [
+                        "event.port_dst"
+                    ],
+                    "protocol": [
+                        "event.ip_proto"
+                    ],
+                    "direction": [
+                        "event.direction"
+                    ],
+                    "session_id": [
+                        "event.sessionid"
+                    ],
+                    "event_source_id": [
+                        "event.event_source_id"
+                    ],
+                    "record_id": [
+                        "event.rid"
+                    ],
+                    "source_username": [
+                        "event.user_src"
+                    ],
+                    "hostname": [
+                        "event.alias_host[0]"
+                    ],
+                    "file_size": [
+                        "event.size"
+                    ],
+                    "analysis_session": [
+                        "event.analysis_session[0]"
+                    ],
+                    "feed_name": [
+                        "event.feed_name[0]"
+                    ],
+                    "event_time": [
+                        "event.esa_time",
+                        "event.com_rsa_netwitness_streams_arrival_timestamp",
+                        "event.time",
+                        "event.event_time"
+                    ]
+                }
+            },
+            "event_1": {
+                "source_path": "alert.events[0]",
+                "field_evidence_paths": {
+                    "alert_id": [
+                        "event.agent_id",
+                        "event.event_source_id",
+                        "event.nwe_callback_id"
+                    ],
+                    "alert_name": [
+                        "event.data[0].filename",
+                        "event.source.filename",
+                        "event.source.user.username",
+                        "event.hostname"
+                    ],
+                    "alert_time": [
+                        "event.timestamp",
+                        "event.event_time"
+                    ],
+                    "event_type": [
+                        "event.device_type",
+                        "event.type",
+                        "event.related_links[0].type",
+                        "event.related_links[1].type"
+                    ],
+                    "source_port": [
+                        "event.port_src"
+                    ],
+                    "destination_port": [
+                        "event.port_dst"
+                    ],
+                    "event_source_id": [
+                        "event.event_source_id"
+                    ],
+                    "username": [
+                        "event.source.user.username",
+                        "event.user"
+                    ],
+                    "source_username": [
+                        "event.user_src"
+                    ],
+                    "hostname": [
+                        "event.hostname"
+                    ],
+                    "domain": [
+                        "event.domain"
+                    ],
+                    "file_name": [
+                        "event.data[0].filename",
+                        "event.source.filename"
+                    ],
+                    "file_hash": [
+                        "event.data[0].hash",
+                        "event.source.file_SHA256",
+                        "event.source.hash"
+                    ],
+                    "file_size": [
+                        "event.data[0].size"
+                    ],
+                    "analysis_session": [
+                        "event.analysis_session"
+                    ],
+                    "url": [
+                        "event.related_links[0].url",
+                        "event.related_links[1].url"
+                    ],
+                    "event_time": [
+                        "event.timestamp",
+                        "event.event_time"
+                    ]
+                }
+            }
+        }
+    },
+    "generated_at": "2026-07-26T04:34:23.964612+00:00"
+}
