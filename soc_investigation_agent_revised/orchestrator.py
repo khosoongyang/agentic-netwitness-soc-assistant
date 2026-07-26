@@ -4,7 +4,7 @@ import json
 import yaml
 import re
 from typing import List, Literal, Optional, Dict
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from dotenv import load_dotenv
 from policy_engine import PolicyAuditRecord, PolicyManager, run_policy_compliance_rules, extract_actionable_rules
 from langchain_openai import ChatOpenAI
@@ -31,6 +31,15 @@ def log_success(message: str): print(f"{Color.GREEN}[+] {message}{Color.RESET}",
 def log_warning(message: str): print(f"{Color.YELLOW}[~] {message}{Color.RESET}", file=sys.stderr)
 def log_error(message: str): print(f"{Color.RED}[!] ERROR: {message}{Color.RESET}", file=sys.stderr)
 
+def _as_text(v) -> str:
+    """Coerce an LLM value to str for a str-typed field. json_mode doesn't enforce
+    types, so a field can come back int/bool/number (e.g. execution_trace step_id=1)
+    — return '' for None, the string as-is, else str(v). Stops the recurring
+    'Input should be a valid string [input_type=int]' Pass-parse failures."""
+    if v is None:
+        return ""
+    return v if isinstance(v, str) else str(v)
+
 # --- PYDANTIC SCHEMAS FOR STRUCTURED OUTPUT ---
 
 class SuspiciousSeeds(BaseModel):
@@ -42,11 +51,47 @@ class MilestoneCheck(BaseModel):
     extracted_data: Optional[str] = Field(description="The extracted data for this step if the milestone is met, otherwise null.")
     suggested_pivots: List[str] = Field(default_factory=list, description="List of suspected IOCs/keys/pivots to query ChromaDB for to gather more context. Return concrete indicators (values), not descriptions.")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate(cls, d):
+        # json_mode doesn't enforce the schema; fill fields the LLM may omit.
+        if isinstance(d, dict):
+            d["reasoning"] = _as_text(d.get("reasoning"))
+            d.setdefault("milestone_met", False)
+            _ed = d.get("extracted_data")
+            if _ed is not None and not isinstance(_ed, str):
+                d["extracted_data"] = str(_ed)
+            if isinstance(d.get("suggested_pivots"), str):
+                d["suggested_pivots"] = [d["suggested_pivots"]] if d["suggested_pivots"].strip() else []
+        return d
+
 class MilestoneExecution(BaseModel):
     step_id: str
     instruction: str
     status: Literal["MET", "NOT_MET", "SKIPPED"]
     findings: str
+
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate(cls, d):
+        # Accept off-schema status values (e.g. 'PARTIALLY_MET') and missing fields.
+        if isinstance(d, dict):
+            s = str(d.get("status", "")).upper().strip()
+            if s not in {"MET", "NOT_MET", "SKIPPED"}:
+                d["status"] = "SKIPPED" if "SKIP" in s else ("MET" if s == "MET" else "NOT_MET")
+            # DeepSeek sometimes emits the trace with alternate field names
+            # ({step, action, description, result}) and leaves the canonical ones
+            # blank — carry the content across so instruction/findings aren't empty.
+            if not _as_text(d.get("step_id")):
+                d["step_id"] = _as_text(d.get("step"))
+            if not _as_text(d.get("instruction")):
+                d["instruction"] = _as_text(d.get("action") or d.get("description"))
+            if not _as_text(d.get("findings")):
+                d["findings"] = _as_text(d.get("result") or d.get("description"))
+            for _k in ("step_id", "instruction", "findings"):
+                d[_k] = _as_text(d.get(_k))
+        return d
+
 class BusinessImpactChecklist(BaseModel):
     critical_system: str = Field(description="Is a critical or significant system impacted? (yes/no/unknown)")
     essential_service: str = Field(description="Is an important or essential service affected? (yes/no/unknown)")
@@ -68,14 +113,120 @@ class FinalIncidentAnalysis(BaseModel):
     mitre_attack_table: Optional[str] = Field(default=None, description="Markdown summary table mapping incident timeline events to MITRE ATT&CK TTPs at the incident level.")
     policy_audit_logs: List[PolicyAuditRecord] = Field(default_factory=list, description="The list of PolicyAuditRecord generated during policy-based verification checks.")
 
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate(cls, d):
+        # json_mode doesn't enforce the schema, so coerce common LLM deviations
+        # before validation: string->list, fill missing required fields, normalise
+        # enums + the nested checklist. Direct construction (fallbacks) passes valid
+        # values / model instances, which flow through untouched.
+        if not isinstance(d, dict):
+            return d
+        for _f in ("actions_taken", "recommended_containment", "execution_trace",
+                   "mitre_mappings", "policy_audit_logs"):
+            if isinstance(d.get(_f), str):
+                d[_f] = [d[_f]] if d[_f].strip() else []
+        for _f in ("actions_taken", "recommended_containment", "execution_trace"):
+            d.setdefault(_f, [])
+        for _f in ("incident_id", "incident_summary", "severity_justification",
+                   "confidence_justification"):
+            d[_f] = _as_text(d.get(_f))
+        _sev = str(d.get("severity", "")).strip().title()
+        d["severity"] = _sev if _sev in {"Low", "Medium", "High", "Critical"} else "Medium"
+        _conf = str(d.get("confidence", "")).strip().title()
+        d["confidence"] = _conf if _conf in {"Low", "Medium", "High"} else "Medium"
+        # DeepSeek returns business_impact_checklist in several shapes run-to-run:
+        # (a) the flat dict the schema wants, sometimes with bool/number answers;
+        # (b) a LIST of {factor, question, answer, reasoning} objects; (c) a bare
+        # string or null. Normalise ALL of them to the flat str dict so Pass 2
+        # stops failing to parse and dropping to the degraded fallback report.
+        _bic = d.get("business_impact_checklist")
+        if isinstance(_bic, list):
+            _flat: dict = {}
+            for _item in _bic:
+                if not isinstance(_item, dict):
+                    continue
+                _factor = str(_item.get("factor") or _item.get("name")
+                              or _item.get("question") or "").lower()
+                _ans = _item.get("answer", _item.get("value", "unknown"))
+                if "critical" in _factor:
+                    _flat["critical_system"] = _ans
+                elif "essential" in _factor or "important" in _factor:
+                    _flat["essential_service"] = _ans
+                elif "sensiti" in _factor or "data" in _factor:
+                    _flat["data_sensitivity"] = _ans
+                elif ("operational" in _factor or "outage" in _factor
+                      or "degrad" in _factor or "business function" in _factor):
+                    _flat["operational_impact"] = _ans
+            _bic = _flat
+        if not isinstance(_bic, dict):
+            _bic = {}
+
+        def _yn(v):
+            if isinstance(v, bool):
+                return "yes" if v else "no"
+            if v is None:
+                return "unknown"
+            return v if isinstance(v, str) else str(v)
+        for _k in ("critical_system", "essential_service",
+                   "data_sensitivity", "operational_impact"):
+            _bic[_k] = _yn(_bic.get(_k, "unknown"))
+        d["business_impact_checklist"] = _bic
+
+        # mitre_mappings: DeepSeek sometimes labels the phase 'phase' (not
+        # 'timeline_phase') and omits other required fields, which crashed the whole
+        # Pass 2 parse -> generic fallback report. Map the aliases + fill defaults so
+        # the MITRE table renders instead of failing.
+        _mm = d.get("mitre_mappings")
+        if isinstance(_mm, list):
+            _fixed = []
+            for _m in _mm:
+                if not isinstance(_m, dict):
+                    continue
+                _m.setdefault("timeline_phase", _m.get("phase") or _m.get("activity") or "N/A")
+                _m.setdefault("observed_evidence", _m.get("evidence") or _m.get("result")
+                              or _m.get("description") or "N/A")
+                _m.setdefault("tactic", _m.get("mitre_tactic") or "N/A")
+                _m.setdefault("technique_name", _m.get("technique") or _m.get("mitre_technique") or "N/A")
+                _m.setdefault("technique_id", _m.get("technique_id") or _m.get("mitre_id")
+                              or _m.get("id") or "N/A")
+                _fixed.append(_m)
+            d["mitre_mappings"] = _fixed
+        return d
+
 class Pass1StepResult(BaseModel):
     step_id: str
     status: Literal["MET", "NOT_MET"]
     findings: str
 
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate(cls, d):
+        if isinstance(d, dict):
+            s = str(d.get("status", "")).upper().strip()
+            if s not in {"MET", "NOT_MET"}:
+                d["status"] = "MET" if s == "MET" else "NOT_MET"
+            for _k in ("step_id", "findings"):
+                d[_k] = _as_text(d.get(_k))
+        return d
+
 class Pass1Result(BaseModel):
     execution_trace: List[Pass1StepResult] = Field(description="The step-by-step trace of how the playbook was executed.")
     suggested_pivots: List[str] = Field(default_factory=list, description="Concrete indicator values (IPs, domains, hashes, usernames) to query to resolve any unmet steps.")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _tolerate(cls, d):
+        # json_mode often names the list 'steps' instead of 'execution_trace'.
+        if isinstance(d, dict):
+            if "execution_trace" not in d and "steps" in d:
+                d["execution_trace"] = d.pop("steps")
+            if isinstance(d.get("execution_trace"), dict):
+                d["execution_trace"] = [d["execution_trace"]]
+            d.setdefault("execution_trace", [])
+            if isinstance(d.get("suggested_pivots"), str):
+                d["suggested_pivots"] = [d["suggested_pivots"]] if d["suggested_pivots"].strip() else []
+        return d
 
 # --- LLM INITIALIZATION ---
 
