@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from backend import stage_workflow
 from services.parser_context_guard import extract_alert_identity
 
 
@@ -1173,6 +1174,8 @@ class CaseworkStore:
         # Triage reads enriched_alert.json. Before external enrichment runs,
         # use the parser's processed alert as the best available context.
         parsing_result = ticket.get("parsing_result") or {}
+        if not stage_workflow.output_valid(ticket, "parsing"):
+            parsing_result = {}
         processed_alert = parsing_result.get("processed_alert") if isinstance(parsing_result, dict) else None
         if isinstance(processed_alert, dict) and processed_alert:
             (inputs_dir / "processed_alert.json").write_text(json.dumps(processed_alert, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -1181,6 +1184,8 @@ class CaseworkStore:
             (inputs_dir / "enriched_alert.json").write_text(json.dumps(raw_alert, indent=2, ensure_ascii=False), encoding="utf-8")
 
         threat_intel = ticket.get("threat_intel_result") or {}
+        if not stage_workflow.output_valid(ticket, "threat_intel"):
+            threat_intel = {}
         enriched_from_ti = threat_intel.get("enriched_alert") if isinstance(threat_intel, dict) else None
         if isinstance(enriched_from_ti, dict) and enriched_from_ti:
             (inputs_dir / "threat_intel_result.json").write_text(json.dumps(threat_intel, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -1197,8 +1202,12 @@ class CaseworkStore:
             ("reporting_result", "final_report.json"),
             ("soc_review_result", "soc_review_result.json"),
         ]:
-            if ticket.get(key):
-                (inputs_dir / filename).write_text(json.dumps(ticket[key], indent=2, ensure_ascii=False), encoding="utf-8")
+            stage = stage_workflow.stage_definition(key)
+            path = inputs_dir / filename
+            if ticket.get(key) and (not stage or stage_workflow.output_valid(ticket, stage)):
+                path.write_text(json.dumps(ticket[key], indent=2, ensure_ascii=False), encoding="utf-8")
+            elif stage and path.exists():
+                path.unlink()
         return raw_alert
 
 
@@ -1348,6 +1357,9 @@ class CaseworkStore:
         fields: dict[str, Any] = {}
         status = _norm_status(data.get("status") or data.get("report_status"))
         agent_norm = _norm_status(agent)
+        if stage_workflow.stage_definition(agent_norm):
+            success = _norm_status(data.get("workflow_status")) != "failed" and status not in stage_workflow.FAILED
+            data = stage_workflow.completed_result(agent_norm, data, success=success)
 
         if agent_norm in {"parsing", "parsing_normalisation"}:
             fields["parsing_result"] = data
@@ -1363,24 +1375,23 @@ class CaseworkStore:
                 fields["affected_users"] = list(dict.fromkeys((self.get_ticket(ticket_id) or {}).get("affected_users", []) + users))
             if iocs:
                 fields["iocs"] = list((self.get_ticket(ticket_id) or {}).get("iocs", []) + iocs)
-            fields["current_stage"] = "triage"
-            fields["status"] = "Triage Required"
+            if data.get("workflow_status") == "failed":
+                fields["current_stage"] = "parsing_normalisation"
+                fields["status"] = "Parsing Failed"
+            else:
+                fields["current_stage"] = "triage"
+                fields["status"] = "Triage Required"
         elif agent_norm == "triage":
             fields["triage_result"] = data
             fields["severity"] = str(_first(data.get("severity"), data.get("classification"), default="Medium")).title()
             fields["confidence"] = str(_first(data.get("confidence"), data.get("confidence_level"), default="Medium")).title()
             fields["correlation_result"] = {}
-            pending_after_triage = self.list_correlation_recommendations({"ticket_id": ticket_id, "status": "pending", "limit": 100})
-            triage_pending = [r for r in pending_after_triage if _norm_status(r.get("source_stage")) in {"triage", "correlation", ""}]
-            if data.get("requires_incident_grouping_review") or triage_pending:
-                fields["current_stage"] = "triage_grouping_review"
-                fields["status"] = "Incident Grouping Review Required"
-            elif data.get("approval_required"):
+            if data.get("workflow_status") == "failed":
+                fields["current_stage"] = "triage"
+                fields["status"] = "Triage Failed"
+            else:
                 fields["current_stage"] = "triage_approval"
                 fields["status"] = "Awaiting Approval"
-            else:
-                fields["current_stage"] = "threat_intelligence"
-                fields["status"] = "Threat Intel Required"
         elif agent_norm == "orchestration":
             fields["orchestration_decision_result"] = data
         elif agent_norm == "correlation":
@@ -1393,30 +1404,32 @@ class CaseworkStore:
             enriched = data.get("enriched_alert") or {}
             if enriched.get("enrichment_risk_level"):
                 fields["confidence"] = (self.get_ticket(ticket_id) or {}).get("confidence") or "Medium"
-            fields["current_stage"] = "investigation"
-            fields["status"] = "Investigation Required"
+            if data.get("workflow_status") == "failed":
+                fields["current_stage"] = "threat_intelligence"
+                fields["status"] = "Threat Intelligence Enrichment Failed"
+            else:
+                fields["current_stage"] = "threat_intel_approval"
+                fields["status"] = "Awaiting Approval"
         elif agent_norm == "investigation":
             fields["investigation_result"] = data
             fields["correlation_result"] = {}
             # Investigation may now discover related alerts/tickets and prepare
             # analyst-approved grouping/archive recommendations. Do not move to
             # reporting approval until the analyst reviews those recommendations.
-            if data.get("recommendation_count") or data.get("requires_incident_grouping_review") or data.get("requires_archive_approval"):
-                fields["current_stage"] = "incident_grouping_review"
-                fields["status"] = "Incident Grouping Review Required"
-            elif status in {"failed", "execution_error", "timed_out", "error", "invalid_output", "missing_required_context"}:
+            if data.get("workflow_status") == "failed":
                 fields["current_stage"] = "investigation"
                 fields["status"] = "Investigation Failed"
-            elif status in {"needs_more_data", "waiting_for_telemetry", "insufficient_telemetry", "completed_with_evidence_gaps", "completed_limited"}:
-                fields["current_stage"] = "investigation_evidence_decision"
-                fields["status"] = "Evidence Gap Decision Required"
             else:
                 fields["current_stage"] = "investigation_approval"
                 fields["status"] = "Awaiting Approval"
         elif agent_norm == "reporting":
             fields["reporting_result"] = data
-            fields["current_stage"] = "soc_analyst_review"
-            fields["status"] = "Awaiting SOC Review"
+            if data.get("workflow_status") == "failed":
+                fields["current_stage"] = "reporting"
+                fields["status"] = "Reporting Failed"
+            else:
+                fields["current_stage"] = "reporting_approval"
+                fields["status"] = "Awaiting Approval"
         message = f"{agent.replace('_', ' ').title()} appended output to the ticket."
         return self.update_ticket(ticket_id, fields, actor=f"{agent.replace('_', ' ').title()}", action=f"{agent_norm}_updated", message=message)
 
@@ -1489,56 +1502,28 @@ class CaseworkStore:
         if not ticket:
             raise KeyError(f"Ticket {ticket_id} not found")
         decision_norm = _norm_status(decision)
-        stage = _norm_status(gate or ticket.get("current_stage"))
-        is_investigation_gate = stage in {"investigation_approval", "investigation_review"}
+        stage = stage_workflow.stage_definition(gate or ticket.get("current_stage"))
+        if not stage or not stage.get("approval_gate"):
+            raise ValueError("This workflow stage does not require approval.")
+        allowed, reason, _ = stage_workflow.can_approve(ticket, stage)
+        if not allowed:
+            raise ValueError(reason)
         payload = {
             "decision": decision_norm,
             "status": "completed" if decision_norm in {"approved", "approve"} else decision_norm,
             "comments": comments,
             "analyst": analyst,
-            "approval_gate": "investigation_approval" if is_investigation_gate else "triage_approval",
+            "approval_gate": stage["approval_gate"],
             "created_at": now_iso(),
         }
-        fields: dict[str, Any] = {}
-        if is_investigation_gate:
-            fields["investigation_approval_result"] = payload
-            if decision_norm in {"approved", "approve"}:
-                fields.update({"current_stage": "reporting", "status": "Ready for Report"})
-            elif decision_norm in {"rejected", "reject"}:
-                fields.update({"current_stage": "case_closure", "status": "Closed"})
-            else:
-                fields.update({"current_stage": "investigation", "status": "Needs Investigation"})
-        else:
-            fields["approval_result"] = payload
-            if decision_norm in {"approved", "approve"}:
-                fields.update({"current_stage": "threat_intelligence", "status": "Threat Intel Required"})
-            elif decision_norm in {"rejected", "reject"}:
-                fields.update({"current_stage": "case_closure", "status": "Closed"})
-            else:
-                fields.update({"current_stage": "triage", "status": "Triage Required"})
+        if decision_norm not in {"approved", "approve"}:
+            raise ValueError("Only approval is supported by this workflow control.")
+        fields = stage_workflow.approval_fields(ticket, stage, payload)
         return self.update_ticket(ticket_id, fields, actor=analyst, action=f"approval_{decision_norm}", message=f"{analyst} recorded {payload['approval_gate']} decision: {decision_norm}.")
 
     def record_soc_review(self, ticket_id: str, decision: str = "confirmed", comments: str = "", analyst: str = "SOC Analyst") -> dict[str, Any]:
-        ticket = self.get_ticket(ticket_id)
-        if not ticket:
-            raise KeyError(f"Ticket {ticket_id} not found")
-        decision_norm = _norm_status(decision or "confirmed")
-        payload = {
-            "decision": decision_norm,
-            "status": "completed" if decision_norm in {"confirmed", "approved", "approve"} else decision_norm,
-            "comments": comments,
-            "analyst": analyst,
-            "review_gate": "soc_analyst_review",
-            "created_at": now_iso(),
-        }
-        fields: dict[str, Any] = {"soc_review_result": payload}
-        if decision_norm in {"confirmed", "approved", "approve"}:
-            fields.update({"current_stage": "case_closure", "status": "Ready for Closure"})
-        elif decision_norm in {"rejected", "reject"}:
-            fields.update({"current_stage": "reporting", "status": "Ready for Report"})
-        else:
-            fields.update({"current_stage": "soc_analyst_review", "status": "Awaiting SOC Review"})
-        return self.update_ticket(ticket_id, fields, actor=analyst, action=f"soc_review_{decision_norm}", message=f"{analyst} recorded SOC analyst review decision: {decision_norm}.")
+        mapped = "approved" if _norm_status(decision) in {"confirmed", "approved", "approve"} else decision
+        return self.record_approval(ticket_id, mapped, comments=comments, analyst=analyst, gate="reporting_approval")
 
     def reports_for_ticket(self, ticket_id: str) -> dict[str, Any]:
         ticket = self.get_ticket(ticket_id)

@@ -5,6 +5,7 @@ from chromadb.utils import embedding_functions
 # Initialize persistent local ChromaDB client
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "ChromaDatabase"))
 client = chromadb.PersistentClient(path=DB_DIR)
+COLLECTION_NAME = "soc_alerts"
 
 # OpenAI embeddings — must match whatever embedding function every other
 # collection in this project uses, or ChromaDB rejects queries with a
@@ -14,25 +15,56 @@ default_ef = embedding_functions.OpenAIEmbeddingFunction(
     model_name="text-embedding-3-small",
 )
 
-# Create or retrieve the collection configured for cosine similarity
-collection = client.get_or_create_collection(
-    name="soc_alerts",
-    embedding_function=default_ef,
-    metadata={"hnsw:space": "cosine"}
-)
+def _open_collection():
+    """Open the run-scoped alert index, repairing a legacy EF mismatch.
+
+    ``soc_alerts`` is scratch space and is cleared at the beginning of every
+    investigation. Older releases created it with Chroma's default embedding
+    function; current releases use OpenAI embeddings. Chroma 1.5+ correctly
+    refuses to reopen such a collection with a different function, so discard
+    only this disposable collection and recreate it with the current config.
+    Other ValueErrors still propagate instead of being mistaken for a
+    migration issue.
+    """
+    try:
+        return client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=default_ef,
+            metadata={"hnsw:space": "cosine"}
+        )
+    except ValueError as exc:
+        message = str(exc).lower()
+        is_embedding_conflict = (
+            "embedding function" in message
+            and ("conflict" in message or "already exists" in message)
+        )
+        if not is_embedding_conflict:
+            raise
+        try:
+            client.delete_collection(COLLECTION_NAME)
+        except Exception:
+            # A concurrent worker may already have removed it. The retry below
+            # is the source of truth and preserves the useful Chroma exception
+            # if the collection still cannot be opened.
+            pass
+        return client.get_or_create_collection(
+            name=COLLECTION_NAME,
+            embedding_function=default_ef,
+            metadata={"hnsw:space": "cosine"}
+        )
+
+
+# Create or retrieve the collection configured for cosine similarity.
+collection = _open_collection()
 
 def clear_collection():
     """Helper function to reset collection database."""
     global collection
     try:
-        client.delete_collection("soc_alerts")
+        client.delete_collection(COLLECTION_NAME)
     except Exception:
         pass
-    collection = client.get_or_create_collection(
-        name="soc_alerts",
-        embedding_function=default_ef,
-        metadata={"hnsw:space": "cosine"}
-    )
+    collection = _open_collection()
 
 def ingest_logs(logs_list: list):
     """Upserts list of processed logs containing 'id', 'document', and 'metadata' into ChromaDB."""

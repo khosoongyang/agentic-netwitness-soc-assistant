@@ -1,0 +1,324 @@
+{
+  "incident_id": "INC-53026",
+  "incident_details": {
+    "timestamp": "2026-04-26T07:22:45+00:00",
+    "description": "The alert indicates possible SSH-based lateral movement, which is suspicious and warrants investigation, but the available telemetry contains no supporting network, host, user, or process evidence. Risk is elevated by the behavior itself, yet there are no indicators of active compromise, exfiltration, or confirmed unauthorized access.",
+    "mitre_att&ck": {
+      "tactic": "Lateral Movement",
+      "technique": "T1021.004 Remote Services: SSH"
+    }
+  },
+  "classification": {
+    "alert_type": "Lateral Movement",
+    "soc_classification": "MEDIUM"
+  },
+  "log_indicators": {
+    "target_user": "Unknown",
+    "computer_name": "Unknown",
+    "operating_system": "Unknown"
+  },
+  "network_indicators": {
+    "source_ip": "192.168.50.52",
+    "destination_ip": "192.168.50.50,192.168.50.54",
+    "domain": null
+  },
+  "observed_indicators": {
+    "usernames": [],
+    "hostnames": [],
+    "ip_addresses": [
+      "192.168.50.50",
+      "192.168.50.54",
+      "192.168.50.52"
+    ],
+    "source_ips": [
+      "192.168.50.52"
+    ],
+    "destination_ips": [
+      "192.168.50.50",
+      "192.168.50.54"
+    ],
+    "entity_from_alert_title": null
+  },
+  "triage": {
+    "ticket_unc": "#00039A",
+    "risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Low",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is Medium because the alert explicitly indicates SSH-based lateral movement with a non-trivial risk score of 30, occurrence is Low because there are no concrete IOC matches, event details, or evidence of repeated activity, and adverse impact is Medium because successful lateral movement via SSH can enable broader internal compromise even though no exfiltration or confirmed compromise is shown."
+    },
+    "ioc_summary": "[CONFIDENTIALITY] Unknown traffic originating from/terminating on the device — SSH is an unusual network service in this context and the alert explicitly flags lateral movement via SSH, which fits unknown traffic originating from/terminating on the device. There is no evidence of exfiltration, bad IPs/domains, or file transfers.\n[INTEGRITY] Odd device/platform behaviour, Unexplained changes from privileged accounts — The alert describes abnormal SSH-based lateral movement, which is odd device/platform behaviour. If privileged access was used for lateral movement, it also aligns with unexplained changes from privileged accounts, though no direct account data is provided.",
+    "matched_metakeys": [
+      "alert_name",
+      "analyst_summary",
+      "bytes.transferred",
+      "device.type",
+      "event.time",
+      "event.type",
+      "file.path",
+      "host.name",
+      "ip.dst",
+      "ip.src",
+      "network.service",
+      "observed_data_context",
+      "port.dst",
+      "protocol",
+      "risk_score",
+      "severity",
+      "user.name",
+      "user.role"
+    ],
+    "metakey_values": {
+      "ip.dst": [
+        "192.168.50.50,192.168.50.54",
+        "192.168.50.50",
+        "192.168.50.54"
+      ],
+      "ip.src": "192.168.50.52"
+    },
+    "matched_ioc_count": 3
+  },
+  "source_incident": {
+    "title": "Lateral Movement via SSH",
+    "summary": ""
+  },
+  "enrichment": {
+    "endpoint_identity": {
+      "hostnames": [],
+      "users": [],
+      "mac_addresses": [
+        "00:0c:29:db:db:67",
+        "00:0c:29:9e:06:0d",
+        "00:0c:29:b0:d7:b4"
+      ],
+      "dns_domains": [],
+      "source_ips": [
+        "192.168.50.52"
+      ],
+      "destination_ips": [
+        "192.168.50.50,192.168.50.54",
+        "192.168.50.50",
+        "192.168.50.54"
+      ]
+    },
+    "behavioural_alerts": {
+      "alert_titles": [
+        "Lateral Movement Via SSH - Joseph"
+      ],
+      "alert_types": [
+        "Network"
+      ],
+      "mitre_tactics": [],
+      "mitre_techniques": []
+    },
+    "file_indicators": {
+      "hashes": [],
+      "names": [],
+      "paths": []
+    },
+    "process_indicators": {
+      "names": [],
+      "paths": [],
+      "pids": []
+    },
+    "process_tree": {
+      "processes": [],
+      "process_paths": [],
+      "pids": [],
+      "parent_processes": [],
+      "command_lines": [],
+      "lineage": []
+    },
+    "network_activity": {
+      "source_ips": [
+        "192.168.50.52"
+      ],
+      "destination_ips": [
+        "192.168.50.50,192.168.50.54",
+        "192.168.50.50",
+        "192.168.50.54"
+      ],
+      "ports": [],
+      "protocols": [],
+      "network_services": [],
+      "bytes": [],
+      "geo": [],
+      "domains": []
+    },
+    "host_behaviour": {
+      "config_changes": [],
+      "cpu_usage": [],
+      "device_types": [],
+      "user_roles": [],
+      "operating_systems": []
+    },
+    "event_context": {
+      "event_types": [],
+      "event_times": []
+    },
+    "all_metakey_values": {
+      "ip.dst": [
+        "192.168.50.50,192.168.50.54",
+        "192.168.50.50",
+        "192.168.50.54"
+      ],
+      "ip.src": "192.168.50.52"
+    },
+    "alert_statistics": {
+      "alert_count": 1,
+      "event_count": 2,
+      "risk_score": 30,
+      "average_alert_risk_score": 30,
+      "matched_ioc_count": 3
+    },
+    "matched_metakey_catalog": [
+      "alert_name",
+      "analyst_summary",
+      "bytes.transferred",
+      "device.type",
+      "event.time",
+      "event.type",
+      "file.path",
+      "host.name",
+      "ip.dst",
+      "ip.src",
+      "network.service",
+      "observed_data_context",
+      "port.dst",
+      "protocol",
+      "risk_score",
+      "severity",
+      "user.name",
+      "user.role"
+    ],
+    "ioc_summary": "[CONFIDENTIALITY] Unknown traffic originating from/terminating on the device — SSH is an unusual network service in this context and the alert explicitly flags lateral movement via SSH, which fits unknown traffic originating from/terminating on the device. There is no evidence of exfiltration, bad IPs/domains, or file transfers.\n[INTEGRITY] Odd device/platform behaviour, Unexplained changes from privileged accounts — The alert describes abnormal SSH-based lateral movement, which is odd device/platform behaviour. If privileged access was used for lateral movement, it also aligns with unexplained changes from privileged accounts, though no direct account data is provided.",
+    "triage_summary": "The alert indicates possible SSH-based lateral movement, which is suspicious and warrants investigation, but the available telemetry contains no supporting network, host, user, or process evidence. Risk is elevated by the behavior itself, yet there are no indicators of active compromise, exfiltration, or confirmed unauthorized access.",
+    "_note": "Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple."
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_3: Was any malicious process spawned on the victim's machine?",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration."
+    ],
+    "gap_findings": {
+      "step_3: Was any malicious process spawned on the victim's machine?": "Not present in incident data. The available evidence is network-only and limited to an alert titled 'Lateral Movement Via SSH - Joseph' with source IP 192.168.50.52 and destination IPs 192.168.50.50 and 192.168.50.54. SSH lateral movement can involve remote command execution without immediately exposing local process creation in the provided data, so there is no direct proof of a malicious spawned process on the victim host. The same /24 addressing (192.168.50.0/24) suggests internal lateral activity rather than external intrusion, but process-level evidence is absent.",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "Not present in incident data. No process names, parent-child relationships, command lines, session IDs, shell activity, or host telemetry are included, so a process tree cannot be reconstructed from this dataset. The alert classification strongly suggests lateral movement over SSH; however, privilege escalation or exfiltration cannot be confirmed or excluded without endpoint telemetry. If any process tree existed on the source or destination host, it would most likely show an SSH client/server chain (for example ssh/sshd, shell spawn, or remote command execution), but this is speculative and not evidenced here."
+    },
+    "confidence_per_gap": {
+      "step_3: Was any malicious process spawned on the victim's machine?": "none",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "none"
+    },
+    "actionable_queries": {
+      "step_3: Was any malicious process spawned on the victim's machine?": "Query EDR/endpoint telemetry on hosts 192.168.50.50 and 192.168.50.54 for process creation events around 2026-04-26T07:22:45Z, including Windows Security Event ID 4688 (Process Creation) and Sysmon Event ID 1. Filter for ssh/sshd, cmd.exe, powershell.exe, wmic.exe, psexec.exe, bash, sh, or unusual child processes spawned by an SSH service/account. Also collect parent process, command line, user context, and integrity level.",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "Pull a full process ancestry from EDR on the affected hosts and query Windows Security Event ID 4688, Sysmon Event ID 1, Event ID 4624 (logon type 3/10 for remote access), 4672 (special privileges assigned), 4689 (process termination), and 5156/5158 or Sysmon Event ID 3/22 for network connections/DNS. If Linux/SSH servers are involved, query auth.log/secure for sshd sessions and run 'ps -ef --forest', 'last -ai', and 'journalctl -u sshd' to correlate shell spawning, privilege escalation, or outbound transfer tools (scp, rsync, curl, wget, tar)."
+    },
+    "extracted_values": {
+      "incident.id": "INC-53026",
+      "incident.title": "Lateral Movement via SSH",
+      "incident.priority": "Medium",
+      "incident.riskScore": "30",
+      "alertCount": "1",
+      "eventCount": "2",
+      "source.ip": "192.168.50.52",
+      "destination.ip": "192.168.50.50, 192.168.50.54",
+      "destination.ip.1": "192.168.50.50",
+      "destination.ip.2": "192.168.50.54",
+      "network.scope": "internal /24 lateral traffic",
+      "alert.title": "Lateral Movement Via SSH - Joseph",
+      "alert.type": "Network",
+      "mac.addresses": "00:0c:29:db:db:67, 00:0c:29:9e:06:0d, 00:0c:29:b0:d7:b4",
+      "createdBy": "admin"
+    },
+    "mitre_tactic": "Lateral Movement",
+    "incident_category": "Lateral Movement",
+    "classification": "MEDIUM",
+    "deep_dive_summary": "The incident data supports internal lateral movement via SSH between 192.168.50.52 and hosts in the same /24 subnet (192.168.50.50 and 192.168.50.54), but it does not include endpoint telemetry or process data. No malicious process spawn or process tree can be confirmed from the available evidence. To complete the playbook, endpoint process creation, authentication, and network connection logs are needed from the involved hosts.",
+    "feedback_pass": 1
+  },
+  "threat_intelligence": {
+    "incident_id": "INC-53026",
+    "run_id": "INC-53026@20260726-114630-e9a817",
+    "stage": "threat_intelligence",
+    "status": "completed_with_warnings",
+    "generated_at": "2026-07-26T04:43:24.114767+00:00",
+    "risk_level": "Unknown",
+    "risk_score": 0,
+    "iocs": [],
+    "source_results": {},
+    "internal_iocs": [
+      {
+        "value": "192.168.50.50",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.50.54",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.50.52",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      }
+    ],
+    "triage_behavioral_indicators": {
+      "count": 3,
+      "names": [
+        "Unknown traffic originating from/terminating on the device",
+        "Odd device/platform behaviour",
+        "Unexplained changes from privileged accounts"
+      ],
+      "disposition": "retained_for_investigation"
+    },
+    "malicious_iocs": [],
+    "suspicious_iocs": [],
+    "no_findings_iocs": [],
+    "unknown_iocs": [],
+    "lookup_failed_iocs": [],
+    "warnings": [
+      "No externally enrichable IOCs (public IPs, domains, or hashes) were found. 3 private/internal IP address(es) were retained for Investigation and were not submitted to external threat-intelligence services. Triage's 3 behavioral indicator(s) remain available to Investigation; they are not external reputation-lookup targets."
+    ],
+    "errors": [],
+    "stats": {
+      "iocs_enriched": 0,
+      "cache_hits": 0,
+      "skipped_private_ips": 3,
+      "private_ips_retained": [
+        "192.168.50.50",
+        "192.168.50.54",
+        "192.168.50.52"
+      ],
+      "truncated": false,
+      "keyed_sources": [
+        "VirusTotal",
+        "AbuseIPDB"
+      ],
+      "seconds": 0.0
+    },
+    "thinking_process": {
+      "stage": "threat_intelligence",
+      "decision": "Threat Intelligence enrichment completed",
+      "iocs_extracted": 0,
+      "externally_enrichable_iocs": 0,
+      "private_internal_ips_retained": 3,
+      "triage_behavioral_indicators": 3,
+      "sources_attempted": [],
+      "source_outcomes": {},
+      "malicious_iocs": 0,
+      "suspicious_iocs": 0,
+      "no_findings_iocs": 0,
+      "unknown_iocs": 0,
+      "lookup_failed_iocs": 0,
+      "risk_level": "Unknown",
+      "warnings": [
+        "No externally enrichable IOCs (public IPs, domains, or hashes) were found. 3 private/internal IP address(es) were retained for Investigation and were not submitted to external threat-intelligence services. Triage's 3 behavioral indicator(s) remain available to Investigation; they are not external reputation-lookup targets."
+      ],
+      "next_stage": "investigation"
+    }
+  }
+}

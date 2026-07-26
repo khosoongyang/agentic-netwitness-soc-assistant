@@ -26,6 +26,7 @@ const state = {
   askAgentAnswers: {},
   agentRunGuards: {},
   agentRunGuardSequence: 0,
+  approvalRequests: {},
   netwitnessAutoConnectAttempted: false,
   lastNetWitnessSync: null,
   currentUser: document.querySelector(".profile-menu strong")?.textContent?.trim() || "SOC Analyst",
@@ -844,6 +845,10 @@ function effectiveWorkflowStatus(step = {}, ticket = state.selectedTicket) {
     const agent = arrayOf(ticket?.agent_panel).find(a => canonicalAgentKey(a.key || a.label) === agentKey) || { key: agentKey, status: step.status || step.state };
     const run = currentAgentRun(agent);
     if (runIsActive(run)) return "in_progress";
+    const persisted = norm(agent.workflow_status || step.status || agent.status);
+    if (["ready", "running", "completed", "pending_approval", "approved", "locked", "failed", "rerun_required"].includes(persisted)) {
+      return persisted === "running" ? "in_progress" : persisted;
+    }
     if (runIsFailed(run)) return "failed";
     if (runIsCompleted(run)) return "completed";
   }
@@ -857,6 +862,19 @@ function workflowDisplayLabel(step = {}, ticket = state.selectedTicket) {
     const run = currentAgentRun(agent);
     const progress = agentProgressPercent(agent, run);
     if (runIsActive(run)) return `In Progress ${progress}%`;
+    const persisted = norm(agent.workflow_status || step.status || agent.status);
+    if (["ready", "running", "completed", "pending_approval", "approved", "locked", "failed", "rerun_required"].includes(persisted)) {
+      return {
+        ready: "Ready",
+        running: "Processing...",
+        completed: "Completed",
+        pending_approval: "Pending Approval",
+        approved: "Approved",
+        locked: "Locked",
+        failed: "Failed",
+        rerun_required: "Re-run Required",
+      }[persisted];
+    }
     if (runIsFailed(run)) return "Failed";
     if (runIsCompleted(run)) return "Completed";
   }
@@ -866,6 +884,9 @@ function workflowDisplayLabel(step = {}, ticket = state.selectedTicket) {
     in_progress: "In Progress",
     awaiting_approval: "Awaiting Approval",
     awaiting_review: "Awaiting Review",
+    pending_approval: "Pending Approval",
+    approved: "Approved",
+    rerun_required: "Re-run Required",
     evidence_gap_decision: "Evidence Gap Decision",
     locked: "Locked",
     failed: "Failed",
@@ -880,6 +901,9 @@ function workflowIcon(status) {
     in_progress: "ti-player-play",
     awaiting_approval: "ti-hourglass",
     awaiting_review: "ti-clipboard-check",
+    pending_approval: "ti-hourglass",
+    approved: "ti-shield-check",
+    rerun_required: "ti-refresh-alert",
     evidence_gap_decision: "ti-alert-triangle",
     locked: "ti-lock",
     failed: "ti-alert-triangle",
@@ -888,6 +912,8 @@ function workflowIcon(status) {
 }
 
 function connectorState(left, right) {
+  if (left === "approved") left = "completed";
+  if (right === "approved") right = "completed";
   if (left === "failed" || right === "failed") return "failed";
   if (left === "completed" && right === "completed") return "completed";
   if (right === "in_progress" || (left === "in_progress" && right !== "awaiting_approval")) return "current";
@@ -915,6 +941,7 @@ function investigationWorkflow(ticket) {
           <div class="workflow-circle"><i class="ti ${workflowIcon(status)}"></i></div>
           <strong>${esc(step.label)}</strong>
           <small>${esc(workflowDisplayLabel(step, ticket))}</small>
+          ${step.message ? `<span class="workflow-stage-message">${esc(step.message)}</span>` : ""}
         </div>`;
       }).join("")}
     </div>
@@ -1225,12 +1252,16 @@ function prioritisedAgentActions(agent) {
 
 function actionButtonForAgent(action, agent = {}) {
   const reason = action.disabled_reason || agent.lock_reason || "Required ticket context is not ready.";
-  const disabled = action.enabled ? "" : `disabled title="${esc(reason)}"`;
+  const executionPending = ["run-agent", "rerun-agent"].includes(action.id) && runIsActive(currentAgentRun(agent));
+  const approvalPending = action.id === "approve-ticket"
+    && Boolean(state.approvalRequests[`${state.selectedTicket?.ticket_id || ""}:${action.gate || "approve"}`]);
+  const disabled = action.enabled && !approvalPending && !executionPending ? "" : `disabled title="${esc(approvalPending ? "Approval is being recorded." : executionPending ? "Stage is processing." : reason)}"`;
   const status = norm(agent.status);
   const cls = action.id === "approve-ticket" || action.id === "confirm-soc-review" ? "green" : action.id === "continue-to-reporting" ? "primary" : action.id === "return-to-triage" ? "warning" : action.id === "reject-ticket" ? "danger" : action.id === "view-agent-output" && status === "completed" ? "primary" : (["Retry", "Re-run"].includes(action.label)) && status === "failed" ? "primary" : (["Retry", "Re-run"].includes(action.label)) ? "ghost" : action.enabled ? "primary" : "ghost";
   const icon = action.id === "view-agent-output" ? "ti-eye" : action.id === "approve-ticket" ? "ti-shield-check" : action.id === "continue-to-reporting" ? "ti-arrow-forward-up" : action.id === "return-to-triage" ? "ti-arrow-back-up" : action.id === "confirm-soc-review" ? "ti-clipboard-check" : action.id === "reject-ticket" ? "ti-x" : action.id === "more-evidence" ? "ti-search" : (["Retry", "Re-run"].includes(action.label)) ? "ti-refresh" : "ti-player-play";
   const agentAttr = action.agent ? `data-agent="${esc(action.agent)}"` : "";
-  return `<button class="soc-btn ${cls} compact" data-action="${esc(action.id)}" ${agentAttr} data-ticket-id="${esc(state.selectedTicket?.ticket_id || "")}" ${disabled}><i class="ti ${icon}"></i><span>${esc(action.label)}</span></button>`;
+  const gateAttr = action.gate ? `data-gate="${esc(action.gate)}"` : "";
+  return `<button class="soc-btn ${cls} compact" data-action="${esc(action.id)}" ${agentAttr} ${gateAttr} data-ticket-id="${esc(state.selectedTicket?.ticket_id || "")}" ${disabled}><i class="ti ${executionPending ? "ti-loader-2" : icon}"></i><span>${esc(executionPending ? "Processing..." : action.label)}</span></button>`;
 }
 
 // ==================== AGENT WORKSPACE REDESIGN ====================
@@ -1337,7 +1368,7 @@ function ensureSelectedAgentKey(ticket) {
 
 function renderAgentWorkspaceHeader(ticket) {
   const workflowSteps = arrayOf(ticket.workflow_steps);
-  const currentStep = workflowSteps.find(s => workflowStatus(s) === "in_progress");
+  const currentStep = workflowSteps.find(s => !["completed", "approved"].includes(workflowStatus(s)));
   const nextStep = ticket.next_step || {};
   const currentStage = currentStep ? currentStep.label : "Ready";
   const nextStageText = nextStep.label || "Pending";
@@ -1391,7 +1422,7 @@ function renderAgentStatusCard(agent = {}) {
   const counts = getAgentCounts(agent);
   const stateLine = agentCardStateLine(agent, run);
   
-  return `<div class="agent-status-card ${isSelected ? "active" : ""}" data-action="select-agent" data-agent-key="${esc(agent.key)}">
+  return `<div class="agent-status-card ${esc(status)} ${isSelected ? "active" : ""}" data-action="select-agent" data-agent-key="${esc(agent.key)}">
     <div class="card-header">
       <strong title="${esc(agent.label)}">${esc(agent.label)}</strong>
       ${badge(statusLabel, statusBadgeType, `title="${esc(statusLabel)}"`)}
@@ -1411,9 +1442,13 @@ function renderAgentStatusCard(agent = {}) {
 
 function agentCardStateLine(agent = {}, run = null) {
   const status = effectiveAgentStatus(agent, run);
+  if (agent.status_message) return agent.status_message;
   if (status === "completed") return "Output written to ticket";
+  if (status === "approved") return "Latest valid output approved";
   if (status === "running" || status === "in_progress") return "Running with ticket context";
   if (status === "failed") return "Needs retry or review";
+  if (status === "pending_approval") return "Waiting for SOC analyst approval";
+  if (status === "rerun_required") return "Previous output is outdated";
   if (status === "awaiting_approval") return "Waiting for SOC analyst approval";
   if (status === "awaiting_review") return "Waiting for SOC analyst review";
   if (status === "locked") return "Waiting for workflow gate";
@@ -1455,6 +1490,10 @@ function currentAgentRun(agent = {}) {
 
 function effectiveAgentStatus(agent = {}, run = null) {
   if (runIsActive(run)) return "running";
+  const persisted = norm(agent.workflow_status || agent.status);
+  if (["ready", "running", "completed", "pending_approval", "approved", "locked", "failed", "rerun_required"].includes(persisted)) {
+    return persisted;
+  }
   if (runIsFailed(run)) return "failed";
   if (runIsCompleted(run)) {
     const runStatus = norm(run?.status);
@@ -1474,6 +1513,9 @@ function displayAgentStatus(agent = {}, run = null) {
     running: "Running",
     in_progress: "In Progress",
     ready: "Ready",
+    pending_approval: "Pending Approval",
+    approved: "Approved",
+    rerun_required: "Re-run Required",
     awaiting_approval: "Awaiting SOC Approval",
     awaiting_review: "Awaiting SOC Analyst Review",
     locked: "Locked",
@@ -1484,7 +1526,7 @@ function displayAgentStatus(agent = {}, run = null) {
 
 function agentProgressPercent(agent = {}, run = null) {
   const status = effectiveAgentStatus(agent, run);
-  if (["completed", "completed_with_warnings", "awaiting_approval", "awaiting_review"].includes(status)) return 100;
+  if (["completed", "completed_with_warnings", "pending_approval", "approved", "awaiting_approval", "awaiting_review"].includes(status)) return 100;
   if (status === "failed") return 100;
   const runProgress = run ? runProgressValue(run) : null;
   if (runProgress !== null) return runProgress;
@@ -1496,6 +1538,9 @@ function agentProgressPercent(agent = {}, run = null) {
 function agentStatusTone(status = "") {
   const normalized = norm(status);
   if (normalized === "completed") return "green";
+  if (normalized === "approved") return "green";
+  if (normalized === "pending_approval") return "yellow";
+  if (normalized === "rerun_required") return "purple";
   if (normalized === "completed_with_warnings") return "yellow";
   if (normalized === "awaiting_approval" || normalized === "awaiting_review") return "yellow";
   if (normalized === "locked") return "yellow";
@@ -1505,9 +1550,13 @@ function agentStatusTone(status = "") {
 }
 
 function agentCurrentTask(agent = {}, run = null) {
-  const status = norm(agent.status);
+  const status = effectiveAgentStatus(agent, run);
   if (run?.current_step) return run.current_step;
+  if (agent.status_message) return agent.status_message;
   if (status === "completed") return "Agent completed and wrote output to the selected ticket.";
+  if (status === "approved") return "The latest valid output is approved.";
+  if (status === "pending_approval") return "Waiting for SOC analyst approval.";
+  if (status === "rerun_required") return "This output is outdated and must be re-run in sequence.";
   if (status === "locked") return agent.lock_reason || "Waiting for prerequisite workflow stage.";
   if (status === "ready") return `${agent.label} is ready to run with the selected ticket context.`;
   if (status === "failed") return agent.last_output_summary || "Agent execution failed. Review logs before retrying.";
@@ -1596,16 +1645,17 @@ function agentThinkingDots(agent = {}, run = null, progress = null) {
   const status = effectiveAgentStatus(agent, run);
   const label = displayAgentStatus(agent, run);
   const pct = progress == null ? null : Number(progress);
-  const isCompleted = status === "completed" || (Number.isFinite(pct) && pct >= 100 && status !== "failed" && status !== "completed_with_warnings");
+  const isCompleted = ["completed", "approved"].includes(status)
+    || (Number.isFinite(pct) && pct >= 100 && !["failed", "completed_with_warnings", "pending_approval", "awaiting_approval", "awaiting_review", "rerun_required", "locked"].includes(status));
   const isFailed = ["failed", "error", "rejected"].includes(status);
   const isLocked = status === "locked";
-  const isGateWait = ["awaiting_approval", "awaiting_review"].includes(status);
+  const isGateWait = ["pending_approval", "awaiting_approval", "awaiting_review"].includes(status);
   const isActive = ["running", "ready", "in_progress"].includes(status);
 
   if (status === "completed_with_warnings") {
     return `<span class="agent-status-mark warning" aria-label="${esc(label)}" title="${esc(label)}"><i class="ti ti-alert-triangle"></i></span>`;
   }
-  if (isCompleted) {
+  if (isCompleted || status === "approved") {
     return `<span class="agent-status-mark completed" aria-label="${esc(label)}" title="${esc(label)}"><i class="ti ti-check"></i></span>`;
   }
   if (isFailed) {
@@ -1613,6 +1663,9 @@ function agentThinkingDots(agent = {}, run = null, progress = null) {
   }
   if (isLocked) {
     return `<span class="agent-status-mark locked" aria-label="${esc(label)}" title="${esc(label)}"><i class="ti ti-lock"></i></span>`;
+  }
+  if (status === "rerun_required") {
+    return `<span class="agent-status-mark rerun-required" aria-label="${esc(label)}" title="${esc(label)}"><i class="ti ti-refresh-alert"></i></span>`;
   }
   if (isGateWait) {
     return `<span class="agent-status-mark locked" aria-label="${esc(label)}" title="${esc(label)}"><i class="ti ti-hourglass"></i></span>`;
@@ -1667,7 +1720,7 @@ function renderSelectedAgentExecutionPanel(ticket) {
   const actionCandidates = prioritisedAgentActions(agent);
   const isRunningStatus = status === "running" || status === "in_progress";
   const panelActions = isRunningStatus
-    ? []
+    ? actionCandidates.filter(action => action.id === "run-agent").slice(0, 1)
     : isDoneStatus
     ? actionCandidates.filter(action => action.id === "view-agent-output" || (["Retry", "Re-run"].includes(action.label))).slice(0, 2)
     : status === "failed"
@@ -2479,6 +2532,8 @@ function activityList(items) {
 function reportsSection(t) {
   if (!t) return `<section class="panel"><div class="empty-state">Select a ticket to view report options.</div></section>`;
   const available = t.reporting_result || {};
+  const reportingAgent = arrayOf(t.agent_panel).find(agent => canonicalAgentKey(agent.key || agent.label) === "reporting") || {};
+  const workflowActions = prioritisedAgentActions(reportingAgent).map(action => actionButtonForAgent(action, reportingAgent)).join("");
   const cards = [
     ["Executive Summary", available.executive_summary ? "available" : "not_ready"],
     ["Technical Findings", available.technical_findings ? "available" : "not_ready"],
@@ -2489,8 +2544,7 @@ function reportsSection(t) {
     <div class="panel-head"><h2>Reports</h2><span class="panel-sub">Ticket-specific reporting options</span></div>
     <div class="reports-grid">${cards}</div>
     <div class="panel-actions">
-      <button class="soc-btn primary" data-action="run-agent" data-agent="reporting" data-ticket-id="${esc(t.ticket_id)}"><i class="ti ti-file-report"></i> Generate Report</button>
-      <button class="soc-btn green" data-action="confirm-report"><i class="ti ti-user-check"></i> Confirm Analyst Review</button>
+      ${workflowActions}
       <button class="soc-btn ghost" data-action="export-report" data-type="docx"><i class="ti ti-file-type-docx"></i> Download DOCX</button>
       <button class="soc-btn ghost" data-action="export-report" data-type="pdf"><i class="ti ti-file-type-pdf"></i> Download PDF</button>
     </div>
@@ -2696,7 +2750,7 @@ async function action(name, el) {
   if (name === "sync-netwitness") return syncNetWitness();
   if (name === "continue-to-reporting") return evidenceGapDecision(ticketId, "continue_to_reporting");
   if (name === "return-to-triage") return evidenceGapDecision(ticketId, "return_to_triage");
-  if (name === "approve-ticket") return decision(ticketId, "approve");
+  if (name === "approve-ticket") return decision(ticketId, "approve", el.dataset.gate || "");
   if (name === "reject-ticket") return decision(ticketId, "reject");
   if (name === "more-evidence") return decision(ticketId, "more");
   if (name === "confirm-soc-review") return confirmSocReview(ticketId);
@@ -2735,6 +2789,7 @@ async function runNext(ticketId) {
 async function runAgent(agent, ticketId, options = {}) {
   const agentKey = canonicalAgentKey(agent || "");
   if (!agentKey) return toast("Select an agent to run first.", "yellow");
+  if (runIsActive(agentRunGuard(ticketId, agentKey))) return toast(`${agentLabel(agentKey)} is already processing.`, "yellow");
   state.selectedAgentKey = agentKey;
   const guard = markAgentRunStarting(agentKey, ticketId, "run");
   render();
@@ -2768,6 +2823,7 @@ async function runAgent(agent, ticketId, options = {}) {
 async function retryAgent(agent, ticketId) {
   const agentKey = canonicalAgentKey(agent || "");
   if (!agentKey) return toast("Select an agent to retry first.", "yellow");
+  if (runIsActive(agentRunGuard(ticketId, agentKey))) return toast(`${agentLabel(agentKey)} is already processing.`, "yellow");
   if (isReadyForClosure(state.selectedTicket?.next_step || {}, state.selectedTicket)) {
     const downstream = {
       triage: "Approval, Investigation, and Reporting may need review after this retry.",
@@ -2917,12 +2973,20 @@ async function evidenceGapDecision(ticketId, decision) {
   await refresh();
 }
 
-async function decision(ticketId, kind) {
+async function decision(ticketId, kind, gate = "") {
+  const requestKey = `${ticketId}:${gate || kind}`;
+  if (state.approvalRequests[requestKey]) return toast("This approval request is already being recorded.", "yellow");
+  state.approvalRequests[requestKey] = true;
+  render();
   const endpoints = { approve: "approve", reject: "reject", more: "request-more-evidence" };
-  const res = await api(`/api/tickets/${encodeURIComponent(ticketId)}/${endpoints[kind]}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ analyst: "Soong Yang", comments: kind === "more" ? "Requesting more evidence before continuing." : "" }) });
-  if (res.success) { state.selectedTicket = res.ticket; toast("Analyst decision recorded. Staying on the current Agent Workspace.", "green"); }
-  else toast(res.status || "Decision failed", "red");
-  await refresh();
+  try {
+    const res = await api(`/api/tickets/${encodeURIComponent(ticketId)}/${endpoints[kind]}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ analyst: "Soong Yang", gate: gate || undefined, comments: kind === "more" ? "Requesting more evidence before continuing." : "" }) });
+    if (res.success) { state.selectedTicket = res.ticket; toast("Analyst decision recorded. Staying on the current Agent Workspace.", "green"); }
+    else toast(res.error || res.status || "Decision failed", "red");
+    await refresh();
+  } finally {
+    delete state.approvalRequests[requestKey];
+  }
 }
 
 async function confirmSocReview(ticketId) {
@@ -3277,7 +3341,9 @@ const startupLoad = isTicketRoute() ? (() => {
   return loadTicketsWithParams();
 })() : refresh();
 startupLoad.then(() => autoConnectNetWitnessOnStartup()).catch(() => autoConnectNetWitnessOnStartup());
-setInterval(refresh, 7000);
+// Do not poll the entire dashboard. refresh() replaces #content, which interrupts
+// searches, editable reports, focus, and scroll position. Active agent runs use
+// startLiveActivityLogPolling(); user actions refresh their own affected data.
 
 // ==================== AGENT-CENTRIC LIVE ACTIVITY LOG OVERRIDE ====================
 // Purpose: keep Timeline as the ticket audit trail, while Live Activity Log shows the selected agent's working progress.
@@ -4078,12 +4144,19 @@ function renderSelectedAgentOutputPanel(ticket) {
       </button>
     `;
   }
+  if (agent.workflow_status) {
+    const workflowButtons = prioritisedAgentActions(agent).map(action => actionButtonForAgent(action, agent)).join("");
+    const pause = status === "running" && runIsActive(run)
+      ? `<button class="soc-btn warning" data-action="pause-agent" data-agent="${esc(agent.key)}" data-ticket-id="${esc(ticket.ticket_id)}" data-run-id="${esc(runIdentifier(run))}"><i class="ti ti-player-pause"></i> Pause Agent</button>`
+      : "";
+    actionButtons = `${workflowButtons}${pause}`;
+  }
 
   const summaryContent = maskOutput
     ? `${renderAgentRunPendingSummary(agent, run)}${renderSummaryFormatActions(ticket, agent, false)}`
-    : agentKey === "reporting" && hasOutput
+    : agentKey === "reporting" && hasOutput && agent.output_valid !== false
     ? renderReportingSummaryDownloads(ticket, agent, payload)
-    : `${renderAgentSummary(payload)}${renderSummaryFormatActions(ticket, agent, hasOutput)}`;
+    : `${agent.status_message ? `<div class="workflow-progress-message ${esc(status)}">${status === "locked" || agent.locked ? `<i class="ti ti-lock"></i>` : status === "rerun_required" ? `<i class="ti ti-refresh-alert"></i>` : ""}<span>${esc(agent.status_message)}</span></div>` : ""}${renderAgentSummary(payload)}${renderSummaryFormatActions(ticket, agent, hasOutput && agent.output_valid !== false)}`;
   const groupingReviewHtml = agentKey === "triage"
     ? correlationRecommendationsPanel(ticket, ["triage"])
     : agentKey === "investigation"
@@ -5602,8 +5675,16 @@ function renderReportingSummaryDownloads(ticket = {}, agent = {}, payload = {}) 
 }
 
 function renderSocReportReviewWorkspace(ticket = {}, options = {}) {
+  const reportingAgent = arrayOf(ticket.agent_panel).find(a => canonicalAgentKey(a.key || a.label) === "reporting") || { key: "reporting", label: "Reporting" };
+  if (reportingAgent.output_valid === false && ["rerun_required", "failed"].includes(reportingAgent.workflow_status)) {
+    const actions = prioritisedAgentActions(reportingAgent).map(action => actionButtonForAgent(action, reportingAgent)).join("");
+    return `<section class="soc-report-review-workspace reporting-rerun-placeholder">
+      <div class="workflow-progress-message ${esc(reportingAgent.workflow_status)}"><i class="ti ${reportingAgent.workflow_status === "failed" ? "ti-alert-triangle" : "ti-refresh-alert"}"></i><span>${esc(reportingAgent.status_message || "The previous report is outdated and must be re-run before it can be used.")}</span></div>
+      <div class="panel-actions">${actions}</div>
+    </section>`;
+  }
   if (shouldMaskAgentOutput(ticket, "reporting")) {
-    const agent = arrayOf(ticket.agent_panel).find(a => canonicalAgentKey(a.key || a.label) === "reporting") || { key: "reporting", label: "Reporting Agent" };
+    const agent = reportingAgent;
     const run = currentAgentRun(agent);
     return `<section class="soc-report-review-workspace reporting-rerun-placeholder">
       ${renderAgentRunPendingSummary(agent, run)}

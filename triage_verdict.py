@@ -84,18 +84,30 @@ def _asset_signal(incident: dict, triage_result: dict | None) -> dict | None:
             "label": f"{tier} asset", "detail": detail}
 
 
-def _ioc_signal(incident: dict, triage_result: dict | None) -> dict | None:
-    """ioc_correlation.correlate_iocs → level 0-3 from the best internal
-    confidence across the incident's IOCs."""
-    try:
-        from ioc_correlation import correlate_iocs
-    except Exception:
-        return None
-    try:
-        corr = correlate_iocs(incident, triage_result)
-    except Exception as exc:
-        return {"name": "internal IOC correlation", "level": 0,
-                "label": f"unavailable ({exc})", "detail": "", "error": True}
+def _ioc_signal(incident: dict, triage_result: dict | None,
+                ioc_correlation_result: dict | None = None) -> dict | None:
+    """Best internal confidence across the incident's IOCs. When
+    ioc_correlation_result is supplied (the persisted, run-scoped snapshot
+    computed once by soc_workflow.run_until_triage_approval — see
+    workflow_state_store.save_ioc_correlation_result), it is used AS-IS
+    instead of calling ioc_correlation.correlate_iocs() live — a live corpus
+    scan on every call would let this signal (and the Unified Verdict
+    downstream) change with no workflow stage ever running, purely because
+    the corpus DB changed underneath an already-completed run. Live
+    calling remains the fallback ONLY for callers that don't have a
+    persisted snapshot to pass (e.g. ad hoc/manual use of this module)."""
+    if ioc_correlation_result is not None:
+        corr = ioc_correlation_result
+    else:
+        try:
+            from ioc_correlation import correlate_iocs
+        except Exception:
+            return None
+        try:
+            corr = correlate_iocs(incident, triage_result)
+        except Exception as exc:
+            return {"name": "internal IOC correlation", "level": 0,
+                    "label": f"unavailable ({exc})", "detail": "", "error": True}
     if not corr.get("available"):
         return {"name": "internal IOC correlation", "level": 0,
                 "label": "unavailable", "detail": corr.get("reason", ""), "error": True}
@@ -116,6 +128,23 @@ def _ioc_signal(incident: dict, triage_result: dict | None) -> dict | None:
               f"{len(corr['results'])} IOC(s) correlated")
     return {"name": "internal IOC correlation", "level": best,
             "label": f"{best_label} internal confidence", "detail": detail}
+
+
+def _investigation_signal(investigation_result: dict | None) -> dict | None:
+    """Investigation Agent's own structured severity — the ONLY structured
+    field its persisted output carries (investigation_result_json.severity,
+    a plain "Low"/"Medium"/"High"/"Critical" string). NEVER derived from
+    narrative_report/summary prose. Callers must only pass a real,
+    completed investigation_result (Awaiting Approval or Approved) —
+    absent/None simply omits this signal, exactly like the external
+    threat-intel signal when TI hasn't run."""
+    if not investigation_result:
+        return None
+    sev = investigation_result.get("severity")
+    if not sev:
+        return None
+    return {"name": "investigation severity", "level": _sev_to_level(sev),
+            "label": str(sev).upper(), "detail": "investigation agent"}
 
 
 def _ti_signal(ti_result: dict | None) -> dict | None:
@@ -148,9 +177,18 @@ _ACTIONS = {
 
 
 def aggregate_verdict(incident: dict, triage_result: dict | None = None,
-                      ti_result: dict | None = None) -> dict:
+                      ti_result: dict | None = None,
+                      investigation_result: dict | None = None,
+                      ioc_correlation_result: dict | None = None) -> dict:
     """Roll the triage-side skill signals into one prioritized verdict.
-    Deterministic, instant (no network of its own), never raises."""
+    Deterministic, instant (no network of its own), never raises.
+
+    Callers should pass triage_result/ti_result/investigation_result
+    whenever those stages have actually persisted a result (case_view.py's
+    Overview builder always does) — calling this bare (incident only) is
+    what caused the Overview's old "Base Severity" finding to silently fall
+    back to the raw incident's own priority/severity field instead of ever
+    reading the real, persisted triage classification."""
     if os.environ.get("NW_DISABLE_TRIAGE_VERDICT"):
         return {"available": False, "reason": "disabled via NW_DISABLE_TRIAGE_VERDICT"}
 
@@ -159,8 +197,9 @@ def aggregate_verdict(incident: dict, triage_result: dict | None = None,
                             "label": base_label, "detail": base_src}]
 
     for sig in (_asset_signal(incident, triage_result),
-                _ioc_signal(incident, triage_result),
-                _ti_signal(ti_result)):
+                _ioc_signal(incident, triage_result, ioc_correlation_result),
+                _ti_signal(ti_result),
+                _investigation_signal(investigation_result)):
         if sig is not None:
             signals.append(sig)
 

@@ -1,67 +1,16 @@
 {
-  "incident_id": "INC-53027",
-  "alert_title": "High Risk Alerts: ESA for 192.168.10.210",
-  "incident_summary": "High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.",
-  "severity": "High",
-  "risk_score": 70,
-  "host": "premieraccount-netflix.com",
-  "source_ip": "192.168.10.210",
+  "incident_id": "INC-1",
+  "alert_title": "SOC incident",
+  "incident_summary": "SOC alert requires review: SOC incident",
+  "severity": "Medium",
+  "risk_score": null,
+  "host": null,
+  "source_ip": null,
   "username": null,
-  "iocs": [
-    {
-      "summary": "[AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.",
-      "severity": "high"
-    }
-  ],
+  "iocs": [],
   "raw_incident": {
-    "id": "INC-53027",
-    "title": "High Risk Alerts: ESA for 192.168.10.210",
-    "summary": "",
-    "priority": "High",
-    "riskScore": 70,
-    "status": "New",
-    "alertCount": 1,
-    "averageAlertRiskScore": 70,
-    "sealed": true,
-    "totalRemediationTaskCount": 0,
-    "openRemediationTaskCount": 0,
-    "created": "2026-04-28T11:08:52.647Z",
-    "lastUpdated": "2026-04-28T11:08:52.803Z",
-    "lastUpdatedBy": null,
-    "assignee": null,
-    "sources": [
-      "Event Stream Analysis"
-    ],
-    "ruleId": "6618e5a2dddef60d6853bec1",
-    "firstAlertTime": "2026-04-28T10:08:54.761Z",
-    "categories": [],
-    "createdBy": "High Risk Alerts: ESA",
-    "deletedAlertCount": 0,
-    "eventCount": 1,
-    "alertMeta": {
-      "SourceIp": [
-        "192.168.10.210"
-      ],
-      "DestinationIp": [
-        "188.40.170.197"
-      ],
-      "AlertTitles": [
-        "Phishing email detected(2)-24014126"
-      ],
-      "AlertTypes": [
-        "Network"
-      ],
-      "Hostname": [
-        "premieraccount-netflix.com"
-      ],
-      "MacAddress": [
-        "d4:f4:be:6f:c7:11",
-        "02:1a:c5:03:00:03"
-      ]
-    },
-    "tactics": [],
-    "techniques": [],
-    "hostname": "premieraccount-netflix.com",
-    "_alerts_stripped": 1
+    "id": "INC-1",
+    "title": "Test incident",
+    "alertMeta": {}
   }
 }

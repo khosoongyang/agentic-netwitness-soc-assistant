@@ -54,6 +54,35 @@ _HTTP_TIMEOUT = float(os.environ.get("TI_HTTP_TIMEOUT", "6"))
 _HASH_RE = re.compile(r"^[0-9a-fA-F]{32,64}$")
 _IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 
+# Internal/non-public domain suffixes — a small, explicit blocklist (not a
+# full public-suffix-list implementation; flagged as a known limitation
+# rather than overclaiming completeness). Keeps obviously-internal
+# hostnames (corp.local, foo.internal, etc.) from ever being sent to an
+# external reputation service.
+_INTERNAL_DOMAIN_SUFFIXES = (".local", ".internal", ".corp", ".lan",
+                             ".home", ".test", ".invalid", ".example")
+
+
+def _looks_public_domain(domain: str) -> bool:
+    d = str(domain or "").strip().strip(".").lower()
+    if "." not in d or d.endswith(_INTERNAL_DOMAIN_SUFFIXES):
+        return False
+    return True
+
+
+def _classify_exc(exc: Exception) -> str:
+    """Per-source outcome classification for source_status (never just
+    'failed' when we can tell more): timed_out / rate_limited / failed.
+    TimeoutError also covers socket.timeout (an alias of it since
+    Python 3.10), so the reverse-DNS lookup's timeout classifies the
+    same way an HTTP timeout does."""
+    if isinstance(exc, (requests.exceptions.Timeout, TimeoutError)):
+        return "timed_out"
+    resp = getattr(exc, "response", None)
+    if resp is not None and getattr(resp, "status_code", None) == 429:
+        return "rate_limited"
+    return "failed"
+
 
 # ── cache ────────────────────────────────────────────────────────────────────
 
@@ -97,70 +126,97 @@ def _feodo_c2_set() -> set[str]:
             return set()
 
 
-def _lookup_ip(ip: str, feodo: set[str]) -> tuple[int, list[str], list[str]]:
-    """→ (score_delta, evidence, sources_answered)"""
+def _lookup_ip(ip: str, feodo: set[str]) -> tuple[int, list[str], list[str], dict[str, str]]:
+    """→ (score_delta, evidence, sources_answered, source_status)"""
     score, ev, srcs = 0, [], []
+    source_status: dict[str, str] = {}
 
-    if ip in feodo:
-        score += 90
-        ev.append("LISTED on abuse.ch Feodo Tracker botnet-C2 blocklist")
-        srcs.append("feodo")
-    elif feodo:
-        ev.append("not on Feodo C2 blocklist")
-        srcs.append("feodo")
+    if feodo:
+        source_status["feodo_tracker"] = "completed"
+        if ip in feodo:
+            score += 90
+            ev.append("LISTED on abuse.ch Feodo Tracker botnet-C2 blocklist")
+            srcs.append("feodo")
+        else:
+            ev.append("not on Feodo C2 blocklist")
+            srcs.append("feodo")
+    else:
+        source_status["feodo_tracker"] = "failed"   # blocklist unavailable this run
 
     try:  # geolocation / ASN / hosting flags
         r = requests.get(
             f"http://ip-api.com/json/{ip}"
             "?fields=status,country,as,isp,reverse,proxy,hosting",
-            timeout=_HTTP_TIMEOUT).json()
-        if r.get("status") == "success":
-            srcs.append("ip-api")
-            ev.append(f"geo: {r.get('country')}, {r.get('as')} ({r.get('isp')})")
-            if r.get("proxy"):
-                score += 20
-                ev.append("flagged as proxy/VPN exit")
-            if r.get("hosting"):
-                score += 10
-                ev.append("datacenter/hosting-provider IP (not residential)")
-    except Exception:
-        pass
+            timeout=_HTTP_TIMEOUT)
+        if r.status_code == 429:
+            source_status["ip_api"] = "rate_limited"
+        else:
+            r.raise_for_status()
+            j = r.json()
+            source_status["ip_api"] = "completed"
+            if j.get("status") == "success":
+                srcs.append("ip-api")
+                ev.append(f"geo: {j.get('country')}, {j.get('as')} ({j.get('isp')})")
+                if j.get("proxy"):
+                    score += 20
+                    ev.append("flagged as proxy/VPN exit")
+                if j.get("hosting"):
+                    score += 10
+                    ev.append("datacenter/hosting-provider IP (not residential)")
+    except Exception as exc:
+        source_status["ip_api"] = _classify_exc(exc)
 
     try:  # reverse DNS
         socket.setdefaulttimeout(3)
         ev.append(f"rDNS: {socket.gethostbyaddr(ip)[0]}")
-    except Exception:
-        pass
+        source_status["reverse_dns"] = "completed"
+    except Exception as exc:
+        source_status["reverse_dns"] = _classify_exc(exc)
 
     key = os.environ.get("ABUSEIPDB_API_KEY")
-    if key:
+    if not key:
+        source_status["abuseipdb"] = "not_configured"
+    else:
         try:
             r = requests.get(
                 "https://api.abuseipdb.com/api/v2/check",
                 params={"ipAddress": ip, "maxAgeInDays": 90},
                 headers={"Key": key, "Accept": "application/json"},
-                timeout=_HTTP_TIMEOUT).json().get("data", {})
-            conf = int(r.get("abuseConfidenceScore") or 0)
-            srcs.append("abuseipdb")
-            ev.append(f"AbuseIPDB confidence {conf}/100 "
-                      f"({r.get('totalReports', 0)} reports)")
-            score += 90 if conf >= 85 else (40 if conf >= 50 else 0)
-        except Exception:
-            pass
+                timeout=_HTTP_TIMEOUT)
+            if r.status_code == 429:
+                source_status["abuseipdb"] = "rate_limited"
+            else:
+                r.raise_for_status()
+                data = r.json().get("data", {})
+                conf = int(data.get("abuseConfidenceScore") or 0)
+                srcs.append("abuseipdb")
+                ev.append(f"AbuseIPDB confidence {conf}/100 "
+                          f"({data.get('totalReports', 0)} reports)")
+                score += 90 if conf >= 85 else (40 if conf >= 50 else 0)
+                source_status["abuseipdb"] = "completed"
+        except Exception as exc:
+            source_status["abuseipdb"] = _classify_exc(exc)
 
     vt = os.environ.get("VT_API_KEY")
-    if vt:
+    if not vt:
+        source_status["virustotal"] = "not_configured"
+    else:
         score2, ev2, ok = _vt_lookup(f"ip_addresses/{ip}", vt)
         score += score2
         ev += ev2
+        source_status["virustotal"] = "completed" if ok else "failed"
         if ok:
             srcs.append("virustotal")
-    return score, ev, srcs
+    return score, ev, srcs, source_status
 
 
-def _lookup_domain(domain: str) -> tuple[int, list[str], list[str]]:
+def _lookup_domain(domain: str) -> tuple[int, list[str], list[str], dict[str, str]]:
     score, ev, srcs = 0, [], []
-    try:  # resolution
+    source_status: dict[str, str] = {
+        "abuseipdb": "not_applicable", "feodo_tracker": "not_applicable",
+        "reverse_dns": "not_applicable",
+    }
+    try:  # resolution (not a reputation source — no source_status entry)
         socket.setdefaulttimeout(3)
         ips = sorted({a[4][0] for a in socket.getaddrinfo(domain, None)})
         ev.append(f"resolves to {', '.join(ips[:4])}")
@@ -171,8 +227,11 @@ def _lookup_domain(domain: str) -> tuple[int, list[str], list[str]]:
     try:  # RDAP registration age
         r = requests.get(f"https://rdap.org/domain/{domain}",
                          timeout=_HTTP_TIMEOUT)
-        if r.status_code == 200:
+        if r.status_code == 429:
+            source_status["rdap"] = "rate_limited"
+        elif r.status_code == 200:
             d = r.json()
+            source_status["rdap"] = "completed"
             srcs.append("rdap")
             reg = next((e["eventDate"] for e in d.get("events", [])
                         if e.get("eventAction") == "registration"), None)
@@ -183,25 +242,36 @@ def _lookup_domain(domain: str) -> tuple[int, list[str], list[str]]:
                 if age_days < 90:
                     score += 25
                     ev.append("YOUNG domain (< 90 days) — common phishing trait")
-    except Exception:
-        pass
+        else:
+            source_status["rdap"] = "completed"   # answered, just no record (e.g. 404)
+    except Exception as exc:
+        source_status["rdap"] = _classify_exc(exc)
 
     vt = os.environ.get("VT_API_KEY")
-    if vt:
+    if not vt:
+        source_status["virustotal"] = "not_configured"
+    else:
         score2, ev2, ok = _vt_lookup(f"domains/{domain}", vt)
         score += score2
         ev += ev2
+        source_status["virustotal"] = "completed" if ok else "failed"
         if ok:
             srcs.append("virustotal")
-    return score, ev, srcs
+    return score, ev, srcs, source_status
 
 
-def _lookup_hash(h: str) -> tuple[int, list[str], list[str]]:
+def _lookup_hash(h: str) -> tuple[int, list[str], list[str], dict[str, str]]:
+    source_status: dict[str, str] = {
+        "abuseipdb": "not_applicable", "feodo_tracker": "not_applicable",
+        "reverse_dns": "not_applicable", "rdap": "not_applicable",
+    }
     vt = os.environ.get("VT_API_KEY")
     if not vt:
-        return 0, ["hash reputation requires VT_API_KEY (not configured)"], []
+        source_status["virustotal"] = "not_configured"
+        return 0, ["hash reputation requires VT_API_KEY (not configured)"], [], source_status
     score, ev, ok = _vt_lookup(f"files/{h}", vt)
-    return score, ev, (["virustotal"] if ok else [])
+    source_status["virustotal"] = "completed" if ok else "failed"
+    return score, ev, (["virustotal"] if ok else []), source_status
 
 
 def _vt_lookup(path: str, key: str) -> tuple[int, list[str], bool]:
@@ -232,13 +302,36 @@ def _is_public_ip(v: str) -> bool:
 
 
 def extract_iocs(incident: dict, triage_result: dict | None = None,
-                 max_iocs: int = 8) -> dict:
+                 normalised_alert: dict | None = None, max_iocs: int = 8) -> dict:
     """Deterministic IOC pull: hashes and domains from triage metakeys,
-    public IPs from alertMeta (destinations before sources)."""
+    public IPs from alertMeta (destinations before sources), PLUS (new)
+    hashes/domain/IPs from the Parsing stage's processed_alert — the
+    normalised alert triage's own extraction may not have picked up.
+    normalised_alert may be either the flat processed_alert dict itself,
+    or a wrapper containing one at key "processed_alert"."""
     mkv = ((triage_result or {}).get("metakeys_payload") or {}).get("metakey_values") or {}
     am = incident.get("alertMeta") or {}
+    processed = normalised_alert or {}
+    if isinstance(processed.get("processed_alert"), dict):
+        processed = processed["processed_alert"]
 
-    hashes, domains, ips = [], [], []
+    hashes, domains, ips, private_ips = [], [], [], []
+
+    def add_ip_values(raw: Any) -> None:
+        """Classify comma/space-separated IPv4 values without dropping
+        internal pivots that Investigation still needs."""
+        for candidate in re.split(r"[,;\s]+", str(raw or "").strip()):
+            if not candidate or not _IP_RE.match(candidate):
+                continue
+            try:
+                ipaddress.ip_address(candidate)
+            except ValueError:
+                continue
+            if _is_public_ip(candidate):
+                ips.append(candidate)
+            else:
+                private_ips.append(candidate)
+
     for key, vals in mkv.items():
         for v in (vals if isinstance(vals, list) else [vals]):
             v = str(v or "").strip()
@@ -246,22 +339,34 @@ def extract_iocs(incident: dict, triage_result: dict | None = None,
                 hashes.append(v)
             elif ("domain" in key.lower() or "fqdn" in key.lower()) and "." in v:
                 domains.append(v)
+            elif "ip" in key.lower():
+                # Triage metakeys are a first-class IOC source. Values may be
+                # a single IP or a comma-joined list produced by normalisation.
+                add_ip_values(v)
     for field in ("DestinationIp", "SourceIp"):
         for v in am.get(field) or []:
-            if isinstance(v, str) and _IP_RE.match(v) and _is_public_ip(v):
-                ips.append(v)
+            add_ip_values(v)
+
+    for field in ("file_hash", "md5", "sha1", "sha256"):
+        v = str(processed.get(field) or "").strip()
+        if _HASH_RE.match(v):
+            hashes.append(v)
+    dom = str(processed.get("domain") or "").strip()
+    if dom and _looks_public_domain(dom):
+        domains.append(dom)
+    for field in ("source_ip", "destination_ip"):
+        add_ip_values(processed.get(field))
 
     def dedup(seq):
         return list(dict.fromkeys(seq))
 
     hashes, domains, ips = dedup(hashes), dedup(domains), dedup(ips)
-    n_private = sum(1 for f in ("DestinationIp", "SourceIp")
-                    for v in am.get(f) or []
-                    if isinstance(v, str) and _IP_RE.match(v) and not _is_public_ip(v))
+    private_ips = dedup(private_ips)
     picked: list[tuple[str, str]] = (
         [("hash", h) for h in hashes] + [("domain", d) for d in domains]
         + [("ip", i) for i in ips])[:max_iocs]
-    return {"iocs": picked, "skipped_private_ips": n_private,
+    return {"iocs": picked, "skipped_private_ips": len(private_ips),
+            "private_ips_retained": private_ips,
             "truncated": len(hashes) + len(domains) + len(ips) > max_iocs}
 
 
@@ -334,11 +439,13 @@ def _vt_related(h: str, key: str, limit: int = 4) -> list[tuple[str, str]]:
 
 
 def enrich_iocs(incident: dict, triage_result: dict | None = None,
+                normalised_alert: dict | None = None,
                 max_iocs: int = 8, deadline_seconds: float = 25.0) -> dict:
     """Enrich the incident's IOCs. Returns {"results": [...], "stats": {...}}.
     Cached per-IOC for 24 h; wall-clock-bounded; never raises."""
     t0 = time.time()
-    ext = extract_iocs(incident, triage_result, max_iocs=max_iocs)
+    ext = extract_iocs(incident, triage_result, normalised_alert=normalised_alert,
+                       max_iocs=max_iocs)
     cache = _cache_load()
     feodo = _feodo_c2_set() if any(t == "ip" for t, _ in ext["iocs"]) else set()
 
@@ -364,15 +471,16 @@ def enrich_iocs(incident: dict, triage_result: dict | None = None,
             results.append({"value": value, "type": ioc_type, "score": 0,
                             "verdict": "UNKNOWN (enrichment deadline reached)",
                             "confidence": "NONE (no sources reachable)",
-                            "evidence": [], "sources": [], "mitre_techniques": []})
+                            "evidence": [], "sources": [], "mitre_techniques": [],
+                            "source_status": {}})
             continue
         try:
             if ioc_type == "ip":
-                score, ev, srcs = _lookup_ip(value, feodo)
+                score, ev, srcs, source_status = _lookup_ip(value, feodo)
             elif ioc_type == "domain":
-                score, ev, srcs = _lookup_domain(value)
+                score, ev, srcs, source_status = _lookup_domain(value)
             else:
-                score, ev, srcs = _lookup_hash(value)
+                score, ev, srcs, source_status = _lookup_hash(value)
                 # cookbook cross-referencing: follow the hash's contacted
                 # infrastructure (VT-gated; bounded by the shared deadline
                 # and the processed-set dedup)
@@ -380,14 +488,20 @@ def enrich_iocs(incident: dict, triage_result: dict | None = None,
                     for rt, rv in _vt_related(value, vt_key):
                         queue.append((rt, rv, value))
         except Exception as exc:
+            # A total crash of the type-dispatch itself (each source call
+            # inside _lookup_ip/_lookup_domain/_lookup_hash is already its
+            # own try/except, so this is a defensive fallback, not the
+            # normal path) — recorded distinctly so _classify_ioc() routes
+            # it to lookup_failed rather than the default unknown.
             score, ev, srcs = 0, [f"lookup failed: {exc}"], []
+            source_status = {"_dispatch": "failed"}
         if via:
             ev = [f"discovered via VT relations of hash {via[:16]}…"] + ev
         looked_up += 1
         r = {"value": value, "type": ioc_type, "score": min(score, 100),
              "verdict": _verdict(score, srcs),
              "confidence": _confidence(score, srcs),
-             "evidence": ev, "sources": srcs}
+             "evidence": ev, "sources": srcs, "source_status": source_status}
         r["mitre_techniques"] = _map_mitre(r)
         results.append(r)
         cache[ck] = {"ts": time.time(), "r": r}
@@ -403,6 +517,7 @@ def enrich_iocs(incident: dict, triage_result: dict | None = None,
             "iocs_enriched": len(results),
             "cache_hits": cache_hits,
             "skipped_private_ips": ext["skipped_private_ips"],
+            "private_ips_retained": ext["private_ips_retained"],
             "truncated": ext["truncated"],
             "keyed_sources": keyed,
             "seconds": round(time.time() - t0, 2),

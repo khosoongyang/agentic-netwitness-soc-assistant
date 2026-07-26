@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend import stage_workflow
+
 
 COMPLETED_STATUSES = {"completed", "completed_limited", "completed_with_warnings", "completed_with_evidence_gaps", "generated_with_warnings", "success", "passed", "ready"}
 USABLE_LIMITED_INVESTIGATION_STATUSES = {"completed", "completed_limited", "completed_with_warnings", "completed_with_evidence_gaps", "needs_more_data", "waiting_for_telemetry", "insufficient_telemetry", "needs_analyst_review", "partial", "partial_success"}
@@ -145,33 +147,23 @@ def _last_time(ticket: dict[str, Any], agent_key: str, result: dict[str, Any]) -
 
 
 def approval_complete(ticket: dict[str, Any], gate: str = "triage_approval") -> bool:
-    key = "investigation_approval_result" if gate == "investigation_approval" else "approval_result"
-    result = _result(ticket, key)
-    decision = norm(result.get("decision") or result.get("status"))
-    if gate == "investigation_approval" and norm(result.get("evidence_gap_decision")) == "continue_to_reporting":
-        return True
-    return decision in {"approved", "approve", "completed"}
+    stage = stage_workflow.stage_definition(gate)
+    return bool(stage and stage_workflow.is_approved(ticket, stage))
 
 
 def approval_required(ticket: dict[str, Any], gate: str = "triage_approval") -> bool:
-    if gate == "investigation_approval":
-        return _has_result(_result(ticket, "investigation_result")) and not approval_complete(ticket, gate)
-    triage = _result(ticket, "triage_result")
-    return _has_result(triage) and triage_requires_approval(triage) and not approval_complete(ticket, gate)
+    stage = stage_workflow.stage_definition(gate)
+    return bool(
+        stage
+        and stage.get("approval_gate")
+        and stage_workflow.execution_complete(ticket, stage)
+        and not stage_workflow.is_approved(ticket, stage)
+    )
 
 
 def triage_requires_approval(triage: dict[str, Any]) -> bool:
-    explicit = triage.get("approval_required")
-    if isinstance(explicit, bool):
-        return explicit
-    if isinstance(explicit, str) and explicit.strip():
-        return explicit.strip().lower() in {"1", "true", "yes", "y", "required", "pending"}
-    severity = str(triage.get("severity") or triage.get("classification") or "").strip().title()
-    try:
-        risk_score = float(triage.get("risk_score") or 0)
-    except Exception:
-        risk_score = 0
-    return severity in {"Critical", "High"} or risk_score >= 70
+    # Triage is always an analyst approval gate in the canonical workflow.
+    return bool(triage)
 
 
 def _gate_status(ticket: dict[str, Any], gate: str) -> str:
@@ -220,7 +212,7 @@ def pending_correlation_recommendations(ticket: dict[str, Any]) -> list[dict[str
     return [item for item in items if norm(item.get("status")) == "pending"]
 
 
-def agent_panel(ticket: dict[str, Any]) -> list[dict[str, Any]]:
+def _legacy_agent_panel(ticket: dict[str, Any]) -> list[dict[str, Any]]:
     """Build the dashboard Agent Panel.
 
     Approval/review gates are embedded inside their owning operational stage,
@@ -389,7 +381,7 @@ def agent_panel(ticket: dict[str, Any]) -> list[dict[str, Any]]:
 
     return panel
 
-def workflow_steps(ticket: dict[str, Any]) -> list[dict[str, Any]]:
+def _legacy_workflow_steps(ticket: dict[str, Any]) -> list[dict[str, Any]]:
     """Return only the operational stages shown in the visual workflow.
 
     Human gates remain enforced by next_agent/can_run_agent and embedded in the
@@ -460,6 +452,118 @@ def workflow_steps(ticket: dict[str, Any]) -> list[dict[str, Any]]:
         {"key": "case_closure", "label": "Case Closure", "status": closure_status, "state": state_text(closure_status), "description": "Close the case after review"},
     ]
 
+
+def agent_panel(ticket: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build stage cards from persisted workflow state, not button labels."""
+    panel: list[dict[str, Any]] = []
+    fallbacks = {
+        "parsing": "No parser output has been written to this ticket yet.",
+        "triage": "No triage output has been written to this ticket yet.",
+        "threat_intel": "No threat intelligence output has been written to this ticket yet.",
+        "investigation": "No investigation output has been written to this ticket yet.",
+        "reporting": "No report output has been written to this ticket yet.",
+    }
+    descriptions = {
+        "parsing": "Raw NetWitness export parsed into clean SOC context",
+        "triage": "Severity, confidence, and triage decision",
+        "threat_intel": "IOC reputation and threat intelligence enrichment",
+        "investigation": "Evidence investigation and scope analysis",
+        "reporting": "Analyst-ready incident reporting",
+    }
+
+    for stage in stage_workflow.STAGES:
+        agent = stage["agent"]
+        result = stage_workflow.result_for(ticket, stage)
+        current = stage_workflow.status(ticket, stage)
+        eligible, eligibility_reason = stage_workflow.can_run(ticket, stage)
+        ran = stage_workflow.has_run(ticket, stage)
+        has_output = stage_workflow.has_output_content(ticket, stage)
+        message = stage_workflow.status_message(ticket, stage)
+        actions: list[dict[str, Any]] = []
+
+        if current == "running":
+            actions.append(_action_run(agent, "Processing...", False))
+        elif ran:
+            actions.append(_action_retry(agent, eligible))
+        else:
+            actions.append(_action_run(agent, "Start Process", eligible))
+
+        actions.append(_action_view(agent, has_output))
+        if current == "pending_approval":
+            actions.append({
+                "id": "approve-ticket",
+                "agent": agent,
+                "gate": stage["approval_gate"],
+                "label": "Approve",
+                "enabled": True,
+            })
+
+        fallback = fallbacks[agent]
+        summary = message or _summary(result, fallback)
+        locked = not eligible and current in {"locked", "rerun_required"}
+        panel.append({
+            "key": agent,
+            "label": stage["label"],
+            "status": stage_workflow.status_label(current),
+            "workflow_status": current,
+            "status_message": message,
+            "locked": locked,
+            "lock_reason": message if locked else "",
+            "has_run": ran,
+            "output_valid": stage_workflow.output_valid(ticket, stage),
+            "approval_required": bool(stage["approval_gate"]),
+            "approval_state": (
+                "approved" if stage_workflow.is_approved(ticket, stage)
+                else "pending" if current == "pending_approval"
+                else "not_required" if not stage["approval_gate"]
+                else "not_approved"
+            ),
+            "last_run_time": _last_time(ticket, agent, result),
+            "last_output_summary": summary,
+            "required_input_status": eligibility_reason,
+            "description": descriptions[agent],
+            "embedded_gate": (
+                {
+                    "label": "SOC Analyst Approval",
+                    "status": "awaiting_approval",
+                    "summary": f"Approve the latest valid {stage['label']} result to continue.",
+                }
+                if current == "pending_approval"
+                else {
+                    "label": "SOC Analyst Approval",
+                    "status": "approved",
+                    "summary": f"{stage['label']} was approved.",
+                }
+                if current == "approved"
+                else {}
+            ),
+            "actions": actions,
+        })
+    return panel
+
+
+def workflow_steps(ticket: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the exact five operational stages in required order."""
+    descriptions = {
+        "parsing": "Raw NetWitness export parsed into clean SOC context",
+        "triage": "Severity, confidence, and triage decision",
+        "threat_intel": "IOC reputation and threat intelligence enrichment",
+        "investigation": "Evidence investigation and scope analysis",
+        "reporting": "Generate analyst-ready reports",
+    }
+    return [
+        {
+            "key": stage["key"],
+            "agent": stage["agent"],
+            "label": stage["label"],
+            "status": stage_workflow.status(ticket, stage),
+            "state": stage_workflow.status_label(stage_workflow.status(ticket, stage)),
+            "message": stage_workflow.status_message(ticket, stage),
+            "description": descriptions[stage["agent"]],
+        }
+        for stage in stage_workflow.STAGES
+    ]
+
 def next_agent(ticket: dict[str, Any]) -> dict[str, Any]:
     from backend.orchestration_service import build_orchestration_decision
 
@@ -479,9 +583,7 @@ def next_agent(ticket: dict[str, Any]) -> dict[str, Any]:
 
 
 def can_run_agent(ticket: dict[str, Any], agent: str) -> tuple[bool, str]:
-    from backend.orchestration_service import can_run_agent as orchestration_can_run_agent
-
-    return orchestration_can_run_agent(ticket, agent)
+    return stage_workflow.can_run(ticket, agent)
 
 
 def decorate_ticket(ticket: dict[str, Any]) -> dict[str, Any]:

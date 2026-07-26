@@ -47,7 +47,7 @@ from backend.store_factory import PostgresUnavailableError, UnavailableCaseworkS
 from backend.error_handling import api_error, install_api_guards, safe_load_json_file, safe_write_json_file
 from backend.openai_client import invoke_openai_text
 from backend.netwitness_client import NetWitnessClient
-from backend import ticket_workflow
+from backend import stage_workflow, ticket_workflow
 from backend.reporting_context_resolver import (
     ensure_reporting_inputs,
     resolve_investigation_approval_context,
@@ -72,6 +72,7 @@ app = Flask(__name__, static_folder=None)
 RUNS: dict[str, dict[str, Any]] = {}
 RUN_PROCESSES: dict[str, subprocess.Popen] = {}
 RUN_LOCK = threading.Lock()
+APPROVAL_LOCK = threading.Lock()
 
 AGENT_TIMEOUT_SECONDS = {
     "correlation": 120,
@@ -778,6 +779,9 @@ def agent_run_gate(agent: str, ticket_id: str | None = None) -> tuple[bool, str,
     approval = read_data(OUTPUTS_DIR / "approval_result.json", {}) or {}
     inv_approval = read_data(OUTPUTS_DIR / "investigation_approval_result.json", {}) or {}
     selected_ticket = CASEWORK.get_ticket(ticket_id) if ticket_id else None
+    if selected_ticket is not None and stage_workflow.stage_definition(agent):
+        allowed, reason = stage_workflow.can_run(selected_ticket, agent)
+        return allowed, "allowed" if allowed else "ticket_workflow_blocked", reason
     if agent == "triage":
         if selected_ticket is not None:
             if not selected_ticket.get("parsing_result"):
@@ -878,30 +882,46 @@ def start_background_run(agent: str, ticket_id: str | None = None, run_type: str
         ticket = CASEWORK.get_ticket(ticket_id)
         if not ticket:
             return {"success": False, "status": f"Ticket {ticket_id} not found"}, 404
-
-        # Before ticket gating for Reporting, backfill limited investigation context
-        # from known JSON output locations into the ticket if the dashboard DB has not
-        # captured it yet. This prevents false "Run Investigation first" blocks.
-        if agent == "reporting":
-            resolved_inv = resolve_investigation_context(PROJECT_ROOT, ticket_id=ticket_id, ticket=ticket)
-            resolved_approval = resolve_investigation_approval_context(PROJECT_ROOT, ticket_id=ticket_id, ticket=ticket)
-            patch_fields = {}
-            if resolved_inv.exists and resolved_inv.usable and not ticket.get("investigation_result"):
-                patch_fields["investigation_result"] = resolved_inv.data
-            if resolved_approval.exists and resolved_approval.usable and not ticket.get("investigation_approval_result"):
-                patch_fields["investigation_approval_result"] = resolved_approval.data
-            if patch_fields:
-                ticket = CASEWORK.update_ticket(
-                    ticket_id,
-                    patch_fields,
-                    actor="System",
-                    action="reporting_context_backfilled",
-                    message="Backfilled investigation context for Reporting from existing agent output files.",
-                )
-
-        allowed_for_ticket, ticket_gate = ticket_workflow.can_run_agent(ticket, agent)
+        existing_active = active_agent_run(ticket_id=ticket_id, agent=agent)
+        if existing_active:
+            return {
+                "success": False,
+                "error": f"{cfg['label']} is already running.",
+                "status": f"{cfg['label']} is already running.",
+                "gate_code": "agent_running_same_ticket",
+                "run_id": existing_active.get("run_id"),
+                "ticket_id": ticket_id,
+                "agent": agent,
+            }, 409
+        allowed_for_ticket, ticket_gate = stage_workflow.can_start(
+            ticket,
+            agent,
+            rerun=run_type == "rerun",
+        )
         if not allowed_for_ticket:
-            return {"success": False, "status": ticket_gate, "gate_code": "ticket_workflow_blocked", "ticket": ticket_workflow.decorate_ticket(ticket)}, 409
+            return {
+                "success": False,
+                "error": ticket_gate,
+                "status": ticket_gate,
+                "gate_code": "ticket_workflow_blocked",
+                "ticket": ticket_workflow.decorate_ticket(ticket),
+            }, 409
+        transition_fields = stage_workflow.begin_run_fields(
+            ticket,
+            agent,
+            rerun=run_type == "rerun",
+        )
+        ticket = CASEWORK.update_ticket(
+            ticket_id,
+            transition_fields,
+            actor=triggered_by,
+            action=f"{agent}_{run_type}_state_started",
+            message=(
+                f"{cfg['label']} re-run started; previous approval and downstream current results were invalidated."
+                if run_type == "rerun"
+                else f"{cfg['label']} started."
+            ),
+        )
         prepared_raw_alert = CASEWORK.prepare_agent_inputs(ticket_id, INPUTS_DIR)
         if agent == "parsing":
             removed_outputs = clear_stale_parser_outputs(PROJECT_ROOT, ticket_id=ticket_id)
@@ -923,20 +943,11 @@ def start_background_run(agent: str, ticket_id: str | None = None, run_type: str
             )
         write_json(SELECTED_TICKET_FILE, {"ticket_id": ticket_id, "agent": agent, "selected_at": now_iso()})
         CASEWORK.append_activity(ticket_id, "System", f"{agent}_started", "running", f"{cfg['label']} started for this ticket.", {"agent": agent, "run_type": run_type})
-        if run_type == "rerun":
-            try:
-                CASEWORK.mark_downstream_refresh_required(
-                    ticket_id,
-                    agent,
-                    reason=f"{cfg['label']} was re-run. Downstream agent outputs may need refresh before final review.",
-                    actor=triggered_by,
-                )
-            except Exception:
-                pass
 
-    allowed, gate_code, gate_message = agent_run_gate(agent, ticket_id=ticket_id)
-    if not allowed:
-        return {"success": False, "status": gate_message, "gate_code": gate_code, "agent": agent, "workflow": workflow_state()}, 409
+    if not ticket_id:
+        allowed, gate_code, gate_message = agent_run_gate(agent, ticket_id=ticket_id)
+        if not allowed:
+            return {"success": False, "error": gate_message, "status": gate_message, "gate_code": gate_code, "agent": agent, "workflow": workflow_state()}, 409
 
     # Bridge ticket/database context into legacy JSON inputs before launching Reporting.
     if agent == "reporting":
@@ -1097,6 +1108,13 @@ def start_background_run(agent: str, ticket_id: str | None = None, run_type: str
                     final_status, final_success, final_step = "paused", False, "Agent pause requested by analyst"
                 elif RUNS.get(run_id, {}).get("status") == "timed_out":
                     final_status, final_success, final_step = "timed_out", False, RUNS[run_id].get("current_step") or "Agent timed out"
+                if isinstance(out_data, dict):
+                    out_data = stage_workflow.completed_result(
+                        agent,
+                        out_data,
+                        success=final_success,
+                        message="" if final_success else final_step,
+                    )
                 RUNS[run_id]["returncode"] = returncode
                 RUNS[run_id]["output_status"] = out_status
                 RUNS[run_id]["output_summary"] = {
@@ -1128,6 +1146,18 @@ def start_background_run(agent: str, ticket_id: str | None = None, run_type: str
                             start_background_export_preparation(ticket_id, agent)
                     except Exception as exc:
                         RUNS[run_id]["logs"].append(f"[Ticket Update Error] {exc}")
+                elif ticket_id:
+                    try:
+                        latest_ticket = CASEWORK.get_ticket(ticket_id) or {}
+                        CASEWORK.update_ticket(
+                            ticket_id,
+                            stage_workflow.failure_fields(latest_ticket, agent, final_step),
+                            actor=cfg["label"],
+                            action=f"{agent}_failed",
+                            message=final_step,
+                        )
+                    except Exception as exc:
+                        RUNS[run_id]["logs"].append(f"[Ticket Failure State Error] {exc}")
             if ticket_id:
                 try:
                     output_file = agent_output_path(agent, run_output_dir)
@@ -1157,6 +1187,14 @@ def start_background_run(agent: str, ticket_id: str | None = None, run_type: str
                 if ticket_id:
                     try:
                         CASEWORK.record_agent_run_finish(run_id, "execution_error", progress=RUNS[run_id].get("progress_percent", 50), error_code="EXECUTION_ERROR", error_message=str(exc))
+                        latest_ticket = CASEWORK.get_ticket(ticket_id) or {}
+                        CASEWORK.update_ticket(
+                            ticket_id,
+                            stage_workflow.failure_fields(latest_ticket, agent, str(exc)),
+                            actor=cfg["label"],
+                            action=f"{agent}_failed",
+                            message=str(exc),
+                        )
                     except Exception:
                         pass
                 RUN_PROCESSES.pop(run_id, None)
@@ -1749,7 +1787,11 @@ def api_ticket_run_next_step(ticket_id: str):
     }
     if not next_step.get("agent") or not next_step.get("allowed"):
         return jsonify({"success": False, "status": next_step.get("reason"), "next_step": next_step, "orchestration_decision": decision, "ticket": _ticket_response(ticket)}), 409
-    payload, status = start_background_run(next_step["agent"], ticket_id=ticket_id)
+    payload, status = start_background_run(
+        next_step["agent"],
+        ticket_id=ticket_id,
+        run_type="rerun" if stage_workflow.has_run(ticket, next_step["agent"]) else "run",
+    )
     payload["next_step"] = next_step
     payload["orchestration_decision"] = decision
     return jsonify(payload), status
@@ -1759,13 +1801,26 @@ def api_ticket_run_next_step(ticket_id: str):
 def api_ticket_approve(ticket_id: str):
     body = request.get_json(silent=True) or {}
     try:
-        prior = CASEWORK.get_ticket(ticket_id) or {}
-        gate = body.get("gate") or prior.get("current_stage")
-        ticket = CASEWORK.record_approval(ticket_id, "approved", comments=body.get("comments") or "", analyst=body.get("analyst") or "SOC Analyst", gate=gate)
-        if str(gate or "").lower().replace("-", "_") == "investigation_approval":
+        with APPROVAL_LOCK:
+            prior = CASEWORK.get_ticket(ticket_id) or {}
+            gate = body.get("gate") or prior.get("current_stage")
+            allowed, reason, stage = stage_workflow.can_approve(prior, gate)
+            if not allowed or not stage:
+                return jsonify({"success": False, "error": reason, "status": reason}), 409
+            if active_agent_run(ticket_id=ticket_id, agent=stage["agent"]):
+                message = f"{stage['label']} cannot be approved while it is running."
+                return jsonify({"success": False, "error": message, "status": message}), 409
+            ticket = CASEWORK.record_approval(ticket_id, "approved", comments=body.get("comments") or "", analyst=body.get("analyst") or "SOC Analyst", gate=gate)
+        if stage["agent"] == "investigation":
             write_json(OUTPUTS_DIR / "investigation_approval_result.json", ticket.get("investigation_approval_result") or {})
             write_json(INPUTS_DIR / "investigation_approval_result.json", ticket.get("investigation_approval_result") or {})
             approval_payload = ticket.get("investigation_approval_result")
+        elif stage["agent"] == "reporting":
+            write_json(OUTPUTS_DIR / "soc_review_result.json", ticket.get("soc_review_result") or {})
+            write_json(INPUTS_DIR / "soc_review_result.json", ticket.get("soc_review_result") or {})
+            approval_payload = ticket.get("soc_review_result")
+        elif stage["agent"] == "threat_intel":
+            approval_payload = (ticket.get("threat_intel_result") or {}).get("workflow_approval") or {}
         else:
             write_json(OUTPUTS_DIR / "approval_result.json", ticket.get("approval_result") or {})
             write_json(INPUTS_DIR / "approval_result.json", ticket.get("approval_result") or {})
@@ -1773,6 +1828,8 @@ def api_ticket_approve(ticket_id: str):
         return jsonify({"success": True, "ticket": _ticket_response(ticket), "approval": approval_payload})
     except KeyError as exc:
         return jsonify({"success": False, "status": str(exc)}), 404
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc), "status": str(exc)}), 409
 
 
 @app.route("/api/tickets/<ticket_id>/reject", methods=["POST"])
@@ -1784,6 +1841,8 @@ def api_ticket_reject(ticket_id: str):
         return jsonify({"success": True, "ticket": _ticket_response(ticket), "approval": ticket.get("approval_result") or ticket.get("investigation_approval_result")})
     except KeyError as exc:
         return jsonify({"success": False, "status": str(exc)}), 404
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc), "status": str(exc)}), 409
 
 
 @app.route("/api/tickets/<ticket_id>/request-more-evidence", methods=["POST"])
@@ -1795,6 +1854,8 @@ def api_ticket_more_evidence(ticket_id: str):
         return jsonify({"success": True, "ticket": _ticket_response(ticket), "approval": ticket.get("approval_result") or ticket.get("investigation_approval_result")})
     except KeyError as exc:
         return jsonify({"success": False, "status": str(exc)}), 404
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc), "status": str(exc)}), 409
 
 
 @app.route("/api/tickets/<ticket_id>/investigation/evidence-gap-decision", methods=["POST"])
@@ -1855,6 +1916,8 @@ def api_ticket_confirm_soc_review(ticket_id: str):
         return jsonify({"success": True, "ticket": _ticket_response(ticket), "soc_review": ticket.get("soc_review_result")})
     except KeyError as exc:
         return jsonify({"success": False, "status": str(exc)}), 404
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc), "status": str(exc)}), 409
 
 
 @app.route("/api/tickets/<ticket_id>/assign", methods=["POST"])

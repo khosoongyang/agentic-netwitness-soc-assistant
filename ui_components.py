@@ -859,46 +859,50 @@ def mitre_strip(active_tactic: str = "", technique: str = "") -> str:
     return f'<div class="ag-mitre">{"".join(parts)}</div>'
 
 
+# origin -> (display label, tone) — never "confirmed" unless an analyst
+# actually confirmed it (no such action exists in this pass, see
+# case_view.build_mitre — so "analyst_confirmed" simply never appears
+# today; the tag is reserved, not fabricated).
+_MITRE_ORIGIN_LABELS = {
+    "netwitness_detection_mapping": ("NetWitness detection", "info"),
+    "deterministic_keyword_inference": ("Deterministic inference", "wait"),
+    "investigation_agent_suggestion": ("Investigation agent suggestion", "high"),
+    "analyst_confirmed": ("Analyst confirmed", "low"),
+}
+
+
 def mitre_mapping_workspace(mappings: Iterable[dict]) -> str:
-    """Render evidence-backed MITRE mappings as reviewable technique cards."""
+    """Render MITRE mappings as reviewable technique cards, each tagged with
+    its ORIGIN (how it was produced) instead of a fabricated confidence
+    percentage — no field in any of the three source tiers (NetWitness
+    native data, deterministic keyword inference, or the Investigation
+    Agent's own markdown table) carries a real numeric confidence, so none
+    is invented here. An LLM/agent suggestion is never displayed
+    indistinguishably from a confirmed mapping."""
     clean = []
     for raw in mappings or []:
         if not isinstance(raw, dict):
             continue
         tactic = str(raw.get("tactic") or "Unclassified").strip()
         tech_id = str(raw.get("technique_id") or raw.get("id")
-                      or raw.get("technique") or "Technique pending").strip()
-        tech_name = str(raw.get("technique_name") or raw.get("name")
-                        or raw.get("technique") or "MITRE ATT&CK technique").strip()
-        if tech_name == tech_id:
-            tech_name = str(raw.get("name") or "MITRE ATT&CK technique")
+                      or raw.get("technique") or "").strip()
+        tech_name = str(raw.get("technique_name") or raw.get("name") or "").strip()
         evidence = raw.get("evidence") or raw.get("observed_evidence") or []
         if isinstance(evidence, str):
             evidence = [evidence] if evidence.strip() else []
-        try:
-            confidence_score = int(float(str(
-                raw.get("confidence_score") or
-                (94 if str(raw.get("confidence") or "").lower() == "high" else 82)
-            ).rstrip("%")))
-        except (TypeError, ValueError):
-            confidence_score = 82
+        origin = str(raw.get("origin") or "").strip()
+        origin_label, origin_tone = _MITRE_ORIGIN_LABELS.get(
+            origin, (origin.replace("_", " ").title() or "Unlabeled origin", "stage"))
         clean.append({
-            "tactic": tactic, "technique_id": tech_id, "technique_name": tech_name,
-            "description": str(raw.get("description") or
-                f"Observed case activity is consistent with {tech_name}."),
-            "confidence": str(raw.get("confidence") or "High").title(),
-            "confidence_score": max(0, min(100, confidence_score)),
-            "review": str(raw.get("review") or "Unreviewed"),
-            "evidence": evidence,
-            "source": str(raw.get("source") or "Aegis Investigation Agent"),
-            "timeline_events": int(raw.get("timeline_events") or 1),
-            "related_entities": int(raw.get("related_entities") or 0),
-            "generated_by": str(raw.get("generated_by") or "Aegis Investigation Agent"),
+            "tactic": tactic, "technique_id": tech_id or "—",
+            "technique_name": tech_name, "evidence": evidence,
+            "origin_label": origin_label, "origin_tone": origin_tone,
+            "source": str(raw.get("source") or "").strip() or "—",
         })
     if not clean:
         return ('<div class="ag-mitre-workspace"><div class="ag-mw-head"><div>'
                 '<h3>MITRE ATT&amp;CK Mappings</h3>'
-                '<p>No evidence-backed mappings are available for this case yet.</p>'
+                '<p>No mappings are available for this case yet.</p>'
                 '</div><span class="ag-mw-count">0 mapped</span></div></div>')
 
     tactic_counts = {}
@@ -913,39 +917,28 @@ def mitre_mapping_workspace(mappings: Iterable[dict]) -> str:
 
     cards = []
     for index, item in enumerate(clean):
-        ev_count = max(1, len(item["evidence"]))
         details = " open" if index == 0 else ""
+        ev_html = ("".join(f'<li>{_e(e)}</li>' for e in item["evidence"])
+                  if item["evidence"] else '<li>No supporting evidence recorded.</li>')
         cards.append(
             f'<details class="ag-map-card"{details}><summary>'
             f'<span class="ag-map-tactic">{_e(item["tactic"])}</span>'
             f'<span class="ag-map-tech"><b>{_e(item["technique_id"])}</b>'
             f'<span>{_e(item["technique_name"])}</span></span>'
-            f'<span class="ag-map-confidence">{_e(item["confidence"])} · '
-            f'{item["confidence_score"]}%</span>'
-            f'<span class="ag-map-review">{_e(item["review"])}</span>'
+            f'{pill(item["origin_label"], item["origin_tone"])}'
             '<span class="ag-map-chevron">⌃</span></summary>'
-            f'<div class="ag-map-body"><p class="ag-map-desc">{_e(item["description"])}</p>'
+            f'<div class="ag-map-body">'
             '<div class="ag-map-facts">'
-            f'<div class="ag-map-fact"><span>Supporting evidence</span><b>{ev_count} '
-            f'{"item" if ev_count == 1 else "items"}</b></div>'
-            f'<div class="ag-map-fact"><span>Evidence source</span><b>{_e(item["source"])}</b></div>'
-            f'<div class="ag-map-fact"><span>Timeline events</span><b>{item["timeline_events"]}</b></div>'
-            f'<div class="ag-map-fact"><span>Related entities</span><b>{item["related_entities"]}</b></div>'
-            f'<div class="ag-map-fact"><span>Generated by</span><b>{_e(item["generated_by"])}</b></div>'
-            '</div><div class="ag-map-actions">'
-            '<span class="ag-map-action primary">Confirm Mapping</span>'
-            '<span class="ag-map-action">Mark as Incorrect</span>'
-            '<span class="ag-map-action">Needs More Evidence</span></div>'
-            '<div class="ag-map-actions">'
-            '<span class="ag-map-action">View Supporting Evidence</span>'
-            '<span class="ag-map-action">View Timeline Event</span>'
-            '<span class="ag-map-action">View Related Entities</span>'
-            '</div></div></details>')
+            f'<div class="ag-map-fact"><span>Origin</span><b>{_e(item["origin_label"])}</b></div>'
+            f'<div class="ag-map-fact"><span>Source</span><b>{_e(item["source"])}</b></div>'
+            '</div>'
+            f'<p class="ag-map-desc"><b>Supporting evidence</b></p><ul>{ev_html}</ul>'
+            '</div></details>')
 
     return (
         '<div class="ag-mitre-workspace"><div class="ag-mw-head"><div>'
         '<h3>MITRE ATT&amp;CK Mappings</h3>'
-        '<p>Evidence-backed tactics and techniques for this case</p></div>'
+        '<p>Tactics and techniques for this case, tagged by origin</p></div>'
         f'<span class="ag-mw-count">{len(clean)} mapped</span></div>'
         f'<div class="ag-mw-filters">{"".join(filters)}</div>'
         f'{"".join(cards)}</div>')

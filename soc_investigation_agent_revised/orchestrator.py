@@ -13,6 +13,7 @@ from langchain_core.prompts import ChatPromptTemplate
 import ingest_pipeline
 import vector_engine
 import mitre_mapper
+from chroma_compat import open_persistent_collection
 
 load_dotenv()
 
@@ -170,11 +171,17 @@ class PolicyVectorIndex:
             api_key=os.environ.get("OPENAI_API_KEY", ""),
             model_name="text-embedding-3-small",
         )
-        self.collection = self.client.get_or_create_collection(
+        self.collection, using_persisted_embedding = open_persistent_collection(
+            self.client,
             name="soc_policies",
             embedding_function=self.default_ef,
             metadata={"hnsw:space": "cosine"}
         )
+        if using_persisted_embedding:
+            log_warning(
+                "PolicyVectorIndex: 'soc_policies' uses its persisted embedding "
+                "function; existing vectors were preserved."
+            )
 
     def populate(self, sections: Dict[str, str], relevant_keys: List[str]):
         """Populates the collection with only the whitelisted/classified sections."""

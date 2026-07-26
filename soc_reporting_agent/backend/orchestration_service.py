@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from backend import stage_workflow
+
 
 COMPLETED_STATUSES = {
     "completed", "completed_limited", "completed_with_warnings", "completed_with_evidence_gaps",
@@ -204,7 +206,7 @@ def _correlation_has_result(ticket: dict[str, Any]) -> bool:
     return bool(result and result.get("status") not in {"", None})
 
 
-def build_orchestration_decision(ticket: dict[str, Any]) -> dict[str, Any]:
+def _legacy_build_orchestration_decision(ticket: dict[str, Any]) -> dict[str, Any]:
     """Return the next workflow decision for one SOC ticket.
 
     The Orchestration Agent is deliberately rule-based. Agents provide evidence,
@@ -440,7 +442,7 @@ def build_orchestration_decision(ticket: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def can_run_agent(ticket: dict[str, Any], agent: str) -> tuple[bool, str]:
+def _legacy_can_run_agent(ticket: dict[str, Any], agent: str) -> tuple[bool, str]:
     agent_norm = norm(agent)
     if agent_norm == "correlation":
         return True, "Correlation can run to recommend alert grouping."
@@ -495,3 +497,75 @@ def can_run_agent(ticket: dict[str, Any], agent: str) -> tuple[bool, str]:
             return True, "Reporting can run with documented investigation limitations."
         return True, "Reporting can run."
     return False, "Unknown agent."
+
+
+def build_orchestration_decision(ticket: dict[str, Any]) -> dict[str, Any]:
+    """Return the next allowed action from the canonical persisted stage state."""
+    ticket = ticket or {}
+    if stage_workflow.workflow_complete(ticket):
+        return _decision(
+            ticket,
+            workflow_decision="workflow_completed",
+            next_agent=None,
+            label="Workflow Completed",
+            allowed=False,
+            reason="Reporting is completed and approved. The workflow is complete.",
+            current_stage="case_closure",
+        )
+
+    for stage in stage_workflow.STAGES:
+        current = stage_workflow.status(ticket, stage)
+        if current in {"completed", "approved"}:
+            continue
+        if current == "pending_approval":
+            return _decision(
+                ticket,
+                workflow_decision=f"awaiting_{stage['approval_gate']}",
+                next_agent=None,
+                label=f"Approve {stage['label']}",
+                allowed=False,
+                reason=f"{stage['label']} is complete and must be approved before the next stage can run.",
+                current_stage=stage["approval_gate"],
+                requires_human_approval=True,
+                approval_gate=stage["approval_gate"],
+                required_inputs=[stage["approval_gate"]],
+            )
+
+        allowed, reason = stage_workflow.can_run(ticket, stage)
+        if allowed:
+            rerun = stage_workflow.has_run(ticket, stage)
+            return _decision(
+                ticket,
+                workflow_decision=f"{'rerun' if rerun else 'run'}_{stage['key']}",
+                next_agent=stage["agent"],
+                label=f"{'Re-run' if rerun else 'Start'} {stage['label']}",
+                allowed=True,
+                reason=reason,
+                current_stage=stage["key"],
+                required_inputs=[] if stage["agent"] == "parsing" else [stage_workflow.STAGES[stage_workflow.STAGES.index(stage) - 1]["result_key"]],
+            )
+
+        return _decision(
+            ticket,
+            workflow_decision=f"blocked_{stage['key']}",
+            next_agent=None,
+            label=f"{stage['label']} Locked",
+            allowed=False,
+            reason=stage_workflow.status_message(ticket, stage) or reason,
+            current_stage=stage["key"],
+            validation_status="blocked",
+        )
+
+    return _decision(
+        ticket,
+        workflow_decision="workflow_completed",
+        next_agent=None,
+        label="Workflow Completed",
+        allowed=False,
+        reason="All workflow stages are complete and approved.",
+        current_stage="case_closure",
+    )
+
+
+def can_run_agent(ticket: dict[str, Any], agent: str) -> tuple[bool, str]:
+    return stage_workflow.can_run(ticket, agent)

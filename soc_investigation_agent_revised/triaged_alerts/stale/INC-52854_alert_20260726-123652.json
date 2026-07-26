@@ -1,0 +1,814 @@
+{
+  "incident_id": "INC-52854",
+  "incident_details": {
+    "timestamp": "2025-07-14T12:17:18+00:00",
+    "description": "The alert is a high-risk NetWitness endpoint event tied to SYSTEM activity on host BETHANYCHUCHU, but no process, command-line, file, or network evidence is available to confirm malicious behavior. The only supportable indicator is unexplained activity from a privileged account, which warrants investigation but does not yet indicate confirmed compromise.",
+    "mitre_att&ck": {
+      "tactic": "Privilege Escalation",
+      "technique": "Unknown"
+    }
+  },
+  "classification": {
+    "alert_type": "Policy violations",
+    "soc_classification": "MEDIUM"
+  },
+  "log_indicators": {
+    "target_user": "SYSTEM",
+    "computer_name": "BETHANYCHUCHU",
+    "operating_system": "Unknown"
+  },
+  "network_indicators": {
+    "source_ip": "192.168.10.201",
+    "destination_ip": "20.42.65.93",
+    "domain": null
+  },
+  "observed_indicators": {
+    "usernames": [],
+    "hostnames": [
+      "BETHANYCHUCHU"
+    ],
+    "ip_addresses": [
+      "20.42.65.93",
+      "23.50.87.128",
+      "163.181.164.169",
+      "42.99.140.145",
+      "40.69.42.241",
+      "40.70.76.27",
+      "40.126.35.144",
+      "13.35.37.85"
+    ],
+    "source_ips": [
+      "192.168.10.201",
+      "192.168.20.201",
+      "192.168.10.207"
+    ],
+    "destination_ips": [
+      "20.42.65.93",
+      "23.50.87.128",
+      "163.181.164.169",
+      "42.99.140.145",
+      "40.69.42.241",
+      "40.70.76.27",
+      "40.126.35.144",
+      "13.35.37.85"
+    ],
+    "entity_from_alert_title": "BETHANYCHUCHU"
+  },
+  "triage": {
+    "ticket_unc": "#00044A",
+    "risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Medium",
+      "rationale": "The alert has a moderate vendor risk score (69) and a privileged SYSTEM activity IOC, but no supporting process, file, network, or PowerShell evidence to indicate strong adversary intent, recurring frequency, or material impact."
+    },
+    "ioc_summary": "[AVAILABILITY] Unexplained changes from privileged accounts — The alert is tied to SYSTEM activity on a host and is marked high risk, but there is no evidence of crash, CPU, reboot, packet, or explicit configuration telemetry. The only supportable match is unexplained activity from a privileged account.\n[CONFIDENTIALITY] Unexplained changes from privileged accounts — No network, file transfer, or geographic indicators are present, so there is no evidence for exfiltration or unknown traffic. The only applicable signal is unusual activity from a privileged account.\n[INTEGRITY] Unexplained changes from privileged accounts — There are no process, hash, binary, signing, boot, or config details to support stronger integrity findings. The alert does indicate unusual privileged-account activity on the endpoint, which fits this IOC.",
+    "matched_metakeys": [
+      "SYSTEM",
+      "bytes.transferred",
+      "event.time",
+      "file.path",
+      "high risk",
+      "privileged account",
+      "user.name",
+      "user.role"
+    ],
+    "metakey_values": {
+      "user.name": [
+        "SYSTEM",
+        "NT AUTHORITY\\NETWORK SERVICE",
+        "LOCAL SERVICE",
+        "NETWORK SERVICE",
+        "Bethany Chu"
+      ]
+    },
+    "matched_ioc_count": 3
+  },
+  "source_incident": {
+    "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "summary": ""
+  },
+  "enrichment": {
+    "endpoint_identity": {
+      "hostnames": [
+        "BETHANYCHUCHU"
+      ],
+      "users": [
+        "SYSTEM",
+        "LOCAL SERVICE",
+        "NETWORK SERVICE",
+        "Bethany Chu",
+        "UMFD-1",
+        "UMFD-0",
+        "DWM-1",
+        "BETHANYCHUCHU\\Bethany Chu",
+        "NT AUTHORITY\\SYSTEM",
+        "NT AUTHORITY\\LOCAL SERVICE",
+        "NT AUTHORITY\\NETWORK SERVICE"
+      ],
+      "mac_addresses": [],
+      "dns_domains": [],
+      "source_ips": [
+        "192.168.10.201",
+        "fe80:0:0:0:9706:3f55:e752:75ca",
+        "192.168.20.201",
+        "192.168.10.207",
+        "fe80:0:0:0:f747:13c9:cf0e:da39",
+        "0:0:0:0:0:0:0:1",
+        "127.0.0.1"
+      ],
+      "destination_ips": [
+        "111.223.64.83",
+        "8.8.4.4",
+        "4.145.79.80",
+        "20.189.173.2",
+        "101.33.26.185",
+        "8.8.8.8",
+        "4.145.79.82",
+        "96.7.102.164",
+        "199.232.210.172",
+        "40.70.76.27",
+        "40.126.35.144",
+        "13.35.37.85",
+        "20.52.64.201",
+        "40.74.79.222",
+        "192.168.20.255",
+        "239.255.255.250",
+        "ff02:0:0:0:0:0:0:c",
+        "13.69.116.108",
+        "20.3.187.198",
+        "192.168.20.16",
+        "23.205.209.215",
+        "13.85.23.206",
+        "204.79.197.222",
+        "101.33.26.246",
+        "52.182.143.213",
+        "52.182.143.212",
+        "20.44.220.42",
+        "20.189.173.13",
+        "20.189.173.11",
+        "172.169.87.222",
+        "23.46.155.200",
+        "23.46.155.201",
+        "13.95.31.18",
+        "40.74.78.229",
+        "23.206.181.167",
+        "150.171.69.254",
+        "52.231.230.148",
+        "101.33.26.139",
+        "20.189.173.24",
+        "52.123.128.14",
+        "124.155.222.152",
+        "131.253.33.254",
+        "150.171.27.10",
+        "20.189.173.25",
+        "150.171.27.12",
+        "150.171.27.11",
+        "51.105.71.137",
+        "52.231.186.36",
+        "ff02:0:0:0:0:0:0:fb",
+        "204.79.197.203",
+        "101.33.26.9",
+        "13.107.6.156",
+        "52.168.117.174",
+        "20.44.239.154",
+        "52.168.117.175",
+        "192.168.10.205",
+        "13.69.109.130",
+        "23.210.96.161",
+        "52.178.17.2",
+        "52.168.117.170",
+        "52.140.118.28",
+        "109.61.38.38",
+        "23.46.155.146",
+        "40.74.98.195",
+        "23.46.155.142",
+        "124.155.222.83",
+        "23.205.210.56",
+        "163.181.164.170",
+        "224.0.0.251",
+        "43.175.139.86",
+        "23.205.210.58",
+        "23.206.182.58",
+        "124.155.222.17",
+        "23.205.208.8",
+        "ff02:0:0:0:0:0:1:2",
+        "124.155.222.178",
+        "13.107.42.16",
+        "23.206.182.56",
+        "23.46.155.132",
+        "23.46.155.133",
+        "52.175.245.232",
+        "52.139.252.32",
+        "52.168.117.168",
+        "124.155.222.26",
+        "20.249.177.218",
+        "52.123.129.14",
+        "20.42.65.88",
+        "192.168.10.14",
+        "124.155.222.24",
+        "150.171.28.12",
+        "43.175.138.227",
+        "199.232.214.172",
+        "52.168.112.66",
+        "52.183.205.142",
+        "52.168.112.67",
+        "20.42.73.24",
+        "203.116.175.105",
+        "192.168.10.255",
+        "23.58.144.239",
+        "20.42.65.93",
+        "23.50.87.128",
+        "163.181.164.169",
+        "42.99.140.145",
+        "40.69.42.241"
+      ]
+    },
+    "behavioural_alerts": {
+      "alert_titles": [
+        "Chu Wen - Lateral Move Detected",
+        "Malicious File By Reputation Service",
+        "test"
+      ],
+      "alert_types": [
+        "Endpoint"
+      ],
+      "mitre_tactics": [],
+      "mitre_techniques": []
+    },
+    "file_indicators": {
+      "hashes": [],
+      "names": [],
+      "paths": []
+    },
+    "process_indicators": {
+      "names": [],
+      "paths": [],
+      "pids": []
+    },
+    "process_tree": {
+      "processes": [],
+      "process_paths": [],
+      "pids": [],
+      "parent_processes": [],
+      "command_lines": [],
+      "lineage": []
+    },
+    "network_activity": {
+      "source_ips": [
+        "192.168.10.201",
+        "fe80:0:0:0:9706:3f55:e752:75ca",
+        "192.168.20.201",
+        "192.168.10.207",
+        "fe80:0:0:0:f747:13c9:cf0e:da39",
+        "0:0:0:0:0:0:0:1",
+        "127.0.0.1"
+      ],
+      "destination_ips": [
+        "111.223.64.83",
+        "8.8.4.4",
+        "4.145.79.80",
+        "20.189.173.2",
+        "101.33.26.185",
+        "8.8.8.8",
+        "4.145.79.82",
+        "96.7.102.164",
+        "199.232.210.172",
+        "40.70.76.27",
+        "40.126.35.144",
+        "13.35.37.85",
+        "20.52.64.201",
+        "40.74.79.222",
+        "192.168.20.255",
+        "239.255.255.250",
+        "ff02:0:0:0:0:0:0:c",
+        "13.69.116.108",
+        "20.3.187.198",
+        "192.168.20.16",
+        "23.205.209.215",
+        "13.85.23.206",
+        "204.79.197.222",
+        "101.33.26.246",
+        "52.182.143.213",
+        "52.182.143.212",
+        "20.44.220.42",
+        "20.189.173.13",
+        "20.189.173.11",
+        "172.169.87.222",
+        "23.46.155.200",
+        "23.46.155.201",
+        "13.95.31.18",
+        "40.74.78.229",
+        "23.206.181.167",
+        "150.171.69.254",
+        "52.231.230.148",
+        "101.33.26.139",
+        "20.189.173.24",
+        "52.123.128.14",
+        "124.155.222.152",
+        "131.253.33.254",
+        "150.171.27.10",
+        "20.189.173.25",
+        "150.171.27.12",
+        "150.171.27.11",
+        "51.105.71.137",
+        "52.231.186.36",
+        "ff02:0:0:0:0:0:0:fb",
+        "204.79.197.203",
+        "101.33.26.9",
+        "13.107.6.156",
+        "52.168.117.174",
+        "20.44.239.154",
+        "52.168.117.175",
+        "192.168.10.205",
+        "13.69.109.130",
+        "23.210.96.161",
+        "52.178.17.2",
+        "52.168.117.170",
+        "52.140.118.28",
+        "109.61.38.38",
+        "23.46.155.146",
+        "40.74.98.195",
+        "23.46.155.142",
+        "124.155.222.83",
+        "23.205.210.56",
+        "163.181.164.170",
+        "224.0.0.251",
+        "43.175.139.86",
+        "23.205.210.58",
+        "23.206.182.58",
+        "124.155.222.17",
+        "23.205.208.8",
+        "ff02:0:0:0:0:0:1:2",
+        "124.155.222.178",
+        "13.107.42.16",
+        "23.206.182.56",
+        "23.46.155.132",
+        "23.46.155.133",
+        "52.175.245.232",
+        "52.139.252.32",
+        "52.168.117.168",
+        "124.155.222.26",
+        "20.249.177.218",
+        "52.123.129.14",
+        "20.42.65.88",
+        "192.168.10.14",
+        "124.155.222.24",
+        "150.171.28.12",
+        "43.175.138.227",
+        "199.232.214.172",
+        "52.168.112.66",
+        "52.183.205.142",
+        "52.168.112.67",
+        "20.42.73.24",
+        "203.116.175.105",
+        "192.168.10.255",
+        "23.58.144.239",
+        "20.42.65.93",
+        "23.50.87.128",
+        "163.181.164.169",
+        "42.99.140.145",
+        "40.69.42.241"
+      ],
+      "ports": [],
+      "protocols": [],
+      "network_services": [],
+      "bytes": [],
+      "geo": [],
+      "domains": []
+    },
+    "host_behaviour": {
+      "config_changes": [],
+      "cpu_usage": [],
+      "device_types": [],
+      "user_roles": [],
+      "operating_systems": []
+    },
+    "event_context": {
+      "event_types": [],
+      "event_times": []
+    },
+    "all_metakey_values": {
+      "user.name": [
+        "SYSTEM",
+        "NT AUTHORITY\\NETWORK SERVICE",
+        "LOCAL SERVICE",
+        "NETWORK SERVICE",
+        "Bethany Chu"
+      ]
+    },
+    "alert_statistics": {
+      "alert_count": 1245,
+      "event_count": 1245,
+      "risk_score": 69,
+      "average_alert_risk_score": 69,
+      "matched_ioc_count": 3
+    },
+    "matched_metakey_catalog": [
+      "SYSTEM",
+      "bytes.transferred",
+      "event.time",
+      "file.path",
+      "high risk",
+      "privileged account",
+      "user.name",
+      "user.role"
+    ],
+    "ioc_summary": "[AVAILABILITY] Unexplained changes from privileged accounts — The alert is tied to SYSTEM activity on a host and is marked high risk, but there is no evidence of crash, CPU, reboot, packet, or explicit configuration telemetry. The only supportable match is unexplained activity from a privileged account.\n[CONFIDENTIALITY] Unexplained changes from privileged accounts — No network, file transfer, or geographic indicators are present, so there is no evidence for exfiltration or unknown traffic. The only applicable signal is unusual activity from a privileged account.\n[INTEGRITY] Unexplained changes from privileged accounts — There are no process, hash, binary, signing, boot, or config details to support stronger integrity findings. The alert does indicate unusual privileged-account activity on the endpoint, which fits this IOC.",
+    "triage_summary": "The alert is a high-risk NetWitness endpoint event tied to SYSTEM activity on host BETHANYCHUCHU, but no process, command-line, file, or network evidence is available to confirm malicious behavior. The only supportable indicator is unexplained activity from a privileged account, which warrants investigation but does not yet indicate confirmed compromise.",
+    "_note": "Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple."
+  },
+  "threat_intelligence": {
+    "incident_id": "INC-52854",
+    "run_id": "INC-52854@20260726-115404-58a9ba",
+    "stage": "threat_intelligence",
+    "status": "completed_with_warnings",
+    "generated_at": "2026-07-26T03:54:44.166452+00:00",
+    "risk_level": "Low",
+    "risk_score": 10,
+    "iocs": [
+      {
+        "value": "111.223.64.83",
+        "type": "ip",
+        "score": 0,
+        "verdict": "NO_FINDINGS",
+        "confidence": "HIGH (4 sources answered)",
+        "evidence": [
+          "not on Feodo C2 blocklist",
+          "geo: Singapore, AS4657 StarHub Ltd (Starhub Ltd.)",
+          "rDNS: 111.223.64-83.unknown.starhub.net.sg",
+          "AbuseIPDB confidence 0/100 (0 reports)",
+          "VirusTotal: 0 malicious / 91 engines"
+        ],
+        "sources": [
+          "feodo",
+          "ip-api",
+          "abuseipdb",
+          "virustotal"
+        ],
+        "source_status": {
+          "feodo_tracker": "completed",
+          "ip_api": "completed",
+          "reverse_dns": "completed",
+          "abuseipdb": "completed",
+          "virustotal": "completed"
+        },
+        "mitre_techniques": []
+      },
+      {
+        "value": "8.8.4.4",
+        "type": "ip",
+        "score": 0,
+        "verdict": "NO_FINDINGS",
+        "confidence": "HIGH (2 sources answered)",
+        "evidence": [
+          "not on Feodo C2 blocklist",
+          "geo: None, None (None)"
+        ],
+        "sources": [
+          "feodo",
+          "ip-api"
+        ],
+        "source_status": {
+          "feodo_tracker": "completed",
+          "ip_api": "completed",
+          "reverse_dns": "failed",
+          "abuseipdb": "not_configured",
+          "virustotal": "not_configured"
+        },
+        "mitre_techniques": []
+      },
+      {
+        "value": "4.145.79.80",
+        "type": "ip",
+        "score": 10,
+        "verdict": "NO_FINDINGS",
+        "confidence": "HIGH (4 sources answered)",
+        "evidence": [
+          "not on Feodo C2 blocklist",
+          "geo: Singapore, AS8075 Microsoft Corporation (Microsoft Corporation)",
+          "datacenter/hosting-provider IP (not residential)",
+          "AbuseIPDB confidence 0/100 (0 reports)",
+          "VirusTotal: 0 malicious / 91 engines"
+        ],
+        "sources": [
+          "feodo",
+          "ip-api",
+          "abuseipdb",
+          "virustotal"
+        ],
+        "source_status": {
+          "feodo_tracker": "completed",
+          "ip_api": "completed",
+          "reverse_dns": "failed",
+          "abuseipdb": "completed",
+          "virustotal": "completed"
+        },
+        "mitre_techniques": []
+      },
+      {
+        "value": "20.189.173.2",
+        "type": "ip",
+        "score": 10,
+        "verdict": "NO_FINDINGS",
+        "confidence": "HIGH (4 sources answered)",
+        "evidence": [
+          "not on Feodo C2 blocklist",
+          "geo: United States, AS8075 Microsoft Corporation (Microsoft Corporation)",
+          "datacenter/hosting-provider IP (not residential)",
+          "AbuseIPDB confidence 16/100 (32 reports)",
+          "VirusTotal: 0 malicious / 91 engines"
+        ],
+        "sources": [
+          "feodo",
+          "ip-api",
+          "abuseipdb",
+          "virustotal"
+        ],
+        "source_status": {
+          "feodo_tracker": "completed",
+          "ip_api": "completed",
+          "reverse_dns": "failed",
+          "abuseipdb": "completed",
+          "virustotal": "completed"
+        },
+        "mitre_techniques": []
+      },
+      {
+        "value": "101.33.26.185",
+        "type": "ip",
+        "score": 0,
+        "verdict": "NO_FINDINGS",
+        "confidence": "HIGH (4 sources answered)",
+        "evidence": [
+          "not on Feodo C2 blocklist",
+          "geo: Singapore, AS139341 ACE (ACE)",
+          "AbuseIPDB confidence 0/100 (0 reports)",
+          "VirusTotal: 0 malicious / 91 engines"
+        ],
+        "sources": [
+          "feodo",
+          "ip-api",
+          "abuseipdb",
+          "virustotal"
+        ],
+        "source_status": {
+          "feodo_tracker": "completed",
+          "ip_api": "completed",
+          "reverse_dns": "failed",
+          "abuseipdb": "completed",
+          "virustotal": "completed"
+        },
+        "mitre_techniques": []
+      },
+      {
+        "value": "8.8.8.8",
+        "type": "ip",
+        "score": 0,
+        "verdict": "NO_FINDINGS",
+        "confidence": "HIGH (2 sources answered)",
+        "evidence": [
+          "not on Feodo C2 blocklist",
+          "geo: US, AS1 (x)"
+        ],
+        "sources": [
+          "feodo",
+          "ip-api"
+        ],
+        "source_status": {
+          "feodo_tracker": "completed",
+          "ip_api": "completed",
+          "reverse_dns": "failed",
+          "abuseipdb": "not_configured",
+          "virustotal": "not_configured"
+        },
+        "mitre_techniques": []
+      },
+      {
+        "value": "4.145.79.82",
+        "type": "ip",
+        "score": 10,
+        "verdict": "NO_FINDINGS",
+        "confidence": "HIGH (4 sources answered)",
+        "evidence": [
+          "not on Feodo C2 blocklist",
+          "geo: Singapore, AS8075 Microsoft Corporation (Microsoft Corporation)",
+          "datacenter/hosting-provider IP (not residential)",
+          "AbuseIPDB confidence 0/100 (2 reports)",
+          "VirusTotal: 0 malicious / 91 engines"
+        ],
+        "sources": [
+          "feodo",
+          "ip-api",
+          "abuseipdb",
+          "virustotal"
+        ],
+        "source_status": {
+          "feodo_tracker": "completed",
+          "ip_api": "completed",
+          "reverse_dns": "failed",
+          "abuseipdb": "completed",
+          "virustotal": "completed"
+        },
+        "mitre_techniques": []
+      },
+      {
+        "value": "96.7.102.164",
+        "type": "ip",
+        "score": 0,
+        "verdict": "UNKNOWN (enrichment deadline reached)",
+        "confidence": "NONE (no sources reachable)",
+        "evidence": [],
+        "sources": [],
+        "mitre_techniques": [],
+        "source_status": {}
+      }
+    ],
+    "source_results": {
+      "feodo_tracker": {
+        "completed": 7
+      },
+      "ip_api": {
+        "completed": 7
+      },
+      "reverse_dns": {
+        "completed": 1,
+        "failed": 6
+      },
+      "abuseipdb": {
+        "completed": 5,
+        "not_configured": 2
+      },
+      "virustotal": {
+        "completed": 5,
+        "not_configured": 2
+      }
+    },
+    "internal_iocs": [
+      {
+        "value": "192.168.20.255",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "239.255.255.250",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.20.16",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.10.205",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "224.0.0.251",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.10.14",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.10.255",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.10.201",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.20.201",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.10.207",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "127.0.0.1",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      }
+    ],
+    "triage_behavioral_indicators": {
+      "count": 3,
+      "names": [
+        "Unexplained changes from privileged accounts"
+      ],
+      "disposition": "retained_for_investigation"
+    },
+    "malicious_iocs": [],
+    "suspicious_iocs": [],
+    "no_findings_iocs": [
+      "111.223.64.83",
+      "8.8.4.4",
+      "4.145.79.80",
+      "20.189.173.2",
+      "101.33.26.185",
+      "8.8.8.8",
+      "4.145.79.82"
+    ],
+    "unknown_iocs": [
+      "96.7.102.164"
+    ],
+    "lookup_failed_iocs": [],
+    "warnings": [
+      "IOC list truncated to the enrichment budget (8) — not every extracted IOC was looked up.",
+      "6 IOC(s) had at least one source fail while another source still returned a verdict."
+    ],
+    "errors": [],
+    "stats": {
+      "iocs_enriched": 8,
+      "cache_hits": 2,
+      "skipped_private_ips": 11,
+      "private_ips_retained": [
+        "192.168.20.255",
+        "239.255.255.250",
+        "192.168.20.16",
+        "192.168.10.205",
+        "224.0.0.251",
+        "192.168.10.14",
+        "192.168.10.255",
+        "192.168.10.201",
+        "192.168.20.201",
+        "192.168.10.207",
+        "127.0.0.1"
+      ],
+      "truncated": true,
+      "keyed_sources": [
+        "VirusTotal",
+        "AbuseIPDB"
+      ],
+      "seconds": 30.01
+    },
+    "thinking_process": {
+      "stage": "threat_intelligence",
+      "decision": "Threat Intelligence enrichment completed",
+      "iocs_extracted": 8,
+      "externally_enrichable_iocs": 8,
+      "private_internal_ips_retained": 11,
+      "triage_behavioral_indicators": 3,
+      "sources_attempted": [
+        "abuseipdb",
+        "feodo_tracker",
+        "ip_api",
+        "reverse_dns",
+        "virustotal"
+      ],
+      "source_outcomes": {
+        "feodo_tracker": {
+          "completed": 7
+        },
+        "ip_api": {
+          "completed": 7
+        },
+        "reverse_dns": {
+          "completed": 1,
+          "failed": 6
+        },
+        "abuseipdb": {
+          "completed": 5,
+          "not_configured": 2
+        },
+        "virustotal": {
+          "completed": 5,
+          "not_configured": 2
+        }
+      },
+      "malicious_iocs": 0,
+      "suspicious_iocs": 0,
+      "no_findings_iocs": 7,
+      "unknown_iocs": 1,
+      "lookup_failed_iocs": 0,
+      "risk_level": "Low",
+      "warnings": [
+        "IOC list truncated to the enrichment budget (8) — not every extracted IOC was looked up.",
+        "6 IOC(s) had at least one source fail while another source still returned a verdict."
+      ],
+      "next_stage": "investigation"
+    }
+  }
+}

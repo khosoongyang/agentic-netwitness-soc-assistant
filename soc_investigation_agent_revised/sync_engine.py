@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Optional, List, Dict, Set, Any
 from pydantic import BaseModel, Field, model_validator
+from chroma_compat import open_persistent_collection
 
 # Configure logger
 logger = logging.getLogger("SyncEngine")
@@ -356,11 +357,17 @@ class ChromaIncidentVectorStore(BaseVectorIndex):
             api_key=os.environ.get("OPENAI_API_KEY", ""),
             model_name="text-embedding-3-small",
         )
-        self.collection = self.client.get_or_create_collection(
+        self.collection, using_persisted_embedding = open_persistent_collection(
+            self.client,
             name="soc_incidents",
             embedding_function=self.default_ef,
             metadata={"hnsw:space": "cosine"}
         )
+        if using_persisted_embedding:
+            logger.warning(
+                "ChromaIncidentVectorStore: 'soc_incidents' uses its persisted "
+                "embedding function; existing vectors were preserved."
+            )
 
     async def upsert(self, incident: Incident) -> None:
         metadata = {

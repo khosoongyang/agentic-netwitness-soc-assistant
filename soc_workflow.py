@@ -39,14 +39,17 @@ Usage (headless)
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import sqlite3
 import subprocess
 import sys
+import threading
 import time
-from datetime import datetime
+import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -203,10 +206,20 @@ def _safe_ticket_id(unc: str) -> str:
 
 def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
                               extra_env: dict[str, str] | None = None,
-                              line_cb=None) -> dict:
+                              line_cb=None, watchdog_cb=None,
+                              watchdog_interval: int | None = None) -> dict:
     """Like _run_subprocess, but streams merged stdout/stderr line-by-line to
     line_cb(str) while the process runs — used by the app's agent board to
-    show live 'thinking' for subprocess agents. Same result shape."""
+    show live 'thinking' for subprocess agents. Same result shape.
+
+    watchdog_cb, when given, is invoked every watchdog_interval seconds
+    (default _HEARTBEAT_RENEW_SECONDS) while the subprocess runs, via a
+    self-rescheduling threading.Timer alongside the existing single-shot
+    timeout watchdog. If it ever returns False (e.g. a global workspace
+    lock's renewal failed — see run_investigation's docstring), the child
+    process is terminated exactly like a timeout, but the result's
+    status is "lock_lost", not "timeout" — callers must treat that
+    distinctly (never as a normal completed/failed investigation)."""
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUTF8", "1")
@@ -215,15 +228,17 @@ def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
         env.update(extra_env)
     started = datetime.now().isoformat(timespec="seconds")
     lines: list[str] = []
+    watchdog_interval = watchdog_interval or _HEARTBEAT_RENEW_SECONDS
     try:
-        import threading
         proc = subprocess.Popen(cmd, cwd=str(cwd), env=env,
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, encoding="utf-8", errors="replace",
                                 bufsize=1)
-        # Watchdog: the read loop below blocks while the process is silent,
-        # so timeout must be enforced out-of-band, not per-line.
+        # Watchdogs: the read loop below blocks while the process is silent,
+        # so both timeout AND lock-loss must be enforced out-of-band, not
+        # per-line.
         timed_out = {"v": False}
+        lock_lost = {"v": False}
 
         def _kill_on_timeout():
             timed_out["v"] = True
@@ -234,6 +249,34 @@ def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
 
         watchdog = threading.Timer(timeout, _kill_on_timeout)
         watchdog.start()
+
+        lock_timer_holder: dict = {}
+
+        def _check_lock() -> None:
+            if proc.poll() is not None:
+                return   # process already finished — nothing to guard
+            if not watchdog_cb():
+                lock_lost["v"] = True
+                try:
+                    proc.terminate()
+                    proc.wait(timeout=10)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                return
+            t = threading.Timer(watchdog_interval, _check_lock)
+            t.daemon = True
+            lock_timer_holder["t"] = t
+            t.start()
+
+        lock_timer = None
+        if watchdog_cb is not None:
+            lock_timer = threading.Timer(watchdog_interval, _check_lock)
+            lock_timer.daemon = True
+            lock_timer_holder["t"] = lock_timer
+            lock_timer.start()
         try:
             for line in proc.stdout:  # blocks until EOF; lines arrive live
                 lines.append(line)
@@ -245,6 +288,15 @@ def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
             rc = proc.wait()
         finally:
             watchdog.cancel()
+            current_timer = lock_timer_holder.get("t")
+            if current_timer is not None:
+                current_timer.cancel()
+        if lock_lost["v"]:
+            return {"started_at": started, "returncode": -1,
+                    "success": False, "status": "lock_lost",
+                    "stdout": "".join(lines)[-20000:],
+                    "stderr": "Shared workspace lock was lost while the "
+                             "subprocess was running; it was terminated."}
         if timed_out["v"]:
             return {"started_at": started, "returncode": -1,
                     "success": False, "status": "timeout",
@@ -344,6 +396,268 @@ def _llm_seed() -> str:
     return os.environ.get("CISCO_LLM_SEED", "").strip() or "42"
 
 
+def _safe(s: str) -> str:
+    return re.sub(r"[^A-Za-z0-9_-]", "_", str(s))
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2.5  RUN-SCOPED ARTIFACT PERSISTENCE (identity-enveloped, atomic writes)
+# ══════════════════════════════════════════════════════════════════════════════
+# Every artifact this module writes for durable resume (the full raw
+# incident; later, run-scoped parsing summaries) lives under this one
+# trusted root, wrapped in an identity envelope {incident_id, run_id,
+# artifact_type, created_at, payload} and written temp-then-replace so a
+# crash mid-write can never leave a partial file to be loaded.
+
+_TRUSTED_OUTPUT_ROOT = REP_DIR / "outputs"
+
+
+def _artifact_dir(incident_id: str, run_id: str) -> Path:
+    """A readable prefix plus a content hash of the FULL original
+    identifier, so two different incident_ids that _safe() would
+    otherwise collapse to the same sanitized string never share a
+    directory."""
+    safe_id = _safe(incident_id)
+    id_hash = hashlib.sha256(str(incident_id).encode()).hexdigest()[:10]
+    run_hash = hashlib.sha256(str(run_id).encode()).hexdigest()[:10]
+    return _TRUSTED_OUTPUT_ROOT / f"{safe_id}-{id_hash}" / run_hash
+
+
+def _atomic_write_json(path: Path, data: dict) -> None:
+    """Write-temp-then-replace so a crash or restart mid-write can never
+    leave a partially-written file behind to be loaded."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.parent / f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, default=str)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)   # atomic on both POSIX and Windows
+
+
+def _save_run_artifact(incident_id: str, run_id: str, filename: str,
+                       artifact_type: str, payload: dict) -> Path:
+    """Every artifact is wrapped in an identity envelope, not just the raw
+    payload, so reload can validate BOTH incident_id and run_id without
+    depending on whatever (possibly absent) identity fields the payload
+    itself happens to carry."""
+    envelope = {
+        "incident_id": str(incident_id), "run_id": run_id,
+        "artifact_type": artifact_type,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "payload": payload,
+    }
+    path = _artifact_dir(incident_id, run_id) / filename
+    _atomic_write_json(path, envelope)
+    return path
+
+
+def _resolve_trusted_path(path_str: str | None) -> Path | None:
+    if not path_str:
+        return None
+    try:
+        p = Path(path_str).resolve()
+        p.relative_to(_TRUSTED_OUTPUT_ROOT.resolve())
+    except Exception:
+        return None
+    return p if p.is_file() else None
+
+
+def _load_artifact_envelope(path: Path | None, incident_id: str, run_id: str) -> dict | None:
+    """Shared reload+validate routine — checks both incident_id and run_id
+    against the envelope (not the payload's own, possibly-absent identity
+    fields), and a half-written temp file is never at the final path (see
+    _atomic_write_json), so this either finds a complete file or none."""
+    if not path:
+        return None
+    try:
+        envelope = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if (envelope.get("incident_id") != str(incident_id)
+            or envelope.get("run_id") != run_id):
+        return None
+    return envelope.get("payload")
+
+
+def _data_availability(incident: dict) -> dict:
+    """Real fetch-outcome metadata for the incident about to be persisted as
+    this run's raw-incident artifact — NOT a bare bool(incident.get("alerts")),
+    which can't distinguish "alerts were fetched and there genuinely are
+    none" from "the fetch failed" or "this is the slim, already-stripped
+    DB copy". The live NetWitness alert-fetch loop (app.py) already tracks
+    outcome honestly: it sets incident["alerts_fetch_error"] (and
+    "alerts_fetch_diag") on any failure, and leaves those absent while
+    populating incident["alerts"] (even with an empty list) on success.
+    db_upsert_incidents() stamps "_alerts_stripped" onto the slim copy it
+    persists to SQLite — its presence means this object was, at some
+    point, stripped of its real alerts, regardless of what "alerts" key
+    (if any) it carries now, so incident_source is derived from THAT
+    marker directly rather than from a separately-passed flag the caller
+    (run_until_triage_approval) has no reliable way to supply anyway."""
+    fetch_error = incident.get("alerts_fetch_error")
+    has_alerts_key = "alerts" in incident
+    was_stripped = "_alerts_stripped" in incident
+    fetch_ok = has_alerts_key and not fetch_error and not was_stripped
+    if was_stripped:
+        incident_source = "sqlite_slim"
+    elif has_alerts_key:
+        incident_source = "netwitness_live"
+    else:
+        incident_source = "other"
+    return {
+        "incident_source": incident_source,
+        "alerts_fetch_attempted": has_alerts_key or bool(fetch_error),
+        "alerts_fetch_succeeded": fetch_ok,
+        "alerts_complete": fetch_ok,
+        "alerts_count": len(incident.get("alerts") or []),
+        # No dedicated journal-fetch success/failure signal exists anywhere
+        # in the current fetch code — reported honestly as "not tracked"
+        # rather than fabricated as True/False.
+        "journal_fetch_succeeded": None,
+        "warnings": ([f"NetWitness alert fetch failed: {fetch_error}"] if fetch_error else []),
+    }
+
+
+def load_raw_incident_for_run(incident_id: str, run_id: str) -> dict | None:
+    """The ONLY source of the full raw incident (with alertMeta) for the
+    durable Threat Intelligence path — never st.session_state. Returns
+    None (not a guess) if the row's run_id doesn't match or the file is
+    missing/invalid/mismatched.
+
+    The artifact's payload is {"incident": {...}, "data_availability": {...}}
+    (see run_until_triage_approval); this function always returns just the
+    bare incident dict, unchanged from every existing caller's point of
+    view. Artifacts written before this metadata existed have the incident
+    dict directly as the payload (no "incident"/"data_availability" keys)
+    — both shapes are handled so old runs keep resolving."""
+    state = wss.get_state(incident_id)
+    if not state or state.get("run_id") != run_id:
+        return None
+    payload = _load_artifact_envelope(
+        _resolve_trusted_path(state.get("raw_incident_path")), incident_id, run_id)
+    if payload is None:
+        return None
+    if isinstance(payload, dict) and "incident" in payload and "data_availability" in payload:
+        return payload["incident"]
+    return payload   # legacy artifact: the payload WAS the incident dict
+
+
+def load_data_availability_for_run(incident_id: str, run_id: str) -> dict | None:
+    """Companion to load_raw_incident_for_run() — returns the fetch-outcome
+    metadata stamped alongside the incident, or None for a legacy artifact
+    (predating this metadata) or a missing/invalid one. case_view.py must
+    treat None the same as "unavailable / assume incomplete", never as
+    "assume complete"."""
+    state = wss.get_state(incident_id)
+    if not state or state.get("run_id") != run_id:
+        return None
+    payload = _load_artifact_envelope(
+        _resolve_trusted_path(state.get("raw_incident_path")), incident_id, run_id)
+    if isinstance(payload, dict) and "data_availability" in payload:
+        return payload["data_availability"]
+    return None
+
+
+def load_parsing_result_for_run(incident_id: str, run_id: str) -> dict | None:
+    """Reads the run-scoped parsing summary saved by
+    wss.save_parsing_result() and, where the paths it recorded still
+    resolve inside the trusted root, loads the full normalised_alert/
+    processed_alert content back from disk. Returns None if the summary's
+    own run_id doesn't match — never trusts a stale/foreign summary."""
+    state = wss.get_state(incident_id)
+    if not state or state.get("run_id") != run_id:
+        return None
+    try:
+        summary = json.loads(state.get("parsing_result_json") or "{}")
+    except Exception:
+        return None
+    if summary.get("run_id") != run_id:
+        return None
+    out = dict(summary)
+    for key in ("normalised_alert", "processed_alert"):
+        p = _resolve_trusted_path((summary.get("output_files") or {}).get(key))
+        if p:
+            try:
+                out[key] = json.loads(p.read_text(encoding="utf-8"))
+            except Exception:
+                out[key] = None
+    return out
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 2.6  STAGE CLAIM / LEASE  (execution/threading layer only)
+# ══════════════════════════════════════════════════════════════════════════════
+# The pure database transactions (claim_stage, renew_stage_lease,
+# release_stage_lease, complete_stage, the global execution lock functions,
+# StageClaimError/GlobalLockBusyError) now live in workflow_state_store.py —
+# that module owns the schema and every atomic transaction; this module owns
+# worker EXECUTION: the background renewal thread, subprocess invocation,
+# and stage chaining. A stage function must atomically CLAIM its stage (no
+# live lease held by another worker) before doing any real work,
+# periodically RENEW the lease while it runs, and only ever write its
+# result/status through wss.complete_stage(), which re-checks ownership
+# (including lease liveness) at the moment of writing.
+
+from workflow_state_store import (
+    StageClaimError, GlobalLockBusyError,
+    claim_stage, renew_stage_lease, release_stage_lease, complete_stage,
+    acquire_global_lock, renew_global_lock, release_global_lock,
+    set_worker_progress_note,
+    _LEASE_DURATION_SECONDS, _HEARTBEAT_RENEW_SECONDS,
+)
+
+# Documented ceiling for how long a worker will wait, with bounded backoff,
+# to acquire a shared-workspace global lock before giving up (see
+# run_investigation_stage / run_reporting_stage). Generous enough to
+# outlast one worst-case contending investigation (two subprocess passes,
+# ~1200s) with headroom — not an indefinite hang.
+_GLOBAL_LOCK_MAX_WAIT_SECONDS = 1800
+
+
+class LeaseRenewer:
+    """Background renewal thread for the duration of one stage's real work,
+    used uniformly for Threat Intelligence/Investigation/Reporting so no
+    stage depends on having frequent progress callbacks to stay alive.
+    Exposes `lease_lost` so the stage function can notice a lost lease
+    itself instead of only finding out when its next DB write silently
+    loses a race — complete_stage()'s own atomic ownership check is still
+    the final source of truth; this is a fast, early exit, not a
+    substitute for it. Optionally ALSO renews a global workspace lock on
+    the same heartbeat tick once also_renew_global_lock() is called —
+    exposes `global_lock_lost` separately from `lease_lost` so a caller can
+    tell which one failed."""
+    def __init__(self, incident_id: str, run_id: str, worker_id: str):
+        self._incident_id = incident_id
+        self._run_id = run_id
+        self._worker_id = worker_id
+        self._global_lock_name: str | None = None
+        self._stop = threading.Event()
+        self.lease_lost = threading.Event()
+        self.global_lock_lost = threading.Event()
+        self._t = threading.Thread(target=self._run, daemon=True)
+
+    def also_renew_global_lock(self, lock_name: str) -> None:
+        self._global_lock_name = lock_name
+
+    def _run(self):
+        while not self._stop.wait(_HEARTBEAT_RENEW_SECONDS):
+            if not renew_stage_lease(self._incident_id, self._run_id, self._worker_id):
+                self.lease_lost.set()
+                break
+            if self._global_lock_name and not renew_global_lock(
+                    self._global_lock_name, self._worker_id):
+                self.global_lock_lost.set()
+                break
+
+    def start(self):
+        self._t.start()
+
+    def stop(self):
+        self._stop.set()
+        self._t.join(timeout=2)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 3.  STAGE 1 — TRIAGE  (in-process)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -362,18 +676,23 @@ def run_triage(incident: dict, progress_fn=None,
     return agent.triage(incident, force=force, parsed_context=parsed_context)
 
 
-def run_parsing(incident: dict) -> dict:
+def run_parsing(incident: dict, run_id: str) -> dict:
     """Run the existing Parsing & Normalisation stage in-process, reusing
     soc_reporting_agent's parser unmodified. Mirrors run_triage()'s pattern:
     a thin wrapper, no new parsing logic. Also asks the LLM for a plain-
-    English summary of what the parser extracted (see generate_parsing_ai_summary)."""
+    English summary of what the parser extracted (see generate_parsing_ai_summary).
+
+    run_id now required — scopes the output directory per run (not just
+    per incident) so a durable reload (load_parsing_result_for_run) can
+    trust the files belong to THIS run, not a stale/overwritten previous
+    run of the same incident."""
     rep_dir = str(REP_DIR)
     if rep_dir not in sys.path:
         sys.path.insert(0, rep_dir)
     from services.parser_normaliser import run_parser_normalisation_for_dashboard
 
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
-    output_dir = REP_DIR / "outputs" / inc_id / "parsing"
+    output_dir = REP_DIR / "outputs" / _safe(inc_id) / _safe(run_id) / "parsing"
     result = run_parser_normalisation_for_dashboard(incident, output_dir=output_dir)
     if result.get("status") == "completed":
         result.update(generate_parsing_ai_summary(result))
@@ -602,6 +921,197 @@ def needs_investigation(triage_result: dict) -> bool:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 3.5  STAGE — THREAT INTELLIGENCE ENRICHMENT  (in-process)
+# ══════════════════════════════════════════════════════════════════════════════
+# Reuses threat_intel.enrich_iocs() unmodified in its reputation model —
+# IP/domain/hash IOCs via VirusTotal + AbuseIPDB (both already gated on
+# their existing env vars), same scoring/caching/verdict logic. This
+# section is the thin orchestration wrapper: explicit inputs only (never
+# "find the latest file" itself), incident/run identity validation,
+# honest per-IOC bucketing, and the structured Thinking Process record.
+
+class ThreatIntelValidationError(Exception):
+    """Raised when inputs handed to run_threat_intel() don't belong to the
+    same incident/run — refuses a stale or mismatched enrichment."""
+
+
+def _classify_ioc(r: dict) -> str:
+    """Exactly one bucket per IOC — never contradictory. An IOC is
+    lookup_failed ONLY when every applicable, configured source that was
+    actually attempted for it failed/timed out/rate-limited AND none
+    succeeded. If any applicable source completed, the IOC keeps its
+    real verdict; other sources' failures become a stage-level warning
+    instead of relabeling the IOC. NO_FINDINGS is never called 'benign' —
+    the sources answered and found nothing adverse, which is not the
+    same as proof the IOC is clean."""
+    verdict = r["verdict"]
+    if verdict == "MALICIOUS":
+        return "malicious"
+    if verdict == "SUSPICIOUS":
+        return "suspicious"
+    statuses = [s for s in (r.get("source_status") or {}).values()
+               if s != "not_applicable"]
+    completed = [s for s in statuses if s == "completed"]
+    attempted_and_failed = [s for s in statuses
+                            if s in ("timed_out", "rate_limited", "failed")]
+    if completed:
+        return "no_findings" if verdict == "NO_FINDINGS" else "unknown"
+    if attempted_and_failed:
+        return "lookup_failed"
+    return "unknown"   # nothing applicable/configured was even attempted
+
+
+def run_threat_intel(incident_id: str, run_id: str,
+                     normalised_alert: dict | None,
+                     triage_result: dict, incident: dict | None = None,
+                     max_iocs: int = 8, deadline_seconds: float = 25.0) -> dict:
+    """Threat Intelligence Enrichment stage. Takes the already-loaded,
+    already-validated Triage + Parsing outputs (and, where available, the
+    full raw incident) for THIS incident/run explicitly — never re-reads
+    "the latest" state itself. Never raises on lookup failures
+    (enrich_iocs already guarantees that); only raises
+    ThreatIntelValidationError if the triage_result's own embedded
+    incident_id doesn't match incident_id."""
+    from threat_intel import enrich_iocs
+
+    ticket = triage_result.get("ticket") or {}
+    meta   = triage_result.get("metakeys_payload") or {}
+    tri_inc_id = str(meta.get("incident_id") or ticket.get("incident_id") or "")
+    if tri_inc_id and tri_inc_id != str(incident_id):
+        raise ThreatIntelValidationError(
+            f"triage_result belongs to incident {tri_inc_id!r}, expected "
+            f"{incident_id!r} — refusing stale/mismatched threat-intel run")
+
+    generated_at = datetime.now(timezone.utc).isoformat()
+    warnings: list[str] = []
+
+    enr = enrich_iocs(incident or {}, triage_result,
+                      normalised_alert=normalised_alert,
+                      max_iocs=max_iocs, deadline_seconds=deadline_seconds)
+    results, stats = enr["results"], enr["stats"]
+    private_ips_retained = stats.get("private_ips_retained") or []
+
+    trace_ioc = next(
+        (step for step in (triage_result.get("trace") or [])
+         if step.get("step") == "IOC Checklist"),
+        {},
+    )
+    behavioral_ioc_names: list[str] = []
+    for category in (trace_ioc.get("per_category") or {}).values():
+        behavioral_ioc_names.extend(category.get("matched_ioc_names") or [])
+    behavioral_ioc_names = list(dict.fromkeys(behavioral_ioc_names))
+    try:
+        behavioral_ioc_count = int(
+            ticket.get("matched_ioc_count")
+            or trace_ioc.get("total_ioc_count")
+            or len(behavioral_ioc_names)
+        )
+    except (TypeError, ValueError):
+        behavioral_ioc_count = len(behavioral_ioc_names)
+
+    buckets: dict[str, list[str]] = {
+        "malicious": [], "suspicious": [], "no_findings": [],
+        "unknown": [], "lookup_failed": [],
+    }
+    partial_failure_count = 0
+    for r in results:
+        buckets[_classify_ioc(r)].append(r["value"])
+        statuses = [s for s in (r.get("source_status") or {}).values()
+                   if s != "not_applicable"]
+        if (any(s == "completed" for s in statuses)
+                and any(s in ("timed_out", "rate_limited", "failed") for s in statuses)):
+            partial_failure_count += 1
+
+    if not results:
+        no_external_iocs = (
+            "No externally enrichable IOCs (public IPs, domains, or hashes) "
+            "were found."
+        )
+        if private_ips_retained:
+            no_external_iocs += (
+                f" {len(private_ips_retained)} private/internal IP address(es) "
+                "were retained for Investigation and were not submitted to "
+                "external threat-intelligence services."
+            )
+        if behavioral_ioc_count:
+            no_external_iocs += (
+                f" Triage's {behavioral_ioc_count} behavioral indicator(s) "
+                "remain available to Investigation; they are not external "
+                "reputation-lookup targets."
+            )
+        warnings.append(no_external_iocs)
+    if stats.get("truncated"):
+        warnings.append(f"IOC list truncated to the enrichment budget "
+                        f"({max_iocs}) — not every extracted IOC was looked up.")
+    for env_key, label in (("VT_API_KEY", "VirusTotal"),
+                           ("ABUSEIPDB_API_KEY", "AbuseIPDB")):
+        if not os.environ.get(env_key):
+            warnings.append(f"{label} not queried — {env_key} is not configured.")
+    if buckets["lookup_failed"]:
+        warnings.append(f"{len(buckets['lookup_failed'])} IOC(s) had a lookup "
+                        "failure against every applicable source.")
+    if partial_failure_count:
+        warnings.append(f"{partial_failure_count} IOC(s) had at least one source "
+                        "fail while another source still returned a verdict.")
+
+    source_results: dict[str, dict] = {}
+    for r in results:
+        for src, status in (r.get("source_status") or {}).items():
+            bucket = source_results.setdefault(src, {})
+            bucket[status] = bucket.get(status, 0) + 1
+
+    risk_score = max((r["score"] for r in results), default=0)
+    risk_level = ("High" if buckets["malicious"] else
+                 "Medium" if buckets["suspicious"] else
+                 "Low" if results else "Unknown")
+    status = "completed_with_warnings" if warnings else "completed"
+
+    result = {
+        "incident_id": str(incident_id), "run_id": run_id,
+        "stage": "threat_intelligence", "status": status,
+        "generated_at": generated_at,
+        "risk_level": risk_level, "risk_score": risk_score,
+        "iocs": results, "source_results": source_results,
+        "internal_iocs": [
+            {
+                "value": value,
+                "type": "ip",
+                "scope": "private/internal",
+                "disposition": "retained_for_investigation",
+            }
+            for value in private_ips_retained
+        ],
+        "triage_behavioral_indicators": {
+            "count": behavioral_ioc_count,
+            "names": behavioral_ioc_names,
+            "disposition": "retained_for_investigation",
+        },
+        "malicious_iocs": buckets["malicious"], "suspicious_iocs": buckets["suspicious"],
+        "no_findings_iocs": buckets["no_findings"], "unknown_iocs": buckets["unknown"],
+        "lookup_failed_iocs": buckets["lookup_failed"],
+        "warnings": warnings, "errors": [], "stats": stats,
+    }
+    result["thinking_process"] = {
+        "stage": "threat_intelligence",
+        "decision": "Threat Intelligence enrichment completed",
+        "iocs_extracted": len(results),
+        "externally_enrichable_iocs": len(results),
+        "private_internal_ips_retained": len(private_ips_retained),
+        "triage_behavioral_indicators": behavioral_ioc_count,
+        "sources_attempted": sorted(source_results.keys()),
+        "source_outcomes": source_results,
+        "malicious_iocs": len(buckets["malicious"]),
+        "suspicious_iocs": len(buckets["suspicious"]),
+        "no_findings_iocs": len(buckets["no_findings"]),
+        "unknown_iocs": len(buckets["unknown"]),
+        "lookup_failed_iocs": len(buckets["lookup_failed"]),
+        "risk_level": risk_level, "warnings": warnings,
+        "next_stage": "investigation",
+    }
+    return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 4.  HANDOFF — TRIAGE → INVESTIGATION
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -710,19 +1220,29 @@ def _to_iso_timestamp(value) -> str:
         return str(value)
 
 
-# NOTE: entity-map, threat-intel, asset-criticality, detection-rules and
-# mitigation-coverage are STANDALONE skills (incident_map.py / threat_intel.py /
+# NOTE: entity-map, asset-criticality, detection-rules and
+# mitigation-coverage are STANDALONE skills (incident_map.py /
 # asset_criticality.py / detection_rules.py / mitigation_mapping.py), surfaced
 # via the app UI (Map panel) — they are deliberately NOT embedded into the
 # investigation alert, to keep soc_investigation_agent/ free of our upgrades.
+# threat_intel.py is the one exception (as of the Threat Intelligence stage
+# being wired into the mandatory pipeline): its enrichment result IS now
+# embedded below, under "threat_intelligence" — a deliberate, reviewed
+# reversal of the original "keep it out" policy for this one skill, since
+# it now runs as a mandatory pipeline stage before Investigation rather
+# than an on-demand UI-only lookup.
 
 
 def build_investigation_alert(triage_result: dict, incident: dict,
-                              supplement: dict | None = None) -> dict:
+                              supplement: dict | None = None,
+                              threat_intel_result: dict | None = None) -> dict:
     """Convert triage output into the alert-JSON schema the investigation
     agent's ingest pipeline expects (see soc_investigation_agent/log_config.yaml).
     supplement: optional deep-dive findings from the feedback loop — embedded
-    so the analysis LLM sees the answers (or confirmed absences) per gap."""
+    so the analysis LLM sees the answers (or confirmed absences) per gap.
+    threat_intel_result: the Threat Intelligence stage's saved result (see
+    run_threat_intel()) — embedded so the analysis LLM sees real external
+    reputation data, not just the incident's own evidence."""
     payload = triage_result.get("metakeys_payload", {})
     ticket  = triage_result.get("ticket", {})
     mkv     = payload.get("metakey_values") or {}
@@ -931,13 +1451,16 @@ def build_investigation_alert(triage_result: dict, incident: dict,
                      "in the UI are intentionally unchanged/simple.",
         },
         **({"triage_deep_dive": supplement} if supplement else {}),
+        **({"threat_intelligence": threat_intel_result} if threat_intel_result else {}),
     }
 
 
 def handoff_to_investigation(triage_result: dict, incident: dict,
-                             supplement: dict | None = None) -> Path:
+                             supplement: dict | None = None,
+                             threat_intel_result: dict | None = None) -> Path:
     alert = build_investigation_alert(triage_result, incident,
-                                      supplement=supplement)
+                                      supplement=supplement,
+                                      threat_intel_result=threat_intel_result)
     queue_dir = INV_DIR / "triaged_alerts"
     queue_dir.mkdir(exist_ok=True)
     inc_id = re.sub(r"[^A-Za-z0-9_-]", "_", str(alert["incident_id"]))
@@ -1027,7 +1550,9 @@ def detect_evidence_gaps(inv: dict) -> list[str]:
 def investigate_with_feedback(triage_result: dict, incident: dict,
                               inc_id: str, timeout: int = 600,
                               line_cb=None, feedback_cb=None,
-                              max_passes: int | None = None) -> dict:
+                              max_passes: int | None = None,
+                              threat_intel_result: dict | None = None,
+                              watchdog_cb=None) -> dict:
     """Investigation with a triage feedback loop.
 
     Pass 1 runs normally. If the result shows the investigation lacked
@@ -1036,6 +1561,10 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
     re-runs with the supplement embedded in the alert. Gaps the incident
     data cannot answer come back marked 'not present in incident data', so
     the second pass converges instead of looping.
+
+    threat_intel_result: the Threat Intelligence stage's saved result —
+    embedded in every handoff (initial pass and feedback-loop re-handoff)
+    so the analysis LLM sees it throughout.
 
     feedback_cb(event, detail) events: handoff, gaps_detected,
     triage_deep_dive_start, triage_deep_dive_done, second_pass_start,
@@ -1058,14 +1587,15 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
     ticket = triage_result.get("ticket") or {}
     cls    = ticket.get("classification")
 
-    handoff_to_investigation(triage_result, incident)
+    handoff_to_investigation(triage_result, incident,
+                             threat_intel_result=threat_intel_result)
     _emit("handoff", "Alert handed to triaged_alerts queue")
     inv = run_investigation(inc_id, timeout=timeout, line_cb=line_cb,
-                            triage_classification=cls)
+                            triage_classification=cls, watchdog_cb=watchdog_cb)
 
     fb: dict = {"triggered": False, "passes": 0, "gaps": []}
     for pass_no in range(1, max_passes + 1):
-        if inv.get("status") == "failed":
+        if inv.get("status") in ("failed", "lock_lost"):
             break
         gaps = detect_evidence_gaps(inv)
         if not gaps:
@@ -1130,13 +1660,15 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
         handoff_to_investigation(
             tri_for_rerun, incident,
             supplement={"requested_gaps": gaps, **supp,
-                        "feedback_pass": pass_no})
+                        "feedback_pass": pass_no},
+            threat_intel_result=threat_intel_result)
         _emit("second_pass_start",
               f"Re-investigating with the triage supplement (pass {pass_no + 1})")
         inv2 = run_investigation(inc_id, timeout=timeout, line_cb=line_cb,
-                                 triage_classification=cls)
-        if inv2.get("status") == "failed":
+                                 triage_classification=cls, watchdog_cb=watchdog_cb)
+        if inv2.get("status") in ("failed", "lock_lost"):
             fb["second_pass_failed"] = True
+            inv = inv2 if inv2.get("status") == "lock_lost" else inv
             break
         inv = inv2
 
@@ -1243,11 +1775,24 @@ def reconcile_incident_severity(incident_id: str, unc: str, final_severity: str)
 
 
 def run_investigation(incident_id: str, timeout: int = 600,
-                      line_cb=None, triage_classification=None) -> dict:
+                      line_cb=None, triage_classification=None,
+                      watchdog_cb=None) -> dict:
     """Run the investigation agent over its triaged_alerts/ queue and collect
     the incident folder that absorbed our alert. line_cb streams the agent's
     log output live (used by the app's agent board); triage_classification
-    enables explicit severity-divergence annotation."""
+    enables explicit severity-divergence annotation.
+
+    watchdog_cb, when given, is polled every _HEARTBEAT_RENEW_SECONDS while
+    the subprocess runs (see _run_subprocess_streaming) — used by
+    run_investigation_stage() to renew the global shared-workspace lock
+    DURING the subprocess call, not just before/after it. If it ever
+    returns False (lock lost), the still-running child process is
+    terminated before this function returns, so a second worker can never
+    observe the shared triaged_alerts/incident_reports tree mid-write from
+    a worker that no longer holds the lock. This is distinct from a plain
+    timeout: the result's status is "lock_lost", and the caller must NOT
+    treat that as a normal investigation failure (no complete_stage() call,
+    no last_error update — see run_investigation_stage)."""
     before = {p.name for p in (INV_DIR / "incident_reports").glob("Incident-*")}
     started = time.time()
 
@@ -1259,13 +1804,21 @@ def run_investigation(incident_id: str, timeout: int = 600,
             # zero-LLM heuristic report; always run the real Pass1/Pass2
             # analysis (costs ~a cent on DeepSeek, quality is the point).
             "INVESTIGATION_FORCE_LLM": "1"}
-    if line_cb:
+    if line_cb or watchdog_cb:
         run = _run_subprocess_streaming([sys.executable, "main.py"], cwd=INV_DIR,
                                         timeout=timeout, extra_env=_env,
-                                        line_cb=line_cb)
+                                        line_cb=line_cb, watchdog_cb=watchdog_cb)
     else:
         run = _run_subprocess([sys.executable, "main.py"], cwd=INV_DIR,
                               timeout=timeout, extra_env=_env)
+
+    if run.get("status") == "lock_lost":
+        return {"agent": "Investigation Agent", "subprocess": run,
+                "incident_id": incident_id, "status": "lock_lost",
+                "incident_folder": None, "summary": "", "severity": "",
+                "indicators": [], "narrative_report": "",
+                "error": "shared Investigation workspace lock was lost while "
+                         "main.py was running; the subprocess was terminated"}
 
     result: dict = {"agent": "Investigation Agent", "subprocess": run,
                     "incident_id": incident_id, "status": "failed",
@@ -1353,9 +1906,17 @@ def run_investigation(incident_id: str, timeout: int = 600,
 # ══════════════════════════════════════════════════════════════════════════════
 
 def handoff_to_reporting(triage_result: dict, incident: dict,
-                         investigation_result: dict | None) -> str:
+                         investigation_result: dict | None,
+                         threat_intel_result: dict | None = None) -> str:
     """Write the input files the reporting agent's adapter expects.
-    Returns the sanitized ticket id used for per-ticket output folders."""
+    Returns the sanitized ticket id used for per-ticket output folders.
+
+    threat_intel_result is written explicitly (a separate
+    threat_intel_result.json, mirroring the existing triage_result.json)
+    rather than assumed to already be embedded inside investigation_result
+    — Reporting previously only ever saw Threat Intelligence if it
+    happened to survive into the Investigation agent's own narrative text,
+    which is not a reliable structured signal."""
     payload = triage_result.get("metakeys_payload", {})
     ticket  = triage_result.get("ticket", {})
     inc_id  = payload.get("incident_id") or ticket.get("incident_id") or "INC-0001"
@@ -1456,6 +2017,8 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
         _log("HANDOFF", f"skills sidecar skipped: {_exc}")
 
     _write_json(outputs / "investigation_result.json", investigation_result)
+    if threat_intel_result is not None:
+        _write_json(outputs / "threat_intel_result.json", threat_intel_result)
 
     _log("HANDOFF", f"triage+investigation -> reporting (ticket {ticket_id})")
     return ticket_id
@@ -1609,6 +2172,23 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     run_id = wss.start_run(inc_id, allow_retry=allow_retry)
     ctx["run_id"] = run_id
 
+    # Persist the full raw incident (with alertMeta) for this run BEFORE
+    # anything else — this is the only durable source of it for the
+    # Threat Intelligence stage's resume path (never st.session_state).
+    # Alongside it, stamp REAL fetch-outcome metadata (not merely
+    # bool(incident.get("alerts"))) — an empty-but-successfully-fetched
+    # alert list is genuinely different from a fetch that failed or was
+    # never attempted, and case_view.py must be able to tell them apart
+    # (see _data_availability()).
+    try:
+        raw_incident_path = _save_run_artifact(
+            inc_id, run_id, "raw_incident.json", "raw_incident",
+            {"incident": incident, "data_availability": _data_availability(incident)})
+        wss.save_raw_incident_path(inc_id, run_id, str(raw_incident_path))
+    except Exception as exc:
+        _log("WORKFLOW", f"raw incident persist failed (non-fatal for this "
+                         f"in-process run, but breaks durable resume): {exc}")
+
     pipeline_insert("alerts_to_triage", {
         "id": inc_id, "incident_id": inc_id, "title": title,
         "severity": str(incident.get("riskScore") or incident.get("severity") or ""),
@@ -1629,7 +2209,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     else:
         _log("PARSING", f"running parsing & normalisation for incident {inc_id}")
         try:
-            parsing_result = run_parsing(incident)
+            parsing_result = run_parsing(incident, run_id)
         except Exception as exc:
             ctx["stages"]["parsing"] = "failed"
             ctx["errors"]["parsing"] = str(exc)
@@ -1654,6 +2234,23 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     ctx["stages"]["parsing"] = "completed"
     wss.set_parsing_status(inc_id, run_id, "Complete")
     wss.set_triage_status(inc_id, run_id, "Processing")
+    try:
+        wss.save_parsing_result(inc_id, run_id, {
+            "run_id": run_id,
+            "status": parsing_result.get("status"),
+            "parser_confidence": parsing_result.get("parser_confidence"),
+            "recommended_next_action": parsing_result.get("recommended_next_action"),
+            "output_files": parsing_result.get("output_files"),
+            "ai_summary": parsing_result.get("ai_summary"),
+            "ai_thinking": parsing_result.get("ai_thinking"),
+            "ai_summary_model": parsing_result.get("ai_summary_model"),
+            "ai_summary_generated_at": parsing_result.get(
+                "ai_summary_generated_at"),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+        })
+    except Exception as exc:
+        _log("PARSING", f"run-scoped parsing summary persist failed "
+                        f"(breaks durable resume for this run): {exc}")
     _emit("phase_complete", "Parsing and Normalisation",
           parsing_result.get("parser_confidence") or "")
 
@@ -1716,6 +2313,28 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     # ── Save Triage result ──────────────────────────────────────────────────────
     wss.save_triage_result(inc_id, run_id, triage_result)
 
+    # ── One-time internal IOC correlation snapshot ──────────────────────────────
+    # Computed once here (never live, on every case-page render) so the
+    # Unified Verdict/Key Findings/Evidence tab read a stable, run-scoped
+    # result. Best-effort/supporting only: a correlation failure records
+    # ioc_correlation_status="Failed" with a safe reason, but never fails
+    # Triage or the overall workflow — Triage still reaches "Awaiting
+    # Approval" normally either way.
+    try:
+        from ioc_correlation import correlate_iocs
+        _corr = correlate_iocs(incident, triage_result)
+        _corr_status = "Complete" if _corr.get("available") else "Complete with Warnings"
+        wss.save_ioc_correlation_result(inc_id, run_id, status=_corr_status, result=_corr)
+    except Exception as exc:
+        _log("WORKFLOW", f"IOC correlation snapshot failed (non-fatal, supporting "
+                         f"context only): {exc}")
+        try:
+            wss.save_ioc_correlation_result(
+                inc_id, run_id, status="Failed",
+                result={"available": False, "reason": str(exc)[:300]})
+        except Exception:
+            pass
+
     # ── Mandatory approval gate — stop here ─────────────────────────────────────
     gate = wv.mandatory_triage_approval(incident_id=inc_id, triage_result=triage_result)
     wss.set_triage_status(inc_id, run_id, "Awaiting Approval")
@@ -1745,113 +2364,435 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     return ctx
 
 
-def run_full_workflow(incident: dict, *, use_mock_triage: bool = False,
-                      force_triage: bool = False, progress_fn=None, **_ignored) -> dict:
-    """Backward-compatible alias — grep confirms zero external callers in
-    this repo today, so this exists purely as a safety net for an
-    undiscovered script. Behavior has changed: it now stops at the
-    mandatory Triage approval pause instead of continuing through
-    Investigation/Reporting. New code should call
-    run_until_triage_approval() directly."""
-    return run_until_triage_approval(incident, use_mock_triage=use_mock_triage,
-                                     force_triage=force_triage, progress_fn=progress_fn)
+def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
+    """Durable resume entry point for Threat Intelligence. Takes ONLY
+    incident_id/run_id — reloads workflow state, the parsing result, the
+    full raw incident, and the triage result from SQLite/disk. Safe to
+    call from a fresh process, a new Streamlit session, or after a
+    restart, as long as soc_incidents.db still shows this run_id as
+    current and threat_intel_status == 'Processing' (set atomically by
+    workflow_state_store.approve_triage() or .retry_threat_intel()). NO
+    st.* calls; safe to run in a background thread. Every stage
+    completion — success or failure — goes through complete_stage(),
+    which atomically checks this worker still owns the lease before
+    writing, so a worker that lost its lease mid-run can never clobber a
+    newer worker's result."""
+    try:
+        worker_id, _stage_attempt = claim_stage(
+            incident_id, run_id, stage="threat_intel",
+            status_column="threat_intel_status", expect_status="Processing")
+    except StageClaimError:
+        raise   # run_stage_chain treats this as "already being handled elsewhere"
+
+    renewer = LeaseRenewer(incident_id, run_id, worker_id)
+    renewer.start()
+    try:
+        state = wss.get_state(incident_id)
+        triage_result  = json.loads(state.get("triage_result_json") or "{}")
+        parsing_result = load_parsing_result_for_run(incident_id, run_id) or {}
+        incident       = load_raw_incident_for_run(incident_id, run_id) or {}
+        ti_result = run_threat_intel(
+            incident_id=incident_id, run_id=run_id, incident=incident,
+            normalised_alert=parsing_result.get("processed_alert"),
+            triage_result=triage_result)
+        if renewer.lease_lost.is_set():
+            raise StageClaimError(f"threat_intel: worker {worker_id} lost its lease mid-run")
+        ok = complete_stage(
+            incident_id, run_id, worker_id, stage="threat_intel",
+            result_column="threat_intel_result_json", result=ti_result,
+            status_updates=(
+                {"threat_intel_status": "Failed", "investigation_status": "Blocked",
+                 "workflow_status": "Failed"} if ti_result["status"] == "failed" else
+                {"threat_intel_status": ("Complete with Warnings"
+                                         if ti_result["status"] == "completed_with_warnings"
+                                         else "Complete"),
+                 "investigation_status": "Processing", "workflow_status": "Processing"}))
+        if not ok:
+            raise StageClaimError(f"threat_intel: lease for {incident_id}/{run_id} "
+                                  "was reassigned before this result could be saved")
+        _log("THREAT_INTEL", f"{ti_result['status']} — risk={ti_result['risk_level']} "
+                             f"({len(ti_result['iocs'])} IOCs)")
+        return ti_result
+    except StageClaimError:
+        raise   # a losing race is not a crash — run_stage_chain just stops quietly
+    except Exception as exc:
+        # complete_stage() may itself be unreachable (e.g. lease already
+        # gone) — this is a best-effort failure record; if the lease is
+        # truly gone, complete_stage()'s own ownership check rejects it
+        # too (no double-write).
+        try:
+            complete_stage(
+                incident_id, run_id, worker_id, stage="threat_intel",
+                result_column="threat_intel_result_json",
+                result={"status": "failed", "errors": [str(exc)[:300]]},
+                status_updates={"threat_intel_status": "Failed",
+                               "investigation_status": "Blocked",
+                               "workflow_status": "Failed"})
+        except Exception:
+            pass
+        wss.set_last_error(incident_id, run_id, f"threat_intel failed: {str(exc)[:300]}")
+        _log("THREAT_INTEL", f"FAILED: {exc}")
+        return {"status": "failed", "errors": [str(exc)[:300]]}
+    finally:
+        renewer.stop()
+        release_stage_lease(incident_id, run_id, worker_id)   # no-op if complete_stage()
+                                                              # already cleared it
 
 
-def resume_workflow_after_triage_approval(ctx: dict, *, skip_investigation: bool = False,
-                                          force_investigation: bool = False,
-                                          investigation_timeout: int = 600,
-                                          reporting_timeout: int = 480,
-                                          progress_fn=None) -> dict:
-    """Continues a workflow run past the mandatory Triage approval pause.
-    Not called by anything yet — reserved for the next plan phase, which
-    will wire an explicit analyst 'Approve' action to this function. Body
-    is the previous Investigation/Reporting logic, formerly inline in
-    run_full_workflow(), extracted unmodified."""
-    incident = ctx["incident"]
-    triage_result = ctx["triage"]
-    inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
-    title  = incident.get("title") or incident.get("name") or "Untitled"
-    ticket = triage_result["ticket"]
-    cls    = ticket.get("classification", "")
-    run_started = datetime.now()
-    run_stamp   = run_started.strftime("%Y%m%d-%H%M%S")
+_INVESTIGATION_LOCK = "investigation_workspace"
 
-    investigate = force_investigation or (not skip_investigation
-                                          and needs_investigation(triage_result))
-    # ── Stage 2: Investigation (optional per routing) ─────────────────────────
-    investigation_result: dict | None = None
-    if investigate:
+
+def run_investigation_stage(incident_id: str, run_id: str) -> dict:
+    """Durable Investigation stage wrapper. Ends in 'Awaiting Approval'
+    (never 'Complete') on success — Investigation still requires mandatory
+    SOC Analyst approval before Reporting can start.
+
+    Per-incident worker leases alone do not stop a DIFFERENT incident's
+    investigation from entering the same shared triaged_alerts/
+    incident_reports workspace at the same time (main.py drains the whole
+    queue / scans the whole tree every invocation). So after claiming this
+    incident's own stage lease, this function also acquires the global
+    "investigation_workspace" lock (workflow_state_store.acquire_global_lock)
+    before calling investigate_with_feedback() — with a bounded backoff wait
+    (not "give up and hope a future poll retries it": Streamlit's polling
+    fragment only refreshes the DISPLAY, it never calls run_stage_chain()
+    on its own). The SAME worker stays alive, continuously renewing its own
+    stage lease, for up to _GLOBAL_LOCK_MAX_WAIT_SECONDS while waiting."""
+    try:
+        worker_id, _stage_attempt = claim_stage(
+            incident_id, run_id, stage="investigation",
+            status_column="investigation_status", expect_status="Processing")
+    except StageClaimError:
+        raise
+    renewer = LeaseRenewer(incident_id, run_id, worker_id)
+    renewer.start()
+    lock_acquired = False
+    try:
+        deadline = time.monotonic() + _GLOBAL_LOCK_MAX_WAIT_SECONDS
+        backoff = 2.0
+        while True:
+            try:
+                acquire_global_lock(_INVESTIGATION_LOCK, owner_id=worker_id,
+                                    incident_id=incident_id, run_id=run_id,
+                                    ttl_seconds=_LEASE_DURATION_SECONDS)
+                lock_acquired = True
+                set_worker_progress_note(incident_id, run_id, None)
+                break
+            except GlobalLockBusyError:
+                if renewer.lease_lost.is_set():
+                    raise StageClaimError(
+                        f"investigation: stage lease lost while waiting "
+                        f"for the shared workspace")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise StageClaimError(
+                        f"investigation: could not acquire the shared "
+                        f"workspace within {_GLOBAL_LOCK_MAX_WAIT_SECONDS}s")
+                set_worker_progress_note(incident_id, run_id,
+                                         "Waiting for Investigation capacity")
+                time.sleep(min(backoff, remaining))
+                backoff = min(backoff * 1.5, 30.0)
+
+        renewer.also_renew_global_lock(_INVESTIGATION_LOCK)
+
+        state = wss.get_state(incident_id)
+        triage_result = json.loads(state.get("triage_result_json") or "{}")
+        ti_result     = json.loads(state.get("threat_intel_result_json") or "{}")
+        incident      = load_raw_incident_for_run(incident_id, run_id) or {}
+        ticket = triage_result.get("ticket") or {}
+        title  = incident.get("title") or incident.get("name") or "Untitled"
+        run_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
         _log("INVESTIGATION", "running investigation agent (subprocess)…")
-        investigation_result = investigate_with_feedback(
-            triage_result, incident, inc_id, timeout=investigation_timeout,
-            feedback_cb=lambda ev, d: _log("FEEDBACK", f"{ev}: {d}"))
-        ctx["investigation"] = investigation_result
-        if investigation_result["status"] == "failed":
-            # Degraded continue: reporting still runs, flagged with limitations.
-            ctx["errors"]["investigation"] = investigation_result.get("error", "unknown")
-            _log("INVESTIGATION", f"FAILED (continuing degraded): "
-                                  f"{ctx['errors']['investigation'][:300]}")
-            investigation_result = {
-                "agent": "Investigation Agent", "status": "needs_more_data",
-                "incident_id": inc_id,
-                "summary": "Investigation agent failed; see orchestrator errors.",
-                "missing_evidence": ["Investigation run failed."],
-                "reporting_mode": "with_limitations",
-            }
-            ctx["stages"]["investigation"] = "failed"
-        else:
-            _log("INVESTIGATION", f"complete — {investigation_result['incident_folder']} "
-                                  f"status={investigation_result['status']}")
-            ctx["stages"]["investigation"] = investigation_result["status"]
-            pipeline_insert("post_investigation",
-                            build_post_investigation_record(
-                                investigation_result, ticket, title,
-                                run_stamp=run_stamp))
-    else:
-        _log("INVESTIGATION", "skipped (routing: no investigation needed)")
-        ctx["stages"]["investigation"] = "skipped"
+        inv_result = investigate_with_feedback(
+            triage_result, incident, incident_id,
+            threat_intel_result=ti_result,
+            feedback_cb=lambda ev, d: _log("FEEDBACK", f"{ev}: {d}"),
+            watchdog_cb=lambda: renew_global_lock(_INVESTIGATION_LOCK, worker_id))
 
-    # ── Stage 3: Reporting ────────────────────────────────────────────────────
-    ticket_id = handoff_to_reporting(triage_result, incident, investigation_result)
-    pipeline_insert("pending_ticket_report", {
-        "id": f"pending_{ticket.get('unc') or inc_id}", "incident_id": inc_id,
-        "title": f"[PENDING] {title}", "severity": cls,
-        "summary": "Handed off to reporting agent."})
+        if renewer.lease_lost.is_set():
+            raise StageClaimError(f"investigation: worker {worker_id} lost its lease mid-run")
+        if renewer.global_lock_lost.is_set() or inv_result.get("status") == "lock_lost":
+            # The shared workspace lock was lost (renewal failed) either on
+            # the periodic LeaseRenewer heartbeat or as detected by the
+            # subprocess watchdog itself. Either way, this attempt's output
+            # (if any) must NOT be accepted as a completed investigation —
+            # no complete_stage() call, no last_error update. Treat exactly
+            # like contention: the stage stays "Processing", ownerless,
+            # ready for the next resume attempt (same recovery path as any
+            # other StageClaimError).
+            raise StageClaimError(
+                f"investigation: shared workspace lock lost mid-run for "
+                f"worker {worker_id}; subprocess result discarded")
 
-    _log("REPORTING", "running reporting agent (subprocess)…")
-    reporting_result = run_reporting(ticket_id, timeout=reporting_timeout,
-                                     run_stamp=run_stamp)
-    ctx["reporting"] = reporting_result
-    if reporting_result.get("status") == "failed":
-        ctx["errors"]["reporting"] = reporting_result.get("error",
-                                     reporting_result.get("error_summary", "unknown"))
-        ctx["stages"]["reporting"] = "failed"
-        _log("REPORTING", f"FAILED: {str(ctx['errors']['reporting'])[:300]}")
-    else:
-        ctx["stages"]["reporting"] = reporting_result.get("status", "completed")
-        pipeline_insert("finalized_report", {
-            "id": f"final_{ticket.get('unc') or inc_id}@{run_stamp}",
-            "incident_id": inc_id, "ticket_unc": ticket.get("unc"),
-            "title": f"[FINAL] {title}", "severity": cls,
-            "summary": str(reporting_result.get("summary") or "Report generated.")[:500],
-            "report": {k: v for k, v in reporting_result.items()
-                       if k not in ("subprocess", "orchestrator_subprocess")}})
-        _log("REPORTING", f"complete — status={ctx['stages']['reporting']}")
+        failed = inv_result.get("status") == "failed"
+        failure_message = None
+        if failed:
+            failure_detail = (inv_result.get("error")
+                              or (inv_result.get("subprocess") or {}).get("stderr")
+                              or "investigation agent returned a failed status")
+            failure_lines = [line.strip() for line in str(failure_detail).splitlines()
+                             if line.strip()]
+            failure_message = (
+                f"investigation failed: "
+                f"{(failure_lines[-1] if failure_lines else str(failure_detail))[:300]}"
+            )
+        if not failed:
+            try:
+                pipeline_insert("post_investigation",
+                                build_post_investigation_record(
+                                    inv_result, ticket, title, run_stamp=run_stamp))
+            except Exception as exc:
+                _log("INVESTIGATION", f"post_investigation pipeline insert failed: {exc}")
 
-    # Audit trail: one NEW row per workflow execution (stage records REPLACE
-    # in place for the same ticket, so this row is the always-visible signal).
-    dur = int((datetime.now() - run_started).total_seconds())
-    pipeline_insert("workflow_runs", {
-        "id": f"run_{run_started.strftime('%Y%m%d-%H%M%S')}_{inc_id[:20]}",
-        "incident_id": inc_id,
-        "title": f"Run {run_started.strftime('%H:%M:%S')} — {title}",
-        "severity": ticket.get("classification") or "",
-        "summary": " · ".join(f"{k}: {v}" for k, v in ctx["stages"].items())
-                   + f" · ticket {ticket.get('unc')} · {dur}s",
-        "stages": ctx["stages"], "ticket_unc": ticket.get("unc"),
-        "duration_seconds": dur})
+        ok = complete_stage(
+            incident_id, run_id, worker_id, stage="investigation",
+            result_column="investigation_result_json", result=inv_result,
+            status_updates=(
+                {"investigation_status": "Failed", "reporting_status": "Blocked",
+                 "workflow_status": "Failed", "last_error": failure_message} if failed else
+                {"investigation_status": "Awaiting Approval",
+                 "workflow_status": "Awaiting Approval", "approval_stage": "investigation",
+                 "last_error": None}))
+        if not ok:
+            raise StageClaimError(f"investigation: lease for {incident_id}/{run_id} "
+                                  "was reassigned before this result could be saved")
+        _log("INVESTIGATION", f"complete — status={inv_result.get('status')}"
+                             if not failed else "INVESTIGATION FAILED")
+        return inv_result if failed else {**inv_result, "status": "awaiting_approval"}
+    except StageClaimError:
+        raise
+    except Exception as exc:
+        try:
+            complete_stage(
+                incident_id, run_id, worker_id, stage="investigation",
+                result_column="investigation_result_json",
+                result={"status": "failed", "error": str(exc)[:300]},
+                status_updates={"investigation_status": "Failed",
+                               "reporting_status": "Blocked",
+                               "workflow_status": "Failed"})
+        except Exception:
+            pass
+        wss.set_last_error(incident_id, run_id, f"investigation failed: {str(exc)[:300]}")
+        _log("INVESTIGATION", f"FAILED: {exc}")
+        return {"status": "failed"}
+    finally:
+        if lock_acquired:
+            release_global_lock(_INVESTIGATION_LOCK, worker_id)
+        renewer.stop()
+        release_stage_lease(incident_id, run_id, worker_id)
 
-    return ctx
+
+_REPORTING_LOCK = "reporting_workspace"
+
+
+def run_reporting_stage(incident_id: str, run_id: str) -> dict:
+    """Durable Reporting stage wrapper — reuses handoff_to_reporting()/
+    run_reporting() unmodified. Ends in 'Awaiting Approval' on success;
+    only approve_reporting() (workflow_state_store.py) ever sets
+    workflow_status to 'Complete'.
+
+    Threat Intelligence is loaded and passed to handoff_to_reporting()
+    explicitly (not assumed to be embedded in investigation_result). The
+    "reporting_workspace" global lock covers the complete lifecycle: a
+    run-scoped copy of the handoff is persisted BEFORE touching the shared
+    REP_DIR/inputs|outputs paths, the shared workspace is used only while
+    the lock is held, and a run-scoped copy of the generated output is
+    persisted AFTER reading it back — the lock is released only once that
+    copy exists, never immediately after writing inputs."""
+    try:
+        worker_id, _stage_attempt = claim_stage(
+            incident_id, run_id, stage="reporting",
+            status_column="reporting_status", expect_status="Processing")
+    except StageClaimError:
+        raise
+    renewer = LeaseRenewer(incident_id, run_id, worker_id)
+    renewer.start()
+    lock_acquired = False
+    try:
+        deadline = time.monotonic() + _GLOBAL_LOCK_MAX_WAIT_SECONDS
+        backoff = 2.0
+        while True:
+            try:
+                acquire_global_lock(_REPORTING_LOCK, owner_id=worker_id,
+                                    incident_id=incident_id, run_id=run_id,
+                                    ttl_seconds=_LEASE_DURATION_SECONDS)
+                lock_acquired = True
+                set_worker_progress_note(incident_id, run_id, None)
+                break
+            except GlobalLockBusyError:
+                if renewer.lease_lost.is_set():
+                    raise StageClaimError(
+                        "reporting: stage lease lost while waiting for the "
+                        "shared workspace")
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise StageClaimError(
+                        f"reporting: could not acquire the shared workspace "
+                        f"within {_GLOBAL_LOCK_MAX_WAIT_SECONDS}s")
+                set_worker_progress_note(incident_id, run_id,
+                                         "Waiting for Reporting capacity")
+                time.sleep(min(backoff, remaining))
+                backoff = min(backoff * 1.5, 30.0)
+        renewer.also_renew_global_lock(_REPORTING_LOCK)
+
+        state = wss.get_state(incident_id)
+        triage_result = json.loads(state.get("triage_result_json") or "{}")
+        investigation_result = json.loads(state.get("investigation_result_json") or "{}")
+        threat_intel_result = json.loads(state.get("threat_intel_result_json") or "{}")
+        incident = load_raw_incident_for_run(incident_id, run_id) or {}
+        ticket = triage_result.get("ticket") or {}
+        title  = incident.get("title") or incident.get("name") or "Untitled"
+        run_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+
+        try:
+            _save_run_artifact(incident_id, run_id, "reporting_handoff.json",
+                               "reporting_handoff",
+                               {"triage_result": triage_result,
+                                "investigation_result": investigation_result,
+                                "threat_intel_result": threat_intel_result})
+        except Exception as exc:
+            _log("REPORTING", f"reporting_handoff run-artifact persist failed "
+                              f"(non-fatal): {exc}")
+
+        ticket_id = handoff_to_reporting(triage_result, incident, investigation_result,
+                                         threat_intel_result=threat_intel_result)
+        try:
+            pipeline_insert("pending_ticket_report", {
+                "id": f"pending_{ticket.get('unc') or incident_id}",
+                "incident_id": str(incident_id),
+                "title": f"[PENDING] {title}", "severity": ticket.get("classification", ""),
+                "summary": "Handed off to reporting agent."})
+        except Exception:
+            pass
+
+        _log("REPORTING", "running reporting agent (subprocess)…")
+        reporting_result = run_reporting(ticket_id, run_stamp=run_stamp)
+
+        if renewer.lease_lost.is_set():
+            raise StageClaimError(f"reporting: worker {worker_id} lost its lease mid-run")
+        if renewer.global_lock_lost.is_set():
+            raise StageClaimError(
+                f"reporting: shared workspace lock lost mid-run for worker "
+                f"{worker_id}; subprocess result discarded")
+
+        # Identity sanity check — secondary to the lock (which is what
+        # actually prevents cross-run contamination): the lock guarantees no
+        # OTHER run's handoff_to_reporting()/run_reporting() could have been
+        # mid-flight while this one holds it, so a mismatch here would
+        # indicate a lock-design bug worth investigating, not an expected
+        # event under normal operation.
+        result_ticket_id = str(reporting_result.get("ticket_id")
+                               or (reporting_result.get("triage") or {}).get("ticket_id") or "")
+        if result_ticket_id and result_ticket_id != str(ticket_id):
+            _log("REPORTING", f"WARNING: reporting output ticket_id "
+                              f"{result_ticket_id!r} does not match this run's "
+                              f"ticket_id {ticket_id!r} despite holding the "
+                              f"reporting_workspace lock")
+
+        try:
+            _save_run_artifact(incident_id, run_id, "reporting_output.json",
+                               "reporting_output",
+                               {"incident_id": str(incident_id), "run_id": run_id,
+                                "ticket_id": ticket_id,
+                                "reporting_result": {
+                                    k: v for k, v in reporting_result.items()
+                                    if k not in ("subprocess", "orchestrator_subprocess")}})
+        except Exception as exc:
+            _log("REPORTING", f"reporting_output run-artifact persist failed "
+                              f"(non-fatal): {exc}")
+
+        failed = reporting_result.get("status") == "failed"
+        if not failed:
+            try:
+                pipeline_insert("finalized_report", {
+                    "id": f"final_{ticket.get('unc') or incident_id}@{run_stamp}",
+                    "incident_id": str(incident_id), "ticket_unc": ticket.get("unc"),
+                    "title": f"[FINAL] {title}", "severity": ticket.get("classification", ""),
+                    "summary": str(reporting_result.get("summary")
+                                  or "Report generated.")[:500],
+                    "report": {k: v for k, v in reporting_result.items()
+                              if k not in ("subprocess", "orchestrator_subprocess")}})
+            except Exception as exc:
+                _log("REPORTING", f"finalized_report pipeline insert failed: {exc}")
+
+        ok = complete_stage(
+            incident_id, run_id, worker_id, stage="reporting",
+            result_column="reporting_result_json", result=reporting_result,
+            status_updates=(
+                {"reporting_status": "Failed", "workflow_status": "Failed"} if failed else
+                {"reporting_status": "Awaiting Approval",
+                 "workflow_status": "Awaiting Approval", "approval_stage": "reporting"}))
+        if not ok:
+            raise StageClaimError(f"reporting: lease for {incident_id}/{run_id} "
+                                  "was reassigned before this result could be saved")
+        _log("REPORTING", f"complete — status={reporting_result.get('status')}"
+                          if not failed else "REPORTING FAILED")
+        return reporting_result
+    except StageClaimError:
+        raise
+    except Exception as exc:
+        try:
+            complete_stage(
+                incident_id, run_id, worker_id, stage="reporting",
+                result_column="reporting_result_json",
+                result={"status": "failed", "error": str(exc)[:300]},
+                status_updates={"reporting_status": "Failed", "workflow_status": "Failed"})
+        except Exception:
+            pass
+        wss.set_last_error(incident_id, run_id, f"reporting failed: {str(exc)[:300]}")
+        _log("REPORTING", f"FAILED: {exc}")
+        return {"status": "failed"}
+    finally:
+        if lock_acquired:
+            release_global_lock(_REPORTING_LOCK, worker_id)
+        renewer.stop()
+        release_stage_lease(incident_id, run_id, worker_id)
+
+
+def run_stage_chain(incident_id: str, run_id: str) -> None:
+    """Top-level worker entry point AND what "Resume Workflow" calls. A
+    state-aware dispatcher: reads current state ONCE and resumes
+    whichever stage is actually 'Processing', falling through to the
+    next stage only if that stage's own outcome says to continue. This
+    means a fresh run (started right after Approve Triage) and an
+    interrupted-mid-Investigation resume both correctly converge on the
+    right stage — it does NOT always restart from Threat Intelligence.
+    Pure backend function: no Streamlit import, no UI dependency, safe
+    to call from a thread, a script, or a future queue consumer. Never
+    raises — every branch is wrapped by the stage functions themselves."""
+    state = wss.get_state(incident_id)
+    if not state or state["run_id"] != run_id:
+        return   # superseded by a newer run — nothing to resume here
+
+    if state["threat_intel_status"] == "Processing":
+        try:
+            result = resume_after_triage_approval(incident_id, run_id)
+        except StageClaimError:
+            return
+        if result.get("status") == "failed":
+            return
+        state = wss.get_state(incident_id)
+
+    if state["investigation_status"] == "Processing":
+        try:
+            result = run_investigation_stage(incident_id, run_id)
+        except StageClaimError:
+            return
+        if result.get("status") in ("failed", "awaiting_approval"):
+            return   # awaiting_approval is a normal, successful pause — not a failure
+        state = wss.get_state(incident_id)
+
+    if state["reporting_status"] == "Processing":
+        try:
+            run_reporting_stage(incident_id, run_id)
+        except StageClaimError:
+            return
+    # If none of the three *_status columns is "Processing" (e.g. the
+    # workflow is Awaiting Approval, Failed, Rejected, or Complete), this
+    # function does nothing — correct: there is no interrupted work to
+    # resume, and re-running an already-terminal stage is exactly what
+    # the atomic claim in workflow_state_store.claim_stage() would refuse anyway.
 
 
 # ══════════════════════════════════════════════════════════════════════════════

@@ -1,51 +1,8 @@
 {
   "ticket": {
-    "unc": "#00026A",
-    "incident_id": "INC-53027",
-    "title": "High Risk Alerts: ESA for 192.168.10.210",
-    "incident_time": "2026-04-28 11:08:52 UTC",
-    "created_at": "2026-07-13T05:39:58.252775",
-    "classification": "HIGH",
-    "risk_rating": {
-      "likelihood_initiation": "High",
-      "likelihood_occurrence": "High",
-      "likelihood_adverse_impact": "High",
-      "overall_risk": "High",
-      "rationale": "High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences."
-    },
-    "incident_category": [
-      "Unauthorized access",
-      "Compromised asset (non-critical)"
-    ],
-    "initial_response_time": "30 to 60 minutes",
-    "summary": "High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.",
-    "recommended_actions": [
-      "Isolate affected system",
-      "Conduct forensic analysis",
-      "Apply security patches/updates",
-      "Review configuration changes"
-    ],
-    "matched_ioc_count": 6,
-    "metakeys": [
-      "alert.type",
-      "automated_detection",
-      "bytes.out",
-      "change.type",
-      "config.change",
-      "cpu.usage",
-      "domain",
-      "file.name",
-      "file.size",
-      "firmware.version",
-      "high_risk",
-      "host.name",
-      "ip.dst",
-      "ip.src",
-      "os.version",
-      "process.name",
-      "protocol",
-      "user.name"
-    ]
+    "incident_id": "INC-1",
+    "unc": "#001",
+    "classification": "MEDIUM"
   },
-  "ticket_id": "TKT-00026A"
+  "ticket_id": "TKT-001"
 }

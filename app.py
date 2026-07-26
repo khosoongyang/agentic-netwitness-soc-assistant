@@ -31,7 +31,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import time
 import os
 import base64
-from datetime import datetime, timedelta
+import threading
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from collections import Counter
 from pathlib import Path
@@ -112,9 +113,12 @@ _maybe_reload_agent_modules()
 from soc_triage_agent import (CiscoLLMConfig, soc_triage_chat_respond,
                               _TRIAGE_TRIGGER, render_triage_trace,
                               format_ticket_display)
+import workflow_state_store as wss
 from workflow_state_store import (db_connect, db_init, get_state as wss_get_state,
                                   save_triage_result as wss_save_triage_result,
-                                  WorkflowAlreadyRunningError)
+                                  WorkflowAlreadyRunningError,
+                                  ApprovalConflictError)
+import case_view as cv
 
 # ── Multi-agent workflow (triage → investigation → reporting) ────────────────
 try:
@@ -122,12 +126,15 @@ try:
         run_until_triage_approval as wf_run_until_triage_approval,
         generate_triage_ai_summary as wf_generate_triage_ai_summary,
         render_triage_thinking_plain as wf_render_triage_thinking_plain,
-        needs_investigation       as wf_needs_investigation,
-        handoff_to_investigation  as wf_handoff_to_investigation,
-        run_investigation         as wf_run_investigation,
-        handoff_to_reporting      as wf_handoff_to_reporting,
-        run_reporting             as wf_run_reporting,
+        run_stage_chain           as wf_run_stage_chain,
     )
+    # NOTE: needs_investigation/handoff_to_investigation/run_investigation/
+    # handoff_to_reporting/run_reporting used to also be imported here
+    # (as wf_needs_investigation etc.) but were never called anywhere in
+    # this file — the live pipeline reaches those same soc_workflow
+    # functions only indirectly, through run_investigation_stage()/
+    # run_reporting_stage() (see wf_run_stage_chain above). Removed as
+    # confirmed-dead orphaned imports.
     WORKFLOW_OK = True
 except Exception:
     WORKFLOW_OK = False
@@ -188,9 +195,11 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False) -
     """Single UI-facing entry point for Parsing+Triage — used by BOTH the
     Start Process button and the chat trigger, so there is exactly one
     implementation of 'run Parsing+Triage', not two independently-sequenced
-    ones. Shows live per-stage progress via st.status(). Returns the
-    workflow ctx dict, or None if a run was already active and the caller
-    didn't request a retry (the analyst sees the existing result instead)."""
+    ones. Parsing may render its own inline status; later triage phases are
+    recorded on the Agent Board without rendering inline phase/status
+    panels. Returns the workflow ctx dict, or None if a run was already
+    active and the caller didn't request a retry (the analyst sees the
+    existing result instead)."""
     inc_id = str(incident.get("id") or incident.get("incidentId") or "")
 
     existing = wss_get_state(inc_id)
@@ -216,57 +225,65 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False) -
     st.session_state.agent_board["triage"].update({"thinking": [], "output": ""})
     _board_touch("triage", status="running", think="Workflow started")
 
-    with st.status("Initialising workflow…", expanded=True) as wf_status:
-        _prog = {"done": 0}
+    _prog = {"done": 0}
+    _parsing_ui = {"status": None}
 
-        def on_progress(event, label, text=""):
-            key = next((p for p in ALL_PHASES if label == p or label in p or p in label), label)
-            if event == "phase_start":
-                desc = PHASE_DESC.get(key, label)
-                wf_status.update(label=f"{desc}…", expanded=True)
-                _board_touch("triage", think=f"▶ {desc}")
-            elif event == "phase_complete":
-                result = f" — {text}" if text else ""
-                st.write(f"**{key}**{result}")
-                _prog["done"] += 1
-                _board_touch("triage", think=f"{key}{result}",
-                            progress=round(_prog["done"] / max(1, len(ALL_PHASES)) * 100))
-            elif event == "phase_error":
-                st.write(f"**{key}** — failed: {text}")
+    def on_progress(event, label, text=""):
+        key = next((p for p in ALL_PHASES if label == p or label in p or p in label), label)
+        if event == "phase_start":
+            desc = PHASE_DESC.get(key, label)
+            if key == "Parsing and Normalisation":
+                _parsing_ui["status"] = st.status(
+                    f"{desc}…", expanded=True)
+            _board_touch("triage", think=f"▶ {desc}")
+        elif event == "phase_complete":
+            phase_result = f" — {text}" if text else ""
+            if key == "Parsing and Normalisation" and _parsing_ui["status"]:
+                _parsing_ui["status"].update(
+                    label=f"Parsing and Normalisation{phase_result}",
+                    state="complete",
+                    expanded=False,
+                )
+            _prog["done"] += 1
+            _board_touch("triage", think=f"{key}{phase_result}",
+                        progress=round(_prog["done"] / max(1, len(ALL_PHASES)) * 100))
+        elif event == "phase_error":
+            if key == "Parsing and Normalisation" and _parsing_ui["status"]:
+                _parsing_ui["status"].update(
+                    label=f"Parsing and Normalisation — failed: {text}",
+                    state="error",
+                    expanded=True,
+                )
+            _board_touch("triage", think=f"{key} — failed: {text}")
 
-        try:
-            result = wf_run_until_triage_approval(
-                incident, progress_fn=on_progress, allow_retry=allow_retry)
-        except WorkflowAlreadyRunningError as exc:
-            wf_status.update(label="Already running", state="complete", expanded=False)
-            st.info(f"Triage is already {exc.state.get('workflow_status')} for this "
-                   f"incident — showing the existing result.")
-            return None
-        except Exception as exc:
-            wf_status.update(label="Workflow failed", state="error", expanded=True)
-            _board_touch("triage", status="failed", think=str(exc)[:150], output=f"Error: {exc}")
-            st.error(f"Workflow failed: {exc}")
-            return None
+    try:
+        result = wf_run_until_triage_approval(
+            incident, progress_fn=on_progress, allow_retry=allow_retry)
+    except WorkflowAlreadyRunningError as exc:
+        st.info(f"Triage is already {exc.state.get('workflow_status')} for this "
+               f"incident — showing the existing result.")
+        return None
+    except Exception as exc:
+        _board_touch("triage", status="failed", think=str(exc)[:150], output=f"Error: {exc}")
+        st.error(f"Workflow failed: {exc}")
+        return None
 
-        _err = result["errors"].get("parsing") or result["errors"].get("triage")
-        if _err:
-            wf_status.update(label="Workflow failed", state="error", expanded=True)
-            _board_touch("triage", status="failed", think=str(_err)[:150], output=f"Error: {_err}")
-            st.error(f"Workflow failed: {_err}")
-            return None
+    _err = result["errors"].get("parsing") or result["errors"].get("triage")
+    if _err:
+        _board_touch("triage", status="failed", think=str(_err)[:150], output=f"Error: {_err}")
+        st.error(f"Workflow failed: {_err}")
+        return None
 
-        wf_status.update(label="Triage complete — awaiting your approval",
-                         state="complete", expanded=False)
-        _tri = result["triage"]
-        # Board panel stays a step-by-step progress log (phase name +
-        # cached/timing marker) — the connected-reasoning narrative lives
-        # only on the case-detail page's Thinking Process card, sourced
-        # live from triage_result_json (see the "Triage" stage branch
-        # above), not duplicated here.
-        _board_touch("triage",
-                     status=("cached" if _tri.get("cached") else "done"),
-                     think="Triage complete — awaiting SOC analyst approval",
-                     output=format_ticket_display(_tri["ticket"]))
+    _tri = result["triage"]
+    # Board panel stays a step-by-step progress log (phase name +
+    # cached/timing marker) — the connected-reasoning narrative lives
+    # only on the case-detail page's Thinking Process card, sourced
+    # live from triage_result_json (see the "Triage" stage branch
+    # above), not duplicated here.
+    _board_touch("triage",
+                 status=("cached" if _tri.get("cached") else "done"),
+                 think="Triage complete — awaiting SOC analyst approval",
+                 output=format_ticket_display(_tri["ticket"]))
 
     st.session_state.triage_in_flight = None
     return result
@@ -2580,15 +2597,10 @@ if st.session_state.get("jump_to_ask_tab", False):
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# AUTO-RERUN scheduler
-# ══════════════════════════════════════════════════════════════════════════════
-if st.session_state.nw_verified and st.session_state.last_fetch:
-    elapsed   = (datetime.now() - st.session_state.last_fetch).total_seconds()
-    remaining = max(REFRESH_INTERVAL - elapsed, 0)
-    if remaining <= 1:
-        time.sleep(1)
-        st.rerun()
+# NetWitness refreshes remain rate-limited by maybe_auto_fetch(), but they run
+# only on a user-driven Streamlit render. An unconditional timed st.rerun() here
+# refreshed the whole page every second once a fetch was due (and indefinitely
+# when that background fetch failed), interrupting whichever view was in use.
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2763,11 +2775,73 @@ _CASE_STAGE_POSITION = {
 
 
 def _case_stage_states(inc_id: str, status: str, stage_map: dict,
-                       parsing_status: str | None = None) -> list:
-    """[{'name', 'state': 'done'|'current'|'queued'}] x6 for one specific
-    case's circular workflow stepper (My Workspace) — reuses the same
-    stage-position data _pipeline_stage_map() already computed, just reads
-    a single case's position out of it instead of aggregating counts."""
+                       parsing_status: str | None = None,
+                       workflow_state: dict | None = None) -> list:
+    """Return the five persisted workflow-stage display states.
+
+    Durable workflow status is authoritative whenever a run exists. The
+    pipeline-position fallback is retained for legacy cases created before
+    per-stage statuses were persisted.
+    """
+    workflow_state = workflow_state or {}
+    if workflow_state.get("run_id") or workflow_state.get("workflow_status"):
+        stage_columns = [
+            ("Parsing", "parsing_status"),
+            ("Triage", "triage_status"),
+            ("Threat Intelligence Enrichment", "threat_intel_status"),
+            ("Investigation", "investigation_status"),
+            ("Reporting", "reporting_status"),
+        ]
+        completed_statuses = {
+            "parsing": {"complete"},
+            "triage": {"approved"},
+            "threat_intel": {"complete", "complete with warnings", "approved"},
+            "investigation": {"approved"},
+            "reporting": {"approved"},
+        }
+        running_statuses = {"processing", "running", "failed"}
+        approval_statuses = {"awaiting approval", "pending approval"}
+        out = []
+        previous_complete = True
+
+        for name, column in stage_columns:
+            stage_key = column.removesuffix("_status")
+            raw_status = str(workflow_state.get(column) or "").strip()
+            normalised_status = raw_status.lower().replace("_", " ")
+            requires_approval = normalised_status in approval_statuses
+
+            if requires_approval:
+                state = "approval"
+            elif normalised_status in completed_statuses[stage_key]:
+                state = "done"
+            elif normalised_status in running_statuses:
+                state = "current"
+            elif previous_complete:
+                state = "current"
+            else:
+                state = "locked"
+
+            out.append({
+                "name": name,
+                "state": state,
+                "requires_approval": requires_approval,
+                "backend_status": raw_status,
+            })
+            previous_complete = state == "done"
+
+        # An approval gate is a hard boundary even if stale pipeline rows or
+        # inconsistent legacy status columns claim a later stage progressed.
+        approval_index = next(
+            (i for i, stage in enumerate(out)
+             if stage.get("requires_approval")),
+            None,
+        )
+        if approval_index is not None:
+            for stage in out[approval_index + 1:]:
+                stage["state"] = "locked"
+                stage["requires_approval"] = False
+        return out
+
     stage = stage_map.get(str(inc_id))
     if str(status or "").upper() in _CLOSED_STATUSES and stage == "finalized_report":
         current_pos = 4
@@ -2783,7 +2857,12 @@ def _case_stage_states(inc_id: str, status: str, stage_map: dict,
     out = []
     for i, name in enumerate(_CASE_DISPLAY_STAGES):
         state = "done" if i < current_pos else "current" if i == current_pos else "queued"
-        out.append({"name": name, "state": state})
+        out.append({
+            "name": name,
+            "state": state,
+            "requires_approval": False,
+            "backend_status": "",
+        })
     return out
 
 
@@ -2818,6 +2897,20 @@ def _render_case_stage_selector(
                 background:#7778f6 !important;
             }}
             """)
+        elif _state == "approval":
+            _state_rules.append(f"""
+            div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i})
+            div.stButton > button {{
+                background:#303b83 !important;border-color:#7680ff !important;
+                color:#fff !important;box-shadow:0 0 0 6px rgba(111,124,255,.10) !important;
+            }}
+            div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i})
+            .case-stage-status {{ color:#aeb4ff !important; }}
+            div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i})
+            .case-stage-approval {{
+                color:#ff6675 !important;font-weight:850 !important;
+            }}
+            """)
         elif _state == "current":
             _state_rules.append(f"""
             div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i})
@@ -2827,6 +2920,22 @@ def _render_case_stage_selector(
             }}
             div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i})
             .case-stage-status {{ color:#ffd36b !important; }}
+            """)
+        elif _state in {"queued", "locked"}:
+            _state_rules.append(f"""
+            div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i}) {{
+                opacity:.46 !important;
+            }}
+            div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i})
+            div.stButton > button {{
+                background:#101622 !important;border-color:#283142 !important;
+                color:#687387 !important;box-shadow:none !important;
+                cursor:not-allowed !important;transform:none !important;
+            }}
+            div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i})
+            .case-stage-name,
+            div.st-key-case_stage_selector [data-testid="stColumn"]:nth-child({_i})
+            .case-stage-status {{ color:#687387 !important; }}
             """)
     _selected_child = _selected_index + 1
     st.html(
@@ -2897,6 +3006,11 @@ def _render_case_stage_selector(
             line-height:1.2 !important;text-align:center !important;
             margin:5px 0 0 !important;
         }}
+        div.st-key-case_stage_selector .case-stage-approval {{
+            color:#ff6675 !important;font-size:.66rem !important;
+            line-height:1.2 !important;text-align:center !important;
+            margin:4px 0 0 !important;
+        }}
         {"".join(_state_rules)}
         </style>
         """,
@@ -2914,16 +3028,28 @@ def _render_case_stage_selector(
             state = str(stage.get("state") or "queued").lower()
             if state == "done":
                 marker, status_label = "✓", "Complete"
+            elif state == "approval":
+                marker, status_label = "✓", "Complete"
             elif state == "current":
                 marker, status_label = str(index + 1), "Current stage"
             else:
-                marker, status_label = str(index + 1), "Queued"
+                marker, status_label = str(index + 1), "Locked"
+            approval_label = (
+                '<div class="case-stage-approval">Requires approval</div>'
+                if stage.get("requires_approval") else ""
+            )
+            is_locked = state in {"queued", "locked"}
             with column:
                 if st.button(
                     marker,
                     key=f"case_stage_{case_id}_{index}",
                     type="secondary",
-                    help=f"Show {name} details below",
+                    help=(
+                        "Complete and approve the previous stage to continue."
+                        if is_locked else
+                        f"Show {name} details below"
+                    ),
+                    disabled=is_locked,
                 ):
                     st.query_params.clear()
                     st.session_state.case_selected_stage = name
@@ -2931,7 +3057,8 @@ def _render_case_stage_selector(
                     st.rerun()
                 st.markdown(
                     f'<div class="case-stage-name">{_esc_html(name)}</div>'
-                    f'<div class="case-stage-status">{_esc_html(status_label)}</div>',
+                    f'<div class="case-stage-status">{_esc_html(status_label)}</div>'
+                    f'{approval_label}',
                     unsafe_allow_html=True,
                 )
     return selected_stage
@@ -3626,12 +3753,13 @@ if active_page == "Overview":
     _render_circular_pipeline_section()
 
     # ── Open cases — moved here from the old standalone Incidents page.
-    # Capped to the 15 highest-priority matching cases (severity, then
+    # Capped to the 500 highest-priority matching cases (severity, then
     # unassigned, then newest). The compact controls intentionally mirror
     # the three fields analysts scan in the table below.
     st.markdown("<div style='margin-top:10px'></div>", unsafe_allow_html=True)
+    _ov_limit = 500
     _sev_rank = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
-    _ov_pool = db_load_incidents(limit=500)
+    _ov_pool = db_load_incidents(limit=_ov_limit)
     _ov_pool.sort(key=lambda r: str(r.get("created") or ""), reverse=True)
     _ov_pool.sort(key=lambda r: (
         -_sev_rank.get(str(r.get("severity", "")).upper(), 0),
@@ -3703,7 +3831,7 @@ if active_page == "Overview":
         ]
 
     _render_case_table(
-        _ov_pool[:15], key_prefix="ovwcase", heading="Open cases",
+        _ov_pool[:_ov_limit], key_prefix="ovwcase", heading="Open cases",
         subheading="Your highest-priority cases right now, ranked by "
                    "severity and ownership.")
 
@@ -3766,19 +3894,29 @@ elif active_page == "My Workspace":
             _stage_label = _STAGE_LABEL_SHORT.get(_stage_key, "Not triaged")
             _action, _action_detail = _next_action_for(_sel_id, status, _stage_map)
             _stage_states = _case_stage_states(_sel_id, status, _stage_map,
-                                               parsing_status=_inc_row.get("parsing_status"))
+                                               parsing_status=_inc_row.get("parsing_status"),
+                                               workflow_state=_inc_row)
             _current_stage = next(
-                (s["name"] for s in _stage_states if s["state"] == "current"),
-                _CASE_DISPLAY_STAGES[0],
+                (s["name"] for s in _stage_states
+                 if s["state"] in {"current", "approval"}),
+                next(
+                    (s["name"] for s in reversed(_stage_states)
+                     if s["state"] == "done"),
+                    _CASE_DISPLAY_STAGES[0],
+                ),
             )
+            _selectable_stage_names = {
+                s["name"] for s in _stage_states
+                if s["state"] not in {"queued", "locked"}
+            }
             _requested_stage = st.query_params.get("case_stage")
             _remembered_stage = st.session_state.get("case_selected_stage")
             _remembered_case = st.session_state.get("case_selected_stage_id")
             if str(_remembered_case) == str(_sel_id) and (
-                _remembered_stage in _CASE_DISPLAY_STAGES
+                _remembered_stage in _selectable_stage_names
             ):
                 _selected_stage = _remembered_stage
-            elif _requested_stage in _CASE_DISPLAY_STAGES:
+            elif _requested_stage in _selectable_stage_names:
                 _selected_stage = _requested_stage
             else:
                 _selected_stage = _current_stage
@@ -3811,6 +3949,50 @@ elif active_page == "My Workspace":
                         and not _active_run.get("done"))
                 )
                 _process_closed = status.upper() in _CLOSED_STATUSES
+                _header_workflow_status = (
+                    _inc_row.get("workflow_status") if WORKFLOW_OK else None
+                )
+                _header_approval_stage = (
+                    _inc_row.get("approval_stage") if WORKFLOW_OK else None
+                )
+                _header_run_id = _inc_row.get("run_id") if WORKFLOW_OK else None
+                _header_stage_keys = {
+                    "Parsing": "parsing",
+                    "Triage": "triage",
+                    "Threat Intelligence Enrichment": "threat_intel",
+                    "Investigation": "investigation",
+                    "Reporting": "reporting",
+                }
+                _header_selected_stage = _header_stage_keys.get(_selected_stage)
+                _header_selected_status = (
+                    _inc_row.get(f"{_header_selected_stage}_status")
+                    if _header_selected_stage else None
+                )
+                _header_selected_result = (
+                    _inc_row.get(f"{_header_selected_stage}_result_json")
+                    if _header_selected_stage else None
+                )
+                _header_selected_has_run = bool(
+                    _header_selected_result
+                    or _header_selected_status in {
+                        "Complete", "Complete with Warnings",
+                        "Awaiting Approval", "Approved", "Failed",
+                    }
+                )
+                _header_pending_approval = (
+                    _header_workflow_status == "Awaiting Approval"
+                    and _header_approval_stage == _header_selected_stage
+                    and _header_selected_stage in {
+                        "triage", "investigation", "reporting",
+                    }
+                )
+                _process_running = (
+                    _process_running or _header_workflow_status == "Processing"
+                )
+                _header_can_rerun = (
+                    _header_selected_has_run
+                    and not _process_running
+                )
                 _process_label = (
                     "Process running" if _process_running else
                     "Process complete" if _process_closed else
@@ -3858,6 +4040,69 @@ elif active_page == "My Workspace":
                 }
                 </style>
                 """)
+
+                def _rerun_selected_workflow_stage() -> None:
+                    """Restart the selected persisted stage using its real runner."""
+                    if _header_selected_stage in {"parsing", "triage"}:
+                        _full_inc, _is_full = _resolve_full_incident(_sel_id, inc)
+                        if not _is_full:
+                            st.warning(
+                                "Full alert data isn't cached in this session yet — "
+                                "Parsing will run on the cached incident summary only.")
+                        result = _run_triage_workflow_with_ui(
+                            _full_inc, allow_retry=True)
+                        if result is not None:
+                            st.session_state.chat_incident = _full_inc
+                            st.session_state.pending_auto_triage = False
+                            st.session_state.nav_page = "My Workspace"
+                            st.rerun()
+                        return
+
+                    try:
+                        wss.rerun_stage(
+                            _sel_id, _header_run_id, _header_selected_stage)
+                    except ApprovalConflictError as _exc:
+                        st.warning(f"Could not re-run: {_exc}")
+                        return
+
+                    threading.Thread(
+                        target=wf_run_stage_chain,
+                        args=(_sel_id, _header_run_id),
+                        daemon=True,
+                    ).start()
+                    st.rerun()
+
+                def _proceed_to_next_workflow_stage() -> None:
+                    """Open the next stage and ensure its queued worker is running."""
+                    _next_stage = {
+                        "parsing": "Triage",
+                        "threat_intel": "Investigation",
+                    }.get(_header_selected_stage)
+                    if not _next_stage:
+                        return
+
+                    # These handoffs are backend-managed. If the next stage is
+                    # queued as Processing, the state-aware dispatcher is safe
+                    # to call because its atomic claim prevents duplicate work.
+                    _latest_state = wss.get_state(_sel_id) if WORKFLOW_OK else {}
+                    _next_status_key = {
+                        "Triage": "triage_status",
+                        "Investigation": "investigation_status",
+                    }[_next_stage]
+                    if (_header_run_id
+                            and (_latest_state or {}).get(_next_status_key)
+                            == "Processing"):
+                        threading.Thread(
+                            target=wf_run_stage_chain,
+                            args=(_sel_id, _header_run_id),
+                            daemon=True,
+                        ).start()
+
+                    st.session_state.case_selected_stage = _next_stage
+                    st.session_state.case_selected_stage_id = str(_sel_id)
+                    st.query_params["case_stage"] = _next_stage
+                    st.rerun()
+
                 with st.container(key="case_header_action"):
                     _header_content, _header_action = st.columns(
                         [6.5, 1.15], vertical_alignment="center"
@@ -3872,20 +4117,84 @@ elif active_page == "My Workspace":
                                  "LOW": "○"}.get(sev, "○"),
                         ), unsafe_allow_html=True)
                     with _header_action:
-                        if st.button(
-                            _process_label,
-                            key=f"case_start_process_{_sel_id}",
-                            type="primary",
-                            use_container_width=True,
-                            disabled=_process_running or _process_closed,
-                            help=(
-                                "This case's workflow is already running."
-                                if _process_running else
-                                "This case is closed."
-                                if _process_closed else
-                                "Start triage, investigation and reporting for this case."
-                            ),
+                        if _header_pending_approval:
+                            _analyst_name = (
+                                st.session_state.get("analyst_display_name")
+                                or "Unknown analyst"
+                            )
+                            if st.button(
+                                "Approve",
+                                key=f"case_approve_{_header_approval_stage}_{_sel_id}",
+                                type="primary",
+                                use_container_width=True,
+                            ):
+                                try:
+                                    if _header_approval_stage == "triage":
+                                        wss.approve_triage(
+                                            _sel_id, _header_run_id,
+                                            approved_by=_analyst_name)
+                                    elif _header_approval_stage == "investigation":
+                                        wss.approve_investigation(
+                                            _sel_id, _header_run_id,
+                                            approved_by=_analyst_name)
+                                    else:
+                                        wss.approve_reporting(
+                                            _sel_id, _header_run_id,
+                                            approved_by=_analyst_name)
+                                except ApprovalConflictError as _exc:
+                                    st.warning(f"Could not approve: {_exc}")
+                                else:
+                                    if _header_approval_stage != "reporting":
+                                        threading.Thread(
+                                            target=wf_run_stage_chain,
+                                            args=(_sel_id, _header_run_id),
+                                            daemon=True,
+                                        ).start()
+                                    st.rerun()
+
+                            if st.button(
+                                "Re-run",
+                                key=f"case_rerun_{_header_selected_stage}_{_sel_id}",
+                                use_container_width=True,
+                            ):
+                                _rerun_selected_workflow_stage()
+                        elif (
+                            _header_selected_stage in {"parsing", "threat_intel"}
+                            and _header_selected_status
+                            in {"Complete", "Complete with Warnings"}
                         ):
+                            if st.button(
+                                "Proceed",
+                                key=f"case_proceed_{_header_selected_stage}_{_sel_id}",
+                                type="primary",
+                                use_container_width=True,
+                                help=(
+                                    "Go to the next workflow stage and start "
+                                    "its queued process."
+                                ),
+                            ):
+                                _proceed_to_next_workflow_stage()
+                        elif _header_can_rerun:
+                            if st.button(
+                                "Re-run",
+                                key=f"case_rerun_{_header_selected_stage}_{_sel_id}",
+                                use_container_width=True,
+                            ):
+                                _rerun_selected_workflow_stage()
+                        elif st.button(
+                                _process_label,
+                                key=f"case_start_process_{_sel_id}",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=_process_running or _process_closed,
+                                help=(
+                                    "This case's workflow is already running."
+                                    if _process_running else
+                                    "This case is closed."
+                                    if _process_closed else
+                                    "Start triage, investigation and reporting "
+                                    "for this case."
+                                )):
                             _full_inc, _is_full = _resolve_full_incident(_sel_id, inc)
                             if not _is_full:
                                 st.warning(
@@ -3919,6 +4228,13 @@ elif active_page == "My Workspace":
                      if s["name"] == _selected_stage),
                     "queued",
                 )
+                _selected_state_label = {
+                    "done": "Complete",
+                    "current": "Current stage",
+                    "approval": "Requires approval",
+                    "locked": "Locked",
+                    "queued": "Locked",
+                }.get(_selected_state, _selected_state)
                 st.markdown(
                     '<div style="display:flex;align-items:center;gap:10px;'
                     'margin:12px 0 10px">'
@@ -3927,7 +4243,7 @@ elif active_page == "My Workspace":
                     '<div style="border:1px solid #334966;border-radius:999px;'
                     'padding:3px 9px;color:#9eb0c8;font-size:.65rem;'
                     'text-transform:uppercase;letter-spacing:.06em">'
-                    f'{_esc_html(_selected_state)}</div></div>',
+                    f'{_esc_html(_selected_state_label)}</div></div>',
                     unsafe_allow_html=True,
                 )
 
@@ -4165,141 +4481,443 @@ elif active_page == "My Workspace":
                 elif _selected_stage == "Threat Intelligence Enrichment":
                     (_t_output,) = st.tabs(["Output"])
                     with _t_output:
+                        # Reads the PERSISTED, run-scoped result saved by
+                        # soc_workflow.run_threat_intel() — never re-runs
+                        # enrichment live on every render (that used to call
+                        # enrich_iocs() on every page load, which could not
+                        # reflect the actual approved pipeline run and
+                        # violated "don't search for the newest file").
                         try:
-                            from threat_intel import enrich_iocs, format_enrichment
-                            try:
-                                _ti_triage = _json.loads(
-                                    _inc_row.get("triage_result_json") or "{}") or None
-                            except Exception:
-                                _ti_triage = None
-                            _enr = enrich_iocs(inc, _ti_triage)
-                            if _enr.get("results"):
-                                st.code(format_enrichment(_enr), language=None)
+                            _ti = _json.loads(_inc_row.get("threat_intel_result_json") or "{}")
+                        except Exception:
+                            _ti = {}
+                        if not _ti:
+                            st.caption("No Threat Intelligence output yet — "
+                                      "approve Triage to trigger enrichment.")
+                        else:
+                            _ti_status = (_inc_row.get("threat_intel_status")
+                                         or _ti.get("status") or "Pending")
+                            _ti_stats = _ti.get("stats") or {}
+                            _internal_iocs = _ti.get("internal_iocs") or []
+                            _internal_count = (
+                                len(_internal_iocs)
+                                or int(_ti_stats.get("skipped_private_ips") or 0)
+                            )
+                            _behavioral = _ti.get("triage_behavioral_indicators") or {}
+                            _behavioral_count = int(_behavioral.get("count") or 0)
+                            if not _behavioral_count:
+                                # Backward compatibility for results persisted
+                                # before TI explicitly separated behavioral
+                                # findings from external reputation targets.
+                                try:
+                                    _saved_triage = _json.loads(
+                                        _inc_row.get("triage_result_json") or "{}")
+                                except Exception:
+                                    _saved_triage = {}
+                                _behavioral_count = int(
+                                    (_saved_triage.get("ticket") or {}).get(
+                                        "matched_ioc_count")
+                                    or 0
+                                )
+
+                            def _no_external_ioc_message() -> str:
+                                _msg = (
+                                    "No externally enrichable IOCs (public IPs, "
+                                    "domains, or hashes) were found."
+                                )
+                                if _internal_count:
+                                    _msg += (
+                                        f" {_internal_count} private/internal IP "
+                                        "address(es) were retained for Investigation "
+                                        "and were not submitted to external "
+                                        "threat-intelligence services."
+                                    )
+                                if _behavioral_count:
+                                    _msg += (
+                                        f" Triage's {_behavioral_count} behavioral "
+                                        "indicator(s) remain available to Investigation; "
+                                        "they are not external reputation-lookup targets."
+                                    )
+                                return _msg
+
+                            _ti_tone = {"Complete": "low", "Complete with Warnings": "high",
+                                       "Failed": "critical",
+                                       "Processing": "info"}.get(_ti_status, "info")
+                            st.markdown(_ui.pill(_ti_status, _ti_tone), unsafe_allow_html=True)
+                            st.markdown(
+                                f"**Risk level:** {_ti.get('risk_level', '—')}  ·  "
+                                f"**Risk score:** {_ti.get('risk_score', 0)}  ·  "
+                                f"**Last enriched:** {_ti.get('generated_at', '—')}")
+                            _ti_rows = []
+                            _ti_verdict_tone = {"MALICIOUS": "critical", "SUSPICIOUS": "high"}
+                            for _r in _ti.get("iocs", []):
+                                _v = _r.get("verdict", "")
+                                _tone2 = ("wait" if _v.startswith("UNKNOWN")
+                                         else _ti_verdict_tone.get(_v, "low"))
+                                _ti_rows.append([
+                                    {"mono": _r.get("value", "")}, _r.get("type", ""),
+                                    {"pill": _v, "kind": _tone2},
+                                    f"{_r.get('score', 0)} ({_r.get('confidence', '—')})",
+                                    ", ".join(_r.get("sources", [])) or "—",
+                                    "; ".join(_r.get("evidence", [])[:3]),
+                                ])
+                            if _ti_rows:
+                                st.markdown(_ui.queue_table(
+                                    ["IOC", "Type", "Verdict", "Score", "Sources", "Evidence"],
+                                    _ti_rows), unsafe_allow_html=True)
                             else:
-                                st.caption("No IOCs found to enrich for this case.")
-                        except Exception as _ti_err:
-                            st.caption(
-                                f"Threat intelligence enrichment unavailable: {_ti_err}")
+                                _no_lookup_msg = (
+                                    "No external reputation results to display. "
+                                    "Threat Intelligence only submits public IPs, "
+                                    "domains, and hashes to external services."
+                                )
+                                if _internal_count:
+                                    _no_lookup_msg += (
+                                        f" {_internal_count} private/internal IP "
+                                        f"address(es) were retained for Investigation."
+                                    )
+                                if _behavioral_count:
+                                    _no_lookup_msg += (
+                                        f" Triage's {_behavioral_count} behavioral "
+                                        "indicator(s) also remain available to Investigation."
+                                    )
+                                st.info(_no_lookup_msg)
+                            if _ti.get("warnings"):
+                                _display_warnings = [
+                                    (_no_external_ioc_message()
+                                     if str(_w).startswith(
+                                         "No IOCs found in the normalised alert")
+                                     else str(_w))
+                                    for _w in _ti["warnings"]
+                                ]
+                                st.warning("\n".join(
+                                    f"- {_w}" for _w in _display_warnings))
+                            if _ti.get("errors"):
+                                st.error("\n".join(f"- {e}" for e in _ti["errors"]))
+                            _ti_thinking = _ti.get("thinking_process")
+                            if _ti_thinking:
+                                with st.expander("Thinking Process"):
+                                    _display_thinking = dict(_ti_thinking)
+                                    _display_thinking.setdefault(
+                                        "externally_enrichable_iocs",
+                                        len(_ti.get("iocs") or []))
+                                    _display_thinking.setdefault(
+                                        "private_internal_ips_retained",
+                                        _internal_count)
+                                    _display_thinking.setdefault(
+                                        "triage_behavioral_indicators",
+                                        _behavioral_count)
+                                    if _display_thinking.get("warnings"):
+                                        _display_thinking["warnings"] = [
+                                            (_no_external_ioc_message()
+                                             if str(_w).startswith(
+                                                 "No IOCs found in the normalised alert")
+                                             else str(_w))
+                                            for _w in _display_thinking["warnings"]
+                                        ]
+                                    st.json(_display_thinking)
                 else:
-                    (_t_ovw, _t_time, _t_mitre, _t_graph, _t_evid, _t_act) = st.tabs(
-                        ["Overview", "Timeline", "MITRE ATT&CK", "Entity Graph",
+                    # ── ONE call builds every tab's data — app.py no longer
+                    # independently computes severity/verdict/host/user/IOC
+                    # count/MITRE mappings/graph relationships/evidence status
+                    # inline (see case_view.py for every builder + precedence
+                    # rule). Read-only; never runs a workflow stage.
+                    _cv = cv.build_case_view(_sel_id, _inc_row.get("run_id"))
+
+                    def _render_investigation_approval_controls() -> None:
+                        """Detailed investigation decision controls.
+
+                        The case header provides the quick Approve and Re-run
+                        actions; this output-level form preserves the existing
+                        optional approval comments and rejection path.
+                        """
+                        _analyst_name = (st.session_state.get("analyst_display_name")
+                                        or "Unknown analyst")
+                        _inv_comments = st.text_area(
+                            "Approval comments (optional)",
+                            key=f"cv_approve_comments_{_sel_id}")
+                        _cac1, _cac2 = st.columns(2)
+                        with _cac1:
+                            if st.button("Approve Investigation", type="primary",
+                                        key=f"cv_approve_inv_{_sel_id}",
+                                        use_container_width=True):
+                                try:
+                                    wss.approve_investigation(
+                                        _sel_id, _inc_row.get("run_id"),
+                                        approved_by=_analyst_name, comments=_inv_comments)
+                                except ApprovalConflictError as _exc:
+                                    st.warning(f"Could not approve: {_exc}")
+                                else:
+                                    threading.Thread(target=wf_run_stage_chain,
+                                                     args=(_sel_id, _inc_row.get("run_id")),
+                                                     daemon=True).start()
+                                    st.rerun()
+                        with _cac2:
+                            _inv_reject_reason = st.text_input(
+                                "Rejection reason", key=f"cv_reject_reason_inv_{_sel_id}")
+                            if st.button("Reject Investigation",
+                                        key=f"cv_reject_inv_{_sel_id}",
+                                        use_container_width=True):
+                                if not _inv_reject_reason.strip():
+                                    st.warning("A rejection reason is required.")
+                                else:
+                                    try:
+                                        wss.reject_investigation(
+                                            _sel_id, _inc_row.get("run_id"),
+                                            rejected_by=_analyst_name,
+                                            reason=_inv_reject_reason)
+                                    except ApprovalConflictError as _exc:
+                                        st.warning(f"Could not reject: {_exc}")
+                                    else:
+                                        st.success("Investigation rejected — "
+                                                  "Reporting is blocked.")
+                                        st.rerun()
+
+                    @st.fragment(run_every="2s")
+                    def _investigation_processing_fragment() -> None:
+                        """Kept deliberately cheap: reads ONLY the small,
+                        persisted status columns needed to render this box —
+                        never build_case_view(), never the MITRE parser,
+                        entity graph, or evidence collection on every 2s
+                        tick. A REAL state change (e.g. Processing ->
+                        Awaiting Approval/Failed) triggers one full page
+                        st.rerun() so every other tab picks it up; otherwise
+                        only this small fragment re-renders."""
+                        _live = wss.get_state(_sel_id) or {}
+                        _live_status = _live.get("investigation_status")
+                        _prev_key = f"cv_last_inv_status_{_sel_id}"
+                        _prev = st.session_state.get(_prev_key)
+                        st.session_state[_prev_key] = _live_status
+                        if _prev is not None and _prev != _live_status:
+                            st.rerun()
+                        if _live.get("worker_progress_note"):
+                            st.info(_live["worker_progress_note"])
+                        else:
+                            st.info("Investigation is processing.")
+                        st.caption(
+                            f"Status: {_live_status or '—'} · "
+                            f"Worker stage: {_live.get('worker_stage') or '—'} · "
+                            f"Last heartbeat: {_live.get('worker_heartbeat_at') or '—'}")
+
+                    (_t_ovw, _t_output, _t_time, _t_mitre, _t_graph, _t_evid, _t_act) = st.tabs(
+                        ["Overview", "Output", "Timeline", "MITRE ATT&CK", "Entity Graph",
                          "Evidence", "Activity"])
 
                     with _t_ovw:
                         oc1, oc2 = st.columns([1.4, 0.9])
                         with oc1:
-                            _fh = (_ui.key_findings(_findings) if _findings else
+                            _cv_findings = _cv["overview"]["key_findings"]
+                            _fh = (_ui.key_findings(_cv_findings) if _cv_findings else
                                   '<div style="color:var(--sub);font-size:.8rem">'
                                   'No findings distilled yet — run Triage.</div>')
                             st.markdown(_ui.panel_open(
-                                "Key findings", "Behaviours &amp; analytic signals")
+                                "Key findings", "Behaviours & analytic signals")
                                 + _fh + _ui.panel_close(), unsafe_allow_html=True)
                         with oc2:
+                            _cc = _cv["overview"]["case_context"]
+                            _cv_ctx_rows = [
+                                ("NetWitness Severity", _cc["netwitness_severity"]["value"]),
+                                ("Triage Classification", _cc["triage_classification"]["value"]),
+                                ("Unified Verdict", _cc["unified_verdict"]["value"]),
+                                ("Host", _cc["host"]["value"]),
+                                ("User", _cc["user"]["value"]),
+                                ("NetWitness Status", _cc["netwitness_status"]["value"]),
+                                ("Workflow Status", _cc["workflow_status"]["value"]),
+                                ("Unique IOC IPs", str(_cc["ioc_ip_count"]["value"])),
+                            ]
                             st.markdown(_ui.panel_open(
                                 "Case context", "Key facts for the current decision")
-                                + _ui.context_grid(_ctx) + _ui.panel_close(),
+                                + _ui.context_grid(_cv_ctx_rows) + _ui.panel_close(),
                                 unsafe_allow_html=True)
+                            if _cv.get("warnings"):
+                                for _w in _cv["warnings"]:
+                                    st.caption(f"⚠ {_w}")
+
+                    with _t_output:
+                        _out = _cv["output"]
+                        _inv_status = _out["status"]
+                        if _inv_status in (None, "Pending"):
+                            st.info("Investigation has not started. Complete Triage "
+                                   "approval and Threat Intelligence Enrichment first.")
+                            st.markdown(
+                                f"- Triage: **{_inc_row.get('triage_status') or '—'}**\n"
+                                f"- Threat Intelligence: **{_inc_row.get('threat_intel_status') or '—'}**\n"
+                                f"- Investigation: **{_inv_status or '—'}**")
+                        elif _inv_status == "Processing":
+                            _investigation_processing_fragment()
+                        elif _inv_status == "Failed":
+                            st.error("Investigation failed")
+                            if _out.get("last_error"):
+                                st.caption(_out["last_error"])
+                            st.caption(f"Failed at: {_out.get('investigation_updated_at') or '—'}")
+                            if st.button("Retry Investigation", key=f"cv_retry_inv_{_sel_id}"):
+                                try:
+                                    wss.rerun_stage(_sel_id, _inc_row.get("run_id"),
+                                                   "investigation")
+                                except ApprovalConflictError as _exc:
+                                    st.warning(f"Could not retry: {_exc}")
+                                else:
+                                    threading.Thread(
+                                        target=wf_run_stage_chain,
+                                        args=(_sel_id, _inc_row.get("run_id")),
+                                        daemon=True).start()
+                                    st.rerun()
+                        else:
+                            _inv_result = _out["investigation_result"]
+                            if "summary" in _out["display_sections"]:
+                                st.markdown(f"**Summary**\n\n{_inv_result.get('summary')}")
+                            if "severity" in _out["display_sections"]:
+                                st.markdown(f"**Severity:** {_inv_result.get('severity')}")
+                            if "narrative_report" in _out["display_sections"]:
+                                with st.expander("Investigation Narrative Report"):
+                                    st.markdown(_inv_result.get("narrative_report") or "")
+                            if "missing_evidence" in _out["display_sections"]:
+                                st.markdown("**Missing Information**")
+                                for _m in _inv_result.get("missing_evidence") or []:
+                                    st.markdown(f"- {_m}")
+                            if "feedback_loop" in _out["display_sections"]:
+                                with st.expander("Repair / Feedback Passes"):
+                                    st.json(_inv_result.get("feedback_loop"))
+                            if _inv_status == "Awaiting Approval":
+                                st.divider()
+                                st.info("Investigation complete — awaiting SOC Analyst "
+                                        "approval before Reporting can run.")
+                                _render_investigation_approval_controls()
+                            with st.expander("Raw Investigation Output"):
+                                st.caption(
+                                    "Sanitised for analyst display. The complete "
+                                    "unmodified result remains stored in "
+                                    "investigation_result_json for this workflow run.")
+                                st.json(cv.sanitize_investigation_result_for_display(_inv_result))
 
                     with _t_time:
-                        try:
-                            from incident_map import build_incident_map
-                            _imap_t = build_incident_map(inc)
-                            if _imap_t.get("timeline"):
-                                st.markdown("\n".join(
-                                    f"- `{t['time'][:19]}` — {t['event']}"
-                                    for t in _imap_t["timeline"][:20]))
-                            else:
-                                st.caption("No timeline events recorded for this case.")
-                        except Exception as _tl_err:
-                            st.caption(f"Timeline unavailable: {_tl_err}")
+                        _tl = _cv["timeline"]
+                        if _tl:
+                            st.markdown("\n".join(
+                                f"- `{(t['timestamp'] or '')[:19]}` — {t['event']} "
+                                f"_{('(' + t['event_type'] + ')') if t.get('event_type') else ''}_"
+                                for t in _tl[:40]))
+                        else:
+                            st.caption("No timeline events recorded for this case.")
 
                     with _t_mitre:
-                        try:
-                            from tactic_inference import infer_tactics
-                            _ti = infer_tactics(inc)
-                            _mitre_maps = []
-                            # Prefer the investigation agent's evidence-rich mappings.
-                            for _candidate in (
-                                inc.get("mitre_mappings"),
-                                (_raw or {}).get("mitre_mappings"),
-                                ((_raw or {}).get("final_report") or {}).get("mitre_mappings"),
-                                ((_raw or {}).get("investigation_result") or {}).get("mitre_mappings"),
-                            ):
-                                if isinstance(_candidate, list) and _candidate:
-                                    _mitre_maps = _candidate
-                                    break
-                            if not _mitre_maps:
-                                _tactics = (_ti.get("tactics") if _ti.get("available")
-                                            else inc.get("tactics")) or []
-                                _techniques = (_ti.get("techniques") if _ti.get("available")
-                                               else inc.get("techniques")) or []
-                                _fallback_tactic = (_ti.get("tactic") if _ti.get("available")
-                                                    else inc.get("mitre_tactic"))
-                                _fallback_tech = (_ti.get("technique") if _ti.get("available")
-                                                  else inc.get("mitre_technique"))
-                                if not _tactics and _fallback_tactic:
-                                    _tactics = [_fallback_tactic]
-                                if not _techniques and _fallback_tech:
-                                    _techniques = [_fallback_tech]
-                                _map_count = max(len(_tactics), len(_techniques))
-                                for _mi in range(_map_count):
-                                    _mitre_maps.append({
-                                        "tactic": (_tactics[_mi] if _mi < len(_tactics)
-                                                   else _tactics[-1] if _tactics else "Unclassified"),
-                                        "technique_id": (_techniques[_mi] if _mi < len(_techniques)
-                                                         else _techniques[-1] if _techniques else ""),
-                                        "technique_name": (_ti.get("technique_name") if _mi == 0
-                                                           else "MITRE ATT&CK technique"),
-                                        "confidence": _ti.get("confidence") or "high",
-                                        "evidence": _ti.get("evidence") or [],
-                                        "source": _ti.get("source") or "Aegis Investigation Agent",
-                                    })
-                            st.markdown(_ui.mitre_mapping_workspace(_mitre_maps),
-                                        unsafe_allow_html=True)
-                        except Exception as _mt_err:
-                            st.caption(f"MITRE mapping unavailable: {_mt_err}")
+                        if _cv.get("mitre_warnings"):
+                            for _w in _cv["mitre_warnings"]:
+                                st.caption(f"⚠ {_w}")
+                        st.markdown(_ui.mitre_mapping_workspace(_cv["mitre"]),
+                                    unsafe_allow_html=True)
 
                     with _t_graph:
-                        # This IS the app's existing "Map"/entity-relationship
-                        # feature, relocated here rather than rebuilt.
                         try:
-                            from incident_map import build_incident_map, to_dot, map_caption
-                            _imap_g = build_incident_map(inc)
-                            st.graphviz_chart(to_dot(_imap_g), width="stretch")
-                            st.caption(map_caption(_imap_g))
+                            from incident_map import to_dot as _cv_to_dot, map_caption as _cv_map_caption
+                            _eg = _cv["entity_graph"]
+                            st.graphviz_chart(_cv_to_dot(_eg), width="stretch")
+                            st.caption(_cv_map_caption(
+                                {**_eg, "incident_id": _sel_id, "title": title,
+                                 "stats": {"node_counts": {}, "edge_count": len(_eg["edges"]),
+                                          "evidence_basis": "case_view.build_entity_graph"}}))
+                            if _eg.get("data_availability_warning"):
+                                st.caption(f"⚠ {_eg['data_availability_warning']}")
                         except Exception as _mg_err:
                             st.caption(f"Entity graph unavailable: {_mg_err}")
 
                     with _t_evid:
-                        _alerts_list = (_raw or {}).get("alerts")
-                        if _alerts_list:
-                            for _al in _alerts_list[:20]:
+                        _ev_items = _cv["evidence"]
+                        if _ev_items:
+                            for _ev in _ev_items[:40]:
                                 st.markdown(
                                     f'<div style="background:#091624;padding:8px 12px;'
                                     f'border-radius:4px;margin-bottom:6px;'
                                     f'border-left:3px solid var(--accent)">'
-                                    f'{_esc_html(_al.get("title") or _al.get("name") or "Untitled Alert")}'
+                                    f'<b>{_esc_html(_ev.get("evidence_type", ""))}</b> · '
+                                    f'{_esc_html(_ev.get("source", ""))} — '
+                                    f'{_esc_html(_ev.get("summary", ""))}'
                                     f'</div>', unsafe_allow_html=True)
                         else:
-                            st.caption("No associated alerts recorded for this case.")
-                        try:
-                            from ioc_correlation import correlate_iocs, format_correlation
-                            _corr = correlate_iocs(inc)
-                            if _corr.get("available") and _corr.get("results"):
-                                st.markdown("**Internal IOC correlation**")
-                                st.code(format_correlation(_corr), language=None)
-                        except Exception:
-                            pass
+                            st.caption("No evidence recorded for this case.")
 
                     with _t_act:
-                        _case_runs = [r for r in pipeline_load("workflow_runs", limit=300)
-                                      if str(r.get("incident_id")) == _sel_id]
-                        if _case_runs:
-                            for _r in _case_runs:
-                                st.markdown(f"- `{_r.get('created_at', '')}` — "
-                                           f"{_esc_html(_r.get('summary', ''))}")
+                        _act_items = _cv["activity"]
+                        if _act_items:
+                            for _a in _act_items:
+                                st.markdown(
+                                    f"- `{(_a['timestamp'] or '')[:19]}` — "
+                                    f"**{_esc_html(_a.get('actor', ''))}** "
+                                    f"{_esc_html(_a.get('action', ''))} "
+                                    f"({_esc_html(_a.get('stage') or '')}) "
+                                    f"{_esc_html(_a.get('comments') or '')}")
                         else:
-                            st.caption("No workflow runs recorded for this case yet.")
+                            st.caption("No workflow activity recorded for this case yet.")
+
+                # ── Threat Intelligence / Investigation / Reporting workflow
+                # action bar — durable, SQLite-driven (reads _inc_row only;
+                # never depends on the in-memory Agent Board / _workflow_store()
+                # for correctness). One consolidated location covers all three
+                # mandatory-approval gates plus Processing-state polling /
+                # Resume Workflow / Retry Threat Intelligence, regardless of
+                # which stage tab is currently selected above.
+                if WORKFLOW_OK:
+                    _wf_status_now = _inc_row.get("workflow_status")
+                    _wf_run_id     = _inc_row.get("run_id")
+
+                    # Pending-approval controls are rendered in the case header
+                    # above, in place of Start Process.
+                    if _wf_status_now == "Awaiting Approval":
+                        pass
+
+                    elif _wf_status_now == "Processing":
+                        # Grace period (short-lived): right after an approval
+                        # transaction, workflow_status is already Processing
+                        # but the spawned thread may not have claimed the
+                        # lease yet — workflow_updated_at (stamped by the
+                        # transition itself) covers that window so a
+                        # just-started worker is never flagged interrupted.
+                        _grace_seconds = 15
+                        _lease_str = _inc_row.get("worker_lease_expires_at")
+                        _lease_live = False
+                        if _lease_str:
+                            try:
+                                _lease_live = (datetime.fromisoformat(_lease_str)
+                                              > datetime.now(timezone.utc))
+                            except Exception:
+                                _lease_live = False
+                        _updated_str = _inc_row.get("workflow_updated_at")
+                        _age = 1e9
+                        if _updated_str:
+                            try:
+                                _age = (datetime.now(timezone.utc)
+                                       - datetime.fromisoformat(_updated_str)).total_seconds()
+                            except Exception:
+                                _age = 1e9
+                        if _lease_live or _age < _grace_seconds:
+                            st.info(f"Workflow processing — stage: "
+                                   f"{_inc_row.get('worker_stage') or '—'}")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.warning(f"Workflow appears interrupted (stage: "
+                                      f"{_inc_row.get('worker_stage') or '—'}, "
+                                      f"no active worker lease).")
+                            if st.button("Resume Workflow", key=f"resume_wf_{_sel_id}"):
+                                threading.Thread(target=wf_run_stage_chain,
+                                                 args=(_sel_id, _wf_run_id),
+                                                 daemon=True).start()
+                                st.rerun()
+
+                    elif _wf_status_now == "Failed":
+                        st.error(f"Workflow failed. {_inc_row.get('last_error') or ''}")
+                        if _inc_row.get("threat_intel_status") == "Failed":
+                            if st.button("Retry Threat Intelligence",
+                                        key=f"retry_ti_{_sel_id}"):
+                                try:
+                                    wss.retry_threat_intel(_sel_id, _wf_run_id)
+                                except ApprovalConflictError as _exc:
+                                    st.warning(f"Could not retry: {_exc}")
+                                else:
+                                    threading.Thread(target=wf_run_stage_chain,
+                                                     args=(_sel_id, _wf_run_id),
+                                                     daemon=True).start()
+                                    st.rerun()
 
             with _chat_col:
                 # ── Ask Aegis — reuses the existing chat_respond() Q&A path,
@@ -6762,21 +7380,25 @@ elif active_page == "Settings":
         st.markdown(
             f'<div style="font-family:var(--mono);font-size:0.54rem;'
             f'color:#1A3A52;text-align:center;line-height:1.9">'
-            f'v4 · AUTO-REFRESH {REFRESH_INTERVAL}s<br>'
+            f'v4 · SYNC ON ACTIVITY · MIN {REFRESH_INTERVAL}s<br>'
             f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</div>',
             unsafe_allow_html=True,
         )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# BACKGROUND WORKFLOW POLL — last statement so every tab renders first.
-# While the worker thread runs, rerun every ~1.5s so the agent board (and any
-# open detail panel) refreshes with the worker's latest thinking/output.
+# BACKGROUND WORKFLOW STATUS — last statement so every tab renders first.
+# Timed reruns reset the entire Streamlit page, so running workflows expose an
+# explicit refresh control instead of forcing a rerender every 1.5 seconds.
 # ══════════════════════════════════════════════════════════════════════════════
 try:
     _wf_poll = _workflow_store().get("run")
     if _wf_poll is not None and not _wf_poll.get("done"):
-        time.sleep(1.5)
-        st.rerun()
+        st.sidebar.caption("A workflow is running in the background.")
+        st.sidebar.button(
+            "Refresh workflow status",
+            key="_refresh_workflow_status",
+            use_container_width=True,
+        )
 except Exception:
     pass

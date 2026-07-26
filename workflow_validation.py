@@ -76,7 +76,9 @@ MANDATORY_APPROVAL_POLICY = (
 
 def mandatory_triage_approval(*, incident_id: str, triage_result: dict) -> dict:
     """Always requires SOC analyst approval after Triage. For Aegis, the
-    stage after approval is always Investigation — there is no conditional
+    stage after approval is now Threat Intelligence Enrichment (which
+    itself does not require a separate approval and hands off to
+    Investigation automatically on success) — there is no conditional
     'skip investigation' route decided here."""
     ticket = triage_result.get("ticket") or {}
     return {
@@ -84,7 +86,7 @@ def mandatory_triage_approval(*, incident_id: str, triage_result: dict) -> dict:
         "approval_stage": "triage",
         "incident_id": str(incident_id),
         "ticket_unc": ticket.get("unc"),
-        "next_stage_after_approval": "investigation",
+        "next_stage_after_approval": "threat_intelligence",
         "reason": MANDATORY_APPROVAL_POLICY,
         "gated_at": datetime.now(timezone.utc).isoformat(),
     }

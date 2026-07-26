@@ -3571,3 +3571,17 @@ code,
     min-height:0!important;
   }
 }
+
+/* Canonical workflow states. Re-run Required is intentionally distinct from failure. */
+.workflow-node.approved .workflow-circle{border-color:#60c26c;background:rgba(34,197,94,.14);color:#78e08a;box-shadow:0 0 0 5px rgba(34,197,94,.05)}
+.workflow-node.pending_approval .workflow-circle{border-color:#f0a72f;background:rgba(245,158,11,.15);color:#fcd34d;box-shadow:0 0 0 5px rgba(245,158,11,.08)}
+.workflow-node.rerun_required .workflow-circle{border-color:#a78bfa;background:rgba(139,92,246,.14);color:#ddd6fe;box-shadow:0 0 0 5px rgba(139,92,246,.07)}
+.agent-accordion-card.rerun_required,.agent-status-card.rerun_required{border-color:rgba(167,139,250,.5);background:rgba(139,92,246,.09)}
+.agent-progress-dial.rerun_required{background:conic-gradient(#a78bfa var(--progress),rgba(35,49,72,.65) 0)}
+.agent-progress-status-label.rerun_required{color:#ddd6fe}
+.agent-status-mark.rerun-required{color:#c4b5fd;border-color:rgba(167,139,250,.55);background:rgba(139,92,246,.12)}
+.workflow-progress-message{display:flex;align-items:flex-start;gap:8px;border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:12px;line-height:1.45;background:rgba(14,23,38,.66)}
+.workflow-progress-message.rerun_required{border-color:rgba(167,139,250,.5);background:rgba(139,92,246,.1);color:#ddd6fe}
+.workflow-progress-message.failed{border-color:rgba(239,68,68,.45);background:rgba(239,68,68,.09);color:#fecaca}
+.workflow-stage-message{font-size:9px;line-height:1.3;color:var(--muted);max-width:145px}
+.workflow-node.rerun_required .workflow-stage-message{color:#c4b5fd}

@@ -1,0 +1,240 @@
+{
+  "incident_id": "INC-52841",
+  "incident_details": {
+    "timestamp": "2025-07-14T11:53:54+00:00",
+    "description": "The alert is a generic NetWitness high-risk notification for 192.168.20.201, but no supporting IOCs, process data, network details, or PowerShell indicators were extracted. The risk rating result is low and there is insufficient evidence of active compromise or unauthorized activity.",
+    "mitre_att&ck": {
+      "tactic": "Discovery",
+      "technique": "Unknown"
+    }
+  },
+  "classification": {
+    "alert_type": "Unknown Source IP",
+    "soc_classification": "LOW"
+  },
+  "log_indicators": {
+    "target_user": "Unknown",
+    "computer_name": "Unknown",
+    "operating_system": "Unknown"
+  },
+  "network_indicators": {
+    "source_ip": "192.168.20.201",
+    "destination_ip": "192.168.20.255",
+    "domain": null
+  },
+  "observed_indicators": {
+    "usernames": [],
+    "hostnames": [],
+    "ip_addresses": [
+      "192.168.20.255",
+      "192.168.20.201"
+    ],
+    "source_ips": [
+      "192.168.20.201"
+    ],
+    "destination_ips": [
+      "192.168.20.255"
+    ],
+    "entity_from_alert_title": null
+  },
+  "triage": {
+    "ticket_unc": "#00043A",
+    "risk_rating": {
+      "likelihood_initiation": "Low",
+      "likelihood_occurrence": "Low",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Low",
+      "rationale": "No IOCs matched, no endpoint/network/process/file evidence was present, and the alert contains only a generic high-risk NetWitness label with no corroborating activity, so initiation, occurrence, and adverse impact are all unlikely."
+    },
+    "ioc_summary": "No IOCs matched.",
+    "matched_metakeys": [
+      "alert_title",
+      "file_indicators",
+      "ioc_summary",
+      "network_indicators",
+      "normalised_events",
+      "observed_data_context.primary_data_source",
+      "parser_confidence",
+      "process_indicators",
+      "risk_score",
+      "severity",
+      "threat_context",
+      "web_indicators"
+    ],
+    "metakey_values": {},
+    "matched_ioc_count": 0
+  },
+  "source_incident": {
+    "title": "High Risk Alerts: ESA for 192.168.20.201",
+    "summary": ""
+  },
+  "enrichment": {
+    "endpoint_identity": {
+      "hostnames": [],
+      "users": [],
+      "mac_addresses": [
+        "00:0c:29:df:de:7e",
+        "ff:ff:ff:ff:ff:ff"
+      ],
+      "dns_domains": [],
+      "source_ips": [
+        "192.168.20.201"
+      ],
+      "destination_ips": [
+        "192.168.20.255"
+      ]
+    },
+    "behavioural_alerts": {
+      "alert_titles": [
+        "Chu Wen - Lateral Move Detected"
+      ],
+      "alert_types": [
+        "Network"
+      ],
+      "mitre_tactics": [],
+      "mitre_techniques": []
+    },
+    "file_indicators": {
+      "hashes": [],
+      "names": [],
+      "paths": []
+    },
+    "process_indicators": {
+      "names": [],
+      "paths": [],
+      "pids": []
+    },
+    "process_tree": {
+      "processes": [],
+      "process_paths": [],
+      "pids": [],
+      "parent_processes": [],
+      "command_lines": [],
+      "lineage": []
+    },
+    "network_activity": {
+      "source_ips": [
+        "192.168.20.201"
+      ],
+      "destination_ips": [
+        "192.168.20.255"
+      ],
+      "ports": [],
+      "protocols": [],
+      "network_services": [],
+      "bytes": [],
+      "geo": [],
+      "domains": []
+    },
+    "host_behaviour": {
+      "config_changes": [],
+      "cpu_usage": [],
+      "device_types": [],
+      "user_roles": [],
+      "operating_systems": []
+    },
+    "event_context": {
+      "event_types": [],
+      "event_times": []
+    },
+    "all_metakey_values": {},
+    "alert_statistics": {
+      "alert_count": 1,
+      "event_count": 1,
+      "risk_score": 70,
+      "average_alert_risk_score": 70,
+      "matched_ioc_count": 0
+    },
+    "matched_metakey_catalog": [
+      "alert_title",
+      "file_indicators",
+      "ioc_summary",
+      "network_indicators",
+      "normalised_events",
+      "observed_data_context.primary_data_source",
+      "parser_confidence",
+      "process_indicators",
+      "risk_score",
+      "severity",
+      "threat_context",
+      "web_indicators"
+    ],
+    "ioc_summary": "No IOCs matched.",
+    "triage_summary": "The alert is a generic NetWitness high-risk notification for 192.168.20.201, but no supporting IOCs, process data, network details, or PowerShell indicators were extracted. The risk rating result is low and there is insufficient evidence of active compromise or unauthorized activity.",
+    "_note": "Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple."
+  },
+  "threat_intelligence": {
+    "incident_id": "INC-52841",
+    "run_id": "INC-52841@20260726-115239-e0f7c1",
+    "stage": "threat_intelligence",
+    "status": "completed_with_warnings",
+    "generated_at": "2026-07-26T03:53:06.813616+00:00",
+    "risk_level": "Unknown",
+    "risk_score": 0,
+    "iocs": [],
+    "source_results": {},
+    "internal_iocs": [
+      {
+        "value": "192.168.20.255",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      },
+      {
+        "value": "192.168.20.201",
+        "type": "ip",
+        "scope": "private/internal",
+        "disposition": "retained_for_investigation"
+      }
+    ],
+    "triage_behavioral_indicators": {
+      "count": 0,
+      "names": [],
+      "disposition": "retained_for_investigation"
+    },
+    "malicious_iocs": [],
+    "suspicious_iocs": [],
+    "no_findings_iocs": [],
+    "unknown_iocs": [],
+    "lookup_failed_iocs": [],
+    "warnings": [
+      "No externally enrichable IOCs (public IPs, domains, or hashes) were found. 2 private/internal IP address(es) were retained for Investigation and were not submitted to external threat-intelligence services."
+    ],
+    "errors": [],
+    "stats": {
+      "iocs_enriched": 0,
+      "cache_hits": 0,
+      "skipped_private_ips": 2,
+      "private_ips_retained": [
+        "192.168.20.255",
+        "192.168.20.201"
+      ],
+      "truncated": false,
+      "keyed_sources": [
+        "VirusTotal",
+        "AbuseIPDB"
+      ],
+      "seconds": 0.0
+    },
+    "thinking_process": {
+      "stage": "threat_intelligence",
+      "decision": "Threat Intelligence enrichment completed",
+      "iocs_extracted": 0,
+      "externally_enrichable_iocs": 0,
+      "private_internal_ips_retained": 2,
+      "triage_behavioral_indicators": 0,
+      "sources_attempted": [],
+      "source_outcomes": {},
+      "malicious_iocs": 0,
+      "suspicious_iocs": 0,
+      "no_findings_iocs": 0,
+      "unknown_iocs": 0,
+      "lookup_failed_iocs": 0,
+      "risk_level": "Unknown",
+      "warnings": [
+        "No externally enrichable IOCs (public IPs, domains, or hashes) were found. 2 private/internal IP address(es) were retained for Investigation and were not submitted to external threat-intelligence services."
+      ],
+      "next_stage": "investigation"
+    }
+  }
+}

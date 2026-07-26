@@ -1,0 +1,222 @@
+{
+  "incident_id": "INC-53011",
+  "incident_details": {
+    "timestamp": "2025-07-25T09:56:24+00:00",
+    "description": "This is a generic high-risk NetWitness endpoint alert on host BETHANYCHUCHU with SYSTEM-level activity, but there is no concrete evidence of malware execution, persistence, exfiltration, or network activity. Based on the limited telemetry, it is best treated as suspicious privileged activity requiring investigation rather than an active compromise.",
+    "mitre_att&ck": {
+      "tactic": "Defense Evasion",
+      "technique": "Unknown"
+    }
+  },
+  "classification": {
+    "alert_type": "Policy violations",
+    "soc_classification": "MEDIUM"
+  },
+  "log_indicators": {
+    "target_user": "NT AUTHORITY\\SYSTEM",
+    "computer_name": "BETHANYCHUCHU",
+    "operating_system": "Unknown"
+  },
+  "network_indicators": {
+    "source_ip": null,
+    "destination_ip": null,
+    "domain": null
+  },
+  "observed_indicators": {
+    "usernames": [],
+    "hostnames": [
+      "BETHANYCHUCHU"
+    ],
+    "ip_addresses": [],
+    "source_ips": [],
+    "destination_ips": [],
+    "entity_from_alert_title": "BETHANYCHUCHU"
+  },
+  "triage": {
+    "ticket_unc": "#00041A",
+    "risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is only somewhat likely because the alert is a generic high-risk endpoint event with no specific exploit, process, or network evidence; occurrence is medium because the single high-severity NetWitness alert and risk score of 70 indicate meaningful but not recurring evidence; adverse impact is medium because the only concrete IOC is SYSTEM-level activity on host BETHANYCHUCHU, with no direct indicators of exfiltration, malware execution, or confirmed system damage."
+    },
+    "ioc_summary": "[AVAILABILITY] Unexplained changes from privileged accounts — The alert is a high-risk endpoint event tied to the host BETHANYCHUCHU, but no concrete availability-impact telemetry is shown. The only supported match is unexplained activity from a privileged account (NT AUTHORITY\\SYSTEM), which can indicate suspicious privileged-system activity.\n[CONFIDENTIALITY] Unexplained changes from privileged accounts — No network, file-transfer, or exfiltration indicators are present, and no malicious IP/domain evidence exists. The only supported confidentiality IOC is unexplained changes from a privileged account, based on SYSTEM-level activity.\n[INTEGRITY] Odd device/platform behaviour, Unknown process running, Unexplained changes from privileged accounts — The incident provides only generic high-risk endpoint activity with no specific process, file, or configuration details. That supports odd device/platform behavior, unknown process/run-state style suspicion, and unexplained changes from a privileged account; nothing else is evidenced.",
+    "matched_metakeys": [
+      "BETHANYCHUCHU",
+      "NT AUTHORITY\\SYSTEM",
+      "bytes.transferred",
+      "device.type",
+      "endpoint",
+      "event.time",
+      "event.type",
+      "file.path",
+      "high risk",
+      "host.name",
+      "process.name",
+      "process.path",
+      "process.pid",
+      "user.name",
+      "user.role"
+    ],
+    "metakey_values": {
+      "host.name": "BETHANYCHUCHU",
+      "user.name": [
+        "NT AUTHORITY\\SYSTEM",
+        "BETHANYCHUCHU\\admin2"
+      ]
+    },
+    "matched_ioc_count": 5
+  },
+  "source_incident": {
+    "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "summary": ""
+  },
+  "enrichment": {
+    "endpoint_identity": {
+      "hostnames": [
+        "BETHANYCHUCHU"
+      ],
+      "users": [
+        "NT AUTHORITY\\SYSTEM",
+        "BETHANYCHUCHU\\admin2"
+      ],
+      "mac_addresses": [],
+      "dns_domains": [],
+      "source_ips": [],
+      "destination_ips": []
+    },
+    "behavioural_alerts": {
+      "alert_titles": [
+        "Possible Privilege Escalation Via Account Creation (Bethany)",
+        "Possible Persistence using Scheduled Task (Bethany)"
+      ],
+      "alert_types": [
+        "Endpoint"
+      ],
+      "mitre_tactics": [],
+      "mitre_techniques": []
+    },
+    "file_indicators": {
+      "hashes": [],
+      "names": [],
+      "paths": []
+    },
+    "process_indicators": {
+      "names": [],
+      "paths": [],
+      "pids": []
+    },
+    "process_tree": {
+      "processes": [],
+      "process_paths": [],
+      "pids": [],
+      "parent_processes": [],
+      "command_lines": [],
+      "lineage": []
+    },
+    "network_activity": {
+      "source_ips": [],
+      "destination_ips": [],
+      "ports": [],
+      "protocols": [],
+      "network_services": [],
+      "bytes": [],
+      "geo": [],
+      "domains": []
+    },
+    "host_behaviour": {
+      "config_changes": [],
+      "cpu_usage": [],
+      "device_types": [],
+      "user_roles": [],
+      "operating_systems": []
+    },
+    "event_context": {
+      "event_types": [],
+      "event_times": []
+    },
+    "all_metakey_values": {
+      "host.name": "BETHANYCHUCHU",
+      "user.name": [
+        "NT AUTHORITY\\SYSTEM",
+        "BETHANYCHUCHU\\admin2"
+      ]
+    },
+    "alert_statistics": {
+      "alert_count": 2,
+      "event_count": 2,
+      "risk_score": 70,
+      "average_alert_risk_score": 70,
+      "matched_ioc_count": 5
+    },
+    "matched_metakey_catalog": [
+      "BETHANYCHUCHU",
+      "NT AUTHORITY\\SYSTEM",
+      "bytes.transferred",
+      "device.type",
+      "endpoint",
+      "event.time",
+      "event.type",
+      "file.path",
+      "high risk",
+      "host.name",
+      "process.name",
+      "process.path",
+      "process.pid",
+      "user.name",
+      "user.role"
+    ],
+    "ioc_summary": "[AVAILABILITY] Unexplained changes from privileged accounts — The alert is a high-risk endpoint event tied to the host BETHANYCHUCHU, but no concrete availability-impact telemetry is shown. The only supported match is unexplained activity from a privileged account (NT AUTHORITY\\SYSTEM), which can indicate suspicious privileged-system activity.\n[CONFIDENTIALITY] Unexplained changes from privileged accounts — No network, file-transfer, or exfiltration indicators are present, and no malicious IP/domain evidence exists. The only supported confidentiality IOC is unexplained changes from a privileged account, based on SYSTEM-level activity.\n[INTEGRITY] Odd device/platform behaviour, Unknown process running, Unexplained changes from privileged accounts — The incident provides only generic high-risk endpoint activity with no specific process, file, or configuration details. That supports odd device/platform behavior, unknown process/run-state style suspicion, and unexplained changes from a privileged account; nothing else is evidenced.",
+    "triage_summary": "This is a generic high-risk NetWitness endpoint alert on host BETHANYCHUCHU with SYSTEM-level activity, but there is no concrete evidence of malware execution, persistence, exfiltration, or network activity. Based on the limited telemetry, it is best treated as suspicious privileged activity requiring investigation rather than an active compromise.",
+    "_note": "Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple."
+  },
+  "threat_intelligence": {
+    "incident_id": "INC-53011",
+    "run_id": "INC-53011@20260726-111500-370109",
+    "stage": "threat_intelligence",
+    "status": "completed_with_warnings",
+    "generated_at": "2026-07-26T03:15:14.022524+00:00",
+    "risk_level": "Unknown",
+    "risk_score": 0,
+    "iocs": [],
+    "source_results": {},
+    "malicious_iocs": [],
+    "suspicious_iocs": [],
+    "no_findings_iocs": [],
+    "unknown_iocs": [],
+    "lookup_failed_iocs": [],
+    "warnings": [
+      "No IOCs found in the normalised alert or triage output."
+    ],
+    "errors": [],
+    "stats": {
+      "iocs_enriched": 0,
+      "cache_hits": 0,
+      "skipped_private_ips": 0,
+      "truncated": false,
+      "keyed_sources": [
+        "VirusTotal",
+        "AbuseIPDB"
+      ],
+      "seconds": 0.0
+    },
+    "thinking_process": {
+      "stage": "threat_intelligence",
+      "decision": "Threat Intelligence enrichment completed",
+      "iocs_extracted": 0,
+      "sources_attempted": [],
+      "source_outcomes": {},
+      "malicious_iocs": 0,
+      "suspicious_iocs": 0,
+      "no_findings_iocs": 0,
+      "unknown_iocs": 0,
+      "lookup_failed_iocs": 0,
+      "risk_level": "Unknown",
+      "warnings": [
+        "No IOCs found in the normalised alert or triage output."
+      ],
+      "next_stage": "investigation"
+    }
+  }
+}
