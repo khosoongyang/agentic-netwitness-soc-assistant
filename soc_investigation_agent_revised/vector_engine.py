@@ -1,6 +1,9 @@
 import os
 import chromadb
 from chromadb.utils import embedding_functions
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Initialize persistent local ChromaDB client
 DB_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "ChromaDatabase"))
@@ -11,7 +14,7 @@ COLLECTION_NAME = "soc_alerts"
 # collection in this project uses, or ChromaDB rejects queries with a
 # dimension mismatch against already-stored vectors.
 default_ef = embedding_functions.OpenAIEmbeddingFunction(
-    api_key=os.environ.get("OPENAI_API_KEY", ""),
+    api_key=os.environ.get("OPENAI_API_KEY") or None,
     model_name="text-embedding-3-small",
 )
 
@@ -71,7 +74,7 @@ def ingest_logs(logs_list: list):
     if not logs_list:
         return
     ids = [log["id"] for log in logs_list]
-    documents = [log["document"] for log in logs_list]
+    documents = [log["document"][:20000] if len(log["document"]) > 20000 else log["document"] for log in logs_list]
     metadatas = [log["metadata"] for log in logs_list]
     collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
 
