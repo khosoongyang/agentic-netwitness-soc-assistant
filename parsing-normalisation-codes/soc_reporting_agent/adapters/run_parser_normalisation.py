@@ -177,12 +177,15 @@ def main() -> int:
     }
 
     # Ticket-specific outputs.
+    write_json(parser_dir / "parsed_incident.json", processed)
     write_json(parser_dir / "parser_result.json", result)
     write_json(parser_dir / "processed_alert.json", processed)
     write_json(parser_dir / "processed_alert_ticket_context.json", processed)
 
     # Compatibility outputs for older adapters and existing dashboard routes.
     mirror_ticket_parser_outputs(ticket_id, parser_dir)
+    write_json(OUTPUTS_DIR / "parsed_incident.json", processed)
+    write_json(INPUTS_DIR / "parsed_incident.json", processed)
     write_json(OUTPUTS_DIR / "parser_result.json", result)
     write_json(INPUTS_DIR / "parser_result.json", result)
     write_json(OUTPUTS_DIR / "processed_alert.json", processed)

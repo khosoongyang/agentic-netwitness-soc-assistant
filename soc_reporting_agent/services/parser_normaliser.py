@@ -345,8 +345,9 @@ def load_json_file(path: str) -> Any:
 
 def save_json_file(data: Any, path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
+    pruned = prune_empty_and_null_values(data)
     with open(path, "w", encoding="utf-8") as file:
-        json.dump(make_json_safe(data), file, indent=4, ensure_ascii=False)
+        json.dump(make_json_safe(pruned if pruned is not None else {}), file, indent=4, ensure_ascii=False)
 
 
 def make_json_safe(value: Any) -> Any:
@@ -2092,25 +2093,31 @@ def write_csv_file(data: Dict[str, Any], path: str) -> None:
 
 
 def write_outputs(result: Dict[str, Any], output_dir: str = "outputs/soc_context_parser", write_debug: bool = True) -> Dict[str, str]:
-    Path(output_dir).mkdir(parents=True, exist_ok=True)
-    selected = result.get("normalised_alert") or {}
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Get all normalised alerts (matching parsed_incident_INC-53016.json format)
+    alerts = result.get("normalised_alerts")
+    if not alerts:
+        selected = result.get("normalised_alert")
+        alerts = [selected] if selected else []
+    
+    # Recursively prune all None, empty string, empty list, and empty dict fields
+    pruned_data = prune_empty_and_null_values(alerts) or []
+    
+    parsed_file = str(out_dir / "parsed_incident.json")
+    processed_file = str(out_dir / "processed_alert.json")
+    
+    # Save the single clean pruned JSON file
+    save_json_file(pruned_data, parsed_file)
+    save_json_file(pruned_data, processed_file)
+    
     paths = {
-        "normalised_alert": str(Path(output_dir) / NORMALISED_ALERT_FILE),
-        "processed_alert": str(Path(output_dir) / PROCESSED_ALERT_FILE),
-        "processed_alert_csv": str(Path(output_dir) / PROCESSED_ALERT_CSV_FILE),
-        "all_normalised_alerts": str(Path(output_dir) / ALL_NORMALISED_ALERTS_FILE),
-        "all_parsed_events": str(Path(output_dir) / ALL_PARSED_EVENTS_FILE),
-        "parser_summary": str(Path(output_dir) / PARSER_SUMMARY_FILE),
-        "raw_debug": str(Path(output_dir) / RAW_DEBUG_FILE),
+        "parsed_incident": parsed_file,
+        "normalised_alert": parsed_file,
+        "processed_alert": processed_file,
+        "all_normalised_alerts": parsed_file,
     }
-    save_json_file(selected, paths["normalised_alert"])
-    save_json_file(selected, paths["processed_alert"])
-    write_csv_file(selected, paths["processed_alert_csv"])
-    save_json_file(result.get("normalised_alerts", []), paths["all_normalised_alerts"])
-    save_json_file(result.get("all_parsed_events", []), paths["all_parsed_events"])
-    save_json_file(result.get("parser_summary", {}), paths["parser_summary"])
-    if write_debug:
-        save_json_file(result.get("raw_alert_debug", {}), paths["raw_debug"])
     return paths
 
 
@@ -2285,10 +2292,10 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
     paths = write_outputs(result, output_dir=str(output_dir), write_debug=True)
     normalised = result.get("normalised_alert") or {}
     processed = build_agent_friendly_processed_alert(normalised)
+    parsed_path = output_dir / "parsed_incident.json"
     processed_path = output_dir / "processed_alert.json"
-    processed_csv_path = output_dir / "processed_alert.csv"
+    save_json_file(processed, str(parsed_path))
     save_json_file(processed, str(processed_path))
-    write_csv_file(processed, str(processed_csv_path))
 
     parser_summary = result.get("parser_summary") or {}
     dashboard_result = {
@@ -2321,7 +2328,7 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
         },
         "normalised_alert": normalised,
         "processed_alert": processed,
-        "output_files": {**paths, "processed_alert_flat": str(processed_path), "processed_alert_flat_csv": str(processed_csv_path)},
+        "output_files": {**paths, "parsed_incident_file": str(parsed_path), "processed_alert_flat": str(processed_path)},
         "recommended_next_action": "Run Triage Agent using the normalised alert context." if result.get("parser_status") == "completed" else "Review parser errors or input format before continuing.",
     }
     return make_json_safe(dashboard_result)

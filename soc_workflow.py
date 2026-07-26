@@ -3676,6 +3676,8 @@ def main() -> int:
     ap.add_argument("--force-investigation", action="store_true")
     ap.add_argument("--investigation-timeout", type=int, default=600)
     ap.add_argument("--reporting-timeout", type=int, default=480)
+    ap.add_argument("--allow-retry", action="store_true",
+                    help="Allow retrying a run even if a previous run is awaiting approval")
     ap.add_argument("--force-triage", action="store_true",
                     help="Bypass the triage result cache and re-run Triage")
     args = ap.parse_args()
@@ -3683,7 +3685,7 @@ def main() -> int:
     incident = json.loads(Path(args.incident_file).read_text(encoding="utf-8"))
 
     ctx = run_until_triage_approval(
-        incident, use_mock_triage=args.mock_triage, force_triage=args.force_triage)
+        incident, use_mock_triage=args.mock_triage, force_triage=args.force_triage, allow_retry=args.allow_retry)
 
     _unused = [f"--{f.replace('_', '-')}" for f in
               ("skip_investigation", "force_investigation") if getattr(args, f, False)]

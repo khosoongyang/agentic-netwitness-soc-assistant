@@ -2142,22 +2142,30 @@ def db_save_parsing_result(inc_id: str, result: dict) -> None:
         con.commit()
 
 def db_load_parsed_context(inc_id: str) -> dict | None:
-    """Load the processed_alert this incident's Parsing stage already produced
+    """Load the parsed_incident.json this incident's Parsing stage already produced
     (via the Start Process button), for feeding into triage as parsed_context.
     db_save_parsing_result only stores a compact summary + the on-disk paths
-    (see its docstring), so this reads the flat processed_alert back off disk.
+    (see its docstring), so this reads the flat parsed_incident back off disk.
     Returns None if parsing hasn't completed for this incident — triage falls
     back to its standalone behaviour in that case, same as before this existed."""
     row = db_get_incident(inc_id)
-    if not row or row.get("parsing_status") != "Complete":
+    if not row or str(row.get("parsing_status") or "").lower() not in ("complete", "completed"):
         return None
     try:
         summary = _json.loads(row.get("parsing_result_json") or "{}")
-        path = (summary.get("output_files") or {}).get("processed_alert_flat")
-        if not path or not os.path.exists(path):
-            return None
-        with open(path, "r", encoding="utf-8") as f:
-            return _json.load(f)
+        output_files = summary.get("output_files") or {}
+        candidate_paths = [
+            output_files.get("parsed_incident_file"),
+            output_files.get("processed_alert_flat"),
+            os.path.join("outputs", str(inc_id), "parsing", "parsed_incident.json"),
+            os.path.join("outputs", str(inc_id), "parsing", "processed_alert.json"),
+            os.path.join("soc_reporting_agent", "outputs", str(inc_id), "parsing", "parsed_incident.json"),
+        ]
+        for path in candidate_paths:
+            if path and os.path.exists(path):
+                with open(path, "r", encoding="utf-8") as f:
+                    return _json.load(f)
+        return None
     except Exception:
         return None
 
@@ -4804,35 +4812,76 @@ elif active_page == "My Workspace":
                     # out of this stage and expose the parsed record directly.
                     # Search candidate output directories for actual stage 0 parsing artifacts
                     _sel_str = str(_sel_id)
-                    _candidate_dirs = [
-                        Path("soc_reporting_agent") / "outputs" / _sel_str / "parsing",
-                        Path("outputs") / _sel_str / "parsing",
-                        Path("outputs") / _sel_str,
-                    ]
-
                     _parsed_json_data = None
-                    for cdir in _candidate_dirs:
-                        if cdir.exists():
-                            for afile in [
-                                cdir / "soc_context_netwitness_normalised_alerts.json",
-                                cdir / "all_normalised_alerts.json",
-                                cdir / "processed_alert.json",
-                                cdir / "soc_context_processed_alert.json",
-                            ]:
-                                if afile.exists():
-                                    try:
-                                        _parsed_json_data = afile.read_bytes()
-                                        break
-                                    except Exception:
-                                        pass
-                        if _parsed_json_data:
-                            break
+                    
+                    # 1. Load via db_load_parsed_context
+                    _ctx_dict = db_load_parsed_context(_sel_str)
+                    if _ctx_dict and isinstance(_ctx_dict, (dict, list)):
+                        try:
+                            _parsed_json_data = _json.dumps(_ctx_dict, indent=4, ensure_ascii=False).encode("utf-8")
+                        except Exception:
+                            pass
+                    
+                    # 2. Candidate directory search for actual parsed incident & alert payload files
+                    if not _parsed_json_data:
+                        _candidate_dirs = [
+                            Path("soc_reporting_agent") / "outputs" / _sel_str / "parsing",
+                            Path("outputs") / _sel_str / "parsing",
+                            Path("outputs") / _sel_str,
+                        ]
+                        for cdir in _candidate_dirs:
+                            if cdir.exists():
+                                for afile in [
+                                    cdir / "parsed_incident.json",
+                                    cdir / "processed_alert.json",
+                                    cdir / "soc_context_netwitness_normalised_alerts.json",
+                                    cdir / "all_normalised_alerts.json",
+                                ]:
+                                    if afile.exists():
+                                        try:
+                                            _parsed_json_data = afile.read_bytes()
+                                            break
+                                        except Exception:
+                                            pass
+                            if _parsed_json_data:
+                                break
 
+                    # 3. Dynamic glob search under outputs/ for run-scoped directories matching _sel_str
+                    if not _parsed_json_data:
+                        _search_roots = [Path("outputs"), Path("soc_reporting_agent") / "outputs"]
+                        _target_names = ["parsed_incident.json", "processed_alert.json", "soc_context_netwitness_normalised_alerts.json"]
+                        for root in _search_roots:
+                            if not root.exists():
+                                continue
+                            for p in root.rglob("*"):
+                                if _sel_str in p.name and p.is_dir():
+                                    for tname in _target_names:
+                                        c1 = p / tname
+                                        c2 = p / "parsing" / tname
+                                        candidate = c1 if c1.exists() else (c2 if c2.exists() else None)
+                                        if candidate and candidate.exists():
+                                            try:
+                                                _parsed_json_data = candidate.read_bytes()
+                                                break
+                                            except Exception:
+                                                pass
+                                    if _parsed_json_data:
+                                        break
+                            if _parsed_json_data:
+                                break
+
+                    # 4. Resolve output_files path recorded in parsing_result_json DB column
                     if not _parsed_json_data:
                         try:
-                            _db_json = _inc_row.get("parsing_result_json")
-                            if _db_json and _db_json.strip() not in ("", "{}") and str(_inc_row.get("parsing_status")).lower() in ("complete", "completed"):
-                                _parsed_json_data = _db_json.encode("utf-8")
+                            _db_json_str = _inc_row.get("parsing_result_json")
+                            if _db_json_str and _db_json_str.strip() not in ("", "{}"):
+                                _parsed_meta = _json.loads(_db_json_str)
+                                _out_files = _parsed_meta.get("output_files") or {}
+                                for fkey in ("parsed_incident_file", "processed_alert_flat", "normalised_alert", "all_normalised_alerts"):
+                                    fpath = _out_files.get(fkey)
+                                    if fpath and os.path.exists(fpath):
+                                        _parsed_json_data = Path(fpath).read_bytes()
+                                        break
                         except Exception:
                             pass
 

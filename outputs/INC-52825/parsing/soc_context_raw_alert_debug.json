@@ -1,0 +1,21 @@
+{
+    "parser": "soc_netwitness_parser",
+    "parser_version": "3.4-context-aware-normalised",
+    "input_format": "generic_dictionary",
+    "selected_alert_index": 0,
+    "selected_alert_id": "INC-52825",
+    "selected_alert_raw_evidence": {
+        "raw_meta_key_count": 60,
+        "field_evidence_paths": {
+            "alert_id": [
+                "alert_id"
+            ],
+            "alert_name": [
+                "alert_name"
+            ]
+        },
+        "sample_values": {},
+        "event_evidence_paths": {}
+    },
+    "generated_at": "2026-07-26T11:42:42.008958+00:00"
+}

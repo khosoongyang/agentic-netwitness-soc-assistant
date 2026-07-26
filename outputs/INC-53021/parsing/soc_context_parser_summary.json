@@ -1,0 +1,41 @@
+{
+    "parsing_succeeded": true,
+    "parser_status": "completed",
+    "detected_input_format": "generic_dictionary",
+    "normalised_alert_count": 1,
+    "selected_alert_id": "INC-53021",
+    "parser_confidence": "Medium",
+    "parser_confidence_score": 60,
+    "important_extracted_fields": {
+        "alert_id": "INC-53021",
+        "alert_name": "High Risk Alerts: NetWitness Endpoint",
+        "powershell_analysis": {
+            "encoded_command_present": false,
+            "powershell_indicator_present": false,
+            "decode_status": "not_found",
+            "encoded_command_count": 0,
+            "decoded_command_count": 0,
+            "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+            "risk_assessment": {
+                "risk_level": "Low",
+                "risk_score": 0
+            }
+        }
+    },
+    "missing_important_fields": [
+        "alert_time",
+        "severity"
+    ],
+    "warnings": [
+        "Missing context-relevant parsing fields: alert_time, severity"
+    ],
+    "output_files": {
+        "normalised_alert": "outputs\\INC-53021\\parsing\\soc_context_normalised_alert.json",
+        "processed_alert": "outputs\\INC-53021\\parsing\\soc_context_processed_alert.json",
+        "processed_alert_csv": "outputs\\INC-53021\\parsing\\soc_context_processed_alert.csv",
+        "all_normalised_alerts": "outputs\\INC-53021\\parsing\\soc_context_netwitness_normalised_alerts.json",
+        "parser_summary": "outputs\\INC-53021\\parsing\\soc_context_parser_summary.json",
+        "raw_debug": "outputs\\INC-53021\\parsing\\soc_context_raw_alert_debug.json"
+    },
+    "generated_at": "2026-07-26T11:49:57.624603+00:00"
+}
