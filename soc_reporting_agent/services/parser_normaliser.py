@@ -1826,7 +1826,8 @@ def normalise_alert_record(
 
     # Debug evidence is returned separately and must not be merged into normalised_alert.
     debug_evidence = build_debug_evidence(alert, paths, raw_event_records)
-    return normalised_alert, debug_evidence
+    pruned_normalised_alert = prune_empty_and_null_values(normalised_alert) or normalised_alert
+    return pruned_normalised_alert, debug_evidence
 
 
 def build_compatibility_view(alert: Dict[str, Any], incident: Dict[str, Any]) -> Dict[str, Any]:

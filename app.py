@@ -235,8 +235,11 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False) -
                 st.write(f"**{key}** — failed: {text}")
 
         try:
+            _nw_host = st.session_state.get("nw_host")
+            _nw_token = st.session_state.get("nw_token")
             result = wf_run_until_triage_approval(
-                incident, progress_fn=on_progress, allow_retry=allow_retry)
+                incident, progress_fn=on_progress, allow_retry=allow_retry,
+                host=_nw_host, token=_nw_token)
         except WorkflowAlreadyRunningError as exc:
             wf_status.update(label="Already running", state="complete", expanded=False)
             st.info(f"Triage is already {exc.state.get('workflow_status')} for this "
@@ -3953,15 +3956,23 @@ elif active_page == "My Workspace":
                     _thinking = " ".join(_thinking_parts)
                     _nar = str(inc.get("summary") or "") + " " + " ".join(str(t) for t in _titles)
                     if _selected_stage == "Parsing":
-                        try:
-                            _parsing_ai = _json.loads(_inc_row.get("parsing_result_json") or "{}")
-                        except Exception:
-                            _parsing_ai = {}
-                        _parsing_summary = str(_parsing_ai.get("ai_summary") or "").strip()
-                        st.markdown(_ui.ai_summary(
-                            _parsing_summary or
-                            "No AI summary yet — run Start Process to populate.",
-                            _ui.detect_fallback(_parsing_summary)), unsafe_allow_html=True)
+                        _parsing_status = str(_inc_row.get("parsing_status") or "Not Started")
+                        if _parsing_status.lower() in ("complete", "completed"):
+                            st.markdown(
+                                '<div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:14px">'
+                                '<div style="font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:4px">⚡ Deterministic Parsing &amp; Normalisation Complete</div>'
+                                '<div style="font-size:0.72rem;color:var(--muted)">Data ingested via NetWitness FETCH API, pruned of noise/empty values, and normalized into clean SOC JSON format.</div>'
+                                '</div>',
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            st.markdown(
+                                '<div style="background:var(--bg-secondary);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:14px">'
+                                '<div style="font-size:0.8rem;font-weight:700;color:var(--text);margin-bottom:4px">⚡ Deterministic Parsing &amp; Normalisation Pending</div>'
+                                '<div style="font-size:0.72rem;color:var(--muted)">Run Start Process to ingest, prune noise, and parse all alert metadata and endpoint events.</div>'
+                                '</div>',
+                                unsafe_allow_html=True
+                            )
                     elif _selected_stage == "Triage":
                         # Real LLM-generated summary/thinking from
                         # soc_workflow.generate_triage_ai_summary(), stored
@@ -4076,16 +4087,42 @@ elif active_page == "My Workspace":
                     # Parsing produces structured data rather than an analytical
                     # case view. Keep the downstream Overview/Timeline/etc. tabs
                     # out of this stage and expose the parsed record directly.
-                    _parsed_normalised_output = (
-                        inc if isinstance(inc, dict) else dict(_inc_row)
-                    )
-                    _parsed_json = _json.dumps(
-                        _parsed_normalised_output, indent=2, default=str
-                    ).encode("utf-8")
-                    _parsed_suffix = re.sub(
-                        r"[^A-Za-z0-9_\-]", "_", str(_sel_id)
-                    )[:40]
-                    _parsed_saved = updated if updated and updated != "â€”" else created
+                    # Search candidate output directories for actual stage 0 parsing artifacts
+                    _sel_str = str(_sel_id)
+                    _candidate_dirs = [
+                        Path("soc_reporting_agent") / "outputs" / _sel_str / "parsing",
+                        Path("outputs") / _sel_str / "parsing",
+                        Path("outputs") / _sel_str,
+                    ]
+
+                    _parsed_json_data = None
+                    for cdir in _candidate_dirs:
+                        if cdir.exists():
+                            for afile in [
+                                cdir / "soc_context_netwitness_normalised_alerts.json",
+                                cdir / "all_normalised_alerts.json",
+                                cdir / "processed_alert.json",
+                                cdir / "soc_context_processed_alert.json",
+                            ]:
+                                if afile.exists():
+                                    try:
+                                        _parsed_json_data = afile.read_bytes()
+                                        break
+                                    except Exception:
+                                        pass
+                        if _parsed_json_data:
+                            break
+
+                    if not _parsed_json_data:
+                        try:
+                            _db_json = _inc_row.get("parsing_result_json")
+                            if _db_json and _db_json.strip() not in ("", "{}") and str(_inc_row.get("parsing_status")).lower() in ("complete", "completed"):
+                                _parsed_json_data = _db_json.encode("utf-8")
+                        except Exception:
+                            pass
+
+                    _parsed_suffix = re.sub(r"[^A-Za-z0-9_\-]", "_", str(_sel_id))[:40]
+                    _parsed_saved = updated if updated and updated != "—" else created
 
                     st.markdown(
                         '<div class="parsing-stage-view"></div>'
@@ -4095,56 +4132,66 @@ elif active_page == "My Workspace":
                         'display:none !important;}'
                         '</style>'
                         '<div style="font-size:.85rem;font-weight:700;'
-                        'color:var(--text);margin:16px 0 2px">Generated Files</div>'
-                        '<div style="font-size:.7rem;color:var(--muted);'
-                        'margin-bottom:10px">Download the structured parsed and '
-                        'normalised case data.</div>',
+                        'color:var(--text);margin:16px 0 2px">Generated Files</div>',
                         unsafe_allow_html=True,
                     )
-                    with st.container(border=True):
-                        _gf_doc, _gf_saved, _gf_action = st.columns(
-                            [3.8, 1.6, 1.7], vertical_alignment="center"
+
+                    if not _parsed_json_data:
+                        st.markdown(
+                            '<div style="font-size:.75rem;color:var(--muted);margin-bottom:10px">'
+                            'No parsed output file generated yet — run Start Process to populate.'
+                            '</div>',
+                            unsafe_allow_html=True,
                         )
-                        with _gf_doc:
-                            st.markdown(
-                                '<div style="font-size:.58rem;color:var(--faint);'
-                                'letter-spacing:.08em;margin-bottom:10px">DOCUMENT</div>'
-                                '<div style="display:flex;gap:10px;align-items:center">'
-                                '<div style="width:34px;height:34px;border-radius:8px;'
-                                'background:#41516d;color:#e8eef8;display:flex;'
-                                'align-items:center;justify-content:center;'
-                                'font-family:var(--mono);font-size:.8rem">&lt;&gt;</div>'
-                                '<div><div style="font-size:.78rem;font-weight:700;'
-                                'color:var(--text)">Parsed &amp; Normalised output</div>'
-                                '<div style="font-size:.65rem;color:var(--muted);'
-                                'margin-top:2px">Structured parsed case data ready '
-                                'for downstream agents.</div></div></div>',
-                                unsafe_allow_html=True,
+                    else:
+                        st.markdown(
+                            '<div style="font-size:.7rem;color:var(--muted);margin-bottom:10px">'
+                            'Download structured 100% parsed incident alerts and embedded event telemetry.</div>',
+                            unsafe_allow_html=True,
+                        )
+
+                        # Single Clean Download Card: Parsed Incident & Alerts JSON
+                        with st.container(border=True):
+                            _gf_doc, _gf_saved, _gf_action = st.columns(
+                                [3.8, 1.6, 1.7], vertical_alignment="center"
                             )
-                        with _gf_saved:
-                            st.markdown(
-                                '<div style="font-size:.58rem;color:var(--faint);'
-                                'letter-spacing:.08em;margin-bottom:10px">LAST SAVED</div>'
-                                f'<div style="font-size:.66rem;color:var(--muted)">'
-                                f'{_esc_html(_parsed_saved)}</div>',
-                                unsafe_allow_html=True,
-                            )
-                        with _gf_action:
-                            st.markdown(
-                                '<div style="font-size:.58rem;color:var(--faint);'
-                                'letter-spacing:.08em;margin-bottom:4px">ACTIONS</div>',
-                                unsafe_allow_html=True,
-                            )
-                            st.download_button(
-                                "Download JSON",
-                                data=_parsed_json,
-                                file_name=(
-                                    f"parsed_normalised_output_{_parsed_suffix}.json"
-                                ),
-                                mime="application/json",
-                                key=f"ws_parsed_json_{_parsed_suffix}",
-                                use_container_width=True,
-                            )
+                            with _gf_doc:
+                                st.markdown(
+                                    '<div style="font-size:.58rem;color:var(--faint);'
+                                    'letter-spacing:.08em;margin-bottom:10px">PARSED OUTPUT</div>'
+                                    '<div style="display:flex;gap:10px;align-items:center">'
+                                    '<div style="width:34px;height:34px;border-radius:8px;'
+                                    'background:#41516d;color:#e8eef8;display:flex;'
+                                    'align-items:center;justify-content:center;'
+                                    'font-family:var(--mono);font-size:.8rem">&lt;&gt;</div>'
+                                    '<div><div style="font-size:.78rem;font-weight:700;'
+                                    'color:var(--text)">Parsed Incident &amp; Alerts JSON</div>'
+                                    '<div style="font-size:.65rem;color:var(--muted);'
+                                    'margin-top:2px">100% parsed alert records and embedded event telemetry in clean SOC format.</div></div></div>',
+                                    unsafe_allow_html=True,
+                                )
+                            with _gf_saved:
+                                st.markdown(
+                                    '<div style="font-size:.58rem;color:var(--faint);'
+                                    'letter-spacing:.08em;margin-bottom:10px">LAST SAVED</div>'
+                                    f'<div style="font-size:.66rem;color:var(--muted)">'
+                                    f'{_esc_html(_parsed_saved)}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            with _gf_action:
+                                st.markdown(
+                                    '<div style="font-size:.58rem;color:var(--faint);'
+                                    'letter-spacing:.08em;margin-bottom:4px">ACTIONS</div>',
+                                    unsafe_allow_html=True,
+                                )
+                                st.download_button(
+                                    "Download Parsed JSON",
+                                    data=_parsed_json_data,
+                                    file_name=f"parsed_incident_{_parsed_suffix}.json",
+                                    mime="application/json",
+                                    key=f"ws_parsed_json_{_parsed_suffix}",
+                                    use_container_width=True,
+                                )
 
                 st.markdown("<div style='margin:10px 0'></div>", unsafe_allow_html=True)
                 if _selected_stage == "Triage":

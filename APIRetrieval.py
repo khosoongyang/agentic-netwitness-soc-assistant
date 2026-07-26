@@ -329,6 +329,57 @@ def process_respond_api_telemetry(incident: dict, alerts: list) -> dict:
     }
 
 
+def get_comprehensive_incident_payload(incident_id: str, host: str | None = None, token: str | None = None) -> dict:
+    """Retrieve comprehensive incident + raw alerts telemetry payload.
+    Checks disk for matching JSON exports first (e.g. incident_<id>_respond_api_export.json).
+    If not found and live host+token are provided, fetches raw alerts via NetWitness FETCH API.
+    """
+    inc_clean = str(incident_id or "").strip()
+    
+    # 1. Disk Export Lookup
+    candidate_files = [
+        f"incident_{inc_clean}_respond_api_export.json",
+        f"incident_{inc_clean}.json",
+        f"{inc_clean}.json",
+        f"outputs/{inc_clean}/parsing/raw_input_alert.json",
+    ]
+    for cfile in candidate_files:
+        if os.path.exists(cfile):
+            try:
+                with open(cfile, "r", encoding="utf-8") as f:
+                    export_data = json.load(f)
+                if isinstance(export_data, dict):
+                    print(f"[APIRetrieval] Loaded comprehensive export payload from {cfile}")
+                    return export_data
+            except Exception as exc:
+                print(f"[APIRetrieval] Warning: error reading {cfile}: {exc}")
+
+    # 2. Live NetWitness FETCH API Lookup
+    live_host = (host or os.getenv("NW_HOST", "")).strip().rstrip("/")
+    live_token = (token or os.getenv("NW_TOKEN", os.getenv("NETWITNESS_TOKEN", ""))).strip().strip("'\"")
+
+    if live_host and live_token and inc_clean:
+        try:
+            print(f"[APIRetrieval] Fetching live FETCH API telemetry for incident {inc_clean}...")
+            inc_details = fetch_incident_via_fetch_api(live_host, live_token, inc_clean)
+            headers = {"NetWitness-Token": live_token, "Accept": "application/json"}
+            if not inc_details:
+                inc_details = fetch_incident_details(live_host, headers, inc_clean)
+            
+            raw_alerts = fetch_alerts_via_fetch_api(live_host, live_token, inc_clean, count=1000)
+            if not raw_alerts:
+                raw_alerts, _ = fetch_all_alerts_and_endpoint_events(live_host, headers, inc_clean)
+            
+            return {
+                "incident": inc_details or {"id": inc_clean},
+                "alerts": raw_alerts or [],
+            }
+        except Exception as exc:
+            print(f"[APIRetrieval] Live FETCH API retrieval encountered error: {exc}")
+
+    return {}
+
+
 def main():
     target_arg = sys.argv[1].strip() if len(sys.argv) > 1 else "INC-52825"
 

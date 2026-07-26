@@ -1,0 +1,228 @@
+{
+    "parser": "soc_netwitness_parser",
+    "parser_version": "3.4-context-aware-normalised",
+    "input_format": "incident_with_alerts",
+    "selected_alert_index": 3,
+    "selected_alert_id": "6874e839bfd6a31e1df7c39e",
+    "selected_alert_raw_evidence": {
+        "raw_meta_key_count": 60,
+        "field_evidence_paths": {
+            "incident_id": [
+                "incident_id"
+            ],
+            "incident_title": [
+                "incident_title"
+            ],
+            "incident_priority": [
+                "incident_priority"
+            ],
+            "alert_name": [
+                "alert_name"
+            ],
+            "severity": [
+                "severity"
+            ],
+            "risk_score": [
+                "risk_score"
+            ],
+            "source_ip": [
+                "source_ip"
+            ],
+            "destination_ip": [
+                "destination_ip"
+            ],
+            "username": [
+                "username"
+            ],
+            "hostname": [
+                "hostname"
+            ],
+            "file_name": [
+                "file_name"
+            ],
+            "file_hash": [
+                "file_hash"
+            ],
+            "command_line": [
+                "command_line"
+            ]
+        },
+        "sample_values": {},
+        "event_evidence_paths": {
+            "event_0": {
+                "source_path": "originalAlert.events[0]",
+                "field_evidence_paths": {
+                    "checksum_src": [
+                        "b0b36bff7ae4057f687d839cd4b3d81159ab646f1ee1b22106a927e93decbb61",
+                        "3d1034d6ed3daed60816a25c561e8c83"
+                    ],
+                    "agent_id": "8A4990EF-77DF-CBF5-F833-9DCB4C5EA053",
+                    "file_cat_src": [
+                        "windows process"
+                    ],
+                    "device_type": "nwendpoint",
+                    "sessionid": 913944,
+                    "rid": 913944,
+                    "isp_dst": "Microsoft Azure",
+                    "feed_name": [
+                        "investigation"
+                    ],
+                    "context": [
+                        "network.ipv4",
+                        "network.outgoing"
+                    ],
+                    "directory_src": [
+                        "C:\\Windows\\System32\\"
+                    ],
+                    "msg_id": "nwendpoint",
+                    "country_dst": "Singapore",
+                    "cert_thumbprint": [
+                        "ad2f5cd0b177db47919dd362bd7a8a1c054d9a7a"
+                    ],
+                    "event_source_id": "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:913944",
+                    "process_vid_src": "1240016017440122807",
+                    "esa_time": 1752489114410,
+                    "ip_dst": "4.145.79.81",
+                    "longdec_dst": 103.85030364990234,
+                    "size": 41,
+                    "context_src": [
+                        "file.protected",
+                        "cert.rootMicrosoft",
+                        "file.exe",
+                        "file.arch64",
+                        "signature.microsoft",
+                        "file.signed"
+                    ],
+                    "city_dst": "Singapore",
+                    "nwe_callback_id": "nwe://fc049a04-4bdc-49a2-aa5f-abba25cd12f1",
+                    "ip_proto": 6,
+                    "alias_host": [
+                        "BETHANYCHUCHU"
+                    ],
+                    "com_rsa_netwitness_streams_stream": "FYPRSA3-Policies",
+                    "ip_src": "192.168.10.207",
+                    "param_src": [
+                        "svchost.exe -k netsvcs -p"
+                    ],
+                    "port_src": 50202,
+                    "medium": 32,
+                    "inv_context": [
+                        "event analysis",
+                        "flow analysis"
+                    ],
+                    "user_src": "NT AUTHORITY\\SYSTEM",
+                    "latdec_dst": 1.2868000268936157,
+                    "forward_ip": "127.0.0.1",
+                    "dir_path_src": [
+                        "windows",
+                        "windowsSystem32"
+                    ],
+                    "alias_ip": [
+                        "192.168.10.207",
+                        "192.168.20.201"
+                    ],
+                    "device_disc": 30,
+                    "org_dst": "Microsoft Azure",
+                    "direction": "outbound",
+                    "owner": "BETHANYCHUCHU\\Bethany Chu",
+                    "com_rsa_netwitness_streams_arrival_timestamp": 1752489113249,
+                    "OS": [
+                        "windows",
+                        "Microsoft Windows 10 Pro"
+                    ],
+                    "filename_src": [
+                        "svchost.exe"
+                    ],
+                    "port_dst": 443,
+                    "device_disc_type": "nwendpoint",
+                    "com_rsa_netwitness_streams_source_trail": [
+                        "admin@192.168.20.16:50005"
+                    ],
+                    "inv_category": [
+                        "operations"
+                    ],
+                    "netname": [
+                        "other dst",
+                        "private src",
+                        "private misc"
+                    ],
+                    "time": 1752489107000,
+                    "category": "Network Event",
+                    "com_rsa_netwitness_streams_arrival_sequence": 615707,
+                    "did": "loc16",
+                    "analysis_session": [
+                        "not top 20 dst"
+                    ],
+                    "event_time": 1751970580
+                }
+            },
+            "event_1": {
+                "source_path": "alert.events[0]",
+                "field_evidence_paths": {
+                    "agent_id": "8A4990EF-77DF-CBF5-F833-9DCB4C5EA053",
+                    "data": [
+                        {
+                            "filename": "svchost.exe",
+                            "size": 41,
+                            "hash": "b0b36bff7ae4057f687d839cd4b3d81159ab646f1ee1b22106a927e93decbb61"
+                        }
+                    ],
+                    "destination": {
+                        "device": {
+                            "ip_address": "4.145.79.81"
+                        }
+                    },
+                    "port_src": "50202",
+                    "device_type": "nwendpoint",
+                    "event_source": "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005",
+                    "source": {
+                        "path": "C:\\Windows\\System32\\",
+                        "file_SHA256": "b0b36bff7ae4057f687d839cd4b3d81159ab646f1ee1b22106a927e93decbb61",
+                        "filename": "svchost.exe",
+                        "launch_argument": "svchost.exe -k netsvcs -p",
+                        "device": {
+                            "ip_address": "192.168.10.207"
+                        },
+                        "user": {
+                            "username": "NT AUTHORITY\\SYSTEM"
+                        },
+                        "hash": "b0b36bff7ae4057f687d839cd4b3d81159ab646f1ee1b22106a927e93decbb61"
+                    },
+                    "type": "Endpoint",
+                    "user_src": "NT AUTHORITY\\SYSTEM",
+                    "hostname": "BETHANYCHUCHU",
+                    "process_vid": "1240016017440122807",
+                    "context": [
+                        "network.ipv4",
+                        "network.outgoing"
+                    ],
+                    "operating_system": "windows",
+                    "alias_ip": "192.168.10.207",
+                    "from": "192.168.10.207",
+                    "timestamp": 1752489107000,
+                    "event_source_id": "913944",
+                    "related_links": [
+                        {
+                            "type": "investigate_original_event",
+                            "url": "/investigation/host/ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005/reconstruction/913944/DETAILS"
+                        },
+                        {
+                            "type": "investigate_destination_domain",
+                            "url": "/investigation/ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005/navigate/query/alias.host%3D'BETHANYCHUCHU'%2Fdate%2F2025-07-14T10%3A21%3A47.000Z%2F2025-07-14T10%3A41%3A47.000Z"
+                        }
+                    ],
+                    "port_dst": "443",
+                    "domain": "BETHANYCHUCHU",
+                    "user_account": "BETHANYCHUCHU\\Bethany Chu",
+                    "to": "4.145.79.81",
+                    "category": "Network Event",
+                    "nwe_callback_id": "nwe://fc049a04-4bdc-49a2-aa5f-abba25cd12f1",
+                    "user": "NT AUTHORITY\\SYSTEM",
+                    "analysis_session": "not top 20 dst",
+                    "event_time": 1751970580
+                }
+            }
+        }
+    },
+    "generated_at": "2026-07-26T06:32:06.969506+00:00"
+}
