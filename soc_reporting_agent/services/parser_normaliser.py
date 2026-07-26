@@ -46,6 +46,7 @@ NORMALISED_ALERT_FILE = "soc_context_normalised_alert.json"
 PROCESSED_ALERT_FILE = "soc_context_processed_alert.json"
 PROCESSED_ALERT_CSV_FILE = "soc_context_processed_alert.csv"
 ALL_NORMALISED_ALERTS_FILE = "soc_context_netwitness_normalised_alerts.json"
+ALL_PARSED_EVENTS_FILE = "soc_context_all_parsed_events.json"
 PARSER_SUMMARY_FILE = "soc_context_parser_summary.json"
 RAW_DEBUG_FILE = "soc_context_raw_alert_debug.json"
 
@@ -364,12 +365,73 @@ def make_json_safe(value: Any) -> Any:
 # Cleaning helpers
 # ---------------------------------------------------------------------------
 
+USELESS_STRINGS = {
+    "", "null", "none", "n/a", "na", "undefined", "not available", "unknown", "[]", "{}"
+}
+
+
+def prune_empty_and_null_values(data: Any, max_list_len: int = 50000) -> Any:
+    """Recursively and deterministically removes empty/null values, empty strings,
+    sentinel values ('null', 'none', 'n/a', 'undefined'), empty lists, and empty dicts.
+    Also deduplicates list elements and bounds large lists to max_list_len elements
+    to prevent memory and token explosion on giant incident exports.
+    """
+    if data is None:
+        return None
+
+    if isinstance(data, str):
+        cleaned = data.strip()
+        if not cleaned or cleaned.lower() in USELESS_STRINGS:
+            return None
+        return cleaned
+
+    if isinstance(data, (int, float, bool)):
+        return data
+
+    if isinstance(data, dict):
+        cleaned_dict = {}
+        for key, value in data.items():
+            if key is None:
+                continue
+            str_key = str(key).strip()
+            if not str_key or str_key.lower() in USELESS_STRINGS:
+                continue
+            pruned_val = prune_empty_and_null_values(value, max_list_len=max_list_len)
+            if pruned_val is not None and pruned_val != "" and pruned_val != {} and pruned_val != []:
+                cleaned_dict[str_key] = pruned_val
+        return cleaned_dict if cleaned_dict else None
+
+    if isinstance(data, list):
+        cleaned_list = []
+        seen = set()
+        for item in data:
+            pruned_item = prune_empty_and_null_values(item, max_list_len=max_list_len)
+            if pruned_item is not None and pruned_item != "" and pruned_item != {} and pruned_item != []:
+                if isinstance(pruned_item, (str, int, float, bool)):
+                    item_key = str(pruned_item).lower() if isinstance(pruned_item, str) else pruned_item
+                    if item_key not in seen:
+                        seen.add(item_key)
+                        cleaned_list.append(pruned_item)
+                else:
+                    try:
+                        item_key = json.dumps(pruned_item, sort_keys=True)
+                    except Exception:
+                        item_key = str(pruned_item)
+                    if item_key not in seen:
+                        seen.add(item_key)
+                        cleaned_list.append(pruned_item)
+            if len(cleaned_list) >= max_list_len:
+                break
+        return cleaned_list if cleaned_list else None
+
+    return data
+
 
 def is_useful(value: Any) -> bool:
     if value in (None, "", [], {}):
         return False
     if isinstance(value, str):
-        return value.strip().lower() not in {"", "null", "none", "n/a", "na", "not available", "unknown"}
+        return value.strip().lower() not in USELESS_STRINGS
     return True
 
 
@@ -994,21 +1056,36 @@ def extract_by_alias(flat: Dict[str, Any], field: str) -> Tuple[List[Any], List[
     values: List[Any] = []
     paths: List[str] = []
     aliases = FIELD_ALIASES.get(field, [])
-    for alias in aliases:
-        for path, value in flat.items():
-            if is_useful(value) and alias_matches(alias, path):
+    norm_aliases = [normalise_path(alias) for alias in aliases]
+    for path, value in flat.items():
+        if is_useful(value):
+            path_norm = normalise_path(path)
+            if any(path_norm == a or path_norm.endswith("." + a) or path_norm.endswith(a) for a in norm_aliases):
                 values.append(value)
                 paths.append(path)
     return dedupe(values), dedupe(paths, case_insensitive=False)
 
 
 def extract_all_fields(flat: Dict[str, Any]) -> Tuple[Dict[str, List[Any]], Dict[str, List[str]]]:
-    values: Dict[str, List[Any]] = {}
-    paths: Dict[str, List[str]] = {}
+    values: Dict[str, List[Any]] = {f: [] for f in FIELD_ALIASES}
+    paths: Dict[str, List[str]] = {f: [] for f in FIELD_ALIASES}
+
+    norm_flat = [(path, normalise_path(path), val) for path, val in flat.items() if is_useful(val)]
+    norm_aliases = {
+        field: [normalise_path(alias) for alias in aliases]
+        for field, aliases in FIELD_ALIASES.items()
+    }
+
+    for path, path_norm, val in norm_flat:
+        for field, aliases in norm_aliases.items():
+            if any(path_norm == a or path_norm.endswith("." + a) or path_norm.endswith(a) for a in aliases):
+                values[field].append(val)
+                paths[field].append(path)
+
     for field in FIELD_ALIASES:
-        extracted_values, extracted_paths = extract_by_alias(flat, field)
-        values[field] = extracted_values
-        paths[field] = extracted_paths
+        values[field] = dedupe(values[field])
+        paths[field] = dedupe(paths[field], case_insensitive=False)
+
     return values, paths
 
 
@@ -1042,6 +1119,8 @@ def detect_input_format(data: Any) -> str:
 
 def prepare_incident_and_alerts(data: Any) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     input_format = detect_input_format(data)
+    incident = {}
+    alerts = []
     if input_format == "full_incident_export":
         incident = data.get("incident_raw") if isinstance(data.get("incident_raw"), dict) else {}
         alerts = data.get("alerts_full_raw")
@@ -1050,24 +1129,25 @@ def prepare_incident_and_alerts(data: Any) -> Tuple[Dict[str, Any], List[Dict[st
             alerts = summary.get("items", []) if isinstance(summary, dict) else []
         if not isinstance(alerts, list) or not alerts:
             alerts = data.get("alerts_extracted", [])
-        return incident, [alert for alert in alerts if isinstance(alert, dict)]
-    if input_format == "incident_with_alerts":
+    elif input_format == "incident_with_alerts":
         incident = data.get("incident") if isinstance(data.get("incident"), dict) else {}
         alerts = data.get("alerts") if isinstance(data.get("alerts"), list) else []
-        return incident, [alert for alert in alerts if isinstance(alert, dict)]
-    if input_format == "incident_details_with_alerts":
+    elif input_format == "incident_details_with_alerts":
         incident = data.get("incident_details") if isinstance(data.get("incident_details"), dict) else {}
         alerts = data.get("alerts") if isinstance(data.get("alerts"), list) else []
-        return incident, [alert for alert in alerts if isinstance(alert, dict)]
-    if input_format == "summary_export":
+    elif input_format == "summary_export":
         summary = data.get("alerts_summary_raw", {})
         alerts = summary.get("items", []) if isinstance(summary, dict) else []
-        return {}, [alert for alert in alerts if isinstance(alert, dict)]
-    if input_format == "alert_list":
-        return {}, [alert for alert in data if isinstance(alert, dict)]
-    if isinstance(data, dict):
-        return {}, [data]
-    return {}, []
+    elif input_format == "alert_list":
+        alerts = data if isinstance(data, list) else []
+    elif isinstance(data, dict):
+        alerts = [data]
+
+    # Strip heavy nested arrays from incident so it doesn't inflate every per-alert flattening call
+    if isinstance(incident, dict) and incident:
+        incident = {k: v for k, v in incident.items() if k not in ("alerts", "events", "alerts_full_raw", "alerts_summary_raw")}
+
+    return incident, [alert for alert in alerts if isinstance(alert, dict)]
 
 
 def walk_event_records(data: Any, path: str = "") -> List[Dict[str, Any]]:
@@ -1086,6 +1166,49 @@ def walk_event_records(data: Any, path: str = "") -> List[Dict[str, Any]]:
             child_path = f"{path}[{index}]" if path else f"[{index}]"
             records.extend(walk_event_records(item, child_path))
     return records
+
+
+# ---------------------------------------------------------------------------
+# High level orchestration
+# ---------------------------------------------------------------------------
+
+
+def normalise_netwitness_data(data: Any) -> Dict[str, Any]:
+    """Public function for other project scripts."""
+    return build_standard_alert(data)
+
+
+def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, Any]:
+    pruned_data = prune_empty_and_null_values(data) or data
+    input_format = detect_input_format(pruned_data)
+    incident, raw_alerts = prepare_incident_and_alerts(pruned_data)
+
+    # If raw_alerts array is extremely large (e.g., 1,500+ alerts), bound to top 150 distinct alerts
+    if len(raw_alerts) > 150:
+        bounded_alerts = []
+        seen_titles = set()
+        for ra in raw_alerts:
+            orig = ra.get("originalAlert") if isinstance(ra.get("originalAlert"), dict) else ra
+            t = str(ra.get("title") or ra.get("name") or orig.get("moduleName") or "").strip()
+            if t not in seen_titles or len(bounded_alerts) < 50:
+                seen_titles.add(t)
+                bounded_alerts.append(ra)
+            if len(bounded_alerts) >= 150:
+                break
+        raw_alerts = bounded_alerts
+
+    normalised_alerts: List[Dict[str, Any]] = []
+    debug_by_alert: List[Dict[str, Any]] = []
+    for index, raw_alert in enumerate(raw_alerts):
+        alert, debug_evidence = normalise_alert_record(
+            incident=incident,
+            alert=raw_alert,
+            alert_index=index,
+            alert_count=len(raw_alerts),
+            input_format=input_format,
+        )
+        normalised_alerts.append(alert)
+        debug_by_alert.append(debug_evidence)
 
 
 # ---------------------------------------------------------------------------
@@ -1130,41 +1253,67 @@ def merge_event_values(alert_values: Dict[str, List[Any]], events: List[Dict[str
 
 
 def normalise_event(event: Dict[str, Any], index: int, alert_event_type: Optional[str] = None) -> Dict[str, Any]:
-    flat = flatten_json({"event": event})
-    values, _ = extract_all_fields(flat)
-    url = first(values.get("url", []))
-    source_port = first(numeric_list(values.get("source_port", []), "int"))
-    destination_port = first(numeric_list(values.get("destination_port", []), "int"))
-    protocol = first(normalise_protocol_values(values.get("protocol", [])))
-    raw_event_time = first(values.get("event_time", []))
+    if not isinstance(event, dict):
+        return {"event_index": index, "event_type": alert_event_type or "Unknown"}
+
+    src = event.get("source") if isinstance(event.get("source"), dict) else {}
+    src_dev = src.get("device") if isinstance(src.get("device"), dict) else {}
+    src_usr = src.get("user") if isinstance(src.get("user"), dict) else {}
+
+    dst = event.get("destination") if isinstance(event.get("destination"), dict) else {}
+    dst_dev = dst.get("device") if isinstance(dst.get("device"), dict) else {}
+    dst_usr = dst.get("user") if isinstance(dst.get("user"), dict) else {}
+
+    source_ip = event.get("ip_src") or src_dev.get("ipAddress") or event.get("source_ip")
+    destination_ip = event.get("ip_dst") or dst_dev.get("ipAddress") or event.get("destination_ip")
+
+    source_port = safe_int(event.get("port_src") or src_dev.get("port") or event.get("source_port"))
+    destination_port = safe_int(event.get("port_dst") or dst_dev.get("port") or event.get("destination_port"))
+
+    username = event.get("user_src") or event.get("owner") or src_usr.get("username") or dst_usr.get("username") or event.get("username")
+    hostname = event.get("domain") or event.get("alias_host") or event.get("host_src") or src_dev.get("dnsHostname") or dst_dev.get("dnsHostname") or event.get("hostname")
+
+    file_name = event.get("filename_src") or event.get("filename") or event.get("process_name") or event.get("file_name")
+    file_path = event.get("directory_src") or event.get("directory") or event.get("process_path") or event.get("file_path")
+    file_hash = event.get("checksum_src") or event.get("hash") or event.get("file_hash") or event.get("sha256")
+
+    cmdline = event.get("param_src") or event.get("param") or event.get("cmdline") or event.get("command_line")
+    if isinstance(cmdline, list):
+        cmdline = " ".join(str(x) for x in cmdline if x)
+
+    url = event.get("url") or event.get("uri")
+    user_agent = event.get("user_agent") or event.get("useragent")
+    raw_event_time = event.get("event_time") or event.get("time") or event.get("timestamp")
+
+    clean_usr = first(clean_usernames([username])) if username else None
+    parsed_hash = first(extract_hashes([file_hash])) if file_hash else None
 
     return {
         "event_index": index,
         "event_time": timestamp_to_iso(raw_event_time),
         "event_time_epoch_ms": timestamp_to_epoch_ms(raw_event_time),
-        "event_type": first(values.get("event_type", []), alert_event_type or "Unknown"),
-        "action": first(values.get("action", [])),
-        "source_ip": first(values.get("source_ip", [])),
-        "destination_ip": first(values.get("destination_ip", [])),
+        "event_type": str(event.get("event_type") or event.get("eventSource") or alert_event_type or "Unknown"),
+        "action": str(event.get("action") or event.get("boc") or "") or None,
+        "source_ip": str(source_ip) if source_ip else None,
+        "destination_ip": str(destination_ip) if destination_ip else None,
         "source_port": source_port,
         "destination_port": destination_port,
-        "protocol": protocol,
-        "username": first(clean_usernames(values.get("username", []))),
-        "hostname": first(values.get("hostname", [])),
-        "domain": first(values.get("domain", [])),
-        "file_name": first(values.get("file_name", [])),
-        "file_hash": first(extract_hashes(values.get("file_hash", []))),
-        "url": url if is_external_url(url) else None,
-        "user_agent": first(values.get("user_agent", [])),
-        "process_name": first(values.get("process_name", [])),
-        "process_path": first(values.get("process_path", [])),
-        "parent_process_name": first(values.get("parent_process_name", [])),
-        "child_process_name": first(values.get("child_process_name", [])),
-        "child_process_path": first(values.get("child_process_path", [])),
-        "command_line": first(values.get("command_line", [])),
-        "session_id": first(values.get("session_id", [])),
-        "event_source_id": first(values.get("event_source_id", [])),
-        "record_id": first(values.get("record_id", [])),
+        "protocol": str(event.get("protocol") or "") or None,
+        "username": clean_usr,
+        "hostname": str(hostname) if hostname else None,
+        "domain": str(event.get("domain") or hostname) if (event.get("domain") or hostname) else None,
+        "file_name": str(file_name) if file_name else None,
+        "file_path": str(file_path) if file_path else None,
+        "file_hash": parsed_hash,
+        "url": str(url) if url and is_external_url(url) else None,
+        "user_agent": str(user_agent) if user_agent else None,
+        "process_name": str(file_name) if file_name else None,
+        "process_path": str(file_path) if file_path else None,
+        "parent_process_name": str(event.get("parent_process_name") or "") or None,
+        "command_line": str(cmdline) if cmdline else None,
+        "session_id": event.get("session_id"),
+        "event_source_id": event.get("event_source_id"),
+        "record_id": event.get("record_id"),
     }
 
 
@@ -1263,6 +1412,54 @@ def _normalise_title_for_compare(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
 
+def extract_alert_values_fast(alert: Dict[str, Any], incident: Dict[str, Any]) -> Tuple[Dict[str, List[Any]], Dict[str, List[str]]]:
+    orig = alert.get("originalAlert") if isinstance(alert.get("originalAlert"), dict) else alert
+    events = alert.get("events") or orig.get("events") or []
+    
+    values: Dict[str, List[Any]] = {f: [] for f in FIELD_ALIASES}
+    paths: Dict[str, List[str]] = {f: [] for f in FIELD_ALIASES}
+    
+    def _add(field, val, p=""):
+        if val is not None and val != "":
+            values[field].append(val)
+            paths[field].append(p or field)
+
+    _add("incident_id", incident.get("id") or alert.get("incidentId") or alert.get("incident_id"))
+    _add("incident_title", incident.get("title") or incident.get("name"))
+    _add("incident_priority", incident.get("priority"))
+    _add("risk_score", alert.get("riskScore") or incident.get("riskScore"))
+    _add("severity", alert.get("severity") or incident.get("priority") or incident.get("severity"))
+    _add("alert_id", alert.get("id") or alert.get("alertId"))
+    _add("alert_name", alert.get("title") or alert.get("name") or orig.get("moduleName"))
+    _add("alert_time", alert.get("created") or alert.get("timestamp") or alert.get("firstAlertTime"))
+
+    for ev in events:
+        if isinstance(ev, dict):
+            _add("hostname", ev.get("domain") or ev.get("alias_host") or ev.get("host_src"))
+            _add("username", ev.get("user_src") or ev.get("owner"))
+            _add("source_ip", ev.get("ip_src"))
+            _add("destination_ip", ev.get("ip_dst"))
+            _add("file_hash", ev.get("checksum_src") or ev.get("hash") or ev.get("file_hash"))
+            _add("file_name", ev.get("filename_src") or ev.get("filename") or ev.get("process_name"))
+            _add("command_line", ev.get("param_src") or ev.get("param") or ev.get("cmdline"))
+            
+            src = ev.get("source") if isinstance(ev.get("source"), dict) else {}
+            src_dev = src.get("device") if isinstance(src.get("device"), dict) else {}
+            src_usr = src.get("user") if isinstance(src.get("user"), dict) else {}
+            _add("source_ip", src_dev.get("ipAddress"))
+            _add("hostname", src_dev.get("dnsHostname"))
+            _add("username", src_usr.get("username"))
+
+            dst = ev.get("destination") if isinstance(ev.get("destination"), dict) else {}
+            dst_dev = dst.get("device") if isinstance(dst.get("device"), dict) else {}
+            dst_usr = dst.get("user") if isinstance(dst.get("user"), dict) else {}
+            _add("destination_ip", dst_dev.get("ipAddress"))
+            _add("hostname", dst_dev.get("dnsHostname"))
+            _add("username", dst_usr.get("username"))
+
+    return values, paths
+
+
 def normalise_alert_record(
     incident: Dict[str, Any],
     alert: Dict[str, Any],
@@ -1270,9 +1467,7 @@ def normalise_alert_record(
     alert_count: int,
     input_format: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    combined = {"incident": incident, "alert": alert}
-    flat = flatten_json(combined)
-    values, paths = extract_all_fields(flat)
+    values, paths = extract_alert_values_fast(alert, incident)
 
     raw_event_records = walk_event_records(alert)
     preliminary_event_type = first(values.get("event_type", []), "Unknown")
@@ -1436,7 +1631,7 @@ def normalise_alert_record(
         signature_ids=signature_ids,
         community_ids=community_ids,
         normalised_events=normalised_events,
-        raw_meta_key_count=len(flat),
+        raw_meta_key_count=len(alert),
     )
 
     missing_fields = dedupe(
@@ -1610,7 +1805,7 @@ def normalise_alert_record(
             "selected_alert_index": alert_index,
             "alert_count": alert_count,
             "raw_event_count": len(raw_event_records),
-            "raw_meta_key_count": len(flat),
+            "raw_meta_key_count": len(alert),
             "parser_confidence": parser_confidence,
             "parser_confidence_score": parser_confidence_score,
             "missing_fields": dedupe(missing_fields),
@@ -1630,8 +1825,9 @@ def normalise_alert_record(
     normalised_alert["compatibility_view"] = build_compatibility_view(normalised_alert, incident)
 
     # Debug evidence is returned separately and must not be merged into normalised_alert.
-    debug_evidence = build_debug_evidence(flat, paths, raw_event_records)
-    return normalised_alert, debug_evidence
+    debug_evidence = build_debug_evidence(alert, paths, raw_event_records)
+    pruned_normalised_alert = prune_empty_and_null_values(normalised_alert) or normalised_alert
+    return pruned_normalised_alert, debug_evidence
 
 
 def build_compatibility_view(alert: Dict[str, Any], incident: Dict[str, Any]) -> Dict[str, Any]:
@@ -1685,25 +1881,28 @@ def build_compatibility_view(alert: Dict[str, Any], incident: Dict[str, Any]) ->
 
 def build_debug_evidence(flat: Dict[str, Any], paths: Dict[str, List[str]], raw_event_records: List[Dict[str, Any]]) -> Dict[str, Any]:
     sample_values: Dict[str, List[Any]] = {}
+    is_dict = isinstance(flat, dict)
     for field, field_paths in paths.items():
-        samples = []
+        if not field_paths:
+            continue
+        samples: List[Any] = []
         for path in field_paths[:8]:
-            if path in flat and is_useful(flat[path]):
+            if is_dict and path in flat and is_useful(flat[path]):
                 samples.append(flat[path])
         if samples:
             sample_values[field] = dedupe(samples)
 
     event_evidence: Dict[str, Any] = {}
-    for index, record in enumerate(raw_event_records):
-        event_flat = flatten_json({"event": record["raw_event"]})
-        _, event_paths = extract_all_fields(event_flat)
-        event_evidence[f"event_{index}"] = {
-            "source_path": record["source_path"],
-            "field_evidence_paths": {field: value for field, value in event_paths.items() if value},
-        }
+    for index, record in enumerate(raw_event_records[:50]):
+        raw_ev = record.get("raw_event") or {}
+        if isinstance(raw_ev, dict):
+            event_evidence[f"event_{index}"] = {
+                "source_path": record.get("source_path", ""),
+                "field_evidence_paths": {k: v for k, v in raw_ev.items() if is_useful(v)},
+            }
 
     return {
-        "raw_meta_key_count": len(flat),
+        "raw_meta_key_count": len(paths),
         "field_evidence_paths": {field: field_paths for field, field_paths in paths.items() if field_paths},
         "sample_values": sample_values,
         "event_evidence_paths": event_evidence,
@@ -1795,11 +1994,14 @@ def normalise_netwitness_data(data: Any) -> Dict[str, Any]:
 
 
 def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, Any]:
-    input_format = detect_input_format(data)
-    incident, raw_alerts = prepare_incident_and_alerts(data)
+    pruned_data = prune_empty_and_null_values(data) or data
+    input_format = detect_input_format(pruned_data)
+    incident, raw_alerts = prepare_incident_and_alerts(pruned_data)
 
     normalised_alerts: List[Dict[str, Any]] = []
     debug_by_alert: List[Dict[str, Any]] = []
+    all_parsed_events: List[Dict[str, Any]] = []
+
     for index, raw_alert in enumerate(raw_alerts):
         alert, debug_evidence = normalise_alert_record(
             incident=incident,
@@ -1810,6 +2012,17 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
         )
         normalised_alerts.append(alert)
         debug_by_alert.append(debug_evidence)
+
+        # Collect event records across all alerts
+        raw_events = walk_event_records(raw_alert)
+        alert_title = alert.get("alert_summary", {}).get("alert_name") or "Unknown Alert"
+        alert_id = alert.get("alert_summary", {}).get("alert_id")
+        preliminary_type = alert.get("alert_summary", {}).get("event_type", "Unknown")
+        for evt_idx, record in enumerate(raw_events):
+            parsed_evt = normalise_event(record["raw_event"], evt_idx, preliminary_type)
+            parsed_evt["parent_alert_id"] = alert_id
+            parsed_evt["parent_alert_title"] = alert_title
+            all_parsed_events.append(parsed_evt)
 
     selected_alert = max(normalised_alerts, key=severity_sort_score) if normalised_alerts else None
     selected_index = selected_alert.get("parser_metadata", {}).get("selected_alert_index", 0) if selected_alert else None
@@ -1831,12 +2044,23 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
         "input_shape": input_format,
         "alert_count": len(normalised_alerts),
         "normalised_alert_count": len(normalised_alerts),
+        "event_count": len(all_parsed_events),
         "selected_alert_id": parser_summary.get("selected_alert_id"),
         "selected_alert": selected_alert,
         "normalised_alert": selected_alert,
         "normalised_alerts": normalised_alerts,
+        "all_parsed_events": all_parsed_events,
         "parser_summary": parser_summary,
         "raw_alert_debug": raw_debug,
+        "output_files": {
+            "normalised_alert": str(Path(output_dir) / NORMALISED_ALERT_FILE),
+            "processed_alert": str(Path(output_dir) / PROCESSED_ALERT_FILE),
+            "processed_alert_csv": str(Path(output_dir) / PROCESSED_ALERT_CSV_FILE),
+            "all_normalised_alerts": str(Path(output_dir) / ALL_NORMALISED_ALERTS_FILE),
+            "all_parsed_events": str(Path(output_dir) / ALL_PARSED_EVENTS_FILE),
+            "parser_summary": str(Path(output_dir) / PARSER_SUMMARY_FILE),
+            "raw_debug": str(Path(output_dir) / RAW_DEBUG_FILE),
+        },
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -1875,6 +2099,7 @@ def write_outputs(result: Dict[str, Any], output_dir: str = "outputs/soc_context
         "processed_alert": str(Path(output_dir) / PROCESSED_ALERT_FILE),
         "processed_alert_csv": str(Path(output_dir) / PROCESSED_ALERT_CSV_FILE),
         "all_normalised_alerts": str(Path(output_dir) / ALL_NORMALISED_ALERTS_FILE),
+        "all_parsed_events": str(Path(output_dir) / ALL_PARSED_EVENTS_FILE),
         "parser_summary": str(Path(output_dir) / PARSER_SUMMARY_FILE),
         "raw_debug": str(Path(output_dir) / RAW_DEBUG_FILE),
     }
@@ -1882,6 +2107,7 @@ def write_outputs(result: Dict[str, Any], output_dir: str = "outputs/soc_context
     save_json_file(selected, paths["processed_alert"])
     write_csv_file(selected, paths["processed_alert_csv"])
     save_json_file(result.get("normalised_alerts", []), paths["all_normalised_alerts"])
+    save_json_file(result.get("all_parsed_events", []), paths["all_parsed_events"])
     save_json_file(result.get("parser_summary", {}), paths["parser_summary"])
     if write_debug:
         save_json_file(result.get("raw_alert_debug", {}), paths["raw_debug"])
@@ -2045,7 +2271,7 @@ def build_agent_friendly_processed_alert(normalised_alert: Dict[str, Any]) -> Di
         "powershell_analysis": powershell,
         "web_indicators": web,
     }
-    return make_json_safe(processed)
+    return prune_empty_and_null_values(make_json_safe(processed)) or {}
 
 
 def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Path = "outputs/soc_context_parser") -> Dict[str, Any]:
@@ -2078,6 +2304,7 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
         "parser_confidence_score": parser_summary.get("parser_confidence_score", 0),
         "selected_alert_id": result.get("selected_alert_id"),
         "normalised_alert_count": result.get("normalised_alert_count", 0),
+        "event_count": result.get("event_count", 0),
         "important_extracted_fields": parser_summary.get("important_extracted_fields", {}),
         "missing_important_fields": parser_summary.get("missing_important_fields", []),
         "warnings": parser_summary.get("warnings", []),

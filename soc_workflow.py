@@ -55,6 +55,7 @@ from typing import Any
 
 import workflow_state_store as wss
 import workflow_validation as wv
+from nw_alerts import _merge_alert_digest
 
 ROOT       = Path(__file__).resolve().parent
 # Swapped 2026-07-22: the team's revised investigation agent (adds
@@ -2885,16 +2886,42 @@ def export_report_documents(incident_id: str | None, timeout: int = 180, *,
 # 8.  FULL WORKFLOW
 # ══════════════════════════════════════════════════════════════════════════════
 
+def enrich_incident_with_apiretrieval_fetch(incident: dict, host: str | None = None, token: str | None = None) -> dict:
+    """Enrich incident with comprehensive raw alerts via APIRetrieval FETCH API or disk exports."""
+    inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
+    try:
+        import APIRetrieval
+        payload = APIRetrieval.get_comprehensive_incident_payload(inc_id, host=host, token=token)
+        if isinstance(payload, dict) and payload:
+            inc_data = payload.get("incident") if isinstance(payload.get("incident"), dict) else {}
+            alerts = payload.get("alerts") if isinstance(payload.get("alerts"), list) else []
+            if alerts:
+                combined = dict(incident)
+                if inc_data:
+                    combined.update({k: v for k, v in inc_data.items() if v not in (None, "", [], {})})
+                combined["alerts"] = alerts
+                _merge_alert_digest(combined)
+                _log("INGESTION", f"Enriched incident {inc_id} with {len(alerts)} comprehensive raw alerts via APIRetrieval")
+                return combined
+    except Exception as exc:
+        _log("INGESTION", f"APIRetrieval fetch fallback skipped for {inc_id}: {exc}")
+    return incident
+
+
 def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
                               force_triage: bool = False, allow_retry: bool = False,
-                              progress_fn=None, parsing_only: bool = False) -> dict:
-    """Run Parsing and, unless ``parsing_only`` is true, Triage.
+                              progress_fn=None, parsing_only: bool = False,
+                              host: str | None = None, token: str | None = None) -> dict:
+    """The single Parsing -> Triage entry point. Both the Start Process
+    button and the chat trigger in app.py call this through the shared
+    _run_triage_workflow_with_ui() helper — there is no second,
+    independently-sequenced path.
 
-    The case-page Parsing action uses ``parsing_only=True`` so completing
-    Parsing leaves Triage pending for an explicit later action. The chat
-    triage trigger retains the full Parsing -> Triage path. Full runs stop
-    after the mandatory SOC Analyst approval pause and do not start
-    Investigation.
+    Runs Parsing and, unless ``parsing_only`` is true, Triage. The case-page
+    Parsing action uses ``parsing_only=True`` so completing Parsing leaves
+    Triage pending for an explicit later action. The chat triage trigger
+    retains the full Parsing -> Triage path. Full runs stop after the
+    mandatory SOC Analyst approval pause and do not start Investigation.
 
     Raises workflow_state_store.WorkflowAlreadyRunningError if a run is
     already Processing or Awaiting Approval for this incident and
@@ -2902,6 +2929,10 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     pipeline_db_init()
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
     title  = incident.get("title") or incident.get("name") or "Untitled"
+    
+    # Enrich incident with comprehensive raw alerts using APIRetrieval FETCH API / disk exports
+    incident = enrich_incident_with_apiretrieval_fetch(incident, host=host, token=token)
+    
     ctx: dict = {"incident": incident, "errors": {}, "stages": {}}
     run_started = datetime.now()
 
