@@ -1,584 +1,33 @@
 {
-  "agent": "Investigation Agent",
-  "subprocess": {
-    "started_at": "2026-07-25T23:54:41",
-    "returncode": 0,
-    "success": true,
-    "stdout": "\u001b[96m[*] Initializing SOC Incident Response Pipeline...\u001b[0m\n\u001b[96m[*] Starting Bulk Ingestion of 1 raw alert logs...\u001b[0m\n\u001b[92m[+] Bulk Ingestion completed. Vector store populated with 1 items.\u001b[0m\n[+] CorrelationEngine: Loaded 13 active incidents into memory cache.\n\u001b[96m[*] Evaluating remaining queue. Picked investigative Seed Alert: INC-53027_alert.json\u001b[0m\n[*] CorrelationEngine: Processing alert INC-53027 through two-tier engine...\n[*] CorrelationEngine: Tier 1 took 799.34ms. Decision: MERGE (Score: 0.860)\n\u001b[96m[*] Auto-selected Privilege Escalation (endpoint) playbook for: '['unauthorized access', 'compromised asset (non-critical)']' / 'unknown'\u001b[0m\n\u001b[92m[+] Confirmed Match. Merging alert INC-53027 into Incident Incident-011\u001b[0m\n2026-07-25 23:55:05,472 - SyncEngine - INFO - [sync_engine.py:514] - IncidentSyncManager: Initiating update of incident Incident-011\n2026-07-25 23:55:07,237 - SyncEngine - INFO - [sync_engine.py:383] - ChromaIncidentVectorStore: Upserted incident Incident-011\n2026-07-25 23:55:07,250 - SyncEngine - INFO - [sync_engine.py:178] - Saved incident file: incident_reports/Incident-011\\incident_data.json\n2026-07-25 23:55:07,251 - SyncEngine - INFO - [sync_engine.py:558] - IncidentSyncManager: Successfully updated and synced incident Incident-011\n\u001b[92m[+] All alert files in 'triaged_alerts/' have been handled. Queue is empty!\u001b[0m\n\u001b[96m[*] Running parallel report generation and enrichment for 1 incidents...\u001b[0m\n\u001b[96m[*] [LLM CALL] Pass 1: Lightweight Playbook Evaluation & Pivot Extraction for INC-52825...\u001b[0m\n\u001b[91m[!] ERROR: Pass 1 LLM call failed: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.\u001b[0m\n\u001b[96m[*] [LLM CALL] Pass 2: Re-evaluating playbook and compiling final report for INC-52825...\u001b[0m\n\u001b[92m[+] PolicyVectorIndex: Loaded relevant sections classification from cache.\u001b[0m\n\u001b[92m[+] PolicyVectorIndex: Skipping population (using existing cached vector store).\u001b[0m\n\u001b[91m[!] ERROR: Pass 2 LLM call failed: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.\u001b[0m\n2026-07-25 23:55:08,759 - SyncEngine - INFO - [sync_engine.py:514] - IncidentSyncManager: Initiating update of incident Incident-011\n2026-07-25 23:55:09,371 - SyncEngine - INFO - [sync_engine.py:383] - ChromaIncidentVectorStore: Upserted incident Incident-011\n2026-07-25 23:55:09,374 - SyncEngine - INFO - [sync_engine.py:178] - Saved incident file: incident_reports/Incident-011\\incident_data.json\n2026-07-25 23:55:09,374 - SyncEngine - INFO - [sync_engine.py:558] - IncidentSyncManager: Successfully updated and synced incident Incident-011\n\u001b[92m[+] Case report stored securely inside: incident_reports/Incident-011\\final_analysis_report.md\u001b[0m\n\u001b[96m[*] SOC Incident Response Pipeline shut down successfully.\u001b[0m\n",
-    "stderr": ""
-  },
-  "incident_id": "INC-53027",
   "status": "completed",
-  "incident_folder": "Incident-011",
-  "summary": "[Feedback loop: investigation found 5 evidence gap(s) but the triage deep-dive failed (Connection error.); pass-1 findings kept.]\n\n[Correlated cluster Incident-011: INC-52825, INC-53025, INC-53027 — this run was triggered by INC-53027.]\n\nAnalysis failed due to error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.. Timeline: [2025-07-14T11:21:34+00:00] INC-52825: Incident INC-52825 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1558. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1558. The enrichment alert statistics matched ioc count is 11. The enrichment alert statistics risk score is 70. The enrichment all metakey values host.name is BETHANYCHUCHU. The enrichment all metakey values ip.dst lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227. The enrichment all metakey values ip.src lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207. The enrichment all metakey values user.name lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The enrichment behavioural alerts alert titles lists: Chu Wen - Lateral Move Detected, Disables UAC. The enrichment behavioural alerts alert types lists: Endpoint. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 4.175.87.197, 52.167.249.196, 20.247.184.197, 20.189.173.5, 4.145.79.81, 8.8.4.4, 20.189.173.3, 4.145.79.80, 111.223.64.89, 40.126.16.163, 20.189.173.2, 8.8.8.8, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 4.145.79.82, 52.175.242.182, 96.7.102.164, fe80:0:0:0:8357:3c50:a453:d4e8, 199.232.210.172, 40.70.76.27, 13.107.246.254, 13.89.179.14, 42.99.140.16, 52.185.211.133, 13.89.179.11, 239.255.255.250, 192.168.20.255, 43.174.32.194, ff02:0:0:0:0:0:0:c, 20.190.144.138, 111.223.64.90, 192.168.20.16, 23.205.209.179, 23.205.209.215, 135.18.128.209, 13.71.55.58, 204.79.197.222, 52.182.143.214, 172.169.87.222, 13.95.31.18, 150.171.86.254, 23.100.109.78, 40.74.78.229, 42.99.128.187, 13.89.178.27, 13.89.178.26, 52.167.17.97, 52.123.128.14, 124.155.222.152, 20.189.173.26, 51.116.246.104, 51.105.71.136, 150.171.27.12, 150.171.27.11, 52.231.186.36, 150.171.28.254, ff02:0:0:0:0:0:0:fb, 13.107.6.156, 13.107.5.91, 20.44.239.154, 52.168.117.173, 40.119.249.228, 13.107.5.93, 111.223.64.40, 52.168.117.175, 192.168.10.205, 13.69.109.130, 192.168.10.207, 13.107.253.254, 23.210.96.161, 13.107.253.59, 109.61.38.38, 52.140.118.28, 172.202.163.200, 40.74.98.195, 23.205.210.56, 224.0.0.251, 23.205.210.58, 43.175.139.86, 43.175.139.84, 42.99.140.56, 52.165.164.15, fe80:0:0:0:f747:13c9:cf0e:da39, ff02:0:0:0:0:0:1:2, 23.205.208.8, 124.155.222.178, 13.107.42.16, 130.213.27.176, 23.206.182.56, fe80:0:0:0:9706:3f55:e752:75ca, 43.152.143.189, 20.43.150.84, 52.168.117.168, 52.252.28.242, 40.119.213.159, 13.107.226.59, 20.249.177.218, 52.123.129.14, 20.42.65.88, 192.168.10.14, 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105, 20.72.205.209, 42.99.140.33, 42.99.140.32, 52.149.20.212, 4.245.163.56, 20.190.144.160, 192.168.10.255, 20.190.144.163, 20.190.144.165, 23.58.144.239, 20.42.65.93, 150.171.27.254, 20.42.65.94, 23.50.87.128, 52.137.106.217, 20.198.167.116, 42.99.140.42, 20.106.86.13. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: BETHANYCHUCHU. The enrichment endpoint identity mac addresses lists: . The enrichment endpoint identity source ips lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207, fe80:0:0:0:f747:13c9:cf0e:da39, fe80:0:0:0:8357:3c50:a453:d4e8, 0:0:0:0:0:0:0:1, 127.0.0.1. The enrichment endpoint identity users lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes, Unexplained changes from privileged accounts — High CPU usage likely due to malicious activity (alert count 1558). Configuration changes and unexplained privileged account activity are indicated by 'Disables UAC' alert and SYSTEM account usage.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device, Geographic-based anomalies — Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and unusual destinations (e.g., 20.247.184.197). Geographic anomalies: 111.223.64.89 likely outside normal region.\n[INTEGRITY] Odd device/platform behaviour, Unknown binaries installed, Unknown process running, Configuration changes, Unexplained changes from privileged accounts — Odd behavior: 'Lateral Move Detected' and 'Disables UAC' alerts. Unknown binaries/processes likely from lateral movement. Configuration changes and unexplained privileged account activity (SYSTEM).. The enrichment matched metakey catalog lists: AlertTitles, DestinationIp, SourceIp, User, alert.type, bytes.out, bytes.transferred, change.type, config.change, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, geo.country, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, user.name, user.role. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 4.175.87.197, 52.167.249.196, 20.247.184.197, 20.189.173.5, 4.145.79.81, 8.8.4.4, 20.189.173.3, 4.145.79.80, 111.223.64.89, 40.126.16.163, 20.189.173.2, 8.8.8.8, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 4.145.79.82, 52.175.242.182, 96.7.102.164, fe80:0:0:0:8357:3c50:a453:d4e8, 199.232.210.172, 40.70.76.27, 13.107.246.254, 13.89.179.14, 42.99.140.16, 52.185.211.133, 13.89.179.11, 239.255.255.250, 192.168.20.255, 43.174.32.194, ff02:0:0:0:0:0:0:c, 20.190.144.138, 111.223.64.90, 192.168.20.16, 23.205.209.179, 23.205.209.215, 135.18.128.209, 13.71.55.58, 204.79.197.222, 52.182.143.214, 172.169.87.222, 13.95.31.18, 150.171.86.254, 23.100.109.78, 40.74.78.229, 42.99.128.187, 13.89.178.27, 13.89.178.26, 52.167.17.97, 52.123.128.14, 124.155.222.152, 20.189.173.26, 51.116.246.104, 51.105.71.136, 150.171.27.12, 150.171.27.11, 52.231.186.36, 150.171.28.254, ff02:0:0:0:0:0:0:fb, 13.107.6.156, 13.107.5.91, 20.44.239.154, 52.168.117.173, 40.119.249.228, 13.107.5.93, 111.223.64.40, 52.168.117.175, 192.168.10.205, 13.69.109.130, 192.168.10.207, 13.107.253.254, 23.210.96.161, 13.107.253.59, 109.61.38.38, 52.140.118.28, 172.202.163.200, 40.74.98.195, 23.205.210.56, 224.0.0.251, 23.205.210.58, 43.175.139.86, 43.175.139.84, 42.99.140.56, 52.165.164.15, fe80:0:0:0:f747:13c9:cf0e:da39, ff02:0:0:0:0:0:1:2, 23.205.208.8, 124.155.222.178, 13.107.42.16, 130.213.27.176, 23.206.182.56, fe80:0:0:0:9706:3f55:e752:75ca, 43.152.143.189, 20.43.150.84, 52.168.117.168, 52.252.28.242, 40.119.213.159, 13.107.226.59, 20.249.177.218, 52.123.129.14, 20.42.65.88, 192.168.10.14, 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105, 20.72.205.209, 42.99.140.33, 42.99.140.32, 52.149.20.212, 4.245.163.56, 20.190.144.160, 192.168.10.255, 20.190.144.163, 20.190.144.165, 23.58.144.239, 20.42.65.93, 150.171.27.254, 20.42.65.94, 23.50.87.128, 52.137.106.217, 20.198.167.116, 42.99.140.42, 20.106.86.13. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207, fe80:0:0:0:f747:13c9:cf0e:da39, fe80:0:0:0:8357:3c50:a453:d4e8, 0:0:0:0:0:0:0:1, 127.0.0.1. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment triage summary is Host BETHANYCHUCHU shows signs of active lateral movement and privilege escalation with 1558 alerts, including 'Lateral Move Detected' and 'Disables UAC'. Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and high CPU usage indicate ongoing compromise.. The incident details description is Host BETHANYCHUCHU shows signs of active lateral movement and privilege escalation with 1558 alerts, including 'Lateral Move Detected' and 'Disables UAC'. Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and high CPU usage indicate ongoing compromise.. The incident details mitre att&ck tactic is Lateral Movement. The incident details mitre att&ck technique is T1021 Remote Services. The incident details timestamp is 2025-07-14T11:21:34+00:00. The incident id is INC-52825. The log indicators computer name is BETHANYCHUCHU. The log indicators operating system is Unknown. The log indicators target user is NT AUTHORITY\\SYSTEM. The network indicators destination ip is 124.155.222.24. The network indicators source ip is fe80:0:0:0:9706:3f55:e752:75ca. The observed indicators destination ips lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105. The observed indicators entity from alert title is BETHANYCHUCHU. The observed indicators hostnames lists: BETHANYCHUCHU. The observed indicators ip addresses lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105. The observed indicators source ips lists: 192.168.10.204, 192.168.20.201, 192.168.10.207. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes, Unexplained changes from privileged accounts — High CPU usage likely due to malicious activity (alert count 1558). Configuration changes and unexplained privileged account activity are indicated by 'Disables UAC' alert and SYSTEM account usage.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device, Geographic-based anomalies — Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and unusual destinations (e.g., 20.247.184.197). Geographic anomalies: 111.223.64.89 likely outside normal region.\n[INTEGRITY] Odd device/platform behaviour, Unknown binaries installed, Unknown process running, Configuration changes, Unexplained changes from privileged accounts — Odd behavior: 'Lateral Move Detected' and 'Disables UAC' alerts. Unknown binaries/processes likely from lateral movement. Configuration changes and unexplained privileged account activity (SYSTEM).. The triage matched ioc count is 11. The triage matched metakeys lists: AlertTitles, DestinationIp, SourceIp, User, alert.type, bytes.out, bytes.transferred, change.type, config.change, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, geo.country, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, user.name, user.role. The triage metakey values host.name is BETHANYCHUCHU. The triage metakey values ip.dst lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227. The triage metakey values ip.src lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207. The triage metakey values user.name lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is Critical. The triage risk rating overall risk is Critical. The triage risk rating rationale is High alert volume (1558), lateral movement and UAC disable alerts, and traffic to known malicious IPs indicate adversary is highly likely to have initiated and the event is occurring at a critical frequency with almost certain adverse impact.. The triage ticket unc is #00037A.\n[2026-01-08T07:36:22+00:00] INC-53025: Incident INC-53025 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 7. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Malicious HTA file detected (kelly). The enrichment behavioural alerts alert types lists: Endpoint. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: . The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: KELLYWANG. The enrichment endpoint identity mac addresses lists: . The enrichment endpoint identity source ips lists: . The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and NetWitness alert indicate system instability and crashes.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — Malicious activity detected by security tool suggests data exfiltration or unauthorized access.\n[INTEGRITY] Unknown process running, Unknown binaries installed, Configuration changes — Compromised system likely altered processes, installed unauthorized software, and modified configurations.. The enrichment matched metakey catalog lists: alert.type, bytes.out, change.type, compromise, config.change, cpu.usage, data_exfiltration, device.type, domain, event.type, file.hash, file.name, file.path, file.size, high_risk, host.name, ip.dst, ip.src, malicious_activity, process.name, process.path, process.pid, protocol, security_alert, unauthorized_changes, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: . The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: . The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is Critical incident involving active compromise of KELLYWANG's endpoint with NetWitness alerts indicating system instability, data exfiltration attempts, and unauthorized system modifications. Immediate containment and forensic preservation are required.. The incident details description is Critical incident involving active compromise of KELLYWANG's endpoint with NetWitness alerts indicating system instability, data exfiltration attempts, and unauthorized system modifications. Immediate containment and forensic preservation are required.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-01-08T07:36:22+00:00. The incident id is INC-53025. The log indicators computer name is KELLYWANG. The log indicators operating system is Unknown. The log indicators target user is Unknown. The observed indicators destination ips lists: . The observed indicators entity from alert title is KELLYWANG. The observed indicators hostnames lists: KELLYWANG. The observed indicators ip addresses lists: . The observed indicators source ips lists: . The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: NetWitness Endpoint for KELLYWANG. The triage ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and NetWitness alert indicate system instability and crashes.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — Malicious activity detected by security tool suggests data exfiltration or unauthorized access.\n[INTEGRITY] Unknown process running, Unknown binaries installed, Configuration changes — Compromised system likely altered processes, installed unauthorized software, and modified configurations.. The triage matched ioc count is 7. The triage matched metakeys lists: alert.type, bytes.out, change.type, compromise, config.change, cpu.usage, data_exfiltration, device.type, domain, event.type, file.hash, file.name, file.path, file.size, high_risk, host.name, ip.dst, ip.src, malicious_activity, process.name, process.path, process.pid, protocol, security_alert, unauthorized_changes, user.name. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is Critical. The triage risk rating rationale is High CPU usage, core dumps, and malicious network activity indicate active system compromise with high risk of crashes, data exfiltration, and integrity breaches.. The triage ticket unc is #00025A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.",
-  "severity": "High",
-  "indicators": [
-    "file.path",
-    "20.189.173.2",
-    "40.70.76.",
-    "52.175.242.182",
-    "42.99.140.56",
-    "52.231.186.",
-    "111.223.64.",
-    "150.171.27.12",
-    "127.0.0.1",
-    "20.42.65.93",
-    "port.dst",
-    "40.74.98.195",
-    "23.100.109.",
-    "224.0.0.251",
-    "20.189.173.3",
-    "20.72.205.",
-    "52.168.117.",
-    "20.42.65.94",
-    "52.149.20.212",
-    "40.119.249.228",
-    "13.95.31.18",
-    "135.18.128.",
-    "150.171.86.254",
-    "150.171.86.",
-    "change.type",
-    "13.107.246.254",
-    "13.89.179.",
-    "13.107.226.59",
-    "20.190.144.163",
-    "51.116.246.104",
-    "13.107.253.",
-    "20.189.173.5",
-    "20.44.239.154",
-    "40.119.213.159",
-    "52.252.28.",
-    "42.99.140.32",
-    "135.18.128.209",
-    "111.223.64.40",
-    "109.61.38.38",
-    "52.167.17.97",
-    "file.name",
-    "204.79.197.",
-    "124.155.222.",
-    "process.pid",
-    "52.182.143.",
-    "13.107.253.59",
-    "111.223.64.89",
-    "52.123.128.",
-    "40.126.16.",
-    "43.174.32.194",
-    "4.145.79.81",
-    "150.171.27.254",
-    "52.167.249.196",
-    "23.100.109.78",
-    "192.168.10.210",
-    "4.145.79.",
-    "20.42.73.",
-    "150.171.28.254",
-    "52.140.118.28",
-    "40.119.249.",
-    "20.198.167.",
-    "40.74.78.229",
-    "20.42.65.",
-    "96.7.102.",
-    "20.43.150.",
-    "20.43.150.84",
-    "192.168.10.207",
-    "23.206.182.56",
-    "23.205.209.179",
-    "13.107.6.156",
-    "23.205.210.",
-    "43.152.143.",
-    "13.89.178.26",
-    "52.123.129.",
-    "52.167.249.",
-    "23.205.208.",
-    "188.40.170.197",
-    "13.71.55.58",
-    "20.44.239.",
-    "4.245.163.56",
-    "13.71.55.",
-    "192.168.20.16",
-    "13.89.178.27",
-    "52.185.211.133",
-    "23.205.209.",
-    "96.7.102.164",
-    "20.189.173.",
-    "51.116.246.",
-    "13.69.109.130",
-    "203.116.175.105",
-    "172.202.163.",
-    "20.42.65.88",
-    "42.99.140.16",
-    "premieraccount-netflix.com",
-    "111.223.64.90",
-    "bethanychuchu",
-    "52.165.164.15",
-    "8.8.8.",
-    "192.168.20.",
-    "42.99.140.",
-    "23.205.209.215",
-    "124.155.222.152",
-    "user.name",
-    "4.175.87.197",
-    "199.232.210.172",
-    "52.252.28.242",
-    "kellywang",
-    "43.175.139.",
-    "188.40.170.",
-    "104.208.16.91",
-    "event.type",
-    "52.149.20.",
-    "239.255.255.",
-    "42.99.140.42",
-    "20.190.144.165",
-    "20.72.205.209",
-    "42.99.140.9",
-    "file.size",
-    "4.145.79.82",
-    "172.169.87.",
-    "20.198.167.116",
-    "user.role",
-    "192.168.10.",
-    "51.105.71.",
-    "150.171.28.",
-    "20.189.173.26",
-    "cpu.usage",
-    "172.202.163.200",
-    "8.8.8.8",
-    "239.255.255.250",
-    "52.137.106.217",
-    "52.168.117.168",
-    "alert.type",
-    "config.change",
-    "8.8.4.4",
-    "52.137.106.",
-    "124.155.222.24",
-    "42.99.128.",
-    "4.145.79.80",
-    "51.105.71.136",
-    "109.61.38.",
-    "43.175.138.",
-    "43.174.32.",
-    "192.168.10.255",
-    "43.175.139.86",
-    "150.171.28.12",
-    "52.175.242.",
-    "4.175.87.",
-    "40.126.16.163",
-    "192.168.20.255",
-    "13.107.42.",
-    "150.171.27.11",
-    "20.42.73.26",
-    "192.168.10.14",
-    "20.249.177.",
-    "203.116.175.",
-    "40.74.98.",
-    "52.123.128.14",
-    "bytes.out",
-    "43.175.139.84",
-    "13.107.42.16",
-    "20.249.177.218",
-    "130.213.27.",
-    "23.210.96.161",
-    "13.107.6.",
-    "device.type",
-    "file.hash",
-    "23.58.144.239",
-    "13.89.179.11",
-    "13.95.31.",
-    "52.165.164.",
-    "8.8.4.",
-    "13.107.253.254",
-    "23.58.144.",
-    "224.0.0.",
-    "52.168.117.175",
-    "40.70.76.27",
-    "52.231.186.36",
-    "13.107.5.91",
-    "13.107.226.",
-    "199.232.214.172",
-    "20.106.86.",
-    "52.168.117.173",
-    "13.107.5.93",
-    "23.205.210.58",
-    "40.119.213.",
-    "172.169.87.222",
-    "52.185.211.",
-    "124.155.222.178",
-    "52.123.129.14",
-    "42.99.140.33",
-    "199.232.214.",
-    "ip.src",
-    "4.245.163.",
-    "42.99.128.187",
-    "13.107.246.",
-    "13.69.109.",
-    "199.232.210.",
-    "192.168.10.205",
-    "43.152.143.189",
-    "23.50.87.",
-    "process.name",
-    "127.0.0.",
-    "13.107.5.",
-    "23.205.208.8",
-    "23.205.210.56",
-    "52.182.143.214",
-    "204.79.197.222",
-    "process.path",
-    "40.74.78.",
-    "20.247.184.",
-    "20.106.86.13",
-    "host.name",
-    "event.time",
-    "13.89.178.",
-    "43.175.138.227",
-    "130.213.27.176",
-    "23.50.87.128",
-    "20.247.184.197",
-    "192.168.10.204",
-    "150.171.27.",
-    "104.208.16.",
-    "23.210.96.",
-    "20.190.144.160",
-    "52.140.118.",
-    "192.168.20.201",
-    "23.206.182.",
-    "20.190.144.138",
-    "20.190.144.",
-    "nt authority\\system",
-    "ip.dst",
-    "13.89.179.14",
-    "52.167.17."
-  ],
-  "narrative_report": "# INVESTIGATION SUMMARY: INC-52825 (Incident-011)\n\n**Final Severity:** High\n*Fallback due to error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.*\n\n**Confidence Level:** Low\n*Fallback due to error*\n\n## Investigative Workflow\n- Triage\n\n## Technical Chronology & MITRE ATT&CK TTP Mapping\n\nAnalysis failed due to error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.. Timeline: [2025-07-14T11:21:34+00:00] INC-52825: Incident INC-52825 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1558. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1558. The enrichment alert statistics matched ioc count is 11. The enrichment alert statistics risk score is 70. The enrichment all metakey values host.name is BETHANYCHUCHU. The enrichment all metakey values ip.dst lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227. The enrichment all metakey values ip.src lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207. The enrichment all metakey values user.name lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The enrichment behavioural alerts alert titles lists: Chu Wen - Lateral Move Detected, Disables UAC. The enrichment behavioural alerts alert types lists: Endpoint. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 4.175.87.197, 52.167.249.196, 20.247.184.197, 20.189.173.5, 4.145.79.81, 8.8.4.4, 20.189.173.3, 4.145.79.80, 111.223.64.89, 40.126.16.163, 20.189.173.2, 8.8.8.8, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 4.145.79.82, 52.175.242.182, 96.7.102.164, fe80:0:0:0:8357:3c50:a453:d4e8, 199.232.210.172, 40.70.76.27, 13.107.246.254, 13.89.179.14, 42.99.140.16, 52.185.211.133, 13.89.179.11, 239.255.255.250, 192.168.20.255, 43.174.32.194, ff02:0:0:0:0:0:0:c, 20.190.144.138, 111.223.64.90, 192.168.20.16, 23.205.209.179, 23.205.209.215, 135.18.128.209, 13.71.55.58, 204.79.197.222, 52.182.143.214, 172.169.87.222, 13.95.31.18, 150.171.86.254, 23.100.109.78, 40.74.78.229, 42.99.128.187, 13.89.178.27, 13.89.178.26, 52.167.17.97, 52.123.128.14, 124.155.222.152, 20.189.173.26, 51.116.246.104, 51.105.71.136, 150.171.27.12, 150.171.27.11, 52.231.186.36, 150.171.28.254, ff02:0:0:0:0:0:0:fb, 13.107.6.156, 13.107.5.91, 20.44.239.154, 52.168.117.173, 40.119.249.228, 13.107.5.93, 111.223.64.40, 52.168.117.175, 192.168.10.205, 13.69.109.130, 192.168.10.207, 13.107.253.254, 23.210.96.161, 13.107.253.59, 109.61.38.38, 52.140.118.28, 172.202.163.200, 40.74.98.195, 23.205.210.56, 224.0.0.251, 23.205.210.58, 43.175.139.86, 43.175.139.84, 42.99.140.56, 52.165.164.15, fe80:0:0:0:f747:13c9:cf0e:da39, ff02:0:0:0:0:0:1:2, 23.205.208.8, 124.155.222.178, 13.107.42.16, 130.213.27.176, 23.206.182.56, fe80:0:0:0:9706:3f55:e752:75ca, 43.152.143.189, 20.43.150.84, 52.168.117.168, 52.252.28.242, 40.119.213.159, 13.107.226.59, 20.249.177.218, 52.123.129.14, 20.42.65.88, 192.168.10.14, 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105, 20.72.205.209, 42.99.140.33, 42.99.140.32, 52.149.20.212, 4.245.163.56, 20.190.144.160, 192.168.10.255, 20.190.144.163, 20.190.144.165, 23.58.144.239, 20.42.65.93, 150.171.27.254, 20.42.65.94, 23.50.87.128, 52.137.106.217, 20.198.167.116, 42.99.140.42, 20.106.86.13. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: BETHANYCHUCHU. The enrichment endpoint identity mac addresses lists: . The enrichment endpoint identity source ips lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207, fe80:0:0:0:f747:13c9:cf0e:da39, fe80:0:0:0:8357:3c50:a453:d4e8, 0:0:0:0:0:0:0:1, 127.0.0.1. The enrichment endpoint identity users lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes, Unexplained changes from privileged accounts — High CPU usage likely due to malicious activity (alert count 1558). Configuration changes and unexplained privileged account activity are indicated by 'Disables UAC' alert and SYSTEM account usage.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device, Geographic-based anomalies — Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and unusual destinations (e.g., 20.247.184.197). Geographic anomalies: 111.223.64.89 likely outside normal region.\n[INTEGRITY] Odd device/platform behaviour, Unknown binaries installed, Unknown process running, Configuration changes, Unexplained changes from privileged accounts — Odd behavior: 'Lateral Move Detected' and 'Disables UAC' alerts. Unknown binaries/processes likely from lateral movement. Configuration changes and unexplained privileged account activity (SYSTEM).. The enrichment matched metakey catalog lists: AlertTitles, DestinationIp, SourceIp, User, alert.type, bytes.out, bytes.transferred, change.type, config.change, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, geo.country, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, user.name, user.role. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 4.175.87.197, 52.167.249.196, 20.247.184.197, 20.189.173.5, 4.145.79.81, 8.8.4.4, 20.189.173.3, 4.145.79.80, 111.223.64.89, 40.126.16.163, 20.189.173.2, 8.8.8.8, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 4.145.79.82, 52.175.242.182, 96.7.102.164, fe80:0:0:0:8357:3c50:a453:d4e8, 199.232.210.172, 40.70.76.27, 13.107.246.254, 13.89.179.14, 42.99.140.16, 52.185.211.133, 13.89.179.11, 239.255.255.250, 192.168.20.255, 43.174.32.194, ff02:0:0:0:0:0:0:c, 20.190.144.138, 111.223.64.90, 192.168.20.16, 23.205.209.179, 23.205.209.215, 135.18.128.209, 13.71.55.58, 204.79.197.222, 52.182.143.214, 172.169.87.222, 13.95.31.18, 150.171.86.254, 23.100.109.78, 40.74.78.229, 42.99.128.187, 13.89.178.27, 13.89.178.26, 52.167.17.97, 52.123.128.14, 124.155.222.152, 20.189.173.26, 51.116.246.104, 51.105.71.136, 150.171.27.12, 150.171.27.11, 52.231.186.36, 150.171.28.254, ff02:0:0:0:0:0:0:fb, 13.107.6.156, 13.107.5.91, 20.44.239.154, 52.168.117.173, 40.119.249.228, 13.107.5.93, 111.223.64.40, 52.168.117.175, 192.168.10.205, 13.69.109.130, 192.168.10.207, 13.107.253.254, 23.210.96.161, 13.107.253.59, 109.61.38.38, 52.140.118.28, 172.202.163.200, 40.74.98.195, 23.205.210.56, 224.0.0.251, 23.205.210.58, 43.175.139.86, 43.175.139.84, 42.99.140.56, 52.165.164.15, fe80:0:0:0:f747:13c9:cf0e:da39, ff02:0:0:0:0:0:1:2, 23.205.208.8, 124.155.222.178, 13.107.42.16, 130.213.27.176, 23.206.182.56, fe80:0:0:0:9706:3f55:e752:75ca, 43.152.143.189, 20.43.150.84, 52.168.117.168, 52.252.28.242, 40.119.213.159, 13.107.226.59, 20.249.177.218, 52.123.129.14, 20.42.65.88, 192.168.10.14, 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105, 20.72.205.209, 42.99.140.33, 42.99.140.32, 52.149.20.212, 4.245.163.56, 20.190.144.160, 192.168.10.255, 20.190.144.163, 20.190.144.165, 23.58.144.239, 20.42.65.93, 150.171.27.254, 20.42.65.94, 23.50.87.128, 52.137.106.217, 20.198.167.116, 42.99.140.42, 20.106.86.13. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207, fe80:0:0:0:f747:13c9:cf0e:da39, fe80:0:0:0:8357:3c50:a453:d4e8, 0:0:0:0:0:0:0:1, 127.0.0.1. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment triage summary is Host BETHANYCHUCHU shows signs of active lateral movement and privilege escalation with 1558 alerts, including 'Lateral Move Detected' and 'Disables UAC'. Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and high CPU usage indicate ongoing compromise.. The incident details description is Host BETHANYCHUCHU shows signs of active lateral movement and privilege escalation with 1558 alerts, including 'Lateral Move Detected' and 'Disables UAC'. Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and high CPU usage indicate ongoing compromise.. The incident details mitre att&ck tactic is Lateral Movement. The incident details mitre att&ck technique is T1021 Remote Services. The incident details timestamp is 2025-07-14T11:21:34+00:00. The incident id is INC-52825. The log indicators computer name is BETHANYCHUCHU. The log indicators operating system is Unknown. The log indicators target user is NT AUTHORITY\\SYSTEM. The network indicators destination ip is 124.155.222.24. The network indicators source ip is fe80:0:0:0:9706:3f55:e752:75ca. The observed indicators destination ips lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105. The observed indicators entity from alert title is BETHANYCHUCHU. The observed indicators hostnames lists: BETHANYCHUCHU. The observed indicators ip addresses lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105. The observed indicators source ips lists: 192.168.10.204, 192.168.20.201, 192.168.10.207. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes, Unexplained changes from privileged accounts — High CPU usage likely due to malicious activity (alert count 1558). Configuration changes and unexplained privileged account activity are indicated by 'Disables UAC' alert and SYSTEM account usage.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device, Geographic-based anomalies — Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and unusual destinations (e.g., 20.247.184.197). Geographic anomalies: 111.223.64.89 likely outside normal region.\n[INTEGRITY] Odd device/platform behaviour, Unknown binaries installed, Unknown process running, Configuration changes, Unexplained changes from privileged accounts — Odd behavior: 'Lateral Move Detected' and 'Disables UAC' alerts. Unknown binaries/processes likely from lateral movement. Configuration changes and unexplained privileged account activity (SYSTEM).. The triage matched ioc count is 11. The triage matched metakeys lists: AlertTitles, DestinationIp, SourceIp, User, alert.type, bytes.out, bytes.transferred, change.type, config.change, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, geo.country, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, user.name, user.role. The triage metakey values host.name is BETHANYCHUCHU. The triage metakey values ip.dst lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227. The triage metakey values ip.src lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207. The triage metakey values user.name lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is Critical. The triage risk rating overall risk is Critical. The triage risk rating rationale is High alert volume (1558), lateral movement and UAC disable alerts, and traffic to known malicious IPs indicate adversary is highly likely to have initiated and the event is occurring at a critical frequency with almost certain adverse impact.. The triage ticket unc is #00037A.\n[2026-01-08T07:36:22+00:00] INC-53025: Incident INC-53025 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 7. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Malicious HTA file detected (kelly). The enrichment behavioural alerts alert types lists: Endpoint. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: . The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: KELLYWANG. The enrichment endpoint identity mac addresses lists: . The enrichment endpoint identity source ips lists: . The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and NetWitness alert indicate system instability and crashes.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — Malicious activity detected by security tool suggests data exfiltration or unauthorized access.\n[INTEGRITY] Unknown process running, Unknown binaries installed, Configuration changes — Compromised system likely altered processes, installed unauthorized software, and modified configurations.. The enrichment matched metakey catalog lists: alert.type, bytes.out, change.type, compromise, config.change, cpu.usage, data_exfiltration, device.type, domain, event.type, file.hash, file.name, file.path, file.size, high_risk, host.name, ip.dst, ip.src, malicious_activity, process.name, process.path, process.pid, protocol, security_alert, unauthorized_changes, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: . The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: . The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is Critical incident involving active compromise of KELLYWANG's endpoint with NetWitness alerts indicating system instability, data exfiltration attempts, and unauthorized system modifications. Immediate containment and forensic preservation are required.. The incident details description is Critical incident involving active compromise of KELLYWANG's endpoint with NetWitness alerts indicating system instability, data exfiltration attempts, and unauthorized system modifications. Immediate containment and forensic preservation are required.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-01-08T07:36:22+00:00. The incident id is INC-53025. The log indicators computer name is KELLYWANG. The log indicators operating system is Unknown. The log indicators target user is Unknown. The observed indicators destination ips lists: . The observed indicators entity from alert title is KELLYWANG. The observed indicators hostnames lists: KELLYWANG. The observed indicators ip addresses lists: . The observed indicators source ips lists: . The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: NetWitness Endpoint for KELLYWANG. The triage ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and NetWitness alert indicate system instability and crashes.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — Malicious activity detected by security tool suggests data exfiltration or unauthorized access.\n[INTEGRITY] Unknown process running, Unknown binaries installed, Configuration changes — Compromised system likely altered processes, installed unauthorized software, and modified configurations.. The triage matched ioc count is 7. The triage matched metakeys lists: alert.type, bytes.out, change.type, compromise, config.change, cpu.usage, data_exfiltration, device.type, domain, event.type, file.hash, file.name, file.path, file.size, high_risk, host.name, ip.dst, ip.src, malicious_activity, process.name, process.path, process.pid, protocol, security_alert, unauthorized_changes, user.name. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is Critical. The triage risk rating rationale is High CPU usage, core dumps, and malicious network activity indicate active system compromise with high risk of crashes, data exfiltration, and integrity breaches.. The triage ticket unc is #00025A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n\n| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Lateral Movement - SMB Connection (2025-07-14T11:21:34+00:00) | user: NT AUTHORITY\\SYSTEM \\| host: BETHANYCHUCHU used net use to connect to remote SMB share | Lateral Movement | Remote Services: SMB/Windows Admin Shares | T1021.002 |\n| Attack Phase #2 (2026-01-08T07:36:22+00:00) | Activity on host: KELLYWANG: Incident INC-53025 details are as follows: The classification alert type is Inte... | Unknown | Unknown | T1059.001 |\n| Initial Access - Email Activity (2026-04-28T11:08:52+00:00) | host: premieraccount-netflix.com received email/attachment: Incident INC-53027 details are as follows: The classification alert type lists: ... | Initial Access | Phishing: Spearphishing Attachment | T1566.001 |\n| Initial Access - Email Activity (2026-04-28T11:08:52+00:00) | host: premieraccount-netflix.com received email/attachment: Incident INC-53027 details are as follows: The classification alert type lists: ... | Initial Access | Phishing: Spearphishing Attachment | T1566.001 |\n| Initial Access - Email Activity (2026-04-28T11:08:52+00:00) | host: premieraccount-netflix.com received email/attachment: Incident INC-53027 details are as follows: The classification alert type lists: ... | Initial Access | Phishing: Spearphishing Attachment | T1566.001 |\n| Initial Access - Email Activity (2026-04-28T11:08:52+00:00) | host: premieraccount-netflix.com received email/attachment: Incident INC-53027 details are as follows: The classification alert type lists: ... | Initial Access | Phishing: Spearphishing Attachment | T1566.001 |\n\n## Playbook Execution Trace\n| Step ID | Instruction | Status | Findings |\n| --- | --- | --- | --- |\n| `step_1` | Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n| `step_2` | Was it horizontal or vertical | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n| `step_3` | Was any malicious process spawned on the victim's machine? | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n| `step_4` | Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n| `step_5` | Based on the analysis, determine if further investigation is necessary and the containment steps | **NOT_MET** | Pass 1 Error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable. |\n\n## Recommended Containment Actions\n- Isolate system and review manually.\n\n## Appendix M: Policy-Based Compliance Audit Log\n\n| Audit ID | Decision Point | Policy Reference | Input Summary | Result | Decision Made | Human Review? | Timestamp |\n| --- | --- | --- | --- | --- | --- | --- | --- |\n| N/A | N/A | N/A | No policy audit logs recorded | N/A | N/A | N/A | N/A |\n",
-  "investigated_for": "INC-53027",
-  "cluster_alert_ids": [
-    "INC-52825",
-    "INC-53025",
-    "INC-53027"
-  ],
-  "artifacts": {
-    "incident_folder": "C:\\Users\\24016932\\Downloads\\DashboardUpdated\\agentic-netwitness-soc-assistant\\soc_investigation_agent_revised\\incident_reports\\Incident-011",
-    "incident_data": "C:\\Users\\24016932\\Downloads\\DashboardUpdated\\agentic-netwitness-soc-assistant\\soc_investigation_agent_revised\\incident_reports\\Incident-011\\incident_data.json",
-    "report_markdown": "C:\\Users\\24016932\\Downloads\\DashboardUpdated\\agentic-netwitness-soc-assistant\\soc_investigation_agent_revised\\incident_reports\\Incident-011\\final_analysis_report.md"
-  },
-  "feedback_loop": {
-    "triggered": true,
-    "passes": 1,
-    "gaps": [
-      "step_2: Was it horizontal or vertical",
-      "step_3: Was any malicious process spawned on the victim's machine?",
-      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
-      "step_5: Based on the analysis, determine if further investigation is necessary and the containment steps",
-      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System"
-    ],
-    "supplement_error": "Connection error."
-  },
-  "iocs": [
-    {
-      "type": "ip",
-      "value": "188.40.170.197",
-      "source": "Internal corpus correlation (skills_sidecar)",
-      "confidence": "Medium",
-      "reputation": null,
-      "evidence": "['referenced in 7 closed/finalized case(s)', '1 of the related alerts are HIGH/CRITICAL severity', '1 corpus mention(s)']; 1 corpus mention(s)"
-    },
-    {
-      "type": "ip",
-      "value": "192.168.10.210",
-      "source": "Internal corpus correlation (skills_sidecar)",
-      "confidence": "Medium",
-      "reputation": null,
-      "evidence": "['referenced in 7 closed/finalized case(s)', '1 of the related alerts are HIGH/CRITICAL severity', '1 corpus mention(s)']; 1 corpus mention(s)"
-    },
-    "file.path",
-    "20.189.173.2",
-    "40.70.76.",
-    "52.175.242.182",
-    "42.99.140.56",
-    "52.231.186.",
-    "111.223.64.",
-    "150.171.27.12",
-    "127.0.0.1",
-    "20.42.65.93",
-    "port.dst",
-    "40.74.98.195",
-    "23.100.109.",
-    "224.0.0.251",
-    "20.189.173.3",
-    "20.72.205.",
-    "52.168.117.",
-    "20.42.65.94",
-    "52.149.20.212",
-    "40.119.249.228",
-    "13.95.31.18",
-    "135.18.128.",
-    "150.171.86.254",
-    "150.171.86.",
-    "change.type",
-    "13.107.246.254",
-    "13.89.179.",
-    "13.107.226.59",
-    "20.190.144.163",
-    "51.116.246.104",
-    "13.107.253.",
-    "20.189.173.5",
-    "20.44.239.154",
-    "40.119.213.159",
-    "52.252.28.",
-    "42.99.140.32",
-    "135.18.128.209",
-    "111.223.64.40",
-    "109.61.38.38",
-    "52.167.17.97",
-    "file.name",
-    "204.79.197.",
-    "124.155.222.",
-    "process.pid",
-    "52.182.143.",
-    "13.107.253.59",
-    "111.223.64.89",
-    "52.123.128.",
-    "40.126.16.",
-    "43.174.32.194",
-    "4.145.79.81",
-    "150.171.27.254",
-    "52.167.249.196",
-    "23.100.109.78",
-    "4.145.79.",
-    "20.42.73.",
-    "150.171.28.254",
-    "52.140.118.28",
-    "40.119.249.",
-    "20.198.167.",
-    "40.74.78.229",
-    "20.42.65.",
-    "96.7.102.",
-    "20.43.150.",
-    "20.43.150.84",
-    "192.168.10.207",
-    "23.206.182.56",
-    "23.205.209.179",
-    "13.107.6.156",
-    "23.205.210.",
-    "43.152.143.",
-    "13.89.178.26",
-    "52.123.129.",
-    "52.167.249.",
-    "23.205.208.",
-    "13.71.55.58",
-    "20.44.239.",
-    "4.245.163.56",
-    "13.71.55.",
-    "192.168.20.16",
-    "13.89.178.27",
-    "52.185.211.133",
-    "23.205.209.",
-    "96.7.102.164",
-    "20.189.173.",
-    "51.116.246.",
-    "13.69.109.130",
-    "203.116.175.105",
-    "172.202.163.",
-    "20.42.65.88",
-    "42.99.140.16",
-    "premieraccount-netflix.com",
-    "111.223.64.90",
-    "bethanychuchu",
-    "52.165.164.15",
-    "8.8.8.",
-    "192.168.20.",
-    "42.99.140.",
-    "23.205.209.215",
-    "124.155.222.152",
-    "user.name",
-    "4.175.87.197",
-    "199.232.210.172",
-    "52.252.28.242",
-    "kellywang",
-    "43.175.139.",
-    "188.40.170.",
-    "104.208.16.91",
-    "event.type",
-    "52.149.20.",
-    "239.255.255.",
-    "42.99.140.42",
-    "20.190.144.165",
-    "20.72.205.209",
-    "42.99.140.9",
-    "file.size",
-    "4.145.79.82",
-    "172.169.87.",
-    "20.198.167.116",
-    "user.role",
-    "192.168.10.",
-    "51.105.71.",
-    "150.171.28.",
-    "20.189.173.26",
-    "cpu.usage",
-    "172.202.163.200",
-    "8.8.8.8",
-    "239.255.255.250",
-    "52.137.106.217",
-    "52.168.117.168",
-    "alert.type",
-    "config.change",
-    "8.8.4.4",
-    "52.137.106.",
-    "124.155.222.24",
-    "42.99.128.",
-    "4.145.79.80",
-    "51.105.71.136",
-    "109.61.38.",
-    "43.175.138.",
-    "43.174.32.",
-    "192.168.10.255",
-    "43.175.139.86",
-    "150.171.28.12",
-    "52.175.242.",
-    "4.175.87.",
-    "40.126.16.163",
-    "192.168.20.255",
-    "13.107.42.",
-    "150.171.27.11",
-    "20.42.73.26",
-    "192.168.10.14",
-    "20.249.177.",
-    "203.116.175.",
-    "40.74.98.",
-    "52.123.128.14",
-    "bytes.out",
-    "43.175.139.84",
-    "13.107.42.16",
-    "20.249.177.218",
-    "130.213.27.",
-    "23.210.96.161",
-    "13.107.6.",
-    "device.type",
-    "file.hash",
-    "23.58.144.239",
-    "13.89.179.11",
-    "13.95.31.",
-    "52.165.164.",
-    "8.8.4.",
-    "13.107.253.254",
-    "23.58.144.",
-    "224.0.0.",
-    "52.168.117.175",
-    "40.70.76.27",
-    "52.231.186.36",
-    "13.107.5.91",
-    "13.107.226.",
-    "199.232.214.172",
-    "20.106.86.",
-    "52.168.117.173",
-    "13.107.5.93",
-    "23.205.210.58",
-    "40.119.213.",
-    "172.169.87.222",
-    "52.185.211.",
-    "124.155.222.178",
-    "52.123.129.14",
-    "42.99.140.33",
-    "199.232.214.",
-    "ip.src",
-    "4.245.163.",
-    "42.99.128.187",
-    "13.107.246.",
-    "13.69.109.",
-    "199.232.210.",
-    "192.168.10.205",
-    "43.152.143.189",
-    "23.50.87.",
-    "process.name",
-    "127.0.0.",
-    "13.107.5.",
-    "23.205.208.8",
-    "23.205.210.56",
-    "52.182.143.214",
-    "204.79.197.222",
-    "process.path",
-    "40.74.78.",
-    "20.247.184.",
-    "20.106.86.13",
-    "host.name",
-    "event.time",
-    "13.89.178.",
-    "43.175.138.227",
-    "130.213.27.176",
-    "23.50.87.128",
-    "20.247.184.197",
-    "192.168.10.204",
-    "150.171.27.",
-    "104.208.16.",
-    "23.210.96.",
-    "20.190.144.160",
-    "52.140.118.",
-    "192.168.20.201",
-    "23.206.182.",
-    "20.190.144.138",
-    "20.190.144.",
-    "nt authority\\system",
-    "ip.dst",
-    "13.89.179.14",
-    "52.167.17."
-  ],
-  "mitre_mapping": [
-    "Initial Access — T1566"
-  ],
-  "affected_assets": [
-    {
-      "hostname": "192.168.10.210",
-      "asset_type": "Endpoint",
-      "criticality": "unclassified",
-      "ip_address": null
-    },
-    {
-      "hostname": "premieraccount-netflix.com",
-      "asset_type": "Endpoint",
-      "criticality": "unclassified",
-      "ip_address": null
-    }
-  ],
   "recommended_actions": [
     {
       "priority": "P1",
-      "recommendation": "Priority investigation (Tier 1)",
-      "rationale": "Unified triage verdict: HIGH (scored from 3 corroborating signal(s)).",
+      "recommendation": "Monitor / low-priority queue",
+      "rationale": "Unified triage verdict: LOW (scored from 3 corroborating signal(s)).",
       "risk_addressed": "Prioritisation of response effort"
     }
   ],
-  "investigation_summary": "[Feedback loop: investigation found 5 evidence gap(s) but the triage deep-dive failed (Connection error.); pass-1 findings kept.]\n\n[Correlated cluster Incident-011: INC-52825, INC-53025, INC-53027 — this run was triggered by INC-53027.]\n\nAnalysis failed due to error: Missing credentials. Please pass an `api_key`, `workload_identity`, `admin_api_key`, or set the `OPENAI_API_KEY` or `OPENAI_ADMIN_KEY` environment variable.. Timeline: [2025-07-14T11:21:34+00:00] INC-52825: Incident INC-52825 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1558. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1558. The enrichment alert statistics matched ioc count is 11. The enrichment alert statistics risk score is 70. The enrichment all metakey values host.name is BETHANYCHUCHU. The enrichment all metakey values ip.dst lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227. The enrichment all metakey values ip.src lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207. The enrichment all metakey values user.name lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The enrichment behavioural alerts alert titles lists: Chu Wen - Lateral Move Detected, Disables UAC. The enrichment behavioural alerts alert types lists: Endpoint. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 4.175.87.197, 52.167.249.196, 20.247.184.197, 20.189.173.5, 4.145.79.81, 8.8.4.4, 20.189.173.3, 4.145.79.80, 111.223.64.89, 40.126.16.163, 20.189.173.2, 8.8.8.8, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 4.145.79.82, 52.175.242.182, 96.7.102.164, fe80:0:0:0:8357:3c50:a453:d4e8, 199.232.210.172, 40.70.76.27, 13.107.246.254, 13.89.179.14, 42.99.140.16, 52.185.211.133, 13.89.179.11, 239.255.255.250, 192.168.20.255, 43.174.32.194, ff02:0:0:0:0:0:0:c, 20.190.144.138, 111.223.64.90, 192.168.20.16, 23.205.209.179, 23.205.209.215, 135.18.128.209, 13.71.55.58, 204.79.197.222, 52.182.143.214, 172.169.87.222, 13.95.31.18, 150.171.86.254, 23.100.109.78, 40.74.78.229, 42.99.128.187, 13.89.178.27, 13.89.178.26, 52.167.17.97, 52.123.128.14, 124.155.222.152, 20.189.173.26, 51.116.246.104, 51.105.71.136, 150.171.27.12, 150.171.27.11, 52.231.186.36, 150.171.28.254, ff02:0:0:0:0:0:0:fb, 13.107.6.156, 13.107.5.91, 20.44.239.154, 52.168.117.173, 40.119.249.228, 13.107.5.93, 111.223.64.40, 52.168.117.175, 192.168.10.205, 13.69.109.130, 192.168.10.207, 13.107.253.254, 23.210.96.161, 13.107.253.59, 109.61.38.38, 52.140.118.28, 172.202.163.200, 40.74.98.195, 23.205.210.56, 224.0.0.251, 23.205.210.58, 43.175.139.86, 43.175.139.84, 42.99.140.56, 52.165.164.15, fe80:0:0:0:f747:13c9:cf0e:da39, ff02:0:0:0:0:0:1:2, 23.205.208.8, 124.155.222.178, 13.107.42.16, 130.213.27.176, 23.206.182.56, fe80:0:0:0:9706:3f55:e752:75ca, 43.152.143.189, 20.43.150.84, 52.168.117.168, 52.252.28.242, 40.119.213.159, 13.107.226.59, 20.249.177.218, 52.123.129.14, 20.42.65.88, 192.168.10.14, 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105, 20.72.205.209, 42.99.140.33, 42.99.140.32, 52.149.20.212, 4.245.163.56, 20.190.144.160, 192.168.10.255, 20.190.144.163, 20.190.144.165, 23.58.144.239, 20.42.65.93, 150.171.27.254, 20.42.65.94, 23.50.87.128, 52.137.106.217, 20.198.167.116, 42.99.140.42, 20.106.86.13. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: BETHANYCHUCHU. The enrichment endpoint identity mac addresses lists: . The enrichment endpoint identity source ips lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207, fe80:0:0:0:f747:13c9:cf0e:da39, fe80:0:0:0:8357:3c50:a453:d4e8, 0:0:0:0:0:0:0:1, 127.0.0.1. The enrichment endpoint identity users lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes, Unexplained changes from privileged accounts — High CPU usage likely due to malicious activity (alert count 1558). Configuration changes and unexplained privileged account activity are indicated by 'Disables UAC' alert and SYSTEM account usage.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device, Geographic-based anomalies — Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and unusual destinations (e.g., 20.247.184.197). Geographic anomalies: 111.223.64.89 likely outside normal region.\n[INTEGRITY] Odd device/platform behaviour, Unknown binaries installed, Unknown process running, Configuration changes, Unexplained changes from privileged accounts — Odd behavior: 'Lateral Move Detected' and 'Disables UAC' alerts. Unknown binaries/processes likely from lateral movement. Configuration changes and unexplained privileged account activity (SYSTEM).. The enrichment matched metakey catalog lists: AlertTitles, DestinationIp, SourceIp, User, alert.type, bytes.out, bytes.transferred, change.type, config.change, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, geo.country, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, user.name, user.role. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 4.175.87.197, 52.167.249.196, 20.247.184.197, 20.189.173.5, 4.145.79.81, 8.8.4.4, 20.189.173.3, 4.145.79.80, 111.223.64.89, 40.126.16.163, 20.189.173.2, 8.8.8.8, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 4.145.79.82, 52.175.242.182, 96.7.102.164, fe80:0:0:0:8357:3c50:a453:d4e8, 199.232.210.172, 40.70.76.27, 13.107.246.254, 13.89.179.14, 42.99.140.16, 52.185.211.133, 13.89.179.11, 239.255.255.250, 192.168.20.255, 43.174.32.194, ff02:0:0:0:0:0:0:c, 20.190.144.138, 111.223.64.90, 192.168.20.16, 23.205.209.179, 23.205.209.215, 135.18.128.209, 13.71.55.58, 204.79.197.222, 52.182.143.214, 172.169.87.222, 13.95.31.18, 150.171.86.254, 23.100.109.78, 40.74.78.229, 42.99.128.187, 13.89.178.27, 13.89.178.26, 52.167.17.97, 52.123.128.14, 124.155.222.152, 20.189.173.26, 51.116.246.104, 51.105.71.136, 150.171.27.12, 150.171.27.11, 52.231.186.36, 150.171.28.254, ff02:0:0:0:0:0:0:fb, 13.107.6.156, 13.107.5.91, 20.44.239.154, 52.168.117.173, 40.119.249.228, 13.107.5.93, 111.223.64.40, 52.168.117.175, 192.168.10.205, 13.69.109.130, 192.168.10.207, 13.107.253.254, 23.210.96.161, 13.107.253.59, 109.61.38.38, 52.140.118.28, 172.202.163.200, 40.74.98.195, 23.205.210.56, 224.0.0.251, 23.205.210.58, 43.175.139.86, 43.175.139.84, 42.99.140.56, 52.165.164.15, fe80:0:0:0:f747:13c9:cf0e:da39, ff02:0:0:0:0:0:1:2, 23.205.208.8, 124.155.222.178, 13.107.42.16, 130.213.27.176, 23.206.182.56, fe80:0:0:0:9706:3f55:e752:75ca, 43.152.143.189, 20.43.150.84, 52.168.117.168, 52.252.28.242, 40.119.213.159, 13.107.226.59, 20.249.177.218, 52.123.129.14, 20.42.65.88, 192.168.10.14, 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105, 20.72.205.209, 42.99.140.33, 42.99.140.32, 52.149.20.212, 4.245.163.56, 20.190.144.160, 192.168.10.255, 20.190.144.163, 20.190.144.165, 23.58.144.239, 20.42.65.93, 150.171.27.254, 20.42.65.94, 23.50.87.128, 52.137.106.217, 20.198.167.116, 42.99.140.42, 20.106.86.13. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207, fe80:0:0:0:f747:13c9:cf0e:da39, fe80:0:0:0:8357:3c50:a453:d4e8, 0:0:0:0:0:0:0:1, 127.0.0.1. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment triage summary is Host BETHANYCHUCHU shows signs of active lateral movement and privilege escalation with 1558 alerts, including 'Lateral Move Detected' and 'Disables UAC'. Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and high CPU usage indicate ongoing compromise.. The incident details description is Host BETHANYCHUCHU shows signs of active lateral movement and privilege escalation with 1558 alerts, including 'Lateral Move Detected' and 'Disables UAC'. Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and high CPU usage indicate ongoing compromise.. The incident details mitre att&ck tactic is Lateral Movement. The incident details mitre att&ck technique is T1021 Remote Services. The incident details timestamp is 2025-07-14T11:21:34+00:00. The incident id is INC-52825. The log indicators computer name is BETHANYCHUCHU. The log indicators operating system is Unknown. The log indicators target user is NT AUTHORITY\\SYSTEM. The network indicators destination ip is 124.155.222.24. The network indicators source ip is fe80:0:0:0:9706:3f55:e752:75ca. The observed indicators destination ips lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105. The observed indicators entity from alert title is BETHANYCHUCHU. The observed indicators hostnames lists: BETHANYCHUCHU. The observed indicators ip addresses lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227, 20.42.73.26, 199.232.214.172, 203.116.175.105. The observed indicators source ips lists: 192.168.10.204, 192.168.20.201, 192.168.10.207. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes, Unexplained changes from privileged accounts — High CPU usage likely due to malicious activity (alert count 1558). Configuration changes and unexplained privileged account activity are indicated by 'Disables UAC' alert and SYSTEM account usage.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device, Geographic-based anomalies — Traffic to known malicious IPs (4.175.87.197, 111.223.64.89) and unusual destinations (e.g., 20.247.184.197). Geographic anomalies: 111.223.64.89 likely outside normal region.\n[INTEGRITY] Odd device/platform behaviour, Unknown binaries installed, Unknown process running, Configuration changes, Unexplained changes from privileged accounts — Odd behavior: 'Lateral Move Detected' and 'Disables UAC' alerts. Unknown binaries/processes likely from lateral movement. Configuration changes and unexplained privileged account activity (SYSTEM).. The triage matched ioc count is 11. The triage matched metakeys lists: AlertTitles, DestinationIp, SourceIp, User, alert.type, bytes.out, bytes.transferred, change.type, config.change, cpu.usage, device.type, domain, event.time, event.type, file.hash, file.name, file.path, geo.country, host.name, ip.dst, ip.src, network.service, port.dst, process.name, process.path, process.pid, protocol, user.name, user.role. The triage metakey values host.name is BETHANYCHUCHU. The triage metakey values ip.dst lists: 124.155.222.24, 150.171.28.12, 42.99.140.9, 104.208.16.91, 43.175.138.227. The triage metakey values ip.src lists: fe80:0:0:0:9706:3f55:e752:75ca, fe80:0:0:0:f7c4:bff3:4c73:f8d1, 192.168.10.204, 192.168.20.201, 192.168.10.207. The triage metakey values user.name lists: NT AUTHORITY\\SYSTEM, BETHANYCHUCHU\\Bethany Chu, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is Critical. The triage risk rating overall risk is Critical. The triage risk rating rationale is High alert volume (1558), lateral movement and UAC disable alerts, and traffic to known malicious IPs indicate adversary is highly likely to have initiated and the event is occurring at a critical frequency with almost certain adverse impact.. The triage ticket unc is #00037A.\n[2026-01-08T07:36:22+00:00] INC-53025: Incident INC-53025 details are as follows: The classification alert type is Internal Hacking (active). The classification soc classification is CRITICAL. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 7. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Malicious HTA file detected (kelly). The enrichment behavioural alerts alert types lists: Endpoint. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: . The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: KELLYWANG. The enrichment endpoint identity mac addresses lists: . The enrichment endpoint identity source ips lists: . The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and NetWitness alert indicate system instability and crashes.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — Malicious activity detected by security tool suggests data exfiltration or unauthorized access.\n[INTEGRITY] Unknown process running, Unknown binaries installed, Configuration changes — Compromised system likely altered processes, installed unauthorized software, and modified configurations.. The enrichment matched metakey catalog lists: alert.type, bytes.out, change.type, compromise, config.change, cpu.usage, data_exfiltration, device.type, domain, event.type, file.hash, file.name, file.path, file.size, high_risk, host.name, ip.dst, ip.src, malicious_activity, process.name, process.path, process.pid, protocol, security_alert, unauthorized_changes, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: . The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: . The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is Critical incident involving active compromise of KELLYWANG's endpoint with NetWitness alerts indicating system instability, data exfiltration attempts, and unauthorized system modifications. Immediate containment and forensic preservation are required.. The incident details description is Critical incident involving active compromise of KELLYWANG's endpoint with NetWitness alerts indicating system instability, data exfiltration attempts, and unauthorized system modifications. Immediate containment and forensic preservation are required.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-01-08T07:36:22+00:00. The incident id is INC-53025. The log indicators computer name is KELLYWANG. The log indicators operating system is Unknown. The log indicators target user is Unknown. The observed indicators destination ips lists: . The observed indicators entity from alert title is KELLYWANG. The observed indicators hostnames lists: KELLYWANG. The observed indicators ip addresses lists: . The observed indicators source ips lists: . The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: NetWitness Endpoint for KELLYWANG. The triage ioc summary is [AVAILABILITY] High CPU usage, Frequent core dump and/or traceback generation — High risk score and NetWitness alert indicate system instability and crashes.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — Malicious activity detected by security tool suggests data exfiltration or unauthorized access.\n[INTEGRITY] Unknown process running, Unknown binaries installed, Configuration changes — Compromised system likely altered processes, installed unauthorized software, and modified configurations.. The triage matched ioc count is 7. The triage matched metakeys lists: alert.type, bytes.out, change.type, compromise, config.change, cpu.usage, data_exfiltration, device.type, domain, event.type, file.hash, file.name, file.path, file.size, high_risk, host.name, ip.dst, ip.src, malicious_activity, process.name, process.path, process.pid, protocol, security_alert, unauthorized_changes, user.name. The triage risk rating likelihood adverse impact is Critical. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is Critical. The triage risk rating rationale is High CPU usage, core dumps, and malicious network activity indicate active system compromise with high risk of crashes, data exfiltration, and integrity breaches.. The triage ticket unc is #00025A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n[2026-04-28T11:08:52+00:00] INC-53027: Incident INC-53027 details are as follows: The classification alert type lists: Unauthorized access, Compromised asset (non-critical). The classification soc classification is HIGH. The enrichment  note is Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple.. The enrichment alert statistics alert count is 1. The enrichment alert statistics average alert risk score is 70. The enrichment alert statistics event count is 1. The enrichment alert statistics matched ioc count is 6. The enrichment alert statistics risk score is 70. The enrichment behavioural alerts alert titles lists: Phishing email detected(2)-24014126. The enrichment behavioural alerts alert types lists: Network. The enrichment behavioural alerts mitre tactics lists: . The enrichment behavioural alerts mitre techniques lists: . The enrichment endpoint identity destination ips lists: 188.40.170.197. The enrichment endpoint identity dns domains lists: . The enrichment endpoint identity hostnames lists: premieraccount-netflix.com. The enrichment endpoint identity mac addresses lists: d4:f4:be:6f:c7:11, 02:1a:c5:03:00:03. The enrichment endpoint identity source ips lists: 192.168.10.210. The enrichment endpoint identity users lists: . The enrichment event context event times lists: . The enrichment event context event types lists: . The enrichment file indicators hashes lists: . The enrichment file indicators names lists: . The enrichment file indicators paths lists: . The enrichment host behaviour config changes lists: . The enrichment host behaviour cpu usage lists: . The enrichment host behaviour device types lists: . The enrichment host behaviour operating systems lists: . The enrichment host behaviour user roles lists: . The enrichment ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The enrichment matched metakey catalog lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The enrichment network activity bytes lists: . The enrichment network activity destination ips lists: 188.40.170.197. The enrichment network activity domains lists: . The enrichment network activity geo lists: . The enrichment network activity network services lists: . The enrichment network activity ports lists: . The enrichment network activity protocols lists: . The enrichment network activity source ips lists: 192.168.10.210. The enrichment process indicators names lists: . The enrichment process indicators paths lists: . The enrichment process indicators pids lists: . The enrichment process tree command lines lists: . The enrichment process tree lineage lists: . The enrichment process tree parent processes lists: . The enrichment process tree pids lists: . The enrichment process tree process paths lists: . The enrichment process tree processes lists: . The enrichment triage summary is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details description is High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.. The incident details mitre att&ck tactic is Unknown. The incident details mitre att&ck technique is Unknown. The incident details timestamp is 2026-04-28T11:08:52+00:00. The incident id is INC-53027. The log indicators computer name is premieraccount-netflix.com. The log indicators operating system is Unknown. The log indicators target user is Unknown. The network indicators destination ip is 188.40.170.197. The network indicators source ip is 192.168.10.210. The observed indicators destination ips lists: 188.40.170.197. The observed indicators hostnames lists: premieraccount-netflix.com. The observed indicators ip addresses lists: 188.40.170.197, 192.168.10.210. The observed indicators source ips lists: 192.168.10.210. The observed indicators usernames lists: . The source incident summary is . The source incident title is High Risk Alerts: ESA for 192.168.10.210. The triage ioc summary is [AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.. The triage matched ioc count is 6. The triage matched metakeys lists: alert.type, automated_detection, bytes.out, change.type, config.change, cpu.usage, domain, file.name, file.size, firmware.version, high_risk, host.name, ip.dst, ip.src, os.version, process.name, protocol, user.name. The triage risk rating likelihood adverse impact is High. The triage risk rating likelihood initiation is High. The triage risk rating likelihood occurrence is High. The triage risk rating overall risk is High. The triage risk rating rationale is High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences.. The triage ticket unc is #00026A.\n\n## Final Incident Verdict (post-investigation)\n**HIGH** · **Confirmed — True Positive** · confidence **High** · priority 2/5 (confirmed triage HIGH)\n- **Next action:** Contain & remediate per playbook (Tier 1)\n- **Substantiated by:** IOC evidence depth (233 IOC(s) documented), kill-chain characterisation (Diamond model 100% complete), MITRE confirmation (Initial Access (medium confidence, inferred))\n\n## Automated Analytical Intelligence\n_Deterministic skill analysis (read-only, no LLM) supplementing the investigation agent's findings. Generated by the SOC skill suite._\n\n### Unified Triage Verdict\n- **HIGH** — Priority investigation (Tier 1)\n- Corroborating signals: base severity (HIGH), internal IOC correlation (medium internal confidence)\n- Signals unavailable: external threat intel\n\n### Diamond Model (structured event)\n- **Victim:** unnamed host (users: no user identified; internal IPs: 192.168.10.210)\n- **Capability:** MITRE Initial Access / T1566; observed behaviours: Phishing email detected(2)-24014126\n- **Infrastructure:** 188.40.170.197 (external IP)\n- **Adversary:** unattributed\n- **Kill-chain phase:** Delivery  ·  model completeness: 100%\n\n### Internal IOC Correlation (against 53k-incident corpus + open cases)\n- `188.40.170.197` — **MEDIUM** (1 corpus mentions)\n- `192.168.10.210` — **MEDIUM** (1 corpus mentions)\n- _corpus is a point-in-time snapshot (all incidents status=New); open-vs-closed status is taken from the SOC case pipeline, not the corpus_\n- **Subnet neighbourhoods (possible lateral movement):**\n    - `192.168.10.0/24` — 7 neighbour IP(s) recur alongside this incident (39/40 sampled HIGH/CRITICAL): 192.168.10.202, 192.168.10.204, 192.168.10.14, 192.168.10.200, 192.168.10.201 _(informational — does not raise IOC confidence)_\n\n# Incident Response SOP — High Risk Alerts: ESA for 192.168.10.210\n**SOP ID:** SOP-IR-INC-53027  ·  **Incident:** INC-53027  ·  **Version:** 1.0  ·  **Severity:** High  ·  **Scenario:** Phishing\n**Owner:** Security Operations Centre  ·  **Generated:** 2026-07-25T15:55:16+00:00\n\n## Purpose\nProvide a repeatable, auditable procedure to contain, eradicate and recover from incident INC-53027 (High severity, Phishing scenario).\n\n## Scope\nApplies to premieraccount-netflix.com. Covers the high incident lifecycle from validated detection through post-incident review.\n\n## Roles & Responsibilities\n- **SOC Tier-1 Analyst** — Alert validation, identification, evidence capture.\n- **SOC Tier-2/3 Analyst** — Containment execution, eradication, forensic analysis.\n- **SOC Manager / IR Lead** — Containment approval, escalation, PIR ownership.\n\n## Prerequisites\n- Access to the NetWitness console, EDR, and SIEM for the affected host.\n- Authority to isolate/segment endpoints (or an approver on call).\n- The referenced playbook (phishing_response_playbook.md) and current asset inventory.\n\n## Procedure\n1. **[Identification]** Confirm the alert on premieraccount-netflix.com is a true positive: correlate the triage IOCs against endpoint and network telemetry.  _(Owner: SOC Tier-1 Analyst)_\n2. **[Containment]** OBTAIN CONTAINMENT APPROVAL before any isolating action (business-impact gate).  _(Owner: SOC Manager / IR Lead)_\n3. **[Containment]** isolate 192.168.10.210 from the network (EDR isolation or port disable) — workstation isolation is low-risk  _(Owner: SOC Tier-2/3 Analyst)_\n4. **[Containment]** preserve memory image if tampering is suspected  _(Owner: SOC Tier-2/3 Analyst)_\n5. **[Containment]** Block / watchlist the confirmed indicators at the perimeter and EDR: 188.40.170.197, 192.168.10.210.  _(Owner: SOC Tier-2 Analyst)_\n6. **[Eradication]** reimage is cheapest for workstations; reset the user's credentials and revoke active sessions  _(Owner: SOC Tier-2/3 Analyst)_\n7. **[Recovery]** return to network after clean scan + credential reset  _(Owner: SOC Tier-2/3 Analyst)_\n8. **[Recovery]** Return premieraccount-netflix.com to production only after a clean scan, credential reset for affected accounts, and monitoring is in place.  _(Owner: SOC Tier-2 Analyst)_\n9. **[Lessons Learned]** Document the timeline, root cause, detection/response gaps, and update the relevant playbook + detection rules.  _(Owner: SOC Analyst + IR Lead)_\n\n## References\n- MITRE ATT&CK: Initial Access — T1566\n- Playbook: phishing_response_playbook.md\n- Approval gate: Containment approval required (critical/high severity or asset criticality)\n- Policies: incident_severity_policy.md, report_writing_sop.md\n\n## Version History\n- v1.0 (2026-07-25) — Initial SOP generated from investigation findings. [SOC skill suite (auto-generated)]\n\n_SOP validation: PASS (17 checks; 0 advisory)_\n\n## Compliance Evidence — SOC 2 (Trust Services Criteria)\n**Coverage:** 6/8 controls MET (75%) · 1 partial · 1 not met · criteria: Security, Availability, Confidentiality\n\n| Control | Criterion | Status | Evidence |\n|---|---|---|---|\n| **CC7.2** Detection of anomalies indicative of malicious acts | Security |  MET | Incident INC-53027 detected via NetWitness — 1 behavioural alert(s) (e.g. \"Phishing email detected(2)-24014126\"). |\n| **CC7.3** Evaluation of security events (triage & severity) | Security |  MET | Triaged at severity **HIGH**, category \"['Unauthorized access', 'Compromised asset (non-critical)']\"; MITRE ATT&CK: no MITRE mapping. |\n| **CC7.4** Response to identified security incidents | Security |  PARTIAL | Investigation completed, but no response actions were documented. |\n| **CC7.5** Recovery from identified security incidents | Security |  NOT_MET | No recovery/remediation actions documented. |\n| **CC2.2** Internal communication of security information | Security |  MET | A structured incident report was generated for this incident (this document) and retained for reviewers. |\n| **CC4.1** Ongoing evaluation with a retained audit trail | Security |  MET | Incident tracked with identifiers/timestamps through triage → investigation → reporting; pipeline audit trail retained in the SOC datastore. |\n| **A1.2** Recovery of availability-impacting incidents | Availability |  MET | Availability-impacting incident (e.g. ransomware / disruption) detected and handled through the response pipeline. |\n| **C1.1** Protection of confidential information during an incident | Confidentiality |  MET | Confidentiality-impacting activity (e.g. exfiltration/exposure) identified and addressed in the investigation. |",
+  "investigation_summary": "## Final Incident Verdict (post-investigation)\n**LOW** · **Inconclusive — partial substantiation** · confidence **Low** · priority 4/5\n- **Next action:** Monitor / candidate for closure after review\n- **Substantiated by:** kill-chain characterisation (Diamond model 33% complete)\n- **Signals unavailable:** MITRE confirmation\n\n## Automated Analytical Intelligence\n_Deterministic skill analysis (read-only, no LLM) supplementing the investigation agent's findings. Generated by the SOC skill suite._\n\n### Unified Triage Verdict\n- **LOW** — Monitor / low-priority queue\n- Signals unavailable: external threat intel\n\n### Diamond Model (structured event)\n- **Infrastructure:** none observed (internal-only activity)\n- **Adversary:** unattributed\n- **Kill-chain phase:** unknown  ·  model completeness: 33%\n\n### Internal IOC Correlation\n- No indicators correlated above the noise floor in the internal corpus.\n\n# Incident Response SOP — Test LLM Incident\n**SOP ID:** SOP-IR-UNKNOWN  ·  **Incident:** UNKNOWN  ·  **Version:** 1.0  ·  **Severity:** Unknown  ·  **Scenario:** Generic IR\n**Owner:** Security Operations Centre  ·  **Generated:** 2026-07-26T14:26:18+00:00\n\n## Purpose\nProvide a repeatable, auditable procedure to contain, eradicate and recover from incident UNKNOWN (Unknown severity, Generic IR scenario).\n\n## Scope\nApplies to the affected asset. Covers the unknown incident lifecycle from validated detection through post-incident review.\n\n## Roles & Responsibilities\n- **SOC Tier-1 Analyst** — Alert validation, identification, evidence capture.\n- **SOC Tier-2/3 Analyst** — Containment execution, eradication, forensic analysis.\n\n## Prerequisites\n- Access to the NetWitness console, EDR, and SIEM for the affected host.\n- Authority to isolate/segment endpoints (or an approver on call).\n- The referenced playbook (generic_incident_response_playbook.md) and current asset inventory.\n\n## Procedure\n1. **[Identification]** Confirm the alert on the affected host is a true positive: correlate the triage IOCs against endpoint and network telemetry.  _(Owner: SOC Tier-1 Analyst)_\n2. **[Containment]** isolate (no named asset in incident) from the network (EDR isolation or port disable) — workstation isolation is low-risk  _(Owner: SOC Tier-2/3 Analyst)_\n3. **[Containment]** preserve memory image if tampering is suspected  _(Owner: SOC Tier-2/3 Analyst)_\n4. **[Eradication]** reimage is cheapest for workstations; reset the user's credentials and revoke active sessions  _(Owner: SOC Tier-2/3 Analyst)_\n5. **[Recovery]** return to network after clean scan + credential reset  _(Owner: SOC Tier-2/3 Analyst)_\n6. **[Recovery]** Return the affected host to production only after a clean scan, credential reset for affected accounts, and monitoring is in place.  _(Owner: SOC Tier-2 Analyst)_\n7. **[Lessons Learned]** Document the timeline, root cause, detection/response gaps, and update the relevant playbook + detection rules.  _(Owner: SOC Analyst + IR Lead)_\n\n## References\n- MITRE ATT&CK: not mapped\n- Playbook: generic_incident_response_playbook.md\n- Approval gate: No approval gate (low-impact incident)\n- Policies: incident_severity_policy.md, report_writing_sop.md\n\n## Version History\n- v1.0 (2026-07-26) — Initial SOP generated from investigation findings. [SOC skill suite (auto-generated)]\n\n_SOP validation: PASS (15 checks; 0 advisory)_\n\n## Compliance Evidence — SOC 2 (Trust Services Criteria)\n**Coverage:** 2/6 controls MET (33%) · 2 partial · 2 not met · criteria: Security\n\n| Control | Criterion | Status | Evidence |\n|---|---|---|---|\n| **CC7.2** Detection of anomalies indicative of malicious acts | Security |  MET | Incident the incident detected via NetWitness — detection signal \"Test LLM Incident\". |\n| **CC7.3** Evaluation of security events (triage & severity) | Security |  NOT_MET | No triage classification recorded for this incident. |\n| **CC7.4** Response to identified security incidents | Security |  PARTIAL | Investigation completed, but no response actions were documented. |\n| **CC7.5** Recovery from identified security incidents | Security |  NOT_MET | No recovery/remediation actions documented. |\n| **CC2.2** Internal communication of security information | Security |  MET | A structured incident report was generated for this incident (this document) and retained for reviewers. |\n| **CC4.1** Ongoing evaluation with a retained audit trail | Security |  PARTIAL | Incident tracked with identifiers/timestamps through triage → investigation → reporting; pipeline audit trail retained in the SOC datastore. |",
   "skills_intelligence": {
     "diamond_model": {
       "available": true,
       "victim": {
         "host": null,
         "asset_tier": "unclassified",
-        "internal_ips": [
-          "192.168.10.210"
-        ],
+        "internal_ips": [],
         "users": [],
-        "confidence": 40
+        "confidence": 10
       },
       "infrastructure": {
-        "items": [
-          {
-            "value": "188.40.170.197",
-            "kind": "external IP",
-            "ti": null
-          }
-        ],
-        "confidence": 70
+        "items": [],
+        "confidence": 0
       },
       "capability": {
-        "items": [
-          {
-            "value": "Phishing email detected(2)-24014126",
-            "kind": "behaviour",
-            "ti": null
-          }
-        ],
-        "mitre_technique": "T1566",
-        "mitre_tactic": "Initial Access",
-        "confidence": 90
+        "items": [],
+        "mitre_technique": "",
+        "mitre_tactic": "",
+        "confidence": 0
       },
       "adversary": {
         "label": "unattributed",
@@ -586,50 +35,35 @@
         "confidence": 0
       },
       "meta": {
-        "timestamp": "2026-04-28T11:08:52",
-        "phase": "Delivery",
-        "result": "unresolved (status=New)",
-        "methodology": "external infrastructure / C2",
-        "direction": "infrastructure → victim",
-        "mitre_technique": "T1566",
-        "mitre_tactic": "Initial Access"
+        "timestamp": "",
+        "phase": "unknown",
+        "result": "unknown",
+        "methodology": "technical exploit",
+        "direction": "internal",
+        "mitre_technique": "",
+        "mitre_tactic": ""
       },
-      "pivots": [
-        {
-          "vertex": "infrastructure",
-          "value": "188.40.170.197",
-          "question": "which other victims contacted this infrastructure?"
-        },
-        {
-          "vertex": "capability",
-          "value": "Phishing email detected(2)-24014126",
-          "question": "which other incidents used this capability (hash)?"
-        },
-        {
-          "vertex": "capability",
-          "value": "T1566",
-          "question": "which other incidents share this TTP?"
-        }
-      ],
+      "pivots": [],
+      "threat_intel_risk_level": null,
+      "threat_intel_risk_score": null,
       "stats": {
-        "vertices_populated": 3,
-        "completeness_pct": 100,
-        "infrastructure_count": 1,
-        "capability_count": 1,
-        "malicious_flagged": 0
+        "vertices_populated": 1,
+        "completeness_pct": 33,
+        "infrastructure_count": 0,
+        "capability_count": 0
       }
     },
     "unified_verdict": {
       "available": true,
-      "level": "HIGH",
-      "priority": 2,
-      "action": "Priority investigation (Tier 1)",
+      "level": "LOW",
+      "priority": 5,
+      "action": "Monitor / low-priority queue",
       "signals": [
         {
           "name": "base severity",
-          "level": 2,
-          "label": "HIGH",
-          "detail": "triage classification"
+          "level": 0,
+          "label": "UNRATED",
+          "detail": "no severity on incident"
         },
         {
           "name": "asset criticality",
@@ -639,30 +73,24 @@
         },
         {
           "name": "internal IOC correlation",
-          "level": 2,
-          "label": "medium internal confidence",
-          "detail": "2 IOC(s) correlated"
+          "level": 0,
+          "label": "no IOCs to correlate",
+          "detail": ""
         },
         {
           "name": "external threat intel",
           "level": 0,
-          "label": "not run (opt-in — run Enrich to include)",
+          "label": "not yet available (Threat Intelligence Enrichment has not completed for this run)",
           "detail": "",
           "absent": true
         }
       ],
       "rationale": [
         {
-          "name": "base severity",
-          "level": 2,
-          "label": "HIGH",
-          "detail": "triage classification"
-        },
-        {
-          "name": "internal IOC correlation",
-          "level": 2,
-          "label": "medium internal confidence",
-          "detail": "2 IOC(s) correlated"
+          "name": "no elevated signals",
+          "level": 0,
+          "label": "",
+          "detail": ""
         }
       ],
       "missing": [
@@ -670,227 +98,40 @@
       ],
       "stats": {
         "scored_signals": 3,
-        "max_level": 2,
-        "corroborating_strong": 2
+        "max_level": 0,
+        "corroborating_strong": 0
       }
     },
     "ioc_correlation": {
       "available": true,
-      "results": [
-        {
-          "value": "188.40.170.197",
-          "type": "ip",
-          "scope": "public",
-          "confidence": "medium",
-          "rationale": [
-            "referenced in 7 closed/finalized case(s)",
-            "1 of the related alerts are HIGH/CRITICAL severity",
-            "1 corpus mention(s)"
-          ],
-          "raw_mentions": 1,
-          "verified_in_sample": 1,
-          "sample_size": 1,
-          "hi_sev": 1,
-          "sev_dist": {
-            "HIGH": 1
-          },
-          "first_seen": "2026-04-28T11:08:52",
-          "last_seen": "2026-04-28T11:08:52",
-          "related": [
-            {
-              "id": "INC-53027",
-              "severity": "HIGH",
-              "status": "New",
-              "created": "2026-04-28T11:08:52"
-            }
-          ],
-          "open_cases": [],
-          "closed_cases": [
-            {
-              "ref": "postinv_#00028A@20260715-051034",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00028A@20260715-052829",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00028A@20260715-082210",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00029A@20260715-082430",
-              "incident_id": "INC-53018",
-              "severity": "HIGH",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00029A@20260715-083530",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00029A@20260715-102901",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00025A@20260725-223431",
-              "incident_id": "INC-53025",
-              "severity": "High",
-              "stage": "post_investigation"
-            }
-          ]
-        },
-        {
-          "value": "192.168.10.210",
-          "type": "ip",
-          "scope": "private",
-          "confidence": "medium",
-          "rationale": [
-            "referenced in 7 closed/finalized case(s)",
-            "1 of the related alerts are HIGH/CRITICAL severity",
-            "1 corpus mention(s)"
-          ],
-          "raw_mentions": 1,
-          "verified_in_sample": 1,
-          "sample_size": 1,
-          "hi_sev": 1,
-          "sev_dist": {
-            "HIGH": 1
-          },
-          "first_seen": "2026-04-28T11:08:52",
-          "last_seen": "2026-04-28T11:08:52",
-          "related": [
-            {
-              "id": "INC-53027",
-              "severity": "HIGH",
-              "status": "New",
-              "created": "2026-04-28T11:08:52"
-            }
-          ],
-          "open_cases": [],
-          "closed_cases": [
-            {
-              "ref": "postinv_#00028A@20260715-051034",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00028A@20260715-052829",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00028A@20260715-082210",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00029A@20260715-082430",
-              "incident_id": "INC-53018",
-              "severity": "HIGH",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00029A@20260715-083530",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00029A@20260715-102901",
-              "incident_id": "INC-53018",
-              "severity": "High",
-              "stage": "post_investigation"
-            },
-            {
-              "ref": "postinv_#00025A@20260725-223431",
-              "incident_id": "INC-53025",
-              "severity": "High",
-              "stage": "post_investigation"
-            }
-          ]
-        }
-      ],
-      "subnets": [
-        {
-          "subnet": "192.168.10.0/24",
-          "mentions": 41331,
-          "sample_size": 40,
-          "distinct_neighbours": 7,
-          "neighbours": [
-            {
-              "ip": "192.168.10.202",
-              "in_sample": 24
-            },
-            {
-              "ip": "192.168.10.204",
-              "in_sample": 24
-            },
-            {
-              "ip": "192.168.10.14",
-              "in_sample": 4
-            },
-            {
-              "ip": "192.168.10.200",
-              "in_sample": 4
-            },
-            {
-              "ip": "192.168.10.201",
-              "in_sample": 4
-            },
-            {
-              "ip": "192.168.10.205",
-              "in_sample": 3
-            }
-          ],
-          "hi_sev_sample": 39
-        }
-      ],
+      "results": [],
+      "subnets": [],
       "stats": {
-        "iocs_correlated": 2,
-        "subnets_analysed": 1,
+        "iocs_correlated": 0,
+        "subnets_analysed": 0,
         "truncated": false,
         "deadline_hit": false,
         "cases_source": true,
-        "seconds": 1.55,
+        "seconds": 0.0,
         "corpus_note": "corpus is a point-in-time snapshot (all incidents status=New); open-vs-closed status is taken from the SOC case pipeline, not the corpus"
       }
     },
     "asset_criticality": {
       "assets": [
         {
-          "name": "192.168.10.210",
+          "name": "(no named asset in incident)",
           "tier": "unclassified",
           "rank": 0,
-          "reason": "IP address — host role unknown without inventory"
-        },
-        {
-          "name": "premieraccount-netflix.com",
-          "tier": "unclassified",
-          "rank": 0,
-          "reason": "no naming pattern matched — verify against asset inventory"
+          "reason": "incident carries no host/user entity"
         }
       ],
       "highest_tier": "unclassified",
       "highest_rank": 0,
-      "triage_classification": "HIGH",
+      "triage_classification": null,
       "response_urgency": "STANDARD (per classification response window; asset role unverified)",
       "escalation": null,
       "containment_checklist": [
-        "Containment: isolate 192.168.10.210 from the network (EDR isolation or port disable) — workstation isolation is low-risk",
+        "Containment: isolate (no named asset in incident) from the network (EDR isolation or port disable) — workstation isolation is low-risk",
         "Containment: preserve memory image if tampering is suspected",
         "Eradication: reimage is cheapest for workstations; reset the user's credentials and revoke active sessions",
         "Recovery: return to network after clean scan + credential reset"
@@ -900,17 +141,17 @@
     "response_sop": {
       "available": true,
       "meta": {
-        "sop_id": "SOP-IR-INC-53027",
-        "incident_id": "INC-53027",
-        "title": "Incident Response SOP — High Risk Alerts: ESA for 192.168.10.210",
+        "sop_id": "SOP-IR-UNKNOWN",
+        "incident_id": "UNKNOWN",
+        "title": "Incident Response SOP — Test LLM Incident",
         "version": "1.0",
-        "classification": "High",
+        "classification": "Unknown",
         "owner": "Security Operations Centre",
-        "generated_at": "2026-07-25T15:55:16+00:00",
-        "scenario": "Phishing"
+        "generated_at": "2026-07-26T14:26:18+00:00",
+        "scenario": "Generic IR"
       },
-      "purpose": "Provide a repeatable, auditable procedure to contain, eradicate and recover from incident INC-53027 (High severity, Phishing scenario).",
-      "scope": "Applies to premieraccount-netflix.com. Covers the high incident lifecycle from validated detection through post-incident review.",
+      "purpose": "Provide a repeatable, auditable procedure to contain, eradicate and recover from incident UNKNOWN (Unknown severity, Generic IR scenario).",
+      "scope": "Applies to the affected asset. Covers the unknown incident lifecycle from validated detection through post-incident review.",
       "roles": [
         {
           "role": "SOC Tier-1 Analyst",
@@ -919,22 +160,18 @@
         {
           "role": "SOC Tier-2/3 Analyst",
           "responsibility": "Containment execution, eradication, forensic analysis."
-        },
-        {
-          "role": "SOC Manager / IR Lead",
-          "responsibility": "Containment approval, escalation, PIR ownership."
         }
       ],
       "prerequisites": [
         "Access to the NetWitness console, EDR, and SIEM for the affected host.",
         "Authority to isolate/segment endpoints (or an approver on call).",
-        "The referenced playbook (phishing_response_playbook.md) and current asset inventory."
+        "The referenced playbook (generic_incident_response_playbook.md) and current asset inventory."
       ],
       "procedure": [
         {
           "n": 1,
           "phase": "Identification",
-          "action": "Confirm the alert on premieraccount-netflix.com is a true positive: correlate the triage IOCs against endpoint and network telemetry.",
+          "action": "Confirm the alert on the affected host is a true positive: correlate the triage IOCs against endpoint and network telemetry.",
           "owner": "SOC Tier-1 Analyst",
           "decision": "If false positive → document rationale, close, STOP here. If true/undetermined → continue.",
           "verification": "Triage classification and at least one corroborating telemetry source agree.",
@@ -944,17 +181,7 @@
         {
           "n": 2,
           "phase": "Containment",
-          "action": "OBTAIN CONTAINMENT APPROVAL before any isolating action (business-impact gate).",
-          "owner": "SOC Manager / IR Lead",
-          "decision": "Approved → proceed. Denied/pending → hold containment, continue monitoring, document.",
-          "verification": "Recorded approver + timestamp.",
-          "on_failure": "Do NOT isolate; escalate and keep the incident open.",
-          "evidence": "Approval record."
-        },
-        {
-          "n": 3,
-          "phase": "Containment",
-          "action": "isolate 192.168.10.210 from the network (EDR isolation or port disable) — workstation isolation is low-risk",
+          "action": "isolate (no named asset in incident) from the network (EDR isolation or port disable) — workstation isolation is low-risk",
           "owner": "SOC Tier-2/3 Analyst",
           "decision": "",
           "verification": "Action completed and logged in the case timeline.",
@@ -962,7 +189,7 @@
           "evidence": "Command output / EDR action id."
         },
         {
-          "n": 4,
+          "n": 3,
           "phase": "Containment",
           "action": "preserve memory image if tampering is suspected",
           "owner": "SOC Tier-2/3 Analyst",
@@ -972,17 +199,7 @@
           "evidence": "Command output / EDR action id."
         },
         {
-          "n": 5,
-          "phase": "Containment",
-          "action": "Block / watchlist the confirmed indicators at the perimeter and EDR: 188.40.170.197, 192.168.10.210.",
-          "owner": "SOC Tier-2 Analyst",
-          "decision": "Block external indicators outright; watchlist internal IPs (avoid disrupting legitimate hosts).",
-          "verification": "Block rules deployed; hits monitored.",
-          "on_failure": "If an indicator is business-critical infra, watchlist instead of block and flag for review.",
-          "evidence": "Firewall/EDR rule ids."
-        },
-        {
-          "n": 6,
+          "n": 4,
           "phase": "Eradication",
           "action": "reimage is cheapest for workstations; reset the user's credentials and revoke active sessions",
           "owner": "SOC Tier-2/3 Analyst",
@@ -992,7 +209,7 @@
           "evidence": "Command output / EDR action id."
         },
         {
-          "n": 7,
+          "n": 5,
           "phase": "Recovery",
           "action": "return to network after clean scan + credential reset",
           "owner": "SOC Tier-2/3 Analyst",
@@ -1002,9 +219,9 @@
           "evidence": "Command output / EDR action id."
         },
         {
-          "n": 8,
+          "n": 6,
           "phase": "Recovery",
-          "action": "Return premieraccount-netflix.com to production only after a clean scan, credential reset for affected accounts, and monitoring is in place.",
+          "action": "Return the affected host to production only after a clean scan, credential reset for affected accounts, and monitoring is in place.",
           "owner": "SOC Tier-2 Analyst",
           "decision": "Residual indicators present → repeat Eradication. Clean → restore.",
           "verification": "Post-remediation scan clean; heightened monitoring active.",
@@ -1012,7 +229,7 @@
           "evidence": "Scan report, restore ticket."
         },
         {
-          "n": 9,
+          "n": 7,
           "phase": "Lessons Learned",
           "action": "Document the timeline, root cause, detection/response gaps, and update the relevant playbook + detection rules.",
           "owner": "SOC Analyst + IR Lead",
@@ -1023,40 +240,40 @@
         }
       ],
       "references": {
-        "mitre": "Initial Access — T1566",
-        "playbook": "phishing_response_playbook.md",
+        "mitre": "not mapped",
+        "playbook": "generic_incident_response_playbook.md",
         "policies": [
           "incident_severity_policy.md",
           "report_writing_sop.md"
         ],
-        "approval_gate": "Containment approval required (critical/high severity or asset criticality)"
+        "approval_gate": "No approval gate (low-impact incident)"
       },
       "version_history": [
         {
           "version": "1.0",
-          "date": "2026-07-25",
+          "date": "2026-07-26",
           "author": "SOC skill suite (auto-generated)",
           "change": "Initial SOP generated from investigation findings."
         }
       ],
       "stats": {
-        "steps": 9,
-        "approval_required": true,
+        "steps": 7,
+        "approval_required": false,
         "controls_referenced": 0,
-        "indicators_blocked": 2
+        "indicators_blocked": 0
       },
       "validation": {
         "valid": true,
         "must_fix": [],
         "should_fix": [],
-        "checks": 17
+        "checks": 15
       }
     },
     "compliance_evidence": {
       "available": true,
       "framework": "SOC 2 (AICPA Trust Services Criteria)",
       "disclaimer": "Analyst-facing evidence mapping — not a formal SOC 2 attestation.",
-      "incident_id": "INC-53027",
+      "incident_id": "the incident",
       "controls": [
         {
           "id": "CC7.2",
@@ -1064,15 +281,15 @@
           "family": "System Operations",
           "name": "Detection of anomalies indicative of malicious acts",
           "status": "MET",
-          "evidence": "Incident INC-53027 detected via NetWitness — 1 behavioural alert(s) (e.g. \"Phishing email detected(2)-24014126\")."
+          "evidence": "Incident the incident detected via NetWitness — detection signal \"Test LLM Incident\"."
         },
         {
           "id": "CC7.3",
           "tsc": "Security",
           "family": "System Operations",
           "name": "Evaluation of security events (triage & severity)",
-          "status": "MET",
-          "evidence": "Triaged at severity **HIGH**, category \"['Unauthorized access', 'Compromised asset (non-critical)']\"; MITRE ATT&CK: no MITRE mapping."
+          "status": "NOT_MET",
+          "evidence": "No triage classification recorded for this incident."
         },
         {
           "id": "CC7.4",
@@ -1103,61 +320,43 @@
           "tsc": "Security",
           "family": "Monitoring Activities",
           "name": "Ongoing evaluation with a retained audit trail",
-          "status": "MET",
+          "status": "PARTIAL",
           "evidence": "Incident tracked with identifiers/timestamps through triage → investigation → reporting; pipeline audit trail retained in the SOC datastore."
-        },
-        {
-          "id": "A1.2",
-          "tsc": "Availability",
-          "family": "Availability",
-          "name": "Recovery of availability-impacting incidents",
-          "status": "MET",
-          "evidence": "Availability-impacting incident (e.g. ransomware / disruption) detected and handled through the response pipeline."
-        },
-        {
-          "id": "C1.1",
-          "tsc": "Confidentiality",
-          "family": "Confidentiality",
-          "name": "Protection of confidential information during an incident",
-          "status": "MET",
-          "evidence": "Confidentiality-impacting activity (e.g. exfiltration/exposure) identified and addressed in the investigation."
         }
       ],
       "criteria_touched": [
-        "Security",
-        "Availability",
-        "Confidentiality"
+        "Security"
       ],
       "stats": {
-        "total": 8,
-        "met": 6,
-        "partial": 1,
-        "not_met": 1,
-        "coverage_pct": 75
+        "total": 6,
+        "met": 2,
+        "partial": 2,
+        "not_met": 2,
+        "coverage_pct": 33
       },
       "meta": {
-        "severity": "HIGH",
-        "scenario": "['Unauthorized access', 'Compromised asset (non-critical)']"
+        "severity": "Unknown",
+        "scenario": "Security incident"
       }
     },
     "final_verdict": {
       "available": true,
       "stage": "post-investigation",
-      "level": "HIGH",
-      "priority": 2,
-      "disposition": "Confirmed — True Positive",
-      "confidence": "High",
-      "action": "Contain & remediate per playbook (Tier 1)",
-      "delta": "confirmed",
+      "level": "LOW",
+      "priority": 4,
+      "disposition": "Inconclusive — partial substantiation",
+      "confidence": "Low",
+      "action": "Monitor / candidate for closure after review",
+      "delta": "unchanged",
       "triage_verdict": {
-        "level": "HIGH",
-        "priority": 2
+        "level": "LOW",
+        "priority": 5
       },
       "signals": [
         {
           "name": "IOC evidence depth",
-          "level": 3,
-          "label": "233 IOC(s) documented",
+          "level": 0,
+          "label": "no IOCs documented",
           "available": true
         },
         {
@@ -1168,47 +367,36 @@
         },
         {
           "name": "kill-chain characterisation",
-          "level": 3,
-          "label": "Diamond model 100% complete",
+          "level": 1,
+          "label": "Diamond model 33% complete",
           "available": true,
-          "pct": 100
+          "pct": 33
         },
         {
           "name": "MITRE confirmation",
-          "level": 2,
-          "available": true,
-          "severe": false,
-          "label": "Initial Access (medium confidence, inferred)"
+          "level": 0,
+          "label": "no tactic confirmed",
+          "available": false,
+          "severe": false
         }
       ],
       "rationale": [
         {
-          "name": "IOC evidence depth",
-          "level": 3,
-          "label": "233 IOC(s) documented",
-          "available": true
-        },
-        {
           "name": "kill-chain characterisation",
-          "level": 3,
-          "label": "Diamond model 100% complete",
+          "level": 1,
+          "label": "Diamond model 33% complete",
           "available": true,
-          "pct": 100
-        },
-        {
-          "name": "MITRE confirmation",
-          "level": 2,
-          "available": true,
-          "severe": false,
-          "label": "Initial Access (medium confidence, inferred)"
+          "pct": 33
         }
       ],
-      "missing": [],
+      "missing": [
+        "MITRE confirmation"
+      ],
       "stats": {
-        "substantiation": 3,
-        "scored_signals": 4,
-        "max_inv_level": 3,
-        "corroborated": true
+        "substantiation": 1,
+        "scored_signals": 3,
+        "max_inv_level": 1,
+        "corroborated": false
       }
     }
   },

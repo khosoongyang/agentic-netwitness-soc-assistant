@@ -311,6 +311,26 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False,
     return result
 
 
+def _ctx_thread(*args, **kwargs):
+    """threading.Thread that carries this session's Streamlit script-run context.
+
+    Workflow workers call st.* (progress, thinking container, session_state).
+    A thread without the context raises on the first such call; the bare
+    `except Exception` handlers then swallow it and the thread dies silently,
+    leaving the UI frozen on its last progress value. The fetch threads already
+    did this (see add_script_run_ctx at the startup/auto-fetch spawns) -- the
+    workflow spawns did not.
+    """
+    import threading as _t
+    from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+    _thread = _t.Thread(*args, **kwargs)
+    try:
+        add_script_run_ctx(_thread, get_script_run_ctx())
+    except Exception:
+        pass
+    return _thread
+
+
 def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
     """Investigation + reporting stages, off the Streamlit script thread.
     NO st.* calls in here — the UI polls `run` and renders its state."""
@@ -2907,7 +2927,14 @@ maybe_auto_fetch()
 # NOTE: there is no password/auth behind this — it's a single-operator desktop
 # tool, so the point of the toggle is to make "guest" mean something (hide/
 # disable the destructive Data Pipeline tools) rather than to gate a login.
-st.session_state.setdefault("analyst_mode_on", False)
+# Default comes from APP_ANALYST_MODE (default "true") so a single operator gets
+# the connection card, endpoint diagnostics and pipeline tools without hunting for
+# the toggle every fresh session. Set APP_ANALYST_MODE=false to start as a guest.
+st.session_state.setdefault(
+    "analyst_mode_on",
+    os.environ.get("APP_ANALYST_MODE", "true").strip().lower()
+    in ("1", "true", "yes", "on"),
+)
 st.session_state.user_role = "developer" if st.session_state.analyst_mode_on else "guest"
 _is_dev = st.session_state.user_role == "developer"
 
@@ -3771,7 +3798,6 @@ def _render_overview_header():
         "Operations overview",
         f"{active:,} active · {total:,} in session · last sync {last_sync}"),
         unsafe_allow_html=True)
-    return
 
     try:
         _nm, _nm_meta = _pick_next_move(incidents)
@@ -4392,7 +4418,7 @@ elif active_page == "My Workspace":
                         st.warning(f"Could not re-run: {_exc}")
                         return
 
-                    threading.Thread(
+                    _ctx_thread(
                         target=wf_run_stage_chain,
                         args=(_sel_id, _header_run_id),
                         daemon=True,
@@ -4419,7 +4445,7 @@ elif active_page == "My Workspace":
                             and _header_run_id
                             and (_latest_state or {}).get(_next_status_key)
                             == "Processing"):
-                        threading.Thread(
+                        _ctx_thread(
                             target=wf_run_stage_chain,
                             args=(_sel_id, _header_run_id),
                             daemon=True,
@@ -4477,7 +4503,7 @@ elif active_page == "My Workspace":
                                     st.warning(f"Could not approve: {_exc}")
                                 else:
                                     if _header_approval_stage != "reporting":
-                                        threading.Thread(
+                                        _ctx_thread(
                                             target=wf_run_stage_chain,
                                             args=(_sel_id, _header_run_id),
                                             daemon=True,
@@ -5320,7 +5346,7 @@ elif active_page == "My Workspace":
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not approve: {_exc}")
                                 else:
-                                    threading.Thread(target=wf_run_stage_chain,
+                                    _ctx_thread(target=wf_run_stage_chain,
                                                      args=(_sel_id, _inc_row.get("run_id")),
                                                      daemon=True).start()
                                     st.rerun()
@@ -5429,7 +5455,7 @@ elif active_page == "My Workspace":
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not retry: {_exc}")
                                 else:
-                                    threading.Thread(
+                                    _ctx_thread(
                                         target=wf_run_stage_chain,
                                         args=(_sel_id, _inc_row.get("run_id")),
                                         daemon=True).start()
@@ -5571,7 +5597,7 @@ elif active_page == "My Workspace":
                                       f"{_inc_row.get('worker_stage') or '—'}, "
                                       f"no active worker lease).")
                             if st.button("Resume Workflow", key=f"resume_wf_{_sel_id}"):
-                                threading.Thread(target=wf_run_stage_chain,
+                                _ctx_thread(target=wf_run_stage_chain,
                                                  args=(_sel_id, _wf_run_id),
                                                  daemon=True).start()
                                 st.rerun()
@@ -5586,7 +5612,7 @@ elif active_page == "My Workspace":
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not retry: {_exc}")
                                 else:
-                                    threading.Thread(target=wf_run_stage_chain,
+                                    _ctx_thread(target=wf_run_stage_chain,
                                                      args=(_sel_id, _wf_run_id),
                                                      daemon=True).start()
                                     st.rerun()
@@ -6255,7 +6281,7 @@ elif active_page == "Ask a Question":
                     import threading as _th2
                     _hitl_run["_spawned"] = True
                     _hitl_run["awaiting"] = None
-                    _th2.Thread(target=_workflow_worker,
+                    _ctx_thread(target=_workflow_worker,
                                 args=(_hitl_run, _hitl_run["_tri"],
                                       _hitl_run["_incident"]),
                                 daemon=True).start()

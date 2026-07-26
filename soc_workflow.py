@@ -1791,12 +1791,10 @@ def _harvest_incident_context(incident: dict) -> dict:
 
 
 def _to_iso_timestamp(value) -> str:
-    """Normalize assorted timestamp spellings ('2025-11-18 03:18:37 UTC',
-    epoch millis, ISO) to ISO-8601 so the investigation agent's
-    parse_timestamp_to_epoch() succeeds and temporal correlation works."""
+    """Normalize timestamp spellings to ISO-8601."""
     if value in (None, "", "Unknown"):
         return ""
-    if isinstance(value, (int, float)):          # epoch (NetWitness uses ms)
+    if isinstance(value, (int, float)):
         ts = float(value) / (1000 if value > 1e11 else 1)
         try:
             return datetime.utcfromtimestamp(ts).isoformat() + "+00:00"
@@ -1813,31 +1811,22 @@ def _to_iso_timestamp(value) -> str:
         return str(value)
 
 
-# NOTE: entity-map, asset-criticality, detection-rules and
-# mitigation-coverage are STANDALONE skills (incident_map.py /
-# asset_criticality.py / detection_rules.py / mitigation_mapping.py), surfaced
-# via the app UI (Map panel) — they are deliberately NOT embedded into the
-# investigation alert, to keep soc_investigation_agent/ free of our upgrades.
-# threat_intel.py is the one exception (as of the Threat Intelligence stage
-# being wired into the mandatory pipeline): its enrichment result IS now
-# embedded below — a deliberate, reviewed reversal of the original "keep it
-# out" policy for this one skill, since it now runs as a mandatory pipeline
-# stage before Investigation rather than an on-demand UI-only lookup. The
-# embed surfaces the exact fields the stage produces: enriched_alert,
-# threat_intelligence, enrichment_risk_score, enrichment_risk_level,
-# enrichment_risk_reasons — not the whole stage-result envelope.
+def prune_empty(d):
+    """Recursively strip None, empty strings, empty lists/dicts, and 'Unknown'."""
+    if isinstance(d, dict):
+        cleaned = {k: prune_empty(v) for k, v in d.items()}
+        return {k: v for k, v in cleaned.items() if v not in (None, "", [], {}, "Unknown", "unknown")}
+    elif isinstance(d, list):
+        cleaned = [prune_empty(v) for v in d]
+        return [v for v in cleaned if v not in (None, "", [], {}, "Unknown", "unknown")]
+    return d
 
 
 def build_investigation_alert(triage_result: dict, incident: dict,
                               supplement: dict | None = None,
-                              threat_intel_result: dict | None = None) -> dict:
-    """Convert triage output into the alert-JSON schema the investigation
-    agent's ingest pipeline expects (see soc_investigation_agent/log_config.yaml).
-    supplement: optional deep-dive findings from the feedback loop — embedded
-    so the analysis LLM sees the answers (or confirmed absences) per gap.
-    threat_intel_result: the Threat Intelligence stage's saved result (see
-    run_threat_intel()) — embedded so the analysis LLM sees real external
-    reputation data, not just the incident's own evidence."""
+                              threat_intel_result: dict | None = None,
+                              parsing_result: dict | None = None) -> dict:
+    """Convert triage output into the concise alert-JSON schema matching INC-6125."""
     payload = triage_result.get("metakeys_payload", {})
     ticket  = triage_result.get("ticket", {})
     mkv     = payload.get("metakey_values") or {}
@@ -1846,11 +1835,6 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     def _mk(key):
         return _scalar(mkv.get(key))
 
-    # ── enrichment helpers: surface the incident's OWN richer evidence that
-    # triage saw but the thin handoff dropped (behavioural alert titles, file/
-    # process IOCs, endpoint identity, alert volume). Forwarded agent-to-agent so
-    # the investigation LLM has real context; skill computations are still NOT
-    # embedded (see the note above) and the UI triage report/ticket are untouched.
     _am = incident.get("alertMeta") or {}
 
     def _amlist(*keys) -> list:
@@ -1874,10 +1858,6 @@ def build_investigation_alert(triage_result: dict, incident: dict,
         return list(dict.fromkeys(out))
 
     def _process_lineage() -> list:
-        """Parent→child process edges. Prefer an explicit lineage/chain field
-        ("a > b > c"); else pair same-length process/parent lists (flagged
-        inferred); else []. Deterministic, evidence-based — never fabricates an
-        edge it can't source."""
         edges: list = []
         chains = (_mklist("process.lineage", "process.chain", "process.tree")
                   + _amlist("ProcessTree", "ProcessLineage"))
@@ -1885,183 +1865,127 @@ def build_investigation_alert(triage_result: dict, incident: dict,
             norm = str(c).replace("→", "|").replace("->", "|").replace(">", "|")
             parts = [p.strip() for p in norm.split("|") if p.strip()]
             for i in range(len(parts) - 1):
-                edges.append({"parent": parts[i], "child": parts[i + 1],
-                              "source": "explicit chain"})
+                edges.append({"parent": parts[i], "child": parts[i + 1]})
         if edges:
             return edges
         children = _mklist("process.name")
         parents = _mklist("process.parent", "parent.process", "parent.name")
         if children and parents and len(children) == len(parents):
-            return [{"parent": parents[i], "child": children[i],
-                     "source": "paired (inferred)"} for i in range(len(children))]
+            return [{"parent": parents[i], "child": children[i]} for i in range(len(children))]
         return []
 
-    return {
+    src_ip = _first(_mk("ip.src"), incident.get("source_ip"), (ctx["source_ips"] or [None])[0])
+    dst_ip = _first(_mk("ip.dst"), incident.get("destination_ip"), (ctx["destination_ips"] or [None])[0])
+    hostname = _first(_mk("host.name"), incident.get("hostname"), (ctx["hosts"] or [None])[0])
+    user = _first(_mk("user.name"), incident.get("username"), (ctx["users"] or [None])[0])
+
+    def _cmdlines() -> list:
+        out = _mklist("param.src", "param.dst", "param", "param_src", "param_dst", "process.cmdline", "cmdline", "command_line", "process_cmd", "os.cmdline")
+        out += _amlist("CommandLine", "CmdLine", "ParamSrc", "ParamDst", "ProcessTree")
+        if parsing_result:
+            proc_alert = parsing_result.get("processed_alert") or {}
+            norm_alert = parsing_result.get("normalised_alert") or {}
+            if proc_alert.get("command_line"):
+                out.append(str(proc_alert["command_line"]).strip())
+            for c in (proc_alert.get("process_indicators", {}).get("command_lines") or []):
+                if c:
+                    out.append(str(c).strip())
+            for c in (norm_alert.get("process_indicators", {}).get("command_lines") or []):
+                if c:
+                    out.append(str(c).strip())
+        t_cmd = triage_result.get("command_line") or triage_result.get("process_indicators", {}).get("command_line")
+        if t_cmd:
+            out.append(str(t_cmd).strip())
+        for ev in (incident.get("events") or []):
+            if isinstance(ev, dict):
+                c = ev.get("param_src") or ev.get("param") or ev.get("cmdline") or ev.get("command_line") or ev.get("process_cmd") or ev.get("param_dst")
+                if c and str(c).strip() not in _NOISE_VALUES:
+                    out.append(str(c).strip())
+
+        seen = set()
+        deduped = []
+        for x in out:
+            if not x or x in _NOISE_VALUES:
+                continue
+            cleaned = str(x).strip()
+            if cleaned and cleaned not in seen:
+                seen.add(cleaned)
+                deduped.append(cleaned)
+        return deduped
+
+    cmds = _cmdlines()
+    cmd_val = cmds[0] if len(cmds) == 1 else (cmds if len(cmds) > 1 else None)
+
+    raw_alert = {
         "incident_id": payload.get("incident_id") or ticket.get("incident_id"),
-        "incident_details": {
-            "timestamp": _to_iso_timestamp(
-                _first(ticket.get("incident_time"), payload.get("timestamp"))),
-            "description": ticket.get("summary") or "",
-            "mitre_att&ck": {
-                # Triage now maps every incident onto a canonical tactic; the
-                # investigation agent uses it for playbook auto-selection.
-                "tactic":    _first(payload.get("mitre_tactic"),
-                                    ticket.get("mitre_tactic"),
-                                    incident.get("mitre_tactic"), default="Unknown"),
-                "technique": _first(payload.get("mitre_technique"),
-                                    ticket.get("mitre_technique"),
-                                    incident.get("mitre_technique"), default="Unknown"),
-            },
-        },
         "classification": {
-            "alert_type":         ticket.get("incident_category") or "Unknown",
-            "soc_classification": ticket.get("classification") or "Unknown",
+            "alert_type": ticket.get("incident_category"),
+            "severity": ticket.get("classification"),
+            "risk_score": ticket.get("risk_rating") or incident.get("riskScore"),
         },
-        # Metakey values from triage first; harvested from the raw incident as
-        # fallback. "Unknown" here previously left every playbook step NOT_MET.
-        "log_indicators": {
-            "target_user":   _first(_mk("user.name"), incident.get("username"),
-                                    (ctx["users"] or [None])[0],
-                                    default="Unknown"),
-            "computer_name": _first(_mk("host.name"), incident.get("hostname"),
-                                    (ctx["hosts"] or [None])[0],
-                                    default="Unknown"),
-            "operating_system": _first(_mk("os.version"),
-                                       (ctx["operating_systems"] or [None])[0],
-                                       default="Unknown"),
+        "incident_details": {
+            "title": payload.get("incident_title") or ticket.get("title"),
+            "timestamp": _to_iso_timestamp(_first(ticket.get("incident_time"), payload.get("timestamp"))),
+            "description": ticket.get("summary"),
+            "mitre_att&ck": {
+                "tactic": _first(payload.get("mitre_tactic"), ticket.get("mitre_tactic"), incident.get("mitre_tactic")),
+                "technique": _first(payload.get("mitre_technique"), ticket.get("mitre_technique"), incident.get("mitre_technique")),
+            },
         },
         "network_indicators": {
-            "source_ip":      _first(_mk("ip.src"), incident.get("source_ip"),
-                                     (ctx["source_ips"] or [None])[0]),
-            "destination_ip": _first(_mk("ip.dst"), incident.get("destination_ip"),
-                                     (ctx["destination_ips"] or [None])[0]),
-            "domain":         _mk("domain"),
+            "source": {
+                "ip_address": src_ip,
+                "port": _first(_mk("port.src")),
+                "mac_address": _first(_amlist("MacAddress")),
+                "hostname": hostname,
+            },
+            "destination": {
+                "ip_address": dst_ip,
+                "port": _first(_mk("port.dst"), _mk("tcp.dstport")),
+                "service": _first(_mk("service"), _mk("network.service")),
+                "domain": _mk("domain"),
+            },
         },
-        # Full harvested lists — the ingest pipeline's regex scanner picks the
-        # IPs out of this block for correlation, and the analysis LLM sees the
-        # complete set (playbook step 1 asks for exactly these fields).
-        "observed_indicators": {
-            "usernames":      ctx["users"],
-            "hostnames":      ctx["hosts"],
-            "ip_addresses":   ctx["ips"],
-            "source_ips":     ctx["source_ips"],
-            "destination_ips": ctx["destination_ips"],
-            "entity_from_alert_title": ctx.get("title_entity") or None,
+        "endpoint_indicators": {
+            "user": user,
+            "hostname": hostname,
+            "operating_system": _first(_mk("os.version"), (ctx["operating_systems"] or [None])[0]),
+            "processes": {
+                "process_name": _first(_mklist("process.name")),
+                "command_line": cmd_val,
+                "lineage": _process_lineage(),
+            },
+            "files": {
+                "filename": _first(_mklist("file.name", "filename")),
+                "filepath": _first(_mklist("file.path")),
+                "hashes": _mklist("file.hash", "checksum", "checksumSha256", "checksumSha1", "checksumMd5", "sha256", "md5"),
+            },
         },
-        "triage": {
-            "ticket_unc":        ticket.get("unc"),
-            "risk_rating":       ticket.get("risk_rating"),
-            "ioc_summary":       payload.get("ioc_summary"),
-            "matched_metakeys":  payload.get("matched_metakeys"),
-            "metakey_values":    mkv,
-            "matched_ioc_count": ticket.get("matched_ioc_count"),
-        },
-        "source_incident": {
-            "title":   payload.get("incident_title") or ticket.get("title"),
-            "summary": str(incident.get("summary") or "")[:1000],
-        },
-        # ── ENRICHMENT: the incident's own richer evidence, forwarded so the
-        # investigation agent's ingest (flat-string IOC scanner + analysis LLM)
-        # has real context to answer playbook step_1-5. The triage report and
-        # ticket rendered in the UI are intentionally left simple/unchanged.
-        "enrichment": {
-            "endpoint_identity": {
-                "hostnames":       _amlist("Hostname") or ctx["hosts"],
-                "users":           _amlist("User", "AdUser") or ctx["users"],
-                "mac_addresses":   _amlist("MacAddress"),
-                "dns_domains":     _amlist("DnsDomain"),
-                "source_ips":      _amlist("SourceIp") or ctx["source_ips"],
-                "destination_ips": _amlist("DestinationIp") or ctx["destination_ips"],
-            },
-            "behavioural_alerts": {
-                "alert_titles":     _amlist("AlertTitles"),
-                "alert_types":      _amlist("AlertTypes"),
-                "mitre_tactics":    _amlist("AlertTactics"),
-                "mitre_techniques": _amlist("AlertTechniques"),
-            },
-            "file_indicators": {
-                "hashes": _mklist("file.hash", "checksum", "checksumSha256",
-                                  "checksumSha1", "checksumMd5", "sha256", "md5"),
-                "names":  _mklist("file.name", "filename"),
-                "paths":  _mklist("file.path"),
-            },
-            "process_indicators": {
-                "names": _mklist("process.name"),
-                "paths": _mklist("process.path"),
-                "pids":  _mklist("process.pid"),
-            },
-            # ── Handoff round 3: parent→child process lineage + command lines.
-            # The highest-signal endpoint context for the investigation LLM (an HTA
-            # spawning cmd→powershell reaching a C2 host IS the attack chain).
-            # Populated from live ECAT endpoint data; when explicit lineage isn't
-            # present the flat process/parent/command-line lists still forward the
-            # evidence without inventing edges.
-            "process_tree": {
-                "processes":        _mklist("process.name"),
-                "process_paths":    _mklist("process.path", "directory", "filename.path"),
-                "pids":             _mklist("process.pid"),
-                "parent_processes": _mklist("process.parent", "parent.process",
-                                            "parent.name", "parent.path", "parent.pid"),
-                "command_lines":    _mklist("process.cmdline", "cmdline", "os.cmdline",
-                                            "param.dst", "param.src"),
-                "lineage":          _process_lineage(),
-            },
-            "network_activity": {
-                "source_ips":      _amlist("SourceIp") or ctx["source_ips"],
-                "destination_ips": _amlist("DestinationIp") or ctx["destination_ips"],
-                "ports":           _mklist("port.dst", "port.src", "tcp.dstport"),
-                "protocols":       _mklist("protocol", "ip.proto", "service"),
-                "network_services": _mklist("network.service"),
-                "bytes":           _mklist("bytes.out", "bytes.transferred", "bytes.src"),
-                "geo":             _mklist("geo.country", "geo.city", "org.dst"),
-                "domains":         _mklist("domain", "fqdn", "alias.host"),
-            },
-            "host_behaviour": {
-                "config_changes":  _mklist("config.change", "change.type"),
-                "cpu_usage":       _mklist("cpu.usage"),
-                "device_types":    _mklist("device.type"),
-                "user_roles":      _mklist("user.role"),
-                "operating_systems": _mklist("os.version", "os.type") or ctx["operating_systems"],
-            },
-            "event_context": {
-                "event_types":  _mklist("event.type", "alert.type", "ec.activity"),
-                "event_times":  _mklist("event.time"),
-            },
-            # Full metakey map so nothing triage extracted is dropped in transit —
-            # the analysis LLM sees every populated field. UI is unaffected.
-            "all_metakey_values": {k: v for k, v in mkv.items()
-                                   if v not in (None, "", [], {})},
-            "alert_statistics": {
-                "alert_count":              incident.get("alertCount"),
-                "event_count":              incident.get("eventCount"),
-                "risk_score":               incident.get("riskScore"),
-                "average_alert_risk_score": incident.get("averageAlertRiskScore"),
-                "matched_ioc_count":        ticket.get("matched_ioc_count"),
-            },
-            "matched_metakey_catalog": payload.get("matched_metakeys") or [],
-            "ioc_summary":    payload.get("ioc_summary"),
-            "triage_summary": ticket.get("summary"),
-            "_note": "Agent-to-agent enrichment: the incident's own evidence "
-                     "forwarded from triage. The triage report and ticket shown "
-                     "in the UI are intentionally unchanged/simple.",
+        "email_artifacts": {
+            "sender": _first(_mklist("email.src", "sender")),
+            "recipient": _first(_mklist("email.dst", "recipient")),
+            "subject": _first(_mklist("email.subject", "subject")),
         },
         **({"triage_deep_dive": supplement} if supplement else {}),
         **({
-            "enriched_alert": threat_intel_result.get("enriched_alert"),
-            "threat_intelligence": threat_intel_result.get("threat_intelligence"),
+            "threat_intelligence_enrichment": threat_intel_result.get("threat_intelligence") or threat_intel_result.get("enriched_alert"),
             "enrichment_risk_score": threat_intel_result.get("enrichment_risk_score"),
             "enrichment_risk_level": threat_intel_result.get("enrichment_risk_level"),
             "enrichment_risk_reasons": threat_intel_result.get("enrichment_risk_reasons"),
         } if threat_intel_result else {}),
     }
 
+    return prune_empty(raw_alert)
+
 
 def handoff_to_investigation(triage_result: dict, incident: dict,
                              supplement: dict | None = None,
-                             threat_intel_result: dict | None = None) -> Path:
+                             threat_intel_result: dict | None = None,
+                             parsing_result: dict | None = None) -> Path:
     alert = build_investigation_alert(triage_result, incident,
                                       supplement=supplement,
-                                      threat_intel_result=threat_intel_result)
+                                      threat_intel_result=threat_intel_result,
+                                      parsing_result=parsing_result)
     queue_dir = INV_DIR / "triaged_alerts"
     queue_dir.mkdir(exist_ok=True)
     inc_id = re.sub(r"[^A-Za-z0-9_-]", "_", str(alert["incident_id"]))
@@ -2153,24 +2077,9 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
                               line_cb=None, feedback_cb=None,
                               max_passes: int | None = None,
                               threat_intel_result: dict | None = None,
-                              watchdog_cb=None) -> dict:
-    """Investigation with a triage feedback loop.
-
-    Pass 1 runs normally. If the result shows the investigation lacked
-    information (detect_evidence_gaps), the work goes BACK to the triage
-    agent for a focused deep-dive on exactly those gaps, then investigation
-    re-runs with the supplement embedded in the alert. Gaps the incident
-    data cannot answer come back marked 'not present in incident data', so
-    the second pass converges instead of looping.
-
-    threat_intel_result: the Threat Intelligence stage's saved result —
-    embedded in every handoff (initial pass and feedback-loop re-handoff)
-    so the analysis LLM sees it throughout.
-
-    feedback_cb(event, detail) events: handoff, gaps_detected,
-    triage_deep_dive_start, triage_deep_dive_done, second_pass_start,
-    supplement_error. WORKFLOW_FEEDBACK_PASSES=0 disables the loop.
-    """
+                              watchdog_cb=None,
+                              parsing_result: dict | None = None) -> dict:
+    """Investigation with a triage feedback loop."""
     def _emit(event: str, detail: str = "") -> None:
         if feedback_cb:
             try:
@@ -2189,7 +2098,8 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
     cls    = ticket.get("classification")
 
     handoff_to_investigation(triage_result, incident,
-                             threat_intel_result=threat_intel_result)
+                             threat_intel_result=threat_intel_result,
+                             parsing_result=parsing_result)
     _emit("handoff", "Alert handed to triaged_alerts queue")
     inv = run_investigation(inc_id, timeout=timeout, line_cb=line_cb,
                             triage_classification=cls, watchdog_cb=watchdog_cb)
@@ -3281,9 +3191,10 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
         renewer.also_renew_global_lock(_INVESTIGATION_LOCK)
 
         state = wss.get_state(incident_id)
-        triage_result = json.loads(state.get("triage_result_json") or "{}")
-        ti_result     = json.loads(state.get("threat_intel_result_json") or "{}")
-        incident      = load_raw_incident_for_run(incident_id, run_id) or {}
+        triage_result  = json.loads(state.get("triage_result_json") or "{}")
+        ti_result      = json.loads(state.get("threat_intel_result_json") or "{}")
+        incident       = load_raw_incident_for_run(incident_id, run_id) or {}
+        parsing_result = load_parsing_result_for_run(incident_id, run_id) or {}
         ticket = triage_result.get("ticket") or {}
         title  = incident.get("title") or incident.get("name") or "Untitled"
         run_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -3292,6 +3203,7 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
         inv_result = investigate_with_feedback(
             triage_result, incident, incident_id,
             threat_intel_result=ti_result,
+            parsing_result=parsing_result,
             feedback_cb=lambda ev, d: _log("FEEDBACK", f"{ev}: {d}"),
             watchdog_cb=lambda: renew_global_lock(_INVESTIGATION_LOCK, worker_id))
         if inv_result.get("status") not in {"failed", "lock_lost"}:

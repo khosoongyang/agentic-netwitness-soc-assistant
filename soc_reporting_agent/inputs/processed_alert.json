@@ -1,0 +1,13 @@
+{
+  "incident_id": "INC-LLM-SUCCESS",
+  "alert_id": "INC-LLM-SUCCESS",
+  "alert_name": "SOC incident",
+  "severity": "Medium",
+  "status": "completed",
+  "process_indicators": {},
+  "network_indicators": {},
+  "user_and_host_indicators": {
+    "hostname": null,
+    "username": null
+  }
+}

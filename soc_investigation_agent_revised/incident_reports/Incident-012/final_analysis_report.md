@@ -1,54 +1,50 @@
-# EXECUTIVE INCIDENT OUTCOME REPORT: INC-52826 (Incident-012)
+# INVESTIGATION SUMMARY: INC-52826 (Incident-012)
 
-**Final Severity:** Critical
-*Severity is rated as Critical based on Appendix A.2 and A.3 escalation factors: (1) The host is performing lateral movement (T1021 Remote Services) indicating a major compromise; (2) Communication with known malicious IPs (111.223.64.11, 149.154.167.99) confirms malicious activity; (3) 31 alerts in minutes indicate spreading/repeated activity affecting multiple systems; (4) Triage IOC summary identifies data exfiltration risk (confidentiality impact) and saturated interface buffers (availability impact); (5) Multiple users or systems are potentially affected via lateral movement; (6) The overall risk rating from triage is High with High likelihood of adverse impact. Per Appendix A.2, a major compromise with multiple systems affected and data exfiltration risk qualifies as Critical.*
+**Final Severity:** High
+*High severity is warranted because the incident shows repeated lateral movement activity from a single internal host, contact with known malicious IPs, and potential data exfiltration risk. These are strong indicators of a likely compromise affecting an important asset, but the record does not confirm sensitive data exposure, ransomware, or widespread outage required for Critical.*
 
-**Confidence Level:** High
-*Confidence is rated as High based on Appendix F.3. Multiple reliable sources support the conclusion: (1) 31 'Lateral Move Detected' alerts from the same source IP provide strong network-level evidence; (2) Communication with known malicious IPs (111.223.64.11, 149.154.167.99) is confirmed by external threat intelligence; (3) Triage IOC summary identifies saturated interface buffers, data exfiltration indicators, and odd device behaviour - all consistent with a compromise; (4) The triage risk rating is High across all dimensions (likelihood of adverse impact, initiation, occurrence). While host-level forensic data is missing, the network evidence is strong, consistent, and from multiple reliable sources, meeting the 'High' confidence criteria per Appendix F.3.*
+**Confidence Level:** Medium
+*Confidence is Medium because multiple timeline entries consistently describe lateral movement behavior and malicious-destination contact, but the evidence is incomplete: there is no endpoint process telemetry, user identity, hostname, operating system, or direct confirmation of malware execution or exfiltration. This fits the policy category of partially sufficient evidence.*
 
-## Business Impact Assessment (Appendix C)
-- **Critical System**: unknown
-- **Essential Service**: unknown
-- **Data Sensitivity**: yes
-- **Operational Impact**: yes
+## Investigative Workflow
+- Reviewed the incident timeline and playbook trace for INC-52826.
+- Assessed the alert pattern as horizontal/lateral movement based on internal east-west traffic from 192.168.10.201.
+- Checked for process, command-line, hash, user, hostname, and OS evidence; none was present in the record.
+- Evaluated threat-intelligence context and noted the incident narrative references known malicious destinations.
+- Determined that further investigation and containment are required due to lateral movement indicators.
 
-## Technical Chronology Summary
-Host at IP 192.168.10.201 generated 31 'Lateral Move Detected' alerts within minutes, communicating with multiple internal and external IPs. The host communicated with known malicious IPs (111.223.64.11, 149.154.167.99) and other unusual external destinations (4.145.79.80, 51.104.15.252, 52.123.128.14), as well as internal IPs (192.168.10.255) and DNS servers (8.8.8.8, 8.8.4.4). The high volume of lateral movement alerts and traffic to known malicious IPs indicates the host is compromised and actively performing lateral movement within the network and potential data exfiltration to external command-and-control or exfiltration destinations.
+## Technical Chronology & MITRE ATT&CK TTP Mapping
+
+2025-07-14T11:23:30+00:00 / 2025-07-15T03:24:11Z-03:44:11Z context: Host 192.168.10.201 generated 31 'Lateral Move Detected' alerts within minutes. The observed traffic originated from 192.168.10.201 and included destinations 8.8.8.8, 8.8.4.4, 149.154.167.99, 52.123.128.14, 51.104.15.252, 4.145.79.80, 192.168.10.255, and 224.0.0.252. The incident summary indicates repeated east-west/lateral network communication and possible exposure to known malicious IPs (111.223.64.11 and 149.154.167.99 were cited in the incident narrative), but no process telemetry, user identity, hostname, or OS metadata was present. The triage record states the traffic was network-only and could indicate a compromised host performing lateral movement and potential data exfiltration; however, the available evidence remains limited to network alerts and does not confirm a spawned malicious process or a completed exfiltration event.
+
+| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |
+| --- | --- | --- | --- | --- |
+| Initial network detection | Host 192.168.10.201 generated 31 'Lateral Move Detected' alerts within minutes and communicated with internal and external IPs including 8.8.8.8, 8.8.4.4, 149.154.167.99, 52.123.128.14, 51.104.15.252, 4.145.79.80, 192.168.10.255, and 224.0.0.252. | Lateral Movement | Remote Services | T1021 |
+| East-west connectivity and reconnaissance-like traffic | Repeated internal network communications from 192.168.10.201 with alerts labeled 'Lateral Move Detected' and traffic to multiple destinations, including broadcast/multicast addresses. | Discovery | System Network Configuration Discovery | T1016 |
+| Potential remote access or movement across internal hosts | The incident narrative explicitly describes a compromised host performing lateral movement; destination set included internal broadcast and unusual external endpoints, but no direct process telemetry was present. | Lateral Movement | Remote Services | T1021 |
 
 ## Playbook Execution Trace
 | Step ID | Instruction | Status | Findings |
 | --- | --- | --- | --- |
-| `step_1` | Identify 1. datetime, 2. Email address of sender/receiver, 3 IP address of sender/receiver and 4. subject of email. | **NOT_MET** | The timeline provides the datetime (2025-07-14T11:23:30+00:00) and source IP (192.168.10.201) and destination IPs (8.8.8.8, 149.154.167.99, 52.123.128.14, 192.168.10.255, 51.104.15.252, 8.8.4.4, 4.145.79.80, 224.0.0.252). However, there is NO email address of sender/receiver and NO subject of email mentioned anywhere in the timeline. This incident appears to be a lateral movement/network-based alert, not a phishing email incident, so email-specific details are absent. |
-| `step_2` | Does phishing attempt contain a URL or attachment? | **NOT_MET** | The timeline does not mention any phishing attempt, URL, or attachment. The incident is classified as 'Internal Hacking (inactive)' with MITRE tactic 'Lateral Movement' (T1021 Remote Services). There is no evidence of a phishing email containing a URL or attachment. |
-| `step_3` | Was any malicious process spawned on the victim's machine? | **NOT_MET** | The timeline does not provide any information about processes spawned on the victim's machine. No process names, process IDs, or process tree data is available. The logs are network-level (event.type = Network) with no host/process telemetry. |
-| `step_4` | Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. | **NOT_MET** | No process tree data is available in the timeline. The incident only contains network indicators (source IP, destination IPs, alert counts) and triage IOC summaries. There is no host-level forensic data such as process creation events, parent-child process relationships, or command-line arguments to analyze for privilege escalation, lateral movement, or data exfiltration at the process level. |
-| `step_5` | Based on the analysis, determine if further investigation is necessary and the containment steps | **NOT_MET** | While the timeline indicates a high-risk incident (31 lateral movement alerts, communication with known malicious IPs 111.223.64.11 and 149.154.167.99), the lack of email/phishing context, process-level data, and host forensics prevents a complete determination. Further investigation is clearly necessary, but specific containment steps cannot be fully determined without more data. |
-
-## Actions Taken
-- Reviewed incident timeline and alert details for INC-52826
-- Identified source IP 192.168.10.201 as the compromised host
-- Identified known malicious IPs (111.223.64.11, 149.154.167.99) in communication with the host
-- Noted 31 lateral movement alerts generated within minutes
-- Reviewed triage IOC summary indicating saturated interface buffers, data exfiltration risk, and odd device behaviour
-- Attempted to execute Phishing Playbook but determined the incident is a lateral movement/network compromise, not a phishing email incident
-- Assessed business impact using Appendix C checklist
-- Assigned severity and confidence ratings based on policy guidelines
+| `step_1` | Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System | **NOT_MET** | The incident record provides the source IP 192.168.10.201, but does not confirm a username, login details, computer name, or operating system. The evidence is network-only and lacks authentication or endpoint inventory data needed to complete host identity attribution. |
+| `step_2` | Was it horizontal or vertical | **MET** | Horizontal. The incident describes east-west/lateral movement from 192.168.10.201 to multiple internal and external destinations, including known malicious IPs, which is consistent with lateral movement rather than privilege escalation within a single host. |
+| `step_3` | Was any malicious process spawned on the victim's machine? | **NOT_MET** | No malicious process spawn is evidenced in the supplied timeline. There is no process creation telemetry, parent-child lineage, command line, or hash evidence to confirm malicious execution on the endpoint. |
+| `step_4` | Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. | **NOT_MET** | A process tree cannot be analyzed from this incident record because no endpoint process telemetry is present. The evidence shows only network activity and repeated lateral movement alerts, without process ancestry or service/credential artifacts. |
+| `step_5` | Based on the analysis, determine if further investigation is necessary and the containment steps | **MET** | Further investigation is necessary due to strong lateral movement indicators and contact with known malicious IPs. Containment should focus on isolating the source host, blocking observed malicious destinations, and hunting for related east-west activity across adjacent systems. |
 
 ## Recommended Containment Actions
-- Immediately isolate host 192.168.10.201 from the network by disabling its network adapter or blocking its IP at the local switch port to prevent further lateral movement and data exfiltration.
-- Block all outbound traffic from 192.168.10.201 at the perimeter firewall to prevent communication with known malicious IPs (111.223.64.11, 149.154.167.99) and other suspicious destinations (4.145.79.80, 51.104.15.252, 52.123.128.14).
-- Block inbound and outbound traffic to/from known malicious IPs 111.223.64.11 and 149.154.167.99 at the network perimeter firewall to protect other hosts.
-- Conduct forensic imaging of host 192.168.10.201 for offline analysis to identify the initial compromise vector, malware artifacts, and extent of lateral movement.
-- Reset all credentials and service account secrets that may have been accessed or used from host 192.168.10.201.
-- Review firewall and proxy logs for any data exfiltration from 192.168.10.201 to external IPs and assess the volume of data transferred.
-- Scan the network for any other hosts that may have been compromised via lateral movement from 192.168.10.201.
+- Immediately isolate host 192.168.10.201 from the network using EDR network containment or NAC quarantine, while preserving host access for forensic acquisition.
+- Block outbound and inbound communications to the identified malicious IPs 111.223.64.11 and 149.154.167.99 at perimeter firewall, EDR network control, and proxy layers.
+- Collect volatile memory, active network connections, logged-on users, and running processes from 192.168.10.201 before rebooting or remediation.
+- Hunt across EDR/SIEM for the same source MAC 00:0c:29:df:de:7e, the same source IP 192.168.10.201, and the same alert pattern on neighboring hosts in the 192.168.10.0/24 subnet.
+- Review Windows Security 4624/4625/4672/4688, Sysmon 1/3/7/11/12/13/22, and remote execution telemetry (RDP, WinRM, PsExec, WMI, scheduled tasks) associated with 192.168.10.201 for the incident window.
+- Validate whether any files, credentials, or data stores on 192.168.10.201 were accessed or staged for exfiltration; if evidence is found, expand containment to affected peers and services.
 
 ## Appendix M: Policy-Based Compliance Audit Log
 
 | Audit ID | Decision Point | Policy Reference | Input Summary | Result | Decision Made | Human Review? | Timestamp |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `AUD-DP07-1784705995-1` | **DP-07** | Appendix C | Critical System: False, Sensitive Data: True | *Warning* | `Investigate` | Yes | 2026-07-22T07:39:55Z |
-| `AUD-DP08-1784705995-2` | **DP-08** | Appendix A | Severity classification: Critical | *Warning* | `Escalate` | Yes | 2026-07-22T07:39:55Z |
-| `AUD-DP09-1784705995-3` | **DP-09** | Appendix F | Confidence level: High | *Pass* | `Investigate` | Yes | 2026-07-22T07:39:55Z |
-| `AUD-DP10-1784705995-4` | **DP-10/DP-11** | Appendix G | Severity: Critical, Confidence: High, Ransomware: False, Guest OS: False | *Fail* | `Escalate` | Yes | 2026-07-22T07:39:55Z |
-| `AUD-DP15-1784705995-5` | **DP-15** | Appendix B | Sensitive or personal data accessed or exfiltrated. | *Warning* | `Escalate` | Yes | 2026-07-22T07:39:55Z |
+| `AUD-DP07-1785083670-1` | **DP-07** | Appendix C | Critical System: False, Sensitive Data: False | *Pass* | `Investigate` | Yes | 2026-07-26T16:34:30Z |
+| `AUD-DP08-1785083670-2` | **DP-08** | Appendix A | Severity classification: High | *Warning* | `Escalate` | Yes | 2026-07-26T16:34:30Z |
+| `AUD-DP09-1785083670-3` | **DP-09** | Appendix F | Confidence level: Medium | *Warning* | `Escalate` | Yes | 2026-07-26T16:34:30Z |
+| `AUD-DP10-1785083670-4` | **DP-10/DP-11** | Appendix G | Severity: High, Confidence: Medium, Ransomware: False, Guest OS: False | *Fail* | `Escalate` | Yes | 2026-07-26T16:34:30Z |

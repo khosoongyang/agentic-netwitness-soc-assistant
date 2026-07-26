@@ -165,8 +165,8 @@ def process_log_file(filepath: str) -> dict:
     
     # Serialize to narrative
     document = serialize_json_to_narrative(data)
-    if len(document) > 20000:
-        document = document[:20000] + " [TRUNCATED]"
+    if len(document) > 12000:
+        document = document[:12000] + " [TRUNCATED]"
     
     # Extract mitre tactic and technique
     mitre_data = data.get("incident_details", {}).get("mitre_att&ck", {})

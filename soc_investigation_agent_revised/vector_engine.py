@@ -74,7 +74,7 @@ def ingest_logs(logs_list: list):
     if not logs_list:
         return
     ids = [log["id"] for log in logs_list]
-    documents = [log["document"][:20000] if len(log["document"]) > 20000 else log["document"] for log in logs_list]
+    documents = [log["document"][:12000] if len(log["document"]) > 12000 else log["document"] for log in logs_list]
     metadatas = [log["metadata"] for log in logs_list]
     collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
 

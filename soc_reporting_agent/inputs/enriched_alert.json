@@ -1,5 +1,5 @@
 {
-  "incident_id": "INC-1",
+  "incident_id": "INC-LLM-SUCCESS",
   "alert_title": "SOC incident",
   "incident_summary": "SOC alert requires review: SOC incident",
   "severity": "Medium",
@@ -9,8 +9,6 @@
   "username": null,
   "iocs": [],
   "raw_incident": {
-    "id": "INC-1",
-    "title": "Test incident",
-    "alertMeta": {}
+    "title": "Test LLM Incident"
   }
 }

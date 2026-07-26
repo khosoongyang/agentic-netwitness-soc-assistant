@@ -385,7 +385,7 @@ class ChromaIncidentVectorStore(BaseVectorIndex):
         def execute_upsert():
             self.collection.upsert(
                 ids=[incident.id],
-                documents=[incident.summary_text],
+                documents=[(incident.summary_text or "")[:12000]],
                 metadatas=[metadata]
             )
 

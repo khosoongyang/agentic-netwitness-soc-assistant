@@ -206,7 +206,7 @@ class PolicyVectorIndex:
             key_clean = key.lower().strip()
             if any(norm_key in key_clean or key_clean in norm_key for norm_key in normalized_keys):
                 ids.append(key)
-                documents.append(text)
+                documents.append(text[:12000])
                 metadatas.append({"section_name": key})
                 
         if ids:

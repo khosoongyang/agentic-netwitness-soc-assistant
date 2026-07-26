@@ -1,101 +1,21 @@
 {
   "agent": "Triage Agent",
   "status": "completed",
-  "incident_id": "INC-53027",
-  "alert_id": "INC-53027",
-  "title": "High Risk Alerts: ESA for 192.168.10.210",
-  "severity": "HIGH",
-  "classification": "HIGH",
+  "incident_id": "INC-LLM-SUCCESS",
+  "alert_id": "INC-LLM-SUCCESS",
+  "title": "SOC incident",
+  "severity": null,
+  "classification": null,
   "mitre_tactic": "Unknown",
   "mitre_technique": "Unknown",
-  "risk_rating": {
-    "likelihood_initiation": "High",
-    "likelihood_occurrence": "High",
-    "likelihood_adverse_impact": "High",
-    "overall_risk": "High",
-    "rationale": "High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences."
-  },
-  "ioc_summary": "[AVAILABILITY] High CPU usage, Configuration changes — High risk score and automated detection suggest potential system instability or resource exhaustion.\n[CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Anomalous file transfers — High risk score and automated detection indicate potential data exposure or exfiltration.\n[INTEGRITY] Unexpected OS/ROMMON release versions installed, Configuration changes — High risk score and automated detection suggest potential system alteration or unauthorized changes.",
-  "matched_metakeys": [
-    "alert.type",
-    "automated_detection",
-    "bytes.out",
-    "change.type",
-    "config.change",
-    "cpu.usage",
-    "domain",
-    "file.name",
-    "file.size",
-    "firmware.version",
-    "high_risk",
-    "host.name",
-    "ip.dst",
-    "ip.src",
-    "os.version",
-    "process.name",
-    "protocol",
-    "user.name"
-  ],
-  "matched_ioc_count": 6,
-  "incident_category": [
-    "Unauthorized access",
-    "Compromised asset (non-critical)"
-  ],
-  "initial_response_time": "30 to 60 minutes",
-  "summary": "High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.",
-  "recommended_actions": [
-    "Isolate affected system",
-    "Conduct forensic analysis",
-    "Apply security patches/updates",
-    "Review configuration changes"
-  ],
-  "ticket": {
-    "unc": "#00026A",
-    "incident_id": "INC-53027",
-    "title": "High Risk Alerts: ESA for 192.168.10.210",
-    "incident_time": "2026-04-28 11:08:52 UTC",
-    "created_at": "2026-07-13T05:39:58.252775",
-    "classification": "HIGH",
-    "risk_rating": {
-      "likelihood_initiation": "High",
-      "likelihood_occurrence": "High",
-      "likelihood_adverse_impact": "High",
-      "overall_risk": "High",
-      "rationale": "High risk score, automated detection, and specific IOC findings across availability, confidentiality, and integrity indicate a significant and active threat with high probability of severe consequences."
-    },
-    "incident_category": [
-      "Unauthorized access",
-      "Compromised asset (non-critical)"
-    ],
-    "initial_response_time": "30 to 60 minutes",
-    "summary": "High-risk automated detection of anomalous network traffic, file transfers, and configuration changes on 192.168.10.210, indicating potential unauthorized access or system compromise requiring immediate investigation.",
-    "recommended_actions": [
-      "Isolate affected system",
-      "Conduct forensic analysis",
-      "Apply security patches/updates",
-      "Review configuration changes"
-    ],
-    "matched_ioc_count": 6,
-    "metakeys": [
-      "alert.type",
-      "automated_detection",
-      "bytes.out",
-      "change.type",
-      "config.change",
-      "cpu.usage",
-      "domain",
-      "file.name",
-      "file.size",
-      "firmware.version",
-      "high_risk",
-      "host.name",
-      "ip.dst",
-      "ip.src",
-      "os.version",
-      "process.name",
-      "protocol",
-      "user.name"
-    ]
-  },
-  "created_at": "2026-07-13T05:39:58.252775"
+  "risk_rating": null,
+  "ioc_summary": null,
+  "matched_metakeys": null,
+  "matched_ioc_count": null,
+  "incident_category": null,
+  "initial_response_time": null,
+  "summary": null,
+  "recommended_actions": null,
+  "ticket": {},
+  "created_at": null
 }
