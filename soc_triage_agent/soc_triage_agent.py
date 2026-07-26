@@ -1328,12 +1328,133 @@ _FORCE_TRIGGER = re.compile(r"\b(re-?triage|force|fresh|again)\b", re.IGNORECASE
 def _build_qa_chain(llm: ChatOpenAI):
     prompt = ChatPromptTemplate.from_messages([
         SystemMessage(content=(
-            "You are an expert SOC Analyst. Answer questions concisely and accurately "
-            "using IOC analysis, threat intelligence, and security best practices."
+            "You are Ask Aegis, an expert SOC (Security Operations Center) analyst "
+            "assistant embedded in the incident workflow. You help analysts understand "
+            "an alert as it moves through Parsing, Triage, Threat Intelligence "
+            "Enrichment, Investigation, and Reporting.\n\n"
+            "Grounding rules — follow these strictly:\n"
+            "1. Answer using ONLY the information in the CASE CONTEXT block below "
+            "(when present) plus general SOC/security knowledge for explaining "
+            "concepts. Never invent indicators, findings, verdicts, hosts, users, or "
+            "conclusions that are not present in the provided context.\n"
+            "2. The STAGE STATUS section is ground truth about which of the 5 "
+            "workflow stages are done, awaiting analyst approval, in progress, "
+            "failed, or not started yet. Before answering about any stage's results, "
+            "check its status there. If a stage is not 'done', say so explicitly "
+            "instead of guessing — for example: 'The Investigation stage has not "
+            "been completed, so confirmed investigation findings are not available "
+            "yet. Based on the completed Triage and Threat Intelligence stages, the "
+            "current evidence indicates...' Then answer using whatever earlier, "
+            "completed stages already show.\n"
+            "3. Content labeled 'pending analyst approval — not yet confirmed' is a "
+            "draft agent output, not a settled fact — present it as provisional and "
+            "say it is awaiting analyst review, never as confirmed.\n"
+            "4. When it is useful for the question, separate your answer into "
+            "clearly labeled parts: **Confirmed Facts** (from completed/approved "
+            "stages), **AI Analysis** (your own reasoning/inference, clearly marked "
+            "as such), **Recommendations** (suggested next actions), and **Not Yet "
+            "Available** (anything asked about that no completed stage has produced "
+            "yet). Only use the headers that are actually relevant to the question — "
+            "a short factual question doesn't need all four.\n"
+            "5. If no CASE CONTEXT is available at all, say so and answer from "
+            "general SOC knowledge only."
         )),
-        HumanMessage(content="{user_input}"),
+        # NOTE: must be the ("human", "{...}") template form, NOT
+        # HumanMessage(content="{user_input}") — a raw HumanMessage is
+        # already-resolved literal content, not a template, so
+        # ChatPromptTemplate never substitutes into it and the LLM
+        # receives the literal string "{user_input}" on every call
+        # instead of the actual question + case context (confirmed via
+        # prompt.format_messages(); this silently broke the entire plain
+        # Q&A fallback path, pre-dating the case_context work).
+        ("human", "{user_input}"),
     ])
     return prompt | llm | StrOutputParser()
+
+
+_STAGE_FACT_LABELS = {
+    "parsing": "Parsing", "triage": "Triage",
+    "threat_intel": "Threat Intelligence Enrichment",
+    "investigation": "Investigation", "reporting": "Reporting",
+}
+
+
+def _format_case_context_for_prompt(case_context: dict) -> str:
+    """Renders case_view.build_aegis_context()'s dict into a labeled,
+    human-readable block for the QA prompt. The STAGE STATUS section is
+    deterministic, Python-built ground truth (not LLM-authored text) —
+    the system prompt above instructs the model never to contradict it,
+    which is what actually guarantees requirement #7's grounding, rather
+    than relying on prompt-following alone. Applies an 8000-char cap as a
+    second, independent safety net on top of build_aegis_context()'s own
+    _MAX_CONTEXT_CHARS budget."""
+    if not case_context.get("available", True):
+        warnings = "; ".join(case_context.get("warnings") or [])
+        return (f"\n\nCASE CONTEXT: unavailable for incident "
+                f"{case_context.get('incident_id', '?')}"
+                f"{f' ({warnings})' if warnings else ''}. Answer only from general "
+                "SOC knowledge and say clearly that no case-specific workflow data "
+                "exists yet.")
+
+    lines: list[str] = ["\n\n=== CASE CONTEXT (ground truth — do not contradict) ==="]
+    lines.append(f"Incident: {case_context.get('incident_id')}  "
+                 f"Run: {case_context.get('run_id')}")
+
+    lines.append("\nSTAGE STATUS:")
+    for s in case_context.get("stage_status") or []:
+        lines.append(f"- {s.get('name')}: {s.get('state')} "
+                     f"(raw status: {s.get('backend_status') or '—'})")
+
+    cs = case_context.get("case_summary") or {}
+    if cs:
+        lines.append("\nCASE SUMMARY:")
+        for key in ("netwitness_severity", "triage_classification", "host", "user",
+                   "workflow_status", "ioc_ip_count"):
+            v = cs.get(key)
+            if isinstance(v, dict) and v.get("value") not in (None, "", "—"):
+                lines.append(f"- {key}: {v.get('value')}")
+        uv = cs.get("unified_verdict") or {}
+        if uv.get("value") not in (None, "—"):
+            lines.append(f"- unified_verdict: {uv.get('value')} "
+                         f"(reasons: {'; '.join(uv.get('reasons') or [])})")
+
+    if case_context.get("key_findings"):
+        lines.append("\nKEY FINDINGS:")
+        for f in case_context["key_findings"]:
+            lines.append(f"- {f.get('title')}: {f.get('desc')}")
+
+    facts = case_context.get("confirmed_facts") or {}
+    lines.append("\nPER-STAGE FACTS:")
+    for key, label in _STAGE_FACT_LABELS.items():
+        block = facts.get(key) or {}
+        status_label = block.get("label", "not available yet")
+        lines.append(f"\n[{label}] — {status_label}")
+        for field_key, field_val in block.items():
+            if field_key == "label" or field_val in (None, "", [], {}):
+                continue
+            lines.append(f"  {field_key}: {field_val}")
+
+    if case_context.get("mitre"):
+        lines.append("\nMITRE ATT&CK MAPPINGS:")
+        for m in case_context["mitre"]:
+            lines.append(f"- {m.get('tactic')} / {m.get('technique_id')} "
+                         f"{m.get('technique_name') or ''} (origin: {m.get('origin')})")
+
+    if case_context.get("evidence_highlights"):
+        lines.append("\nEVIDENCE HIGHLIGHTS:")
+        for e in case_context["evidence_highlights"]:
+            lines.append(f"- [{e.get('evidence_type')}/{e.get('source')}] "
+                         f"{e.get('summary')}")
+
+    if case_context.get("warnings"):
+        lines.append("\nDATA AVAILABILITY WARNINGS:")
+        for w in case_context["warnings"]:
+            lines.append(f"- {w}")
+
+    text = "\n".join(lines)
+    if len(text) > 8000:
+        text = text[:8000] + "\n... [case context truncated to fit prompt budget]"
+    return text
 
 
 def deep_triage_supplement(incident: dict, gaps: list,
@@ -1448,6 +1569,7 @@ def soc_triage_chat_respond(
     thinking_container               = None,
     result_sink:        dict | None  = None,
     parsed_context:     dict | None  = None,
+    case_context:       dict | None  = None,
 ) -> str:
     """result_sink: optional dict — if given, the structured triage result is
     stored under result_sink["result"] so callers (e.g. the app's sequential
@@ -1456,7 +1578,15 @@ def soc_triage_chat_respond(
     parsed_context: optional processed_alert from the Parsing & Normalisation
     stage (see soc_workflow.run_parsing / app.py's db_load_parsed_context) —
     when given, triage reuses those already-extracted indicators instead of
-    re-deriving them from the raw incident."""
+    re-deriving them from the raw incident. Only consumed by the retriage
+    trigger branch below (unaffected by case_context).
+
+    case_context: optional cumulative, cross-stage bundle from
+    case_view.build_aegis_context() — consumed only by the plain Q&A
+    fallback below, to ground answers in every completed workflow stage
+    (Parsing through Reporting) instead of just a truncated raw incident.
+    Defaults to None, so any existing caller that doesn't pass it keeps
+    today's exact fallback behaviour."""
     cfg = llm_config or CiscoLLMConfig()
 
     if incident and _TRIAGE_TRIGGER.search(user_msg):
@@ -1494,9 +1624,17 @@ def soc_triage_chat_respond(
 
     # Plain Q&A fallback
     llm = build_llm(cfg)
-    ctx = ""
-    if incident:
+    if case_context:
+        # Cumulative cross-stage context (case_view.build_aegis_context()) —
+        # replaces the old 600-char raw-incident truncation with a
+        # stage-organised, size-bounded summary covering every completed
+        # stage (Parsing through Reporting), not just whatever was passed
+        # in `incident`.
+        ctx = _format_case_context_for_prompt(case_context)
+    elif incident:
         ctx = f"\n\nIncident context:\n{json.dumps(incident, indent=2)[:600]}"
+    else:
+        ctx = ""
     qa_chain = _build_qa_chain(llm)
     try:
         return qa_chain.invoke({"user_input": user_msg + ctx})

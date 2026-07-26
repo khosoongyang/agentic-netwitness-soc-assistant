@@ -1,0 +1,600 @@
+{
+  "incident_id": "INC-52997",
+  "incident_details": {
+    "timestamp": "2025-07-22T06:03:00+00:00",
+    "description": "This alert is a generic NetWitness endpoint high-risk detection for the host BETHANYCHUCHU, but no endpoint, network, process, file, or PowerShell evidence is present. No IOCs matched and the parsed risk assessment is low, so there is no indication of active compromise from the available telemetry.",
+    "mitre_att&ck": {
+      "tactic": "Unknown",
+      "technique": "Unknown"
+    }
+  },
+  "classification": {
+    "alert_type": "AV Alert with minimal consequences",
+    "soc_classification": "LOW"
+  },
+  "log_indicators": {
+    "target_user": "Unknown",
+    "computer_name": "BETHANYCHUCHU",
+    "operating_system": "Unknown"
+  },
+  "network_indicators": {
+    "source_ip": null,
+    "destination_ip": null,
+    "domain": null
+  },
+  "observed_indicators": {
+    "usernames": [],
+    "hostnames": [
+      "BETHANYCHUCHU"
+    ],
+    "ip_addresses": [],
+    "source_ips": [],
+    "destination_ips": [],
+    "entity_from_alert_title": "BETHANYCHUCHU"
+  },
+  "triage": {
+    "ticket_unc": "#00046A",
+    "risk_rating": {
+      "likelihood_initiation": "Low",
+      "likelihood_occurrence": "Low",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Low",
+      "rationale": "Low initiation because the alert contains only a generic hostname and no actionable malicious indicators; low occurrence because there are no IOC matches, no process/network/file evidence, and no alert volume context suggesting repetition; low adverse impact because the parsed telemetry shows no decoded PowerShell, no suspicious behaviors, and no confirmed compromise signals, despite the medium severity and score of 50."
+    },
+    "ioc_summary": "No IOCs matched.",
+    "matched_metakeys": [
+      "hostname",
+      "observed_data_types",
+      "parser_confidence",
+      "risk_score",
+      "severity"
+    ],
+    "metakey_values": {},
+    "matched_ioc_count": 0
+  },
+  "source_incident": {
+    "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "summary": ""
+  },
+  "enrichment": {
+    "endpoint_identity": {
+      "hostnames": [
+        "BETHANYCHUCHU"
+      ],
+      "users": [],
+      "mac_addresses": [],
+      "dns_domains": [],
+      "source_ips": [],
+      "destination_ips": []
+    },
+    "behavioural_alerts": {
+      "alert_titles": [
+        "Potential Malicious File: Sandy.exe (Bethany)"
+      ],
+      "alert_types": [
+        "Endpoint"
+      ],
+      "mitre_tactics": [],
+      "mitre_techniques": []
+    },
+    "file_indicators": {
+      "hashes": [],
+      "names": [],
+      "paths": []
+    },
+    "process_indicators": {
+      "names": [],
+      "paths": [],
+      "pids": []
+    },
+    "process_tree": {
+      "processes": [],
+      "process_paths": [],
+      "pids": [],
+      "parent_processes": [],
+      "command_lines": [],
+      "lineage": []
+    },
+    "network_activity": {
+      "source_ips": [],
+      "destination_ips": [],
+      "ports": [],
+      "protocols": [],
+      "network_services": [],
+      "bytes": [],
+      "geo": [],
+      "domains": []
+    },
+    "host_behaviour": {
+      "config_changes": [],
+      "cpu_usage": [],
+      "device_types": [],
+      "user_roles": [],
+      "operating_systems": []
+    },
+    "event_context": {
+      "event_types": [],
+      "event_times": []
+    },
+    "all_metakey_values": {},
+    "alert_statistics": {
+      "alert_count": 1,
+      "event_count": 1,
+      "risk_score": 50,
+      "average_alert_risk_score": 50,
+      "matched_ioc_count": 0
+    },
+    "matched_metakey_catalog": [
+      "hostname",
+      "observed_data_types",
+      "parser_confidence",
+      "risk_score",
+      "severity"
+    ],
+    "ioc_summary": "No IOCs matched.",
+    "triage_summary": "This alert is a generic NetWitness endpoint high-risk detection for the host BETHANYCHUCHU, but no endpoint, network, process, file, or PowerShell evidence is present. No IOCs matched and the parsed risk assessment is low, so there is no indication of active compromise from the available telemetry.",
+    "_note": "Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple."
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_3: Was any malicious process spawned on the victim's machine?",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration."
+    ],
+    "gap_findings": {
+      "step_3": "There is no direct process execution telemetry in the incident payload, so a malicious process cannot be confirmed from the raw data alone. However, the alert title 'Potential Malicious File: Sandy.exe (Bethany)' strongly suggests a suspicious executable was detected on host BETHANYCHUCHU, which implies at least file-level malicious content and a possible process candidate, but not proof that it executed or spawned child processes. Because SourceIp and DestinationIp are empty and there is only one endpoint alert, there is no evidence here of process-created network activity, and no parent/child references, command lines, or process names beyond the file name in the alert title.",
+      "step_4": "A process tree is not present in the incident data, so signs of privilege escalation, lateral movement, or data exfiltration cannot be analyzed directly. The available evidence is limited to a single endpoint alert on BETHANYCHUCHU with the suspicious executable name 'Sandy.exe'; there are no process parents, spawned children, usernames, hashes, command lines, remote hosts, or artifact trails that would allow inference of escalation or movement. Because the alert is endpoint-only and network fields are blank, there is also no indicator of exfiltration or remote session activity in the provided record."
+    },
+    "confidence_per_gap": {
+      "step_3": "low",
+      "step_4": "none"
+    },
+    "actionable_queries": {
+      "step_3": "EDR/NetWitness endpoint query on host BETHANYCHUCHU for process execution events around 2025-07-22T05:13:05Z; search for 'Sandy.exe' in process creation telemetry, Windows Security Event ID 4688, Sysmon Event ID 1, and EDR process-start logs. If available, pull file hash, signer, command line, parent process, and execution timestamp.",
+      "step_4": "Collect full process tree and host telemetry for BETHANYCHUCHU from the EDR around the alert time: Sysmon Event ID 1 (Process Create), 4688 (new process), 4624/4672 (logon and special privileges), 4776/4768/4769 (authentication if lateral movement is suspected), Sysmon Event ID 3 (network connections), and Sysmon Event IDs 10/11/12/13/22 (process access, file creation, registry, DNS). Query EDR for parent-child process lineage, command lines, token elevation, remote service creation, PsExec/WMI/PowerShell usage, and outbound connections."
+    },
+    "extracted_values": {
+      "incident.id": "INC-52997",
+      "incident.title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+      "incident.priority": "High",
+      "incident.riskScore": "50",
+      "incident.status": "New",
+      "incident.created": "2025-07-22T06:03:00.152Z",
+      "incident.firstAlertTime": "2025-07-22T05:13:05.142Z",
+      "host.name": "BETHANYCHUCHU",
+      "alert.title": "Potential Malicious File: Sandy.exe (Bethany)",
+      "alert.type": "Endpoint",
+      "eventCount": "1",
+      "alertCount": "1",
+      "source": "ECAT",
+      "ruleId": "6618e5a2dddef60d6853bebf"
+    },
+    "mitre_tactic": null,
+    "incident_category": null,
+    "classification": null,
+    "deep_dive_summary": "The incident contains only a single endpoint alert on host BETHANYCHUCHU, centered on a suspicious file name, Sandy.exe, with no process telemetry, command lines, parent-child lineage, or network indicators. As a result, malicious execution, privilege escalation, lateral movement, and exfiltration cannot be confirmed from the provided data and require EDR/Windows event collection for validation.",
+    "feedback_pass": 1
+  },
+  "enriched_alert": {
+    "schema_version": "1.0",
+    "current_stage": "threat_intelligence_completed",
+    "alert_summary": {
+      "incident_id": null,
+      "alert_id": "INC-52997",
+      "alert_name": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+      "alert_title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+      "incident_title": null,
+      "alert_time": "2025-07-22T06:03:00.152000+00:00",
+      "alert_time_epoch_ms": 1753164180152,
+      "severity": "Medium",
+      "incident_priority": null,
+      "risk_score": 50.0,
+      "detection_source": "NetWitness",
+      "detection_name": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+      "event_type": "Unknown",
+      "primary_action": null,
+      "observed_actions": [],
+      "raw_event_count": 0,
+      "analyst_summary": "Medium alert: High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU."
+    },
+    "identifiers": {
+      "session_ids": [],
+      "event_source_ids": [],
+      "record_ids": [],
+      "signature_ids": []
+    },
+    "network_indicators": {
+      "source_ips": [],
+      "destination_ips": [],
+      "internal_ips": [],
+      "external_ips": [],
+      "source_ports": [],
+      "destination_ports": [],
+      "protocols": [],
+      "services": [],
+      "direction": null,
+      "community_ids": [],
+      "tcp_flags_seen": [],
+      "network_risk_info": []
+    },
+    "user_and_host_indicators": {
+      "source_usernames": [],
+      "destination_usernames": [],
+      "source_emails": [],
+      "reply_to_emails": [],
+      "destination_emails": [],
+      "all_usernames": [],
+      "all_emails": [],
+      "hostnames": [
+        "BETHANYCHUCHU"
+      ],
+      "domains": []
+    },
+    "email_indicators": {
+      "subjects": [],
+      "from_emails": [],
+      "sender_emails": [],
+      "reply_to_emails": [],
+      "recipient_emails": [],
+      "mail_clients": [],
+      "attachment_names": [],
+      "attachment_extensions": [],
+      "attachment_filetypes": []
+    },
+    "file_indicators": {
+      "file_names": [],
+      "file_paths": [],
+      "file_hashes": [],
+      "file_hashes_by_type": {
+        "md5": [],
+        "sha1": [],
+        "sha256": [],
+        "unknown": []
+      },
+      "file_extensions": [],
+      "file_types": [],
+      "file_sizes": [],
+      "file_analysis": []
+    },
+    "process_indicators": {
+      "process_names": [],
+      "process_paths": [],
+      "parent_processes": [],
+      "child_processes": [],
+      "process_relationships": [],
+      "command_lines": []
+    },
+    "powershell_analysis": {
+      "encoded_command_present": false,
+      "powershell_indicator_present": false,
+      "decode_status": "not_found",
+      "encoded_command_count": 0,
+      "decoded_command_count": 0,
+      "decoded_commands": [],
+      "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+      "encoded_command_results": [],
+      "suspicious_behaviours": [],
+      "extracted_iocs": {
+        "urls": [],
+        "domains": [],
+        "public_ips": [],
+        "hashes": [],
+        "file_paths": [],
+        "file_names": []
+      },
+      "mitre_mapping": [],
+      "risk_assessment": {
+        "risk_level": "Low",
+        "risk_score": 0
+      }
+    },
+    "web_indicators": {
+      "urls": [],
+      "domains": [],
+      "user_agents": []
+    },
+    "observed_data_context": {
+      "primary_data_source": "generic",
+      "observed_data_types": [
+        "generic"
+      ],
+      "evidence_sources": [],
+      "has_email_data": false,
+      "has_endpoint_data": false,
+      "has_network_data": false,
+      "has_process_data": false,
+      "has_file_data": false,
+      "has_web_data": false
+    },
+    "threat_context": {
+      "mitre_tactics": [],
+      "mitre_techniques": [],
+      "mitre_technique_ids": [],
+      "threat_categories": [],
+      "risk_indicators": [],
+      "analysis_services": [],
+      "analysis_sessions": [],
+      "feed_names": [],
+      "related_iocs": [
+        "BETHANYCHUCHU"
+      ]
+    },
+    "ioc_summary": {
+      "ips": [],
+      "emails": [],
+      "hostnames": [
+        "BETHANYCHUCHU"
+      ],
+      "files": [],
+      "hashes": [],
+      "urls": [],
+      "domains": []
+    },
+    "normalised_events": [],
+    "netwitness_links": {
+      "investigation_links": []
+    },
+    "parser_metadata": {
+      "parser": "soc_netwitness_parser",
+      "parser_version": "3.4-context-aware-normalised",
+      "input_format": "generic_dictionary",
+      "normalisation_status": "success",
+      "selected_alert_index": 0,
+      "alert_count": 1,
+      "raw_event_count": 0,
+      "raw_meta_key_count": 32,
+      "parser_confidence": "High",
+      "parser_confidence_score": 90,
+      "missing_fields": [],
+      "warnings": [],
+      "debug_available": true,
+      "extraction_summary": {
+        "key_fields_found": [
+          "alert_id",
+          "alert_name",
+          "alert_time",
+          "severity"
+        ],
+        "key_fields_missing": [],
+        "fallback_fields_used": true
+      },
+      "generated_at": "2026-07-26T08:09:26.057765+00:00"
+    },
+    "data_quality": {
+      "parser_confidence": "High",
+      "parser_confidence_score": 90,
+      "confidence_explanation": "Required parser fields for observed data types (generic) were extracted successfully.",
+      "missing_required_fields": [],
+      "missing_context_fields": {},
+      "missing_optional_fields": [
+        "session_id",
+        "event_source_id",
+        "record_id",
+        "signature_id",
+        "community_id"
+      ],
+      "not_applicable_fields": [
+        "source_email",
+        "destination_email",
+        "reply_to_email",
+        "email_subject",
+        "mail_client",
+        "hostname",
+        "username",
+        "source_ip",
+        "destination_ip",
+        "destination_port",
+        "protocol",
+        "community_id",
+        "process_name",
+        "parent_process_name",
+        "child_process_name",
+        "command_line",
+        "file_name",
+        "file_hash",
+        "file_size",
+        "file_type",
+        "url",
+        "domain",
+        "user_agent"
+      ],
+      "warnings": [],
+      "normalised_event_count": 0,
+      "raw_meta_key_count": 32
+    },
+    "compatibility_view": {
+      "current_stage": "new_alert",
+      "incident_id": null,
+      "alert_id": "INC-52997",
+      "alert_title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+      "alert_type": "Unknown",
+      "alert_source": "NetWitness",
+      "alert_created_time": "2025-07-22T06:03:00.152000+00:00",
+      "incident_title": null,
+      "incident_priority": null,
+      "incident_risk_score": 50.0,
+      "incident_first_alert_time": null,
+      "source_ip": null,
+      "destination_ip": null,
+      "source_port": null,
+      "destination_port": null,
+      "source_username": null,
+      "destination_username": null,
+      "username": null,
+      "event_domain": null,
+      "possible_file_name": null,
+      "file_hash": null,
+      "process_name": null,
+      "parent_process_name": null,
+      "command_line": null,
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_commands": [],
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "encoded_command_results": [],
+        "suspicious_behaviours": [],
+        "extracted_iocs": {
+          "urls": [],
+          "domains": [],
+          "public_ips": [],
+          "hashes": [],
+          "file_paths": [],
+          "file_names": []
+        },
+        "mitre_mapping": [],
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_decode_status": "not_found",
+      "decoded_powershell_command": null,
+      "session_id": null,
+      "event_source_id": null,
+      "record_id": null,
+      "severity": "Medium",
+      "timestamp": "2025-07-22T06:03:00.152000+00:00",
+      "parser_confidence": "High",
+      "parser_warnings": [],
+      "missing_fields": []
+    },
+    "source_ip": null,
+    "destination_ip": null,
+    "event_domain": null,
+    "file_hash": null,
+    "incident_id": null,
+    "incident_title": null,
+    "alert_id": "INC-52997",
+    "alert_name": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "possible_file_name": null,
+    "url": null,
+    "powershell_decode_status": "not_found",
+    "decoded_powershell_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+    "host": "BETHANYCHUCHU",
+    "hostname": "BETHANYCHUCHU",
+    "iocs": [],
+    "threat_intelligence": {
+      "iocs": {
+        "possible_file_name": null,
+        "file_hash": null,
+        "ip_indicators": [],
+        "domain_indicators": [],
+        "url_indicators": [],
+        "powershell_analysis": {
+          "encoded_command_present": false,
+          "powershell_indicator_present": false,
+          "decode_status": "not_found",
+          "encoded_command_count": 0,
+          "decoded_command_count": 0,
+          "decoded_commands": [],
+          "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+          "encoded_command_results": [],
+          "suspicious_behaviours": [],
+          "extracted_iocs": {
+            "urls": [],
+            "domains": [],
+            "public_ips": [],
+            "hashes": [],
+            "file_paths": [],
+            "file_names": []
+          },
+          "mitre_mapping": [],
+          "risk_assessment": {
+            "risk_level": "Low",
+            "risk_score": 0
+          }
+        },
+        "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+      },
+      "virustotal": {
+        "file_hash": {
+          "status": "skipped",
+          "reason": "No file hash was available."
+        },
+        "ip_results": [],
+        "domain_results": []
+      },
+      "abuseipdb": {
+        "ip_results": []
+      },
+      "alienvault_otx": {
+        "otx_results": []
+      },
+      "notes": [
+        "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+        "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+      ]
+    },
+    "enrichment_risk_score": 0,
+    "enrichment_risk_level": "Low",
+    "enrichment_risk_reasons": [
+      "No confirmed malicious external intelligence was found, or no usable IOC was available."
+    ],
+    "agent": "Threat Intelligence Enrichment",
+    "agent_source": "threat_intel.py",
+    "status": "completed",
+    "created_at": "2026-07-26T08:39:31.027143+00:00",
+    "recommended_next_action": "Submit the enriched case for SOC analyst approval before Investigation.",
+    "warnings": []
+  },
+  "threat_intelligence": {
+    "iocs": {
+      "possible_file_name": null,
+      "file_hash": null,
+      "ip_indicators": [],
+      "domain_indicators": [],
+      "url_indicators": [],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_commands": [],
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "encoded_command_results": [],
+        "suspicious_behaviours": [],
+        "extracted_iocs": {
+          "urls": [],
+          "domains": [],
+          "public_ips": [],
+          "hashes": [],
+          "file_paths": [],
+          "file_names": []
+        },
+        "mitre_mapping": [],
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [],
+      "domain_results": []
+    },
+    "abuseipdb": {
+      "ip_results": []
+    },
+    "alienvault_otx": {
+      "otx_results": []
+    },
+    "notes": [
+      "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

@@ -148,24 +148,23 @@ def _investigation_signal(investigation_result: dict | None) -> dict | None:
 
 
 def _ti_signal(ti_result: dict | None) -> dict | None:
-    """External threat-intel enrichment — only when a pre-computed result is
-    passed in (network-gated, so never triggered from here)."""
+    """External threat-intel enrichment (VirusTotal/AbuseIPDB/AlienVault OTX
+    via threat_intel.py) — only when a pre-computed result is passed in
+    (network-gated, so never triggered from here). Threat Intelligence
+    Enrichment is a mandatory stage in this workflow, so an absent result
+    means "not completed yet," never "skipped by choice." The risk level is
+    case-level (one enrichment run judged all the case's IOCs together),
+    never a per-IOC verdict."""
     if not ti_result:
         return {"name": "external threat intel", "level": 0,
-                "label": "not run (opt-in — run Enrich to include)",
+                "label": "not yet available (Threat Intelligence Enrichment "
+                         "has not completed for this run)",
                 "detail": "", "absent": True}
-    verdict_level = {"MALICIOUS": 3, "SUSPICIOUS": 2, "NO_FINDINGS": 0, "UNKNOWN": 0}
-    best = 0
-    best_label = "no external IOCs"
-    for r in ti_result.get("results", []):
-        base = str(r.get("verdict", "")).split(" ")[0].upper()
-        lv = verdict_level.get(base, 0)
-        if lv > best:
-            best = lv
-            best_label = base
-    return {"name": "external threat intel", "level": best,
-            "label": best_label.lower() if best else "no adverse findings",
-            "detail": ""}
+    level_map = {"High": 3, "Medium": 2, "Low": 0}
+    lvl = ti_result.get("enrichment_risk_level")
+    reasons = ti_result.get("enrichment_risk_reasons") or []
+    return {"name": "external threat intel", "level": level_map.get(lvl, 0),
+            "label": str(lvl or "unknown").lower(), "detail": "; ".join(reasons[:2])}
 
 
 _ACTIONS = {

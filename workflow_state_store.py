@@ -167,6 +167,22 @@ def db_init() -> None:
                 occurred_at  TEXT NOT NULL
             )
         """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS report_edits (
+                id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id           TEXT NOT NULL,
+                run_id                TEXT NOT NULL,
+                report_type           TEXT NOT NULL,
+                source_report_set_id  TEXT,
+                original_blocks_json  TEXT,
+                edited_blocks_json    TEXT NOT NULL,
+                version               INTEGER NOT NULL DEFAULT 1,
+                created_at            TEXT NOT NULL,
+                updated_at            TEXT NOT NULL,
+                last_edited_by        TEXT,
+                UNIQUE(incident_id, run_id, report_type)
+            )
+        """)
         con.commit()
     _ensure_workflow_columns()
     _ensure_workflow_approvals_attempt_columns()
@@ -239,6 +255,23 @@ def _ensure_workflow_approvals_attempt_columns() -> None:
             ON workflow_approvals(incident_id, run_id, approval_stage,
                                   stage_attempt, approval_attempt)
         """)
+        con.commit()
+    _ensure_workflow_approvals_metadata_column()
+
+
+def _ensure_workflow_approvals_metadata_column() -> None:
+    """Additive, nullable metadata_json column — durable, per-decision
+    binding metadata (report_set_id / candidate_manifest_path /
+    candidate_manifest_sha256 / etc. for the Reporting gate; unused/NULL
+    for every other gate). Existing rows read back as NULL. This is what
+    lets an approved Reporting candidate set stay provably identifiable
+    even after a later rerun clears the working reporting_result_json —
+    see commit_reporting_approval()/get_approved_reporting_sets()."""
+    with db_connect() as con:
+        existing = {r["name"] for r in
+                    con.execute("PRAGMA table_info(workflow_approvals)").fetchall()}
+        if "metadata_json" not in existing:
+            con.execute("ALTER TABLE workflow_approvals ADD COLUMN metadata_json TEXT")
         con.commit()
 
 
@@ -362,6 +395,78 @@ def save_parsing_result(incident_id: str, run_id: str, summary: dict) -> None:
                     {"parsing_result_json": json.dumps(summary, default=str)})
 
 
+def save_stage_ai_summary(
+    incident_id: str,
+    run_id: str,
+    stage: str,
+    summary_fields: dict,
+) -> bool:
+    """Merge generated AI-summary metadata into the current stage result.
+
+    This supports one-time backfill for results created before every workflow
+    stage stored ``ai_summary``. The merge reads the latest JSON inside the
+    same transaction, so a page holding an older copy cannot overwrite newer
+    native stage output. Returns False when the run was superseded or no
+    stage result exists to enrich.
+    """
+    key = str(stage or "").strip().lower().replace(" ", "_")
+    aliases = {
+        "parsing_and_normalisation": "parsing",
+        "parsing_normalisation": "parsing",
+        "threat_intelligence_enrichment": "threat_intel",
+        "threat_intelligence": "threat_intel",
+    }
+    key = aliases.get(key, key)
+    result_column = {
+        "parsing": "parsing_result_json",
+        "triage": "triage_result_json",
+        "threat_intel": "threat_intel_result_json",
+        "investigation": "investigation_result_json",
+        "reporting": "reporting_result_json",
+    }.get(key)
+    if not result_column:
+        raise ValueError(f"Unsupported workflow stage for AI summary: {stage!r}")
+
+    allowed_fields = {
+        name: value for name, value in dict(summary_fields or {}).items()
+        if name in {
+            "ai_summary", "ai_summary_model", "ai_summary_generated_at",
+            "ai_thinking",
+        }
+    }
+    if not allowed_fields:
+        return False
+
+    def _do(con):
+        row = con.execute(
+            f"SELECT run_id, {result_column} AS result_json "
+            "FROM incidents WHERE id=?",
+            (str(incident_id),),
+        ).fetchone()
+        if row is None or row["run_id"] != run_id or not row["result_json"]:
+            return False
+        try:
+            current = json.loads(row["result_json"])
+        except Exception:
+            return False
+        if not isinstance(current, dict):
+            return False
+        current.update(allowed_fields)
+        con.execute(
+            f"UPDATE incidents SET {result_column}=?, workflow_updated_at=? "
+            "WHERE id=? AND run_id=?",
+            (
+                json.dumps(current, default=str),
+                datetime.now(timezone.utc).isoformat(),
+                str(incident_id),
+                run_id,
+            ),
+        )
+        return True
+
+    return bool(_tx(_do))
+
+
 def save_raw_incident_path(incident_id: str, run_id: str, path: str) -> None:
     _guarded_update(incident_id, run_id, {"raw_incident_path": path})
 
@@ -433,14 +538,19 @@ _APPROVAL_STAGE_ATTEMPT_COLUMN = {
 
 def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
                              sets: dict, approval_stage: str, decision: str,
-                             analyst: str, comments: str = "") -> dict:
+                             analyst: str, comments: str = "",
+                             metadata: dict | None = None) -> dict:
     """Shared compare-and-swap engine for every approve/reject action at
     every gate. `expect` = required current column values (else
     ApprovalConflictError); `sets` = columns to write on success. Writes
     the permanent workflow_approvals row in the SAME transaction, stamped
     with (stage_attempt, approval_attempt) so a rerun's later decision is
     never confused with — or forced to overwrite/delete — an earlier
-    attempt's decision (see rerun_stage() / claim_stage())."""
+    attempt's decision (see rerun_stage() / claim_stage()). `metadata`, if
+    given, is stored verbatim (JSON-encoded) in that same row's
+    metadata_json column — used only by the Reporting gate today (see
+    commit_reporting_approval()) to durably bind the decision to an exact
+    candidate manifest; every other caller omits it and gets NULL."""
     def _do(con):
         row = con.execute("SELECT * FROM incidents WHERE id=?",
                           (str(incident_id),)).fetchone()
@@ -475,9 +585,10 @@ def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
             con.execute(
                 "INSERT INTO workflow_approvals (incident_id, run_id, approval_stage, "
                 "decision, analyst, comments, decided_at, stage_attempt, "
-                "approval_attempt) VALUES (?,?,?,?,?,?,?,?,?)",
+                "approval_attempt, metadata_json) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (str(incident_id), run_id, approval_stage, decision, analyst,
-                 comments, now, stage_attempt, approval_attempt))
+                 comments, now, stage_attempt, approval_attempt,
+                 json.dumps(metadata, default=str) if metadata is not None else None))
         except sqlite3.IntegrityError as exc:
             raise ApprovalConflictError(
                 f"{approval_stage} was already decided for run {run_id!r}") from exc
@@ -545,18 +656,44 @@ def reject_investigation(incident_id: str, run_id: str, *, rejected_by: str,
         analyst=rejected_by, comments=reason)
 
 
-def approve_reporting(incident_id: str, run_id: str, *, approved_by: str,
-                      comments: str = "") -> dict:
+def commit_reporting_approval(incident_id: str, run_id: str, *,
+                              expected_reporting_attempt: int,
+                              expected_reporting_result_json: str,
+                              metadata: dict, approved_by: str,
+                              comments: str = "") -> dict:
     """The final gate — this is the ONLY transition that ever sets
-    workflow_status to 'Complete'."""
+    workflow_status to 'Complete'.
+
+    Pure database transition ONLY — no filesystem access, no manifest
+    parsing, no hashing. The caller (reporting_approval.
+    approve_reporting_candidate(), which lives outside this module
+    precisely so this one stays a pure DB layer) must have already: loaded
+    the candidate manifest, re-verified every structured-content/DOCX/PDF
+    hash against it, confirmed no report's validation.status is "error",
+    and captured the exact current `reporting_result_json` string it
+    reviewed. That captured string and the attempt number it was reviewed
+    against are passed back here as `expected_reporting_result_json`/
+    `expected_reporting_attempt` and included in `expect`, so the existing
+    compare-and-swap in _atomic_stage_transition() fails closed (raises
+    ApprovalConflictError) if a concurrent rerun changed either between
+    the caller's validation pass and this call — the DB-state half of the
+    "approval must bind to the exact reviewed set" requirement.
+    `metadata` (report_set_id / candidate_manifest_path /
+    candidate_manifest_sha256 / reporting_stage_attempt /
+    validation_status / warning_count) is written into this decision's own
+    workflow_approvals.metadata_json row — the durable record that
+    survives even after a later rerun clears reporting_result_json (see
+    get_latest_approved_reporting_set()/get_approved_reporting_sets())."""
     return _atomic_stage_transition(
         incident_id, run_id,
         expect={"run_id": run_id, "workflow_status": "Awaiting Approval",
-               "approval_stage": "reporting", "reporting_status": "Awaiting Approval"},
+               "approval_stage": "reporting", "reporting_status": "Awaiting Approval",
+               "reporting_attempt": expected_reporting_attempt,
+               "reporting_result_json": expected_reporting_result_json},
         sets={"reporting_status": "Approved", "workflow_status": "Complete",
              "approval_stage": None},
         approval_stage="reporting", decision="approved",
-        analyst=approved_by, comments=comments)
+        analyst=approved_by, comments=comments, metadata=metadata)
 
 
 def reject_reporting(incident_id: str, run_id: str, *, rejected_by: str,
@@ -569,6 +706,61 @@ def reject_reporting(incident_id: str, run_id: str, *, rejected_by: str,
              "approval_stage": None},
         approval_stage="reporting", decision="rejected",
         analyst=rejected_by, comments=reason)
+
+
+def _reporting_approved_set_from_row(row: dict) -> dict:
+    """Shape a workflow_approvals row (approval_stage='reporting',
+    decision='approved') into the record callers actually want: the
+    decision's own identity plus whatever binding metadata
+    commit_reporting_approval() stored with it. metadata_json is NULL for
+    any row written before this column existed (or, in principle, if
+    `metadata` was omitted) — callers must not assume every key is
+    present."""
+    try:
+        metadata = json.loads(row["metadata_json"]) if row.get("metadata_json") else {}
+    except (TypeError, ValueError):
+        metadata = {}
+    return {
+        "decision_id": row["id"],
+        "incident_id": row["incident_id"],
+        "run_id": row["run_id"],
+        "stage_attempt": row["stage_attempt"],
+        "approval_attempt": row["approval_attempt"],
+        "approved_by": row["analyst"],
+        "approved_at": row["decided_at"],
+        "comments": row["comments"],
+        "report_set_id": metadata.get("report_set_id"),
+        "candidate_manifest_path": metadata.get("candidate_manifest_path"),
+        "candidate_manifest_sha256": metadata.get("candidate_manifest_sha256"),
+        "reporting_stage_attempt": metadata.get("reporting_stage_attempt", row["stage_attempt"]),
+        "validation_status": metadata.get("validation_status"),
+        "warning_count": metadata.get("warning_count"),
+    }
+
+
+def get_approved_reporting_sets(incident_id: str, run_id: str) -> list[dict]:
+    """Every approved Reporting decision ever recorded for this run,
+    chronological — each one derived from an actual workflow_approvals
+    row (never a guessed/reconstructed path), because a stage_attempt
+    number alone does not prove which exact candidate manifest an analyst
+    reviewed. Used to render "Previously Approved Packages" (§ historical
+    approved sets) distinctly from whatever the current attempt is."""
+    db_init()
+    with db_connect() as con:
+        rows = con.execute(
+            "SELECT * FROM workflow_approvals WHERE incident_id=? AND run_id=? "
+            "AND approval_stage='reporting' AND decision='approved' "
+            "ORDER BY decided_at ASC", (str(incident_id), run_id)).fetchall()
+        return [_reporting_approved_set_from_row(dict(r)) for r in rows]
+
+
+def get_latest_approved_reporting_set(incident_id: str, run_id: str) -> dict | None:
+    """The most recently approved Reporting decision for this run, or None
+    if Reporting has never been approved. This — not the mutable, rerun-
+    clearable reporting_result_json column — is the authoritative source
+    for "what is currently the approved/exportable report set"."""
+    sets = get_approved_reporting_sets(incident_id, run_id)
+    return sets[-1] if sets else None
 
 
 def rerun_stage(incident_id: str, run_id: str, stage: str) -> dict:
@@ -606,7 +798,11 @@ def rerun_stage(incident_id: str, run_id: str, stage: str) -> dict:
                 "Awaiting Approval", "Approved", "Failed",
             },
             "reporting": {
-                "Awaiting Approval", "Approved", "Failed",
+                # "Rejected" is included so a rejected Reporting attempt can
+                # be re-run (Reject -> Re-run is a required analyst path;
+                # without this, rerun_stage() would refuse it and leave the
+                # workflow stuck at Rejected with no way forward).
+                "Awaiting Approval", "Approved", "Failed", "Rejected",
             },
         }
         upstream_ready = {
@@ -856,7 +1052,8 @@ def set_worker_progress_note(incident_id: str, run_id: str, note: str | None) ->
 
 def complete_stage(incident_id: str, run_id: str, worker_id: str, *,
                    stage: str, result_column: str, result: dict,
-                   status_updates: dict) -> bool:
+                   status_updates: dict,
+                   expected_stage_attempt: int | None = None) -> bool:
     """The ONLY way a stage's result/status is ever written. In one
     transaction: confirms run_id matches, worker_id matches the row's
     CURRENT worker_id, worker_stage still equals `stage`, the stage's own
@@ -873,18 +1070,35 @@ def complete_stage(incident_id: str, run_id: str, worker_id: str, *,
     a late/expired finish losing to a faster worker, or to nothing at all
     yet, is expected, not exceptional). On success: saves the result,
     applies status_updates, clears the lease fields, and records the
-    activity row — all one write, one transaction."""
+    activity row — all one write, one transaction.
+
+    `expected_stage_attempt`, when given, additionally requires the row's
+    current `{stage}_attempt` column to still equal it — the late-worker
+    guard for stages with a candidate-set concept (Reporting): worker_id/
+    worker_stage/lease alone don't catch a worker from a SUPERSEDED attempt
+    (e.g. a crashed-and-resumed process from attempt 1) trying to save its
+    result after rerun_stage() has already bumped the row to attempt 2 and
+    reset worker_id to NULL — by the time that late worker calls this, a
+    brand-new claim_stage() for attempt 2 may have already set worker_id/
+    worker_stage/lease to values that happen to look "live" again. Passing
+    the attempt number the caller was actually claimed for closes that gap.
+    Optional so every other existing caller (which doesn't pass it) is
+    unaffected."""
     status_column = f"{stage}_status"
     updated_at_col = {
         "threat_intel": "threat_intel_updated_at",
         "investigation": "investigation_updated_at",
         "reporting": "reporting_updated_at",
     }[stage]
+    attempt_col = _STAGE_ATTEMPT_COLUMN.get(stage)
 
     def _do(con):
+        select_cols = (f"worker_id, worker_stage, run_id, worker_lease_expires_at, "
+                      f"{status_column} AS stage_status")
+        if expected_stage_attempt is not None and attempt_col:
+            select_cols += f", {attempt_col} AS current_stage_attempt"
         row = con.execute(
-            f"SELECT worker_id, worker_stage, run_id, worker_lease_expires_at, "
-            f"{status_column} AS stage_status FROM incidents WHERE id=?",
+            f"SELECT {select_cols} FROM incidents WHERE id=?",
             (str(incident_id),)).fetchone()
         if row is None or row["run_id"] != run_id:
             return False
@@ -892,6 +1106,9 @@ def complete_stage(incident_id: str, run_id: str, worker_id: str, *,
             return False   # stale — someone else already owns/owned this stage
         if row["stage_status"] != "Processing":
             return False   # stage already moved on (e.g. a faster worker completed it)
+        if (expected_stage_attempt is not None and attempt_col
+                and int(row["current_stage_attempt"]) != int(expected_stage_attempt)):
+            return False   # a late worker from a superseded attempt — refuse
         lease = row["worker_lease_expires_at"]
         lease_live = bool(lease) and datetime.fromisoformat(lease) > datetime.now(timezone.utc)
         if not lease_live:
@@ -1031,3 +1248,76 @@ def get_activity(incident_id: str, run_id: str | None = None) -> list[dict]:
                 "SELECT * FROM workflow_activity WHERE incident_id=? "
                 "ORDER BY occurred_at ASC", (str(incident_id),)).fetchall()
         return [dict(r) for r in rows]
+
+
+# ── Analyst report edits (Reports tab "Open & Edit") ─────────────────────────
+# One row per (incident_id, run_id, report_type) — the analyst's saved edit of
+# a Reporting-stage report, layered ON TOP OF the immutable, hash-verified
+# candidate_manifest.json produced by the Reporting pipeline (see
+# report_editing.py). Never overwrites, and is never read by, anything in
+# soc_reporting_agent or the existing whole-attempt approval flow.
+
+def upsert_report_edit(incident_id: str, run_id: str, report_type: str, *,
+                       edited_blocks: list, original_blocks: list | None,
+                       source_report_set_id: str | None, analyst: str) -> dict:
+    """Insert the first saved edit for this (incident, run, report_type), or
+    update it in place and bump ``version``. ``original_blocks`` is only
+    written on the FIRST save (a later save must not overwrite the
+    traceability snapshot of what the AI originally produced)."""
+    def _do(con):
+        now = datetime.now(timezone.utc).isoformat()
+        existing = con.execute(
+            "SELECT * FROM report_edits WHERE incident_id=? AND run_id=? AND report_type=?",
+            (str(incident_id), run_id, report_type)).fetchone()
+        edited_json = json.dumps(edited_blocks or [], default=str)
+        if existing is None:
+            con.execute(
+                "INSERT INTO report_edits (incident_id, run_id, report_type, "
+                "source_report_set_id, original_blocks_json, edited_blocks_json, "
+                "version, created_at, updated_at, last_edited_by) "
+                "VALUES (?,?,?,?,?,?,1,?,?,?)",
+                (str(incident_id), run_id, report_type, source_report_set_id,
+                 json.dumps(original_blocks or [], default=str), edited_json,
+                 now, now, analyst))
+        else:
+            con.execute(
+                "UPDATE report_edits SET edited_blocks_json=?, source_report_set_id=?, "
+                "version=version+1, updated_at=?, last_edited_by=? "
+                "WHERE incident_id=? AND run_id=? AND report_type=?",
+                (edited_json, source_report_set_id, now, analyst,
+                 str(incident_id), run_id, report_type))
+        row = con.execute(
+            "SELECT * FROM report_edits WHERE incident_id=? AND run_id=? AND report_type=?",
+            (str(incident_id), run_id, report_type)).fetchone()
+        return dict(row)
+    return _tx(_do)
+
+
+def get_report_edit(incident_id: str, run_id: str, report_type: str) -> dict | None:
+    db_init()
+    with db_connect() as con:
+        row = con.execute(
+            "SELECT * FROM report_edits WHERE incident_id=? AND run_id=? AND report_type=?",
+            (str(incident_id), run_id, report_type)).fetchone()
+        return dict(row) if row else None
+
+
+def list_report_edits(incident_id: str, run_id: str) -> list[dict]:
+    db_init()
+    with db_connect() as con:
+        rows = con.execute(
+            "SELECT * FROM report_edits WHERE incident_id=? AND run_id=?",
+            (str(incident_id), run_id)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def discard_report_edit(incident_id: str, run_id: str, report_type: str) -> None:
+    """"Replace with latest AI version" — deletes the saved edit row so the
+    report reverts to showing the (current) AI-generated original. Does not
+    touch any file on disk; the edited docx/pdf export (if one was ever
+    generated) is simply orphaned, not deleted, for traceability."""
+    def _do(con):
+        con.execute(
+            "DELETE FROM report_edits WHERE incident_id=? AND run_id=? AND report_type=?",
+            (str(incident_id), run_id, report_type))
+    _tx(_do)

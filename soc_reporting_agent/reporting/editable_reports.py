@@ -1,9 +1,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
 import re
 import shutil
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -971,6 +974,38 @@ def _validate_no_raw_markdown_tables(blocks: list[dict[str, Any]], section_title
             )
 
 
+def render_blocks_to_docx(path: Path, title: str, blocks: list[dict[str, Any]],
+                          incident_id: str, meta: dict[str, Any] | None = None) -> None:
+    """Public entry point for rendering an arbitrary block list straight to a
+    .docx file, with no dependency on report_manifest.json / draft-confirm
+    status — used by callers (e.g. the main Streamlit app's analyst-edit
+    layer) that maintain their own block content outside this module's
+    manifest but still want the exact same document styling/layout. Thin
+    wrapper around the private renderer used by export_section_docx()."""
+    _docx_write_blocks(path, title, blocks, incident_id, meta or {})
+
+
+def render_blocks_to_pdf(path: Path, title: str, blocks: list[dict[str, Any]],
+                         incident_id: str, meta: dict[str, Any] | None = None, *,
+                         docx_path: Path | None = None) -> None:
+    """Public entry point mirroring export_section_pdf()'s docx-then-convert
+    pattern, but for an arbitrary block list rather than a confirmed manifest
+    section: renders (or reuses) a .docx via render_blocks_to_docx(), then
+    converts it to PDF with the same LibreOffice-backed converter used
+    elsewhere, falling back to the pure-Python reportlab renderer if that
+    conversion isn't available in this environment."""
+    meta = meta or {}
+    working_docx = docx_path
+    if working_docx is None:
+        working_docx = path.with_suffix(".docx")
+        render_blocks_to_docx(working_docx, title, blocks, incident_id, meta)
+    try:
+        from reporting.template_document_exporter import convert_docx_to_pdf
+        convert_docx_to_pdf(working_docx, path)
+    except Exception:
+        _pdf_write_blocks(path, title, blocks, incident_id, meta)
+
+
 def export_section_docx(output_dir: Path, section_key: str, incident_id: str | None = None) -> dict[str, Any]:
     manifest = load_manifest(output_dir, incident_id)
     if not manifest:
@@ -1048,9 +1083,18 @@ def export_docx(output_dir: Path, incident_id: str | None = None) -> dict[str, A
     _confirmed_required(section)
     incident_id = manifest.get("incident_id") or "INC-0001"
     blocks, title = _final_report_blocks(manifest)
-    path = exports_dir(output_dir, incident_id) / "combined_incident_report.docx"
+    # Canonical filename is final_incident_report.* — combined_incident_report.*
+    # was a legacy, misleading name: this export has always been the standalone
+    # output of incident_report_template.md.j2 (see _final_report_blocks'
+    # docstring), never a concatenation of the other three reports.
+    path = exports_dir(output_dir, incident_id) / "final_incident_report.docx"
     _docx_write_blocks(path, f"{title} - {incident_id}", blocks, incident_id, manifest)
-    manifest.setdefault("exports", {})["docx"] = {"path": str(path), "relative_path": _rel(output_dir, path), "created_at": utc_now()}
+    export_entry = {"path": str(path), "relative_path": _rel(output_dir, path), "created_at": utc_now()}
+    manifest.setdefault("exports", {})["docx"] = export_entry
+    # Also mirror into sections.final_incident_report.exports so this report
+    # is self-describing exactly like the other three (previously left {}).
+    section.setdefault("exports", {})["docx"] = export_entry
+    manifest["sections"]["final_incident_report"] = section
     save_manifest(output_dir, manifest)
     return {"success": True, "path": str(path), "manifest": manifest, "download_url": "/api/reports/download/docx"}
 
@@ -1066,7 +1110,7 @@ def export_pdf(output_dir: Path, incident_id: str | None = None) -> dict[str, An
     incident_id = manifest.get("incident_id") or "INC-0001"
     docx_result = export_docx(output_dir, incident_id=incident_id)
     docx_path = Path(docx_result["path"])
-    path = exports_dir(output_dir, incident_id) / "combined_incident_report.pdf"
+    path = exports_dir(output_dir, incident_id) / "final_incident_report.pdf"
     try:
         from reporting.template_document_exporter import convert_docx_to_pdf
         convert_docx_to_pdf(docx_path, path)
@@ -1075,7 +1119,11 @@ def export_pdf(output_dir: Path, incident_id: str | None = None) -> dict[str, An
         blocks, title = _final_report_blocks(manifest)
         _pdf_write_blocks(path, f"{title} - {incident_id}", blocks, incident_id, manifest)
     manifest = load_manifest(output_dir, incident_id)
-    manifest.setdefault("exports", {})["pdf"] = {"path": str(path), "relative_path": _rel(output_dir, path), "created_at": utc_now(), "source_docx": str(docx_path)}
+    section = (manifest.get("sections") or {}).get("final_incident_report") or section
+    export_entry = {"path": str(path), "relative_path": _rel(output_dir, path), "created_at": utc_now(), "source_docx": str(docx_path)}
+    manifest.setdefault("exports", {})["pdf"] = export_entry
+    section.setdefault("exports", {})["pdf"] = export_entry
+    manifest["sections"]["final_incident_report"] = section
     save_manifest(output_dir, manifest)
     return {"success": True, "path": str(path), "manifest": manifest, "download_url": "/api/reports/download/pdf"}
 
@@ -1097,3 +1145,167 @@ def download_path(output_dir: Path, section_key: str | None, file_type: str, inc
     if not path.exists():
         raise FileNotFoundError("Export file not found")
     return path
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Candidate manifest — an IMMUTABLE final snapshot, distinct from the
+# mutable report_manifest.json above (which stays exactly as it always
+# was: the Reporting Agent's own working manifest through draft/confirm/
+# export). candidate_manifest.json is written exactly once, only after all
+# 4 structured reports + 4 DOCX + 4 PDF exist and have been validated, and
+# is the sole basis for preview/approval/export from that point on — see
+# reporting_approval.approve_reporting_candidate() and
+# workflow_state_store.commit_reporting_approval().
+# ═══════════════════════════════════════════════════════════════════════
+
+class CandidateManifestConflictError(RuntimeError):
+    """Raised when finalize_candidate_manifest() is asked to (re-)publish a
+    candidate set for an attempt whose candidate_manifest.json already
+    exists with DIFFERENT content — the immutable manifest is never
+    overwritten. A byte-for-byte-equivalent repeat call (same 12 file
+    hashes) is treated as a safe idempotent no-op instead of raising."""
+
+
+def candidate_manifest_path(output_dir: Path, incident_id: str) -> Path:
+    return incident_report_dir(output_dir, incident_id) / "candidate_manifest.json"
+
+
+def _hash_file(path: Path) -> tuple[str, int]:
+    data = path.read_bytes()
+    return hashlib.sha256(data).hexdigest(), len(data)
+
+
+def _canonical_manifest_bytes(manifest_without_hash: dict[str, Any]) -> bytes:
+    """Deterministic serialisation used for both the published hash and
+    the atomic-write content — sorted keys, no incidental whitespace, so
+    the hash never drifts for reasons unrelated to actual content."""
+    return json.dumps(manifest_without_hash, sort_keys=True, separators=(",", ":"),
+                      ensure_ascii=False).encode("utf-8")
+
+
+def _report_content_signature(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The parts of a report entry that represent actual CONTENT identity —
+    excludes generated_at, which legitimately differs between an original
+    finalize call and a same-content idempotent repeat call. Used only to
+    decide "is this a safe no-op retry", never for the published hash
+    itself (which does cover generated_at, since that hash's job is to
+    detect ANY later mutation of the one-time-published file)."""
+    return [
+        {k: e.get(k) for k in ("report_type", "title", "filename", "template",
+                               "structured_content", "docx", "pdf", "validation")}
+        for e in entries
+    ]
+
+
+def finalize_candidate_manifest(output_dir: Path, incident_id: str, run_id: str,
+                                reporting_stage_attempt: int) -> dict[str, Any]:
+    """Build and atomically publish candidate_manifest.json — the true
+    final snapshot of a completed Reporting generation.
+
+    Must be called only after adapters/export_documents.py has confirmed
+    and exported all 4 core reports (structured content + DOCX + PDF for
+    each). If any of those 12 files is missing/empty, this raises
+    FileNotFoundError and does NOT publish anything — the caller
+    (run_reporting_stage()) must treat that as a generation/validator
+    execution failure (Reporting=Failed, Workflow=Failed), never as a
+    published-but-blocked candidate set. A CONTENT-level validation
+    problem (raw pipe syntax, unresolved Jinja, etc.) is different: that
+    still publishes normally, with validation.status="error" recorded on
+    the affected report entry — publication and approval-eligibility are
+    decided by different code at different times (see
+    reporting_approval.approve_reporting_candidate())."""
+    from reporting.report_validator import validate_generated_report
+
+    manifest = load_manifest(output_dir, incident_id)
+    if not manifest:
+        raise FileNotFoundError("No report manifest found — cannot finalize a candidate set.")
+
+    def _build_report_entries() -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+        for key in CORE_REPORT_KEYS:
+            section = (manifest.get("sections") or {}).get(key)
+            if not section:
+                raise FileNotFoundError(f"candidate manifest: section '{key}' missing from report_manifest.json")
+            structured_path = section.get("structured_confirmed_path")
+            exports = section.get("exports") or {}
+            docx_path = (exports.get("docx") or {}).get("path")
+            pdf_path = (exports.get("pdf") or {}).get("path")
+            if not (structured_path and docx_path and pdf_path):
+                raise FileNotFoundError(
+                    f"candidate manifest: '{key}' is missing a required structured/docx/pdf export")
+            structured_p, docx_p, pdf_p = Path(structured_path), Path(docx_path), Path(pdf_path)
+            for p, label in ((structured_p, "structured_content"), (docx_p, "docx"), (pdf_p, "pdf")):
+                if not p.exists() or p.stat().st_size == 0:
+                    raise FileNotFoundError(f"candidate manifest: '{key}' {label} file missing or empty: {p}")
+            validation = validate_generated_report(
+                docx_path=docx_p, pdf_path=pdf_p, structured_content_path=structured_p,
+                report_title=section.get("title") or key, incident_id=incident_id)
+
+            def _hashed(p: Path) -> dict[str, Any]:
+                sha, size = _hash_file(p)
+                return {"path": _rel(output_dir, p), "sha256": sha, "size": size}
+
+            entries.append({
+                "report_type": key,
+                "title": section.get("title") or key,
+                "filename": {"docx": docx_p.name, "pdf": pdf_p.name},
+                "template": section.get("template"),
+                "structured_content": _hashed(structured_p),
+                "docx": _hashed(docx_p),
+                "pdf": _hashed(pdf_p),
+                "generated_at": utc_now(),
+                "validation": validation,
+            })
+        return entries
+
+    final_path = candidate_manifest_path(output_dir, incident_id)
+
+    if final_path.exists():
+        existing = json.loads(final_path.read_text(encoding="utf-8"))
+        fresh_entries = _build_report_entries()
+        if _report_content_signature(existing.get("reports") or []) == _report_content_signature(fresh_entries):
+            return existing   # identical content — safe no-op, no new report_set_id minted
+        raise CandidateManifestConflictError(
+            f"candidate_manifest.json already exists for {incident_id}/{run_id} attempt "
+            f"{reporting_stage_attempt} and differs from what this finalize call would "
+            "produce — refusing to overwrite a published candidate set.")
+
+    report_entries = _build_report_entries()
+    manifest_without_hash: dict[str, Any] = {
+        "incident_id": incident_id,
+        "run_id": run_id,
+        "reporting_stage_attempt": reporting_stage_attempt,
+        "report_set_id": uuid.uuid4().hex,
+        "generated_at": utc_now(),
+        "reports": report_entries,
+        # Metadata-only compatibility alias for any code still keyed on the
+        # legacy "combined_incident_report" name — never a second document.
+        "legacy_combined_incident_report": {"deprecated": True, "points_to": "final_incident_report"},
+    }
+    digest = hashlib.sha256(_canonical_manifest_bytes(manifest_without_hash)).hexdigest()
+    full_manifest = dict(manifest_without_hash)
+    full_manifest["candidate_manifest_sha256"] = digest
+
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = final_path.with_name(f".{final_path.name}.tmp-{uuid.uuid4().hex[:8]}")
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(full_manifest, indent=2, ensure_ascii=False))
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, final_path)  # safe: existence already ruled out above
+        try:
+            dir_fd = os.open(str(final_path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except (OSError, AttributeError):
+            pass  # directory fsync unsupported on this platform (e.g. Windows) — documented no-op
+    finally:
+        if tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+    return full_manifest

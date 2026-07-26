@@ -280,6 +280,9 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     enriched = inputs.get("enriched_alert") or {}
     triage = inputs.get("triage_result") or {}
     investigation = inputs.get("investigation_result") or {}
+    threat_intel_result = inputs.get("threat_intel_result") or {}
+    approval_history = inputs.get("approval_history") or []
+    workflow_metadata = inputs.get("workflow_metadata") or {}
     approval_result = inputs.get("investigation_approval_result") or inputs.get("approval_result") or {}
     ticket_context = inputs.get("grouped_incident_context") or inputs.get("ticket_context") or {}
     correlation_recommendations = inputs.get("correlation_recommendations") or {}
@@ -289,7 +292,7 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # Investigation may legitimately report incident_id="unknown" when it has
     # evidence gaps, but Reporting should still recover the correct incident and
     # alert title from the parser/triage/threat-intel context.
-    incident_id = _first(ticket_context.get("incident_id"), processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), investigation.get("incident_id"), investigation.get("case_id"), triage.get("case_id"), default="unknown")
+    incident_id = _first(ticket_context.get("incident_id"), workflow_metadata.get("incident_id"), processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), investigation.get("incident_id"), investigation.get("case_id"), triage.get("case_id"), threat_intel_result.get("incident_id"), default="unknown")
     alert_id = _first(processed.get("alert_id"), enriched.get("alert_id"), triage.get("alert_id"), investigation.get("alert_id"), default="UNKNOWN-ALERT")
     title = _first(processed.get("alert_title"), processed.get("alert_name"), enriched.get("alert_title"), enriched.get("alert_name"), enriched.get("case_title"), enriched.get("title"), triage.get("title"), investigation.get("title"), default="Not Provided")
     severity_value = _first(investigation.get("severity"), triage.get("severity"), enriched.get("severity"), enriched.get("risk_level"), reporting.get("severity"), default="Not Provided")
@@ -513,6 +516,22 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "archived_duplicate_tickets": archived_duplicate_tickets,
         "triage": triage,
         "investigation": investigation,
+        # Threat Intelligence, passed explicitly (see input_loader.py's
+        # threat_intel_result input key / HARD_REQUIRED_INPUT_KEYS) rather
+        # than assumed to have survived into enriched_alert/investigation —
+        # export_context_enhancer.rebuild_iocs() reads this directly.
+        "threat_intel_result": threat_intel_result,
+        "threat_intelligence": threat_intel_result.get("threat_intelligence") or {},
+        "enrichment_risk_score": threat_intel_result.get("enrichment_risk_score"),
+        "enrichment_risk_level": threat_intel_result.get("enrichment_risk_level"),
+        # Approval history as of the moment Reporting started (Triage's and
+        # Investigation's decisions, plus this Reporting stage's own prior
+        # reject/rerun history if any) — never this attempt's own
+        # not-yet-existing Reporting decision.
+        "approval_history": approval_history,
+        "run_id": workflow_metadata.get("run_id"),
+        "reporting_stage_attempt": workflow_metadata.get("reporting_stage_attempt"),
+        "workflow_metadata": workflow_metadata,
         "investigation_status": investigation_status,
         "investigation_completeness_status": "Completed with evidence gaps" if reporting_mode == "with_limitations" else "Completed",
         "investigation_completeness_note": investigation_completeness_note,

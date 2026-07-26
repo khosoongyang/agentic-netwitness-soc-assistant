@@ -12,8 +12,17 @@ from typing import Any
 from dotenv import load_dotenv
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-INPUTS_DIR = PROJECT_ROOT / "inputs"
-OUTPUTS_DIR = PROJECT_ROOT / "outputs"
+# Run-scoped Reporting workspace: when the durable dashboard workflow
+# invokes this subprocess it sets REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR
+# to a per-incident/run/attempt directory (see soc_workflow.run_reporting_stage())
+# so drafts/confirmed/exports/manifests are naturally isolated — every
+# function below that references INPUTS_DIR/OUTPUTS_DIR becomes run-scoped
+# automatically since these are resolved once, at import time, from those
+# env vars. Falling back to the flat PROJECT_ROOT/inputs|outputs dirs keeps
+# standalone/manual CLI invocation (no env vars set) working exactly as
+# before.
+INPUTS_DIR = Path(os.getenv("REPORTING_INPUT_DIR") or (PROJECT_ROOT / "inputs"))
+OUTPUTS_DIR = Path(os.getenv("REPORTING_OUTPUT_DIR") or (PROJECT_ROOT / "outputs"))
 LOGS_DIR = PROJECT_ROOT / "logs"
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
 

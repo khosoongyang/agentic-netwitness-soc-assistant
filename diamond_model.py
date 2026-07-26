@@ -178,17 +178,6 @@ def _asset_tier(incident: dict, triage_result: dict | None) -> str:
         return "unclassified"
 
 
-def _ti_flags(ti_result: dict | None) -> dict:
-    """value -> worst verdict, from a passed-in threat_intel enrichment (optional)."""
-    flags: dict[str, str] = {}
-    for r in (ti_result or {}).get("results", []):
-        v = r.get("value")
-        verdict = str(r.get("verdict", "")).split(" ")[0]
-        if v and verdict in ("MALICIOUS", "SUSPICIOUS"):
-            flags[v] = verdict
-    return flags
-
-
 def build_diamond(incident: dict, triage_result: dict | None = None,
                   ti_result: dict | None = None,
                   enrich_pivots: bool = False) -> dict:
@@ -201,7 +190,13 @@ def build_diamond(incident: dict, triage_result: dict | None = None,
     ext = _extract(incident, triage_result)
     mitre = _mitre(incident, triage_result)
     tier = _asset_tier(incident, triage_result)
-    ti = _ti_flags(ti_result)
+    # threat_intel's enrichment_risk_level/score is a CASE-level verdict (one
+    # enrichment run judged all the case's IOCs together) — surfaced once,
+    # below, alongside the four vertices. Never stamped onto individual
+    # infrastructure/capability items, which have no legitimate per-item
+    # threat-intel signal under the current enrichment schema.
+    ti_risk_level = (ti_result or {}).get("enrichment_risk_level")
+    ti_risk_score = (ti_result or {}).get("enrichment_risk_score")
 
     # if triage gave no MITRE, infer one from the behavioural alert titles so the
     # Capability vertex + phase meta-feature can still populate.
@@ -217,17 +212,16 @@ def build_diamond(incident: dict, triage_result: dict | None = None,
         "confidence": (80 if host else (40 if ext["priv_ips"] else 10))
                       + (10 if ext["users"] else 0),
     }
-    infra_items = [{"value": ip, "kind": "external IP",
-                    "ti": ti.get(ip)} for ip in ext["pub_ips"]]
-    infra_items += [{"value": d, "kind": "domain", "ti": ti.get(d)} for d in ext["domains"]]
+    infra_items = [{"value": ip, "kind": "external IP"} for ip in ext["pub_ips"]]
+    infra_items += [{"value": d, "kind": "domain"} for d in ext["domains"]]
     infrastructure = {
         "items": infra_items,
         "confidence": 70 if infra_items else 0,
     }
     # Capability = file hashes (if any) + the behavioural capabilities named by
     # the alert titles ("Malicious HTA file detected", "Potential C2 Connection"…).
-    cap_items = [{"value": h, "kind": "file hash", "ti": ti.get(h)} for h in ext["hashes"]]
-    cap_items += [{"value": t, "kind": "behaviour", "ti": None} for t in ext["alert_titles"]]
+    cap_items = [{"value": h, "kind": "file hash"} for h in ext["hashes"]]
+    cap_items += [{"value": t, "kind": "behaviour"} for t in ext["alert_titles"]]
     capability = {
         "items": cap_items,
         "mitre_technique": mitre["technique"], "mitre_tactic": mitre["tactic"],
@@ -290,10 +284,11 @@ def build_diamond(incident: dict, triage_result: dict | None = None,
         "victim": victim, "infrastructure": infrastructure,
         "capability": capability, "adversary": adversary,
         "meta": meta, "pivots": pivots,
+        "threat_intel_risk_level": ti_risk_level,
+        "threat_intel_risk_score": ti_risk_score,
         "stats": {"vertices_populated": populated, "completeness_pct": completeness,
                   "infrastructure_count": len(infra_items),
-                  "capability_count": len(cap_items),
-                  "malicious_flagged": sum(1 for it in infra_items + cap_items if it.get("ti") == "MALICIOUS")},
+                  "capability_count": len(cap_items)},
     }
 
 
@@ -309,7 +304,7 @@ def to_dot(d: dict) -> str:
     vic, inf, cap, adv = d["victim"], d["infrastructure"], d["capability"], d["adversary"]
 
     def _lines(items, cap_n=3):
-        vals = [it["value"] + ("" if it.get("ti") else "") for it in items[:cap_n]]
+        vals = [it["value"] for it in items[:cap_n]]
         extra = len(items) - cap_n
         if extra > 0:
             vals.append(f"+{extra} more")
@@ -345,22 +340,23 @@ def format_diamond(d: dict) -> str:
         return "DIAMOND MODEL unavailable: " + d.get("reason", "unknown")
     vic, inf, cap, adv, m = d["victim"], d["infrastructure"], d["capability"], d["adversary"], d["meta"]
     st = d["stats"]
+    ti_level = d.get("threat_intel_risk_level")
     lines = [
         "DIAMOND MODEL OF INTRUSION ANALYSIS (analytic structuring of this "
         "incident's evidence — not new intelligence)",
         f"  completeness: {st['completeness_pct']}% "
         f"({st['vertices_populated']}/3 evidence vertices populated)"
-        + (f"   ·   {st['malicious_flagged']} element(s) flagged malicious" if st["malicious_flagged"] else ""),
+        + (f"   ·   threat intel: {ti_level} risk (score {d.get('threat_intel_risk_score', 0)})"
+           if ti_level else ""),
         "",
         f"  ● ADVERSARY:      {adv['label']} — {adv['note']}",
         "  ● CAPABILITY:     " + (", ".join(
-            (it["value"][:44] + ("…" if len(it["value"]) > 44 else ""))
-            + ("" + it["ti"] if it.get("ti") else "") for it in cap["items"]) or "—")
+            it["value"][:44] + ("…" if len(it["value"]) > 44 else "")
+            for it in cap["items"]) or "—")
         + (f"   |   TTP: {cap['mitre_technique']} / {cap['mitre_tactic']}"
            if cap["mitre_technique"] else "   |   TTP: —"),
         "  ● INFRASTRUCTURE: " + (", ".join(
-            f"{it['value']} ({it['kind']})" + ("" + it["ti"] if it.get("ti") else "")
-            for it in inf["items"]) or "—"),
+            f"{it['value']} ({it['kind']})" for it in inf["items"]) or "—"),
         f"  ● VICTIM:         {vic['host'] or '(no named host)'} "
         f"[{vic['asset_tier']} asset]"
         + (f"   user: {', '.join(vic['users'][:2])}" if vic.get("users") else "")

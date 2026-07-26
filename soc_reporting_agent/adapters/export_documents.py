@@ -11,6 +11,7 @@ Prints a single machine-readable line:  EXPORT_JSON:{...}
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -65,6 +66,43 @@ def main() -> int:
             result[f"{section_key}_pdf"] = section_pdf.get("path")
         except Exception as exc:
             result[f"{section_key}_pdf_error"] = str(exc)
+
+    # Immutable final snapshot — only after every section above has been
+    # confirmed and exported. run_id/reporting_stage_attempt are threaded
+    # through as env vars (set by soc_workflow.run_reporting_stage()
+    # alongside REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR) rather than new
+    # positional CLI args, so the existing `python export_documents.py
+    # [incident_id]` invocation shape is unchanged.
+    run_id = os.getenv("SOC_RUN_ID")
+    attempt_raw = os.getenv("SOC_REPORTING_ATTEMPT")
+    try:
+        reporting_stage_attempt = int(attempt_raw) if attempt_raw else 1
+    except ValueError:
+        reporting_stage_attempt = 1
+    try:
+        candidate_manifest = er.finalize_candidate_manifest(
+            output_dir, incident_id, run_id, reporting_stage_attempt)
+        result["candidate_manifest_path"] = str(
+            er.candidate_manifest_path(output_dir, incident_id))
+        result["report_set_id"] = candidate_manifest.get("report_set_id")
+        result["candidate_manifest_sha256"] = candidate_manifest.get("candidate_manifest_sha256")
+    except er.CandidateManifestConflictError as exc:
+        # A published candidate set already exists and differs — this is
+        # not a generation failure, it's a bug-guard; surface it loudly
+        # rather than silently accepting either version.
+        result["candidate_manifest_error"] = str(exc)
+        print("EXPORT_JSON:" + json.dumps(result, default=str))
+        return 1
+    except Exception as exc:
+        # Any other failure here (missing/unreadable DOCX or PDF, a
+        # ReportIntegrityError from report_validator, etc.) means no
+        # candidate manifest was published — a generation/validator
+        # execution failure. run_reporting_stage() must see this as a
+        # failed attempt (Reporting=Failed, Workflow=Failed), never as a
+        # published-but-blocked candidate set.
+        result["candidate_manifest_error"] = str(exc)
+        print("EXPORT_JSON:" + json.dumps(result, default=str))
+        return 1
 
     print("EXPORT_JSON:" + json.dumps(result, default=str))
     return 0 if (result.get("docx") or result.get("pdf")) else 1

@@ -1,8 +1,8 @@
 """
 tests/test_threat_intel_workflow.py — Threat Intelligence Enrichment stage:
-durable resume, atomic stage claims/leases, honest IOC classification, and
-the full Triage -> Threat Intelligence -> Investigation -> Reporting
-approval chain.
+durable resume, atomic stage claims/leases, the new VirusTotal/AbuseIPDB/
+AlienVault OTX engine (threat_intel.py), and the full Triage -> Threat
+Intelligence -> Investigation -> Reporting approval chain.
 
 All HTTP is mocked (unittest.mock.patch("requests.get", ...)) — no live
 external API calls. workflow_state_store.DB_FILE and
@@ -75,6 +75,12 @@ def _save_raw_incident(incident_id: str, run_id: str, incident: dict | None = No
     wss.save_raw_incident_path(incident_id, run_id, str(path))
 
 
+def _mock_all_ti_keys_absent(monkeypatch):
+    monkeypatch.delenv("VT_API_KEY", raising=False)
+    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
+    monkeypatch.delenv("OTX_API_KEY", raising=False)
+
+
 # ══════════════════════════════════════════════════════════════════════════
 # Approval atomicity
 # ══════════════════════════════════════════════════════════════════════════
@@ -138,7 +144,12 @@ def test_reporting_approval_is_required_for_workflow_complete():
         "workflow_status": "Awaiting Approval", "approval_stage": "reporting",
         "reporting_status": "Awaiting Approval"})
     assert wss.get_state("INC-1")["workflow_status"] != "Complete"
-    wss.approve_reporting("INC-1", run_id, approved_by="tester")
+    _state = wss.get_state("INC-1")
+    wss.commit_reporting_approval(
+        "INC-1", run_id,
+        expected_reporting_attempt=_state["reporting_attempt"],
+        expected_reporting_result_json=_state["reporting_result_json"],
+        metadata={}, approved_by="tester")
     state = wss.get_state("INC-1")
     assert state["reporting_status"] == "Approved"
     assert state["workflow_status"] == "Complete"
@@ -339,13 +350,8 @@ def test_partially_written_artifact_is_never_loaded(tmp_path):
 # Durable resume / new-process resume / dispatcher correctness
 # ══════════════════════════════════════════════════════════════════════════
 
-def _mock_vt_and_abuseipdb_absent(monkeypatch):
-    monkeypatch.delenv("VT_API_KEY", raising=False)
-    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-
-
 def test_resume_after_triage_approval_survives_fresh_state_reload(monkeypatch):
-    _mock_vt_and_abuseipdb_absent(monkeypatch)
+    _mock_all_ti_keys_absent(monkeypatch)
     run_id = _start_and_reach_triage_approval("INC-1")
     _save_raw_incident("INC-1", run_id)
     _approve_triage("INC-1", run_id)
@@ -359,7 +365,7 @@ def test_resume_after_triage_approval_survives_fresh_state_reload(monkeypatch):
 def test_new_process_can_resume_using_only_persisted_state(monkeypatch):
     """Simulates a fresh process: only incident_id/run_id are known, no
     shared in-memory object from the approval call."""
-    _mock_vt_and_abuseipdb_absent(monkeypatch)
+    _mock_all_ti_keys_absent(monkeypatch)
     run_id = _start_and_reach_triage_approval("INC-1")
     _save_raw_incident("INC-1", run_id)
     _approve_triage("INC-1", run_id)
@@ -370,7 +376,7 @@ def test_new_process_can_resume_using_only_persisted_state(monkeypatch):
 
 
 def test_resume_rejects_stale_run_id(monkeypatch):
-    _mock_vt_and_abuseipdb_absent(monkeypatch)
+    _mock_all_ti_keys_absent(monkeypatch)
     run_id = _start_and_reach_triage_approval("INC-1")
     _approve_triage("INC-1", run_id)
     # The run_id/status guard lives in _claim_stage() (raises StageClaimError) —
@@ -485,8 +491,7 @@ def test_retry_threat_intel_reruns_only_threat_intel_then_investigation(monkeypa
 
     fake_run_investigation_stage = Mock(return_value={"status": "awaiting_approval"})
     monkeypatch.setattr(sw, "run_investigation_stage", fake_run_investigation_stage)
-    monkeypatch.delenv("VT_API_KEY", raising=False)
-    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
+    _mock_all_ti_keys_absent(monkeypatch)
 
     wss.retry_threat_intel("INC-1", run_id)
     sw.run_stage_chain("INC-1", run_id)
@@ -505,193 +510,336 @@ def test_retry_continues_to_investigation_exactly_once(monkeypatch):
         con.commit()
     fake_inv = Mock(return_value={"status": "awaiting_approval"})
     monkeypatch.setattr(sw, "run_investigation_stage", fake_inv)
-    monkeypatch.delenv("VT_API_KEY", raising=False)
-    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
+    _mock_all_ti_keys_absent(monkeypatch)
 
     wss.retry_threat_intel("INC-1", run_id)
     sw.run_stage_chain("INC-1", run_id)
     assert fake_inv.call_count == 1
 
 
+def test_rerun_threat_intel_invalidates_downstream():
+    run_id = _start_and_reach_triage_approval("INC-1")
+    _approve_triage("INC-1", run_id)
+    with wss.db_connect() as con:
+        con.execute(
+            "UPDATE incidents SET threat_intel_status='Complete', "
+            "threat_intel_result_json='{}', investigation_status='Approved', "
+            "investigation_result_json='{}', reporting_status='Approved', "
+            "reporting_result_json='{}', workflow_status='Complete' WHERE id=?",
+            ("INC-1",))
+        con.commit()
+    wss.rerun_stage("INC-1", run_id, "threat_intel")
+    state = wss.get_state("INC-1")
+    assert state["threat_intel_status"] == "Processing"
+    assert state["investigation_status"] == "Pending"
+    assert state["investigation_result_json"] is None
+    assert state["reporting_status"] == "Pending"
+    assert state["reporting_result_json"] is None
+
+
 # ══════════════════════════════════════════════════════════════════════════
-# Threat Intelligence: honest classification / no fabrication
+# threat_intel.py — the VirusTotal / AbuseIPDB / AlienVault OTX engine
 # ══════════════════════════════════════════════════════════════════════════
 
-def test_no_findings_is_not_labelled_benign(monkeypatch):
+def _ok_json_response(payload: dict) -> Mock:
+    r = Mock(status_code=200)
+    r.json.return_value = payload
+    return r
+
+
+def test_virustotal_file_hash_lookup_returns_reputation(monkeypatch):
+    monkeypatch.setenv("VT_API_KEY", "test-vt-key")
+    resp = _ok_json_response({"data": {"attributes": {
+        "last_analysis_stats": {"malicious": 5, "suspicious": 1},
+        "reputation": -10}}})
+    with patch("requests.get", return_value=resp) as m:
+        result = ti.query_virustotal_file_hash("a" * 64)
+    assert result["status"] == "completed"
+    assert result["malicious"] == 5
+    assert result["reputation"] == -10
+    m.assert_called_once()
+
+
+def test_virustotal_ip_lookup_returns_reputation(monkeypatch):
+    monkeypatch.setenv("VT_API_KEY", "test-vt-key")
+    resp = _ok_json_response({"data": {"attributes": {
+        "last_analysis_stats": {"malicious": 0}, "country": "US"}}})
+    with patch("requests.get", return_value=resp):
+        result = ti.query_virustotal_ip("8.8.8.8")
+    assert result["status"] == "completed"
+    assert result["country"] == "US"
+
+
+def test_virustotal_domain_lookup_returns_reputation(monkeypatch):
+    monkeypatch.setenv("VT_API_KEY", "test-vt-key")
+    resp = _ok_json_response({"data": {"attributes": {
+        "last_analysis_stats": {"malicious": 2}, "registrar": "Example Registrar"}}})
+    with patch("requests.get", return_value=resp):
+        result = ti.query_virustotal_domain("example.com")
+    assert result["status"] == "completed"
+    assert result["registrar"] == "Example Registrar"
+
+
+def test_abuseipdb_ip_lookup_returns_reputation(monkeypatch):
+    monkeypatch.setenv("ABUSEIPDB_API_KEY", "test-abuse-key")
+    resp = _ok_json_response({"data": {
+        "abuseConfidenceScore": 92, "totalReports": 14, "countryCode": "RU",
+        "isp": "Some ISP", "usageType": "Data Center/Web Hosting/Transit"}})
+    with patch("requests.get", return_value=resp):
+        result = ti.query_abuseipdb("1.2.3.4")
+    assert result["status"] == "completed"
+    assert result["abuse_confidence_score"] == 92
+    assert result["isp"] == "Some ISP"
+
+
+def test_otx_file_hash_lookup_returns_pulse_data(monkeypatch):
+    monkeypatch.setenv("OTX_API_KEY", "test-otx-key")
+    resp = _ok_json_response({"pulse_info": {"count": 3, "pulses": [{"name": "p1"}]},
+                              "sections": ["general", "analysis"]})
+    with patch("requests.get", return_value=resp):
+        result = ti.query_otx_indicator("file", "a" * 64)
+    assert result["status"] == "completed"
+    assert result["pulse_count"] == 3
+    assert result["related_pulses"] == ["p1"]
+
+
+def test_otx_ip_lookup_returns_pulse_data(monkeypatch):
+    monkeypatch.setenv("OTX_API_KEY", "test-otx-key")
+    resp = _ok_json_response({"pulse_info": {"count": 0, "pulses": []}, "sections": []})
+    with patch("requests.get", return_value=resp):
+        result = ti.query_otx_indicator("IPv4", "1.2.3.4")
+    assert result["status"] == "completed"
+    assert result["pulse_count"] == 0
+
+
+def test_otx_domain_lookup_returns_pulse_data(monkeypatch):
+    monkeypatch.setenv("OTX_API_KEY", "test-otx-key")
+    resp = _ok_json_response({"pulse_info": {"count": 1, "pulses": [{"name": "p2"}]},
+                              "sections": ["general"]})
+    with patch("requests.get", return_value=resp):
+        result = ti.query_otx_indicator("domain", "example.com")
+    assert result["status"] == "completed"
+    assert result["pulse_count"] == 1
+
+
+def test_missing_api_key_returns_skipped_not_crash(monkeypatch):
     monkeypatch.delenv("VT_API_KEY", raising=False)
     monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-    incident = {"alertMeta": {"DestinationIp": ["8.8.8.8"]}}
-    triage_result = _triage_result("INC-1")
-
-    fake_resp = Mock(status_code=200)
-    fake_resp.json.return_value = {"status": "success", "country": "US", "as": "AS1",
-                                   "isp": "x", "proxy": False, "hosting": False}
-    fake_resp.raise_for_status = Mock()
-    with patch("requests.get", return_value=fake_resp), \
-         patch("socket.gethostbyaddr", side_effect=OSError("no ptr")):
-        result = sw.run_threat_intel(incident_id="INC-1", run_id="r1",
-                                     normalised_alert=None, triage_result=triage_result,
-                                     incident=incident)
-    assert "benign_iocs" not in result
-    assert "no_findings_iocs" in result
-    for r in result["iocs"]:
-        assert r["verdict"] != "BENIGN"
+    monkeypatch.delenv("OTX_API_KEY", raising=False)
+    with patch("requests.get") as m:
+        assert ti.query_virustotal_ip("1.2.3.4")["status"] == "skipped"
+        assert ti.query_abuseipdb("1.2.3.4")["status"] == "skipped"
+        assert ti.query_otx_indicator("IPv4", "1.2.3.4")["status"] == "skipped"
+    m.assert_not_called()   # no network attempted when the key is missing
 
 
-def test_lookup_failed_requires_all_applicable_sources_to_fail(monkeypatch):
+def test_private_ip_excluded_from_extraction():
+    iocs = ti.extract_iocs({"source_ip": "10.0.0.5", "destination_ip": "8.8.8.8"})
+    assert "10.0.0.5" not in iocs["ip_indicators"]
+    assert "8.8.8.8" in iocs["ip_indicators"]
+
+
+def test_public_ip_extracted():
+    iocs = ti.extract_iocs({"source_ip": "203.0.113.5"})
+    assert iocs["ip_indicators"] == ["203.0.113.5"]
+
+
+def test_external_domain_extracted():
+    iocs = ti.extract_iocs({"event_domain": "malicious-example.com"})
+    assert iocs["domain_indicators"] == ["malicious-example.com"]
+
+
+def test_internal_hostname_without_dot_ignored():
+    iocs = ti.extract_iocs({"event_domain": "CORPHOST01"})
+    assert iocs["domain_indicators"] == []
+
+
+def test_url_derived_domain_extracted():
+    iocs = ti.extract_iocs({"url": "https://bad.example.net/payload.exe"})
+    assert iocs["url_indicators"] == ["https://bad.example.net/payload.exe"]
+    assert "bad.example.net" in iocs["domain_indicators"]
+
+
+def test_powershell_iocs_preserved_through_flatten():
+    alert = {
+        "source_ip": "203.0.113.9",
+        "powershell_analysis": {
+            "decode_status": "success",
+            "extracted_iocs": {"domains": ["ps-c2.example.com"]},
+        },
+    }
+    flat = ti.flatten_alert_for_enrichment(alert)
+    assert flat["powershell_analysis"]["decode_status"] == "success"
+    iocs = ti.extract_iocs(flat)
+    assert "ps-c2.example.com" in iocs["domain_indicators"]
+    assert iocs["powershell_enrichment_note"].startswith("Decoded PowerShell")
+
+
+def test_risk_scoring_produces_low_medium_high():
+    low = ti.calculate_enrichment_risk({})
+    assert low["enrichment_risk_level"] == "Low"
+
+    medium = ti.calculate_enrichment_risk({
+        "virustotal": {"ip_results": [{"status": "completed", "indicator": "1.2.3.4",
+                                       "malicious": 1, "suspicious": 0}]},
+        "abuseipdb": {"ip_results": [{"status": "completed", "indicator": "1.2.3.4",
+                                      "abuse_confidence_score": 50}]}})
+    assert medium["enrichment_risk_level"] == "Medium"
+
+    high = ti.calculate_enrichment_risk({
+        "virustotal": {
+            "file_hash": {"status": "completed", "malicious": 6, "suspicious": 0},
+            "ip_results": [{"status": "completed", "indicator": "1.2.3.4",
+                            "malicious": 1, "suspicious": 0}],
+            "domain_results": [{"status": "completed", "indicator": "example.com",
+                                "malicious": 1, "suspicious": 0}],
+        }})
+    assert high["enrichment_risk_level"] == "High"
+
+
+def test_no_adverse_findings_are_not_labelled_safe(monkeypatch, tmp_path):
+    """No malicious/suspicious findings should read as Low risk with the
+    engine's own generic reason — never as a fabricated 'clean'/'benign'
+    claim about the indicator."""
+    _mock_all_ti_keys_absent(monkeypatch)
+    result = ti.run_threat_intel_for_dashboard(
+        {"destination_ip": "8.8.8.8"}, output_dir=tmp_path)
+    assert result["enrichment_risk_level"] == "Low"
+    reasons = " ".join(result["enrichment_risk_reasons"]).lower()
+    assert "benign" not in reasons and "clean" not in reasons and "safe" not in reasons
+    assert "no confirmed malicious external intelligence" in reasons
+
+
+def test_provider_error_produces_warning_not_silent_failure(monkeypatch, tmp_path):
     monkeypatch.setenv("VT_API_KEY", "test-vt-key")
     monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-    incident = {"alertMeta": {"DestinationIp": ["8.8.8.8"]}}
-    triage_result = _triage_result("INC-1")
-
-    def _fake_get(url, *a, **kw):
-        if "ip-api.com" in url:
-            raise __import__("requests").exceptions.Timeout("timed out")
-        r = Mock(status_code=200)
-        r.raise_for_status = Mock()
-        r.json.return_value = {"data": {"attributes": {"last_analysis_stats": {"malicious": 0}}}}
-        return r
-
-    with patch("requests.get", side_effect=_fake_get), \
-         patch("socket.gethostbyaddr", side_effect=OSError("no ptr")):
-        result = sw.run_threat_intel(incident_id="INC-1", run_id="r1",
-                                     normalised_alert=None, triage_result=triage_result,
-                                     incident=incident)
-    assert result["lookup_failed_iocs"] == []
-    assert any("at least one source fail" in w for w in result["warnings"])
-
-
-def test_missing_api_keys_produce_warnings_not_fabricated_results(monkeypatch):
-    monkeypatch.delenv("VT_API_KEY", raising=False)
-    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-    incident = {"alertMeta": {"DestinationIp": ["8.8.8.8"]}}
-    triage_result = _triage_result("INC-1")
-    fake_resp = Mock(status_code=200)
-    fake_resp.raise_for_status = Mock()
-    fake_resp.json.return_value = {"status": "success", "country": "US", "as": "AS1",
-                                   "isp": "x", "proxy": False, "hosting": False}
-    with patch("requests.get", return_value=fake_resp), \
-         patch("socket.gethostbyaddr", side_effect=OSError("no ptr")):
-        result = sw.run_threat_intel(incident_id="INC-1", run_id="r1",
-                                     normalised_alert=None, triage_result=triage_result,
-                                     incident=incident)
-    assert any("VT_API_KEY" in w for w in result["warnings"])
-    assert any("ABUSEIPDB_API_KEY" in w for w in result["warnings"])
-    for r in result["iocs"]:
-        assert "virustotal" not in r["sources"]
-        assert "abuseipdb" not in r["sources"]
-
-
-def test_partial_source_failure_yields_completed_with_warnings(monkeypatch):
-    monkeypatch.delenv("VT_API_KEY", raising=False)
-    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-    incident = {"alertMeta": {"DestinationIp": ["8.8.8.8"]}}
-    triage_result = _triage_result("INC-1")
-    with patch("requests.get", side_effect=OSError("network down")), \
-         patch("socket.gethostbyaddr", side_effect=OSError("no ptr")):
-        result = sw.run_threat_intel(incident_id="INC-1", run_id="r1",
-                                     normalised_alert=None, triage_result=triage_result,
-                                     incident=incident)
+    monkeypatch.delenv("OTX_API_KEY", raising=False)
+    resp = Mock(status_code=500, text="internal error")
+    with patch("requests.get", return_value=resp):
+        result = ti.run_threat_intel_for_dashboard(
+            {"destination_ip": "8.8.8.8"}, output_dir=tmp_path)
+    assert result["threat_intelligence"]["virustotal"]["ip_results"][0]["status"] == "error"
+    assert any("VirusTotal" in w for w in result["warnings"])
     assert result["status"] == "completed_with_warnings"
 
 
+def test_missing_api_keys_produce_warnings_not_fabricated_results(monkeypatch, tmp_path):
+    _mock_all_ti_keys_absent(monkeypatch)
+    with patch("requests.get") as m:
+        result = ti.run_threat_intel_for_dashboard(
+            {"destination_ip": "8.8.8.8"}, output_dir=tmp_path)
+    m.assert_not_called()
+    assert any("VirusTotal" in w for w in result["warnings"])
+    assert any("AbuseIPDB" in w for w in result["warnings"])
+    assert any("AlienVault OTX" in w for w in result["warnings"])
+    ti_block = result["threat_intelligence"]
+    assert ti_block["virustotal"]["ip_results"][0]["status"] == "skipped"
+    assert ti_block["abuseipdb"]["ip_results"][0]["status"] == "skipped"
+    assert ti_block["alienvault_otx"]["otx_results"][0]["status"] == "skipped"
+
+
+def test_missing_key_warning_only_fires_for_applicable_provider(monkeypatch, tmp_path):
+    """A domain-only alert never needs AbuseIPDB (IP-only provider) — no
+    AbuseIPDB warning should fire even though its key is also unset."""
+    _mock_all_ti_keys_absent(monkeypatch)
+    result = ti.run_threat_intel_for_dashboard(
+        {"event_domain": "example.com"}, output_dir=tmp_path)
+    assert any("VirusTotal" in w for w in result["warnings"])
+    assert any("AlienVault OTX" in w for w in result["warnings"])
+    assert not any("AbuseIPDB" in w for w in result["warnings"])
+
+
+def test_informational_notes_never_counted_as_warnings(tmp_path):
+    result = ti.run_threat_intel_for_dashboard({}, output_dir=tmp_path)
+    assert result["threat_intelligence"]["notes"]   # "no usable IP/domain/hash..." etc.
+    assert result["warnings"] == []
+    assert result["status"] == "completed"
+
+
+def test_persisted_dashboard_and_disk_result_are_identical(monkeypatch, tmp_path):
+    _mock_all_ti_keys_absent(monkeypatch)
+    result = ti.run_threat_intel_for_dashboard(
+        {"destination_ip": "8.8.8.8"}, output_dir=tmp_path)
+    on_disk = json.loads((tmp_path / "threat_intel_result.json").read_text(encoding="utf-8"))
+    assert on_disk == result
+    on_disk_alert = json.loads((tmp_path / "enriched_alert.json").read_text(encoding="utf-8"))
+    assert on_disk_alert == result["enriched_alert"]
+
+
+def test_agent_source_reflects_repo_path(tmp_path):
+    result = ti.run_threat_intel_for_dashboard({}, output_dir=tmp_path)
+    assert result["agent_source"] == "threat_intel.py"
+    assert result["enriched_alert"]["agent_source"] == "threat_intel.py"
+
+
+def test_api_keys_read_at_call_time_not_import_time(monkeypatch):
+    # threat_intel is already imported (module-level `import threat_intel as ti`
+    # above) — setting the env var now must still be picked up.
+    monkeypatch.setenv("VT_API_KEY", "set-after-import")
+    resp = _ok_json_response({"data": {"attributes": {"last_analysis_stats": {}}}})
+    with patch("requests.get", return_value=resp):
+        result = ti.query_virustotal_ip("1.2.3.4")
+    assert result["status"] == "completed"
+
+
 def test_run_threat_intel_receives_correct_parsing_triage_and_incident_inputs(monkeypatch):
-    """extract_iocs (via enrich_iocs) should see IOCs from BOTH the
-    normalised alert's processed_alert and the raw incident's alertMeta."""
+    """The flat alert handed to enrich_alert() combines Parsing's
+    processed_alert fields with the raw incident's alertMeta fallback."""
     incident = {"alertMeta": {"DestinationIp": ["8.8.4.4"]}}
     triage_result = _triage_result("INC-1")
-    normalised_alert = {"processed_alert": {"domain": "example.com",
-                                            "source_ip": "1.2.3.4"}}
-    monkeypatch.delenv("VT_API_KEY", raising=False)
-    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-    fake_resp = Mock(status_code=200)
-    fake_resp.raise_for_status = Mock()
-    fake_resp.json.return_value = {"status": "success"}
-    with patch("requests.get", return_value=fake_resp), \
-         patch("socket.gethostbyaddr", side_effect=OSError("no ptr")), \
-         patch("socket.getaddrinfo", side_effect=OSError("no resolve")):
+    normalised_alert = {"source_ip": "1.2.3.4", "event_domain": "example.com"}
+    _mock_all_ti_keys_absent(monkeypatch)
+    with patch("requests.get") as m:
         result = sw.run_threat_intel(incident_id="INC-1", run_id="r1",
                                      normalised_alert=normalised_alert,
                                      triage_result=triage_result, incident=incident)
-    values = {r["value"] for r in result["iocs"]}
-    assert "example.com" in values
-    assert "1.2.3.4" in values
-    assert "8.8.4.4" in values
+    m.assert_not_called()
+    iocs = result["threat_intelligence"]["iocs"]
+    assert iocs["domain_indicators"] == ["example.com"]
+    assert "1.2.3.4" in iocs["ip_indicators"]
+    assert "8.8.4.4" in iocs["ip_indicators"]
 
 
-def test_private_ips_and_behavioral_iocs_are_retained_not_reported_missing(monkeypatch):
-    monkeypatch.delenv("VT_API_KEY", raising=False)
-    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-    incident = {
-        "alertMeta": {
-            "DestinationIp": ["192.168.50.50", "192.168.50.54"],
-            "SourceIp": ["192.168.50.52"],
-        }
-    }
-    triage_result = _triage_result("INC-1", matched_ioc_count=3)
-    triage_result["metakeys_payload"]["metakey_values"] = {
-        "ip.dst": ["192.168.50.50,192.168.50.54"],
-        "ip.src": "192.168.50.52",
-    }
-    triage_result["trace"] = [{
-        "step": "IOC Checklist",
-        "total_ioc_count": 3,
-        "per_category": {
-            "confidentiality": {
-                "matched_ioc_names": ["Unknown traffic"],
-            },
-            "integrity": {
-                "matched_ioc_names": [
-                    "Odd device behaviour",
-                    "Unexplained privileged-account changes",
-                ],
-            },
-        },
-    }]
+def test_result_persisted_correctly_in_db(monkeypatch):
+    _mock_all_ti_keys_absent(monkeypatch)
+    run_id = _start_and_reach_triage_approval("INC-1")
+    _save_raw_incident("INC-1", run_id)
+    _approve_triage("INC-1", run_id)
+    sw.resume_after_triage_approval("INC-1", run_id)
+    saved = json.loads(wss.get_state("INC-1")["threat_intel_result_json"])
+    assert saved["stage"] == "threat_intelligence"
+    assert "threat_intelligence" in saved
+    assert "enrichment_risk_level" in saved
 
-    result = sw.run_threat_intel(
-        incident_id="INC-1",
-        run_id="r1",
-        normalised_alert=None,
-        triage_result=triage_result,
-        incident=incident,
-    )
 
-    assert result["iocs"] == []
-    assert [ioc["value"] for ioc in result["internal_iocs"]] == [
-        "192.168.50.50",
-        "192.168.50.54",
-        "192.168.50.52",
-    ]
-    assert result["triage_behavioral_indicators"] == {
-        "count": 3,
-        "names": [
-            "Unknown traffic",
-            "Odd device behaviour",
-            "Unexplained privileged-account changes",
-        ],
-        "disposition": "retained_for_investigation",
-    }
-    warning = " ".join(result["warnings"])
-    assert "No externally enrichable IOCs" in warning
-    assert "retained for Investigation" in warning
-    assert "No IOCs found" not in warning
-    assert result["thinking_process"]["private_internal_ips_retained"] == 3
-    assert result["thinking_process"]["triage_behavioral_indicators"] == 3
+def test_result_reaches_reporting_handoff(monkeypatch, tmp_path):
+    _mock_all_ti_keys_absent(monkeypatch)
+    ti_result = sw.run_threat_intel(incident_id="INC-1", run_id="r1",
+                                    normalised_alert=None,
+                                    triage_result=_triage_result("INC-1"),
+                                    incident=_incident("INC-1"))
+    captured = {}
+    monkeypatch.setattr(sw, "_write_json",
+                        lambda path, data: captured.__setitem__(str(path), data))
+    outputs_dir = tmp_path / "outputs"
+    outputs_dir.mkdir()
+    monkeypatch.setattr(sw, "REP_DIR", tmp_path)
+    sw.handoff_to_reporting({"ticket": {}}, _incident("INC-1"),
+                            {"status": "completed"}, threat_intel_result=ti_result)
+    written = next(v for k, v in captured.items() if k.endswith("threat_intel_result.json"))
+    assert written == ti_result
 
+
+# ══════════════════════════════════════════════════════════════════════════
+# Investigation handoff
+# ══════════════════════════════════════════════════════════════════════════
 
 def test_investigation_receives_persisted_threat_intel_result(monkeypatch):
     run_id = _start_and_reach_triage_approval("INC-1")
     _save_raw_incident("INC-1", run_id)
     _approve_triage("INC-1", run_id)
-    monkeypatch.delenv("VT_API_KEY", raising=False)
-    monkeypatch.delenv("ABUSEIPDB_API_KEY", raising=False)
-    fake_resp = Mock(status_code=200)
-    fake_resp.raise_for_status = Mock()
-    fake_resp.json.return_value = {"status": "success"}
-    with patch("requests.get", return_value=fake_resp), \
-         patch("socket.gethostbyaddr", side_effect=OSError("no ptr")):
-        sw.resume_after_triage_approval("INC-1", run_id)
+    _mock_all_ti_keys_absent(monkeypatch)
+    sw.resume_after_triage_approval("INC-1", run_id)
 
     captured = {}
 

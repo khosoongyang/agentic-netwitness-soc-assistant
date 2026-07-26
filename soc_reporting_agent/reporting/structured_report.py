@@ -21,9 +21,63 @@ def clean_inline(value: Any) -> str:
     return text.strip()
 
 
+def _split_pipe_row(line: str) -> list[str]:
+    """Tokenize a table row on unescaped `|` characters, using a small state
+    scanner rather than a naive .split("|") or a regex lookbehind (a single-
+    character lookbehind cannot correctly tell an odd run of backslashes
+    from an even one). For each `|`, the run of consecutive `\\` characters
+    immediately preceding it decides its meaning: an ODD run means the pipe
+    is escaped (kept as a literal `|` inside the cell, with the run
+    pairwise-reduced — the one unpaired backslash is consumed as the escape
+    itself); an EVEN run (including zero) means it's a real separator, with
+    the run pairwise-reduced to ordinary literal backslashes. Backslashes
+    anywhere else in the text (e.g. a Windows path like C:\\Users\\x) are
+    left completely untouched, since the rule only ever looks at a run that
+    sits directly against a `|`."""
+    line = line.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|"):
+        trailing_run = len(line[:-1]) - len(line[:-1].rstrip("\\"))
+        if trailing_run % 2 == 0:
+            line = line[:-1]
+    tokens: list[str] = []
+    current: list[str] = []
+    i, n = 0, len(line)
+    while i < n:
+        ch = line[i]
+        if ch == "\\":
+            j = i
+            while j < n and line[j] == "\\":
+                j += 1
+            run_len = j - i
+            if j < n and line[j] == "|":
+                current.append("\\" * (run_len // 2))
+                if run_len % 2 == 1:
+                    current.append("|")
+                    i = j + 1
+                    continue
+                tokens.append("".join(current))
+                current = []
+                i = j + 1
+                continue
+            current.append("\\" * run_len)
+            i = j
+            continue
+        if ch == "|":
+            tokens.append("".join(current))
+            current = []
+            i += 1
+            continue
+        current.append(ch)
+        i += 1
+    tokens.append("".join(current))
+    return tokens
+
+
 def _is_separator_row(line: str) -> bool:
     stripped = line.strip()
-    cells = [c.strip() for c in stripped.strip("|").split("|")]
+    cells = [c.strip() for c in _split_pipe_row(stripped)]
     return len(cells) >= 2 and all(re.fullmatch(r":?-{2,}:?", c or "") for c in cells)
 
 
@@ -33,7 +87,7 @@ def _is_table_row(line: str) -> bool:
 
 
 def _cells(line: str) -> list[str]:
-    return [clean_inline(c) for c in line.strip().strip("|").split("|")]
+    return [clean_inline(c) for c in _split_pipe_row(line)]
 
 
 def _looks_like_plain_table_row(line: str) -> bool:
@@ -44,7 +98,7 @@ def _looks_like_plain_table_row(line: str) -> bool:
 
 
 def _plain_cells(line: str) -> list[str]:
-    return [clean_inline(c) for c in line.strip().strip("|").split("|")]
+    return [clean_inline(c) for c in _split_pipe_row(line)]
 
 
 def parse_pipe_table(lines: list[str], start: int) -> tuple[dict[str, Any] | None, int]:
@@ -53,6 +107,12 @@ def parse_pipe_table(lines: list[str], start: int) -> tuple[dict[str, Any] | Non
     Generated Jinja reports can place blank lines between rows, so a single blank
     line is tolerated when the next non-blank line has the same column count.
     Two blank lines, prose, headings, and differently-shaped rows end the table.
+
+    Return contract is unchanged (still a 2-tuple) so no existing caller needs
+    updating: any row-level warnings (a short row padded to the header width,
+    or a malformed row that ended the table early) are attached as a
+    "row_warnings" key ON the returned table dict itself rather than by
+    widening this function's arity.
     """
     if start >= len(lines) or not _looks_like_plain_table_row(lines[start]):
         return None, start
@@ -67,6 +127,7 @@ def parse_pipe_table(lines: list[str], start: int) -> tuple[dict[str, Any] | Non
         return None, start
 
     rows: list[list[str]] = [first_cells]
+    row_warnings: list[str] = []
     separator_seen = False
     width = len(first_cells)
     i = start + 1
@@ -87,8 +148,16 @@ def parse_pipe_table(lines: list[str], start: int) -> tuple[dict[str, Any] | Non
         if not _looks_like_plain_table_row(candidate):
             break
         cells = _plain_cells(candidate)
-        if len(cells) > width or len(cells) < 2:
+        if len(cells) > width:
+            row_warnings.append(
+                f"row {len(rows) + 1} has {len(cells)} cell(s), expected {width} — "
+                "table ended here rather than guessing which cells to drop")
             break
+        if len(cells) < 2:
+            break
+        if len(cells) < width:
+            row_warnings.append(
+                f"row {len(rows) + 1} has {len(cells)} cell(s), expected {width} — padded")
         cells += [""] * (width - len(cells))
         rows.append(cells)
         i += 1
@@ -101,7 +170,10 @@ def parse_pipe_table(lines: list[str], start: int) -> tuple[dict[str, Any] | Non
     columns, body = rows[0], rows[1:]
     if not separator_seen and not body:
         return None, start
-    return {"type": "table", "columns": columns, "rows": body}, i
+    table: dict[str, Any] = {"type": "table", "columns": columns, "rows": body}
+    if row_warnings:
+        table["row_warnings"] = row_warnings
+    return table, i
 
 
 def paragraph_contains_raw_pipe_table(text: Any) -> bool:
@@ -237,11 +309,129 @@ def repair_pipe_tables_in_blocks(blocks: list[dict[str, Any]] | Any) -> list[dic
         else:
             repaired.append(block)
             i += 1
-    return repaired
+    return convert_key_value_lines_to_tables(repaired)
 
 
 # Backwards-compatible name for callers added by the first structured-table fix.
 repair_structured_blocks = repair_pipe_tables_in_blocks
+
+
+# Bounded allow-list of recognised field names for the key/value-line table
+# heuristic below — deliberately small so ordinary prose containing a
+# colon and a pipe is never mistaken for tabular data.
+_KEY_VALUE_FIELD_NAMES = ("priority", "action", "owner", "approval required", "status", "due")
+_PRIORITY_CODE_RE = re.compile(r"^(P[1-9])\s*:\s*(.+)$", re.IGNORECASE)
+_FIELD_SEGMENT_RE = re.compile(
+    r"^\s*(" + "|".join(re.escape(f) for f in _KEY_VALUE_FIELD_NAMES) + r")\s*:\s*(.*)$",
+    re.IGNORECASE)
+
+
+def _parse_key_value_line(text: str) -> tuple[list[str], list[str]] | None:
+    """Parse one candidate 'Field: value | Field: value' line — e.g.
+    'P1: Priority investigation | Owner: Tier 1 | Approval Required: No' —
+    into (field_names, values). Returns None unless at least two segments
+    are confidently classified via the bounded allow-list (or the P1/P2/...
+    priority-code shorthand recognised only in the first segment); any
+    unrecognised segment aborts the whole line rather than guessing at it."""
+    segments = [s.strip() for s in str(text or "").split("|") if s.strip()]
+    if len(segments) < 2:
+        return None
+    fields: list[str] = []
+    values: list[str] = []
+    recognized = 0
+    for idx, segment in enumerate(segments):
+        priority_match = _PRIORITY_CODE_RE.match(segment) if idx == 0 else None
+        if priority_match:
+            fields.append("Priority")
+            values.append(priority_match.group(1).upper())
+            fields.append("Action")
+            values.append(clean_inline(priority_match.group(2)))
+            recognized += 1
+            continue
+        field_match = _FIELD_SEGMENT_RE.match(segment)
+        if not field_match:
+            return None
+        field_name = field_match.group(1).strip().title()
+        if field_name.lower() == "approval required":
+            field_name = "Approval Required"
+        fields.append(field_name)
+        values.append(clean_inline(field_match.group(2)))
+        recognized += 1
+    if recognized < 2:
+        return None
+    return fields, values
+
+
+def convert_key_value_lines_to_tables(blocks: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
+    """Convert runs of 2+ CONSECUTIVE paragraph blocks shaped like
+    'P1: Priority investigation | Owner: Tier 1 | Approval Required: No'
+    into a proper table block instead of leaving them as sentence-shaped
+    paragraphs. Distinct from parse_pipe_table/_collapsed_markdown_table,
+    which only recognise standard `| a | b |` Markdown table syntax — this
+    recognises colon-delimited key/value segments joined by `|`, which is
+    NOT standard Markdown table syntax.
+
+    Deliberately conservative:
+      - a line is only a candidate if _parse_key_value_line() confidently
+        classifies at least two of its segments via the bounded field-name
+        allow-list;
+      - a SINGLE matching line is never converted alone — conversion
+        requires a run of at least two consecutive lines sharing the exact
+        same field-name set (same fields, same order);
+      - content already recognised as a Markdown pipe table is skipped —
+        that shape is repair_pipe_tables_in_blocks' job, not this pass';
+      - a lone matching line (ambiguous on its own) is preserved as the
+        original paragraph, with a "row_warnings" note attached so the
+        ambiguity surfaces in the report's validation warnings instead of
+        being silently dropped or silently guessed at.
+    """
+    if not isinstance(blocks, list):
+        return []
+    result: list[dict[str, Any]] = []
+    i = 0
+    while i < len(blocks):
+        block = blocks[i]
+        if not isinstance(block, dict) or block.get("type") != "paragraph":
+            result.append(block)
+            i += 1
+            continue
+        text = str(block.get("text") or "")
+        # No need to also check paragraph_contains_raw_pipe_table() here:
+        # this function is only ever called (via repair_pipe_tables_in_blocks)
+        # on blocks that ALREADY survived that function's own standard
+        # `| a | b |` table-detection loop as plain paragraphs — anything
+        # that WAS a recognizable Markdown table has already become a
+        # `table` block by this point. _parse_key_value_line()'s own
+        # bounded field-name allow-list is what keeps this conservative.
+        parsed = _parse_key_value_line(text)
+        if not parsed:
+            result.append(block)
+            i += 1
+            continue
+        fields, values = parsed
+        run_rows = [values]
+        j = i + 1
+        while j < len(blocks):
+            nxt = blocks[j]
+            if not isinstance(nxt, dict) or nxt.get("type") != "paragraph":
+                break
+            nxt_text = str(nxt.get("text") or "")
+            nxt_parsed = _parse_key_value_line(nxt_text)
+            if not nxt_parsed or nxt_parsed[0] != fields:
+                break
+            run_rows.append(nxt_parsed[1])
+            j += 1
+        if len(run_rows) >= 2:
+            result.append({"type": "table", "columns": fields, "rows": run_rows})
+            i = j
+        else:
+            flagged = dict(block)
+            flagged["row_warnings"] = list(flagged.get("row_warnings") or []) + [
+                f"a single line looked like a table row ({', '.join(fields)}) but no "
+                "consistent run of rows followed it — left as a paragraph"]
+            result.append(flagged)
+            i += 1
+    return result
 
 
 def _flush_plain_table(rows: list[list[str]], blocks: list[dict[str, Any]]) -> None:

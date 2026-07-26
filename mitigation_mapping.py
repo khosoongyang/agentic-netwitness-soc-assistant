@@ -299,11 +299,9 @@ def build_mitigation_coverage(incident: dict, triage_result: dict | None = None,
     technique = str(((triage_result or {}).get("metakeys_payload") or {}).get("mitre_technique")
                     or ticket.get("mitre_technique") or incident.get("mitre_technique") or "").strip()
 
-    # impact from asset tier + TI verdict (reuse the pipeline's signals)
+    # impact from asset tier + the case-level TI risk (reuse the pipeline's signals)
     rank = (asset or {}).get("highest_rank", 0)
-    has_mal = bool(threat_intel and any(
-        r.get("verdict", "").startswith("MALICIOUS")
-        for r in threat_intel.get("results", [])))
+    has_mal = bool(threat_intel and threat_intel.get("enrichment_risk_level") == "High")
     impact = ("Critical" if (has_mal and rank >= 2) else
               "High" if (has_mal or rank >= 3) else
               "Medium" if rank >= 1 else "Low")

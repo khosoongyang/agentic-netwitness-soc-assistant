@@ -119,13 +119,19 @@ from workflow_state_store import (db_connect, db_init, get_state as wss_get_stat
                                   WorkflowAlreadyRunningError,
                                   ApprovalConflictError)
 import case_view as cv
+from reporting_approval import (approve_reporting_candidate, ReportValidationError,
+                               resolve_approved_report_file, build_export_all_zip)
+import report_editing
 
 # ── Multi-agent workflow (triage → investigation → reporting) ────────────────
 try:
     from soc_workflow import (
         run_until_triage_approval as wf_run_until_triage_approval,
         generate_triage_ai_summary as wf_generate_triage_ai_summary,
+        generate_stage_ai_summary as wf_generate_stage_ai_summary,
+        limit_ai_summary_sentences as wf_limit_ai_summary_sentences,
         render_triage_thinking_plain as wf_render_triage_thinking_plain,
+        render_agent_thinking_plain as wf_render_agent_thinking_plain,
         run_stage_chain           as wf_run_stage_chain,
     )
     # NOTE: needs_investigation/handoff_to_investigation/run_investigation/
@@ -191,15 +197,13 @@ def _board_touch(agent: str, *, status: str | None = None, think: str | None = N
     panel["updated"] = datetime.now().strftime("%H:%M:%S")
 
 
-def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False) -> dict | None:
-    """Single UI-facing entry point for Parsing+Triage — used by BOTH the
-    Start Process button and the chat trigger, so there is exactly one
-    implementation of 'run Parsing+Triage', not two independently-sequenced
-    ones. Parsing may render its own inline status; later triage phases are
-    recorded on the Agent Board without rendering inline phase/status
-    panels. Returns the workflow ctx dict, or None if a run was already
-    active and the caller didn't request a retry (the analyst sees the
-    existing result instead)."""
+def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False,
+                                 parsing_only: bool = False) -> dict | None:
+    """Run Parsing alone or the full Parsing+Triage path with UI feedback.
+
+    The case-page Parsing action passes ``parsing_only=True``. Chat-driven
+    triage and explicit Triage actions retain the full path.
+    """
     inc_id = str(incident.get("id") or incident.get("incidentId") or "")
 
     existing = wss_get_state(inc_id)
@@ -222,8 +226,9 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False) -
         "SOC Classification": "Classifying incident severity and generating recommended actions",
     }
 
-    st.session_state.agent_board["triage"].update({"thinking": [], "output": ""})
-    _board_touch("triage", status="running", think="Workflow started")
+    if not parsing_only:
+        st.session_state.agent_board["triage"].update({"thinking": [], "output": ""})
+        _board_touch("triage", status="running", think="Workflow started")
 
     _prog = {"done": 0}
     _parsing_ui = {"status": None}
@@ -235,7 +240,8 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False) -
             if key == "Parsing and Normalisation":
                 _parsing_ui["status"] = st.status(
                     f"{desc}…", expanded=True)
-            _board_touch("triage", think=f"▶ {desc}")
+            if not parsing_only:
+                _board_touch("triage", think=f"▶ {desc}")
         elif event == "phase_complete":
             phase_result = f" — {text}" if text else ""
             if key == "Parsing and Normalisation" and _parsing_ui["status"]:
@@ -245,8 +251,11 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False) -
                     expanded=False,
                 )
             _prog["done"] += 1
-            _board_touch("triage", think=f"{key}{phase_result}",
-                        progress=round(_prog["done"] / max(1, len(ALL_PHASES)) * 100))
+            if not parsing_only:
+                _board_touch(
+                    "triage", think=f"{key}{phase_result}",
+                    progress=round(
+                        _prog["done"] / max(1, len(ALL_PHASES)) * 100))
         elif event == "phase_error":
             if key == "Parsing and Normalisation" and _parsing_ui["status"]:
                 _parsing_ui["status"].update(
@@ -254,25 +263,36 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False) -
                     state="error",
                     expanded=True,
                 )
-            _board_touch("triage", think=f"{key} — failed: {text}")
+            if not parsing_only:
+                _board_touch("triage", think=f"{key} — failed: {text}")
 
     try:
         result = wf_run_until_triage_approval(
-            incident, progress_fn=on_progress, allow_retry=allow_retry)
+            incident, progress_fn=on_progress, allow_retry=allow_retry,
+            parsing_only=parsing_only)
     except WorkflowAlreadyRunningError as exc:
         st.info(f"Triage is already {exc.state.get('workflow_status')} for this "
                f"incident — showing the existing result.")
         return None
     except Exception as exc:
-        _board_touch("triage", status="failed", think=str(exc)[:150], output=f"Error: {exc}")
+        if not parsing_only:
+            _board_touch(
+                "triage", status="failed", think=str(exc)[:150],
+                output=f"Error: {exc}")
         st.error(f"Workflow failed: {exc}")
         return None
 
     _err = result["errors"].get("parsing") or result["errors"].get("triage")
     if _err:
-        _board_touch("triage", status="failed", think=str(_err)[:150], output=f"Error: {_err}")
+        if not parsing_only:
+            _board_touch(
+                "triage", status="failed", think=str(_err)[:150],
+                output=f"Error: {_err}")
         st.error(f"Workflow failed: {_err}")
         return None
+
+    if parsing_only:
+        return result
 
     _tri = result["triage"]
     # Board panel stays a step-by-step progress log (phase name +
@@ -645,6 +665,294 @@ def _reject_with_reason(action_key: str, trigger_label: str = "Reject") -> str |
         st.session_state[armed_key] = False
         return reason.strip()
     return None
+
+
+import json as _rw_json
+
+# ── Reports tab: Generated Files table + Open & Edit ─────────────────────────
+# See report_editing.py for the persistence/export layer. This app-side code
+# owns only presentation + Streamlit widget state; it never writes directly
+# to report_edits or to any file under reports/exports/.
+
+_RW_ICONS = {
+    "executive_summary": ("📄", "blue"),
+    "technical_findings": ("📊", "green"),
+    "soc_analyst_review": ("🧑", "purple"),
+    "final_incident_report": ("📋", "gold"),
+}
+
+
+def _clear_report_editor_state(prefix: str) -> None:
+    """Drops every widget/session key scoped to one editor session (report
+    row + its blocks) so a later "Open & Edit" of the same report starts
+    clean rather than showing stale in-progress edits from a cancelled or
+    already-saved session."""
+    for k in [k for k in list(st.session_state.keys())
+             if isinstance(k, str) and k.startswith("rw_") and prefix in k]:
+        st.session_state.pop(k, None)
+
+
+def _render_reporting_ops_readonly(blocks: list) -> None:
+    """Read-only render of a block list — factored out of the old radio-based
+    Reports tab so both the "Open & Edit" comparison expander and any other
+    read-only preview use identical rendering."""
+    for _op in cv.reporting_blocks_to_render_ops(blocks or []):
+        if _op["op"] == "heading":
+            _lvl = _op.get("level", 2)
+            (st.subheader if _lvl <= 2 else st.markdown)(_op["text"])
+        elif _op["op"] == "table":
+            st.markdown(_ui.queue_table(_op["columns"], _op["rows"]), unsafe_allow_html=True)
+        elif _op["op"] == "bullet_list":
+            for _item in _op["items"]:
+                st.markdown(("&nbsp;&nbsp;&nbsp;&nbsp;" * _item["level"]) + f"- {_item['text']}",
+                           unsafe_allow_html=True)
+        elif _op["op"] == "page_break":
+            st.divider()
+        else:
+            st.markdown(_op.get("text", ""))
+
+
+def _render_report_editor(incident_id: str, run_id: str, report_type: str, row_state: dict,
+                          reporting_stage_attempt: int, analyst: str) -> None:
+    prefix = f"{incident_id}_{run_id}_{report_type}"
+    active_key = f"rw_active_{incident_id}"
+    skeleton_key = f"rw_skeleton_{prefix}"
+    baseline_key = f"rw_baseline_{prefix}"
+
+    if skeleton_key not in st.session_state:
+        blocks = row_state["blocks"]
+        st.session_state[skeleton_key] = _rw_json.dumps(blocks, default=str)
+        for _bidx, _block in enumerate(blocks):
+            _btype = _block.get("type") if isinstance(_block, dict) else None
+            if _btype == "heading":
+                st.session_state.setdefault(f"rw_h_{prefix}_{_bidx}", _block.get("text", ""))
+            elif _btype == "paragraph":
+                st.session_state.setdefault(f"rw_p_{prefix}_{_bidx}", _block.get("text", ""))
+            elif _btype == "bullet_list":
+                _items = _block.get("items") or []
+                st.session_state[f"rw_bl_ids_{prefix}_{_bidx}"] = list(range(len(_items)))
+                st.session_state[f"rw_bl_next_{prefix}_{_bidx}"] = len(_items)
+                for _iidx, _item in enumerate(_items):
+                    _text = _item.get("text") if isinstance(_item, dict) else str(_item or "")
+                    st.session_state.setdefault(f"rw_bl_text_{prefix}_{_bidx}_{_iidx}", _text)
+
+    skeleton = _rw_json.loads(st.session_state[skeleton_key])
+    if baseline_key not in st.session_state:
+        st.session_state[baseline_key] = st.session_state[skeleton_key]
+
+    st.markdown(f"### Editing: {row_state['title']}")
+    st.caption(f"Last saved: {_ui.humanize_timestamp(row_state.get('last_saved_iso'))}")
+
+    if row_state.get("is_stale"):
+        with st.expander("View latest AI-generated version"):
+            _render_reporting_ops_readonly(row_state["original_blocks"])
+        wcol1, wcol2 = st.columns([3, 1])
+        with wcol1:
+            st.warning("A newer AI-generated version of this report is available. "
+                      "Your saved edits below are based on an older version.")
+        with wcol2:
+            if st.button("Replace with latest AI version", key=f"rw_replace_ed_{prefix}",
+                        use_container_width=True):
+                report_editing.discard_report_edit(incident_id, run_id, report_type, analyst)
+                _clear_report_editor_state(prefix)
+                st.session_state[active_key] = None
+                st.rerun()
+
+    edited_blocks: list = []
+    for bidx, block in enumerate(skeleton):
+        btype = block.get("type") if isinstance(block, dict) else None
+        if btype == "heading":
+            key = f"rw_h_{prefix}_{bidx}"
+            st.text_input("Heading", key=key, label_visibility="collapsed")
+            edited_blocks.append({"type": "heading", "level": block.get("level", 2),
+                                  "text": st.session_state[key]})
+        elif btype == "paragraph":
+            key = f"rw_p_{prefix}_{bidx}"
+            st.text_area("Paragraph", key=key, height=110, label_visibility="collapsed")
+            edited_blocks.append({"type": "paragraph", "text": st.session_state[key]})
+        elif btype == "bullet_list":
+            ids_key = f"rw_bl_ids_{prefix}_{bidx}"
+            next_key = f"rw_bl_next_{prefix}_{bidx}"
+            ids = list(st.session_state.get(ids_key, []))
+            items = []
+            for iidx in ids:
+                tkey = f"rw_bl_text_{prefix}_{bidx}_{iidx}"
+                st.session_state.setdefault(tkey, "")
+                bcol1, bcol2 = st.columns([9, 1])
+                with bcol1:
+                    st.text_input("Bullet", key=tkey, label_visibility="collapsed")
+                with bcol2:
+                    if st.button("✕", key=f"rw_bl_rm_{prefix}_{bidx}_{iidx}"):
+                        ids.remove(iidx)
+                        st.session_state[ids_key] = ids
+                        st.rerun()
+                items.append({"text": st.session_state[tkey], "level": 0})
+            if st.button("+ Add bullet", key=f"rw_bl_add_{prefix}_{bidx}"):
+                new_id = st.session_state.get(next_key, len(ids))
+                ids.append(new_id)
+                st.session_state[ids_key] = ids
+                st.session_state[next_key] = new_id + 1
+                st.rerun()
+            edited_blocks.append({"type": "bullet_list", "items": items})
+        elif btype == "table":
+            import pandas as _pd
+            columns = [str(c or "") for c in (block.get("columns") or [])]
+            rows = [list(r or []) for r in (block.get("rows") or [])]
+            df = _pd.DataFrame(rows, columns=columns) if columns else _pd.DataFrame()
+            edited_df = st.data_editor(df, num_rows="dynamic", use_container_width=True,
+                                       key=f"rw_tbl_{prefix}_{bidx}")
+            edited_blocks.append({
+                "type": "table", "columns": columns,
+                "rows": edited_df.fillna("").astype(str).values.tolist() if not edited_df.empty
+                        else []})
+        elif btype == "page_break":
+            st.divider()
+            edited_blocks.append({"type": "page_break"})
+        else:
+            edited_blocks.append(block)
+
+    is_dirty = _rw_json.dumps(edited_blocks, default=str) != st.session_state[baseline_key]
+    st.caption("● Unsaved changes" if is_dirty else "All changes saved")
+
+    save_col, cancel_col = st.columns(2)
+    with save_col:
+        if st.button("Save Changes", type="primary", key=f"rw_save_{prefix}",
+                    use_container_width=True, disabled=not is_dirty):
+            try:
+                report_editing.save_report_edit(
+                    incident_id, run_id, report_type, edited_blocks, analyst,
+                    original_blocks=row_state["original_blocks"],
+                    source_report_set_id=row_state["current_report_set_id"])
+            except Exception as exc:
+                st.error(f"Could not save changes: {exc}")
+            else:
+                # st.toast (unlike st.success) survives the st.rerun() below,
+                # so the confirmation is actually visible after we return to
+                # the Generated Files table rather than flashing for 0 frames.
+                st.toast(f"{row_state['title']} saved.", icon="✅")
+                _clear_report_editor_state(prefix)
+                st.session_state[active_key] = None
+                st.rerun()
+    with cancel_col:
+        if is_dirty:
+            if _confirm_action(f"rw_cancel_{prefix}", "Cancel",
+                              "You have unsaved changes. Discard them?",
+                              confirm_label="Yes, discard changes"):
+                _clear_report_editor_state(prefix)
+                st.session_state[active_key] = None
+                st.rerun()
+        elif st.button("Cancel", key=f"rw_cancel_plain_{prefix}", use_container_width=True):
+            _clear_report_editor_state(prefix)
+            st.session_state[active_key] = None
+            st.rerun()
+
+
+def _render_report_export_actions(incident_id: str, run_id: str, report_type: str,
+                                  file_type: str, row_state: dict,
+                                  reporting_stage_attempt: int, analyst: str) -> None:
+    label = "Export Word" if file_type == "docx" else "Export PDF"
+    cache_key = f"rw_export_{incident_id}_{run_id}_{report_type}_{file_type}"
+    identity = (row_state.get("version"), row_state.get("last_saved_iso"))
+    cached = st.session_state.get(cache_key)
+    if cached and cached.get("identity") != identity:
+        cached = None
+        st.session_state.pop(cache_key, None)
+    if cached:
+        mime = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+               if file_type == "docx" else "application/pdf")
+        st.download_button(f"Download {'Word' if file_type == 'docx' else 'PDF'} file",
+                          data=cached["data"], file_name=cached["filename"], mime=mime,
+                          key=f"rw_dl_{cache_key}", use_container_width=True)
+        return
+    if st.button(label, key=f"rw_exp_btn_{cache_key}", use_container_width=True,
+                disabled=not row_state["exists"]):
+        with st.spinner(f"Preparing {label.split()[-1]} export..."):
+            try:
+                data, filename = report_editing.export_report(
+                    incident_id, run_id, report_type, file_type, row_state=row_state,
+                    reporting_stage_attempt=reporting_stage_attempt, analyst=analyst)
+            except Exception as exc:
+                st.error(f"Export failed: {exc}")
+            else:
+                st.session_state[cache_key] = {"data": data, "filename": filename, "identity": identity}
+                st.rerun()
+
+
+def _render_reports_workspace(incident_id: str, run_id: str, rep_cv: dict,
+                              reporting_status: str, analyst: str, state: dict) -> None:
+    active_key = f"rw_active_{incident_id}"
+    active_report_type = st.session_state.get(active_key)
+    current_attempt = rep_cv.get("current_attempt") or {}
+    reporting_stage_attempt = rep_cv.get("reporting_stage_attempt") or 1
+    reporting_updated_at = rep_cv.get("reporting_updated_at")
+
+    if active_report_type:
+        row_state = report_editing.report_row_state(
+            incident_id, run_id, active_report_type, current_attempt=current_attempt,
+            reporting_status=reporting_status, reporting_updated_at=reporting_updated_at)
+        _render_report_editor(incident_id, run_id, active_report_type, row_state,
+                              reporting_stage_attempt, analyst)
+        return
+
+    st.markdown("#### Generated Files")
+    st.caption("Download the structured stage data or review and export the formatted report.")
+
+    rd_col1, rd_col2 = st.columns([4, 1])
+    with rd_col1:
+        st.markdown(_ui.report_file_head("{ }", "slate", "Reporting Data",
+                    "Structured data used to generate the reporting documents."),
+                    unsafe_allow_html=True)
+    with rd_col2:
+        json_bytes, json_name = report_editing.reporting_data_json(state, incident_id)
+        st.download_button("Download JSON", data=json_bytes, file_name=json_name,
+                          mime="application/json", key=f"rw_dl_json_{incident_id}",
+                          use_container_width=True)
+    st.divider()
+
+    for report_type in report_editing.CORE_REPORT_TYPES:
+        row_state = report_editing.report_row_state(
+            incident_id, run_id, report_type, current_attempt=current_attempt,
+            reporting_status=reporting_status, reporting_updated_at=reporting_updated_at)
+        glyph, color = _RW_ICONS.get(report_type, ("📄", "slate"))
+
+        head_col, badge_col = st.columns([5, 2])
+        with head_col:
+            st.markdown(_ui.report_file_head(glyph, color, row_state["title"], row_state["description"]),
+                       unsafe_allow_html=True)
+        with badge_col:
+            st.markdown(_ui.pill(row_state["status"], row_state["tone"]), unsafe_allow_html=True)
+            if row_state["last_saved_iso"]:
+                verb = "Edited" if row_state["has_edits"] else (
+                    "Approved" if row_state["status"] == "Approved" else "Generated")
+                st.caption(f"{verb} {_ui.humanize_timestamp(row_state['last_saved_iso'])}")
+            else:
+                st.caption("Not yet generated")
+
+        if row_state["is_stale"]:
+            wcol1, wcol2 = st.columns([4, 1])
+            with wcol1:
+                st.warning("A newer AI-generated version of this report is available. "
+                          "Your saved edits are based on an older version.")
+            with wcol2:
+                if st.button("Replace with latest AI version",
+                            key=f"rw_replace_row_{incident_id}_{report_type}",
+                            use_container_width=True):
+                    report_editing.discard_report_edit(incident_id, run_id, report_type, analyst)
+                    st.rerun()
+
+        act1, act2, act3 = st.columns(3)
+        with act1:
+            if st.button("Open & Edit", key=f"rw_open_{incident_id}_{report_type}", type="primary",
+                        use_container_width=True, disabled=not row_state["exists"]):
+                st.session_state[active_key] = report_type
+                st.rerun()
+        with act2:
+            _render_report_export_actions(incident_id, run_id, report_type, "docx", row_state,
+                                         reporting_stage_attempt, analyst)
+        with act3:
+            _render_report_export_actions(incident_id, run_id, report_type, "pdf", row_state,
+                                         reporting_stage_attempt, analyst)
+        st.divider()
 
 
 def _normalise_llm_url(url: str) -> str:
@@ -2550,7 +2858,8 @@ def chroma_search(query: str, n: int = 5) -> list:
         return [{"id":"err","text":str(e),"score":0,"meta":{}}]
 
 def chat_respond(user_msg: str, incident: Optional[dict] = None,
-                 parsed_context: Optional[dict] = None) -> str:
+                 parsed_context: Optional[dict] = None,
+                 case_context: Optional[dict] = None) -> str:
     """
     ── SOC TRIAGE AGENT (LangChain) ─────────────────────────
     Powered by soc_triage_agent.py.
@@ -2560,11 +2869,15 @@ def chat_respond(user_msg: str, incident: Optional[dict] = None,
       Phase 2 → Risk Rating Methodology
       Phase 3 → SOC Classification Template
     Outputs: metakeys_payload + UNC ticket (both queued for downstream agents).
-    All other messages fall back to plain SOC analyst Q&A via LangChain.
+    All other messages fall back to plain SOC analyst Q&A via LangChain —
+    case_context (see case_view.build_aegis_context), when given, grounds
+    that Q&A path in every completed workflow stage instead of just the
+    raw incident.
     ─────────────────────────────────────────────────────────
     """
     return soc_triage_chat_respond(user_msg, incident, llm_config=get_cisco_cfg(),
-                                   parsed_context=parsed_context)
+                                   parsed_context=parsed_context,
+                                   case_context=case_context)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3976,7 +4289,7 @@ elif active_page == "My Workspace":
                     _header_selected_result
                     or _header_selected_status in {
                         "Complete", "Complete with Warnings",
-                        "Awaiting Approval", "Approved", "Failed",
+                        "Awaiting Approval", "Approved", "Failed", "Rejected",
                     }
                 )
                 _header_pending_approval = (
@@ -3996,6 +4309,7 @@ elif active_page == "My Workspace":
                 _process_label = (
                     "Process running" if _process_running else
                     "Process complete" if _process_closed else
+                    "Proceed" if _header_selected_stage == "parsing" else
                     "▶ Start Process"
                 )
                 st.html("""
@@ -4050,7 +4364,10 @@ elif active_page == "My Workspace":
                                 "Full alert data isn't cached in this session yet — "
                                 "Parsing will run on the cached incident summary only.")
                         result = _run_triage_workflow_with_ui(
-                            _full_inc, allow_retry=True)
+                            _full_inc,
+                            allow_retry=True,
+                            parsing_only=_header_selected_stage == "parsing",
+                        )
                         if result is not None:
                             st.session_state.chat_incident = _full_inc
                             st.session_state.pending_auto_triage = False
@@ -4073,7 +4390,7 @@ elif active_page == "My Workspace":
                     st.rerun()
 
                 def _proceed_to_next_workflow_stage() -> None:
-                    """Open the next stage and ensure its queued worker is running."""
+                    """Open the next stage, starting only eligible later workers."""
                     _next_stage = {
                         "parsing": "Triage",
                         "threat_intel": "Investigation",
@@ -4081,15 +4398,15 @@ elif active_page == "My Workspace":
                     if not _next_stage:
                         return
 
-                    # These handoffs are backend-managed. If the next stage is
-                    # queued as Processing, the state-aware dispatcher is safe
-                    # to call because its atomic claim prevents duplicate work.
+                    # Parsing -> Triage is navigation-only. Completing Parsing
+                    # must never implicitly launch the Triage agent.
                     _latest_state = wss.get_state(_sel_id) if WORKFLOW_OK else {}
                     _next_status_key = {
                         "Triage": "triage_status",
                         "Investigation": "investigation_status",
                     }[_next_stage]
-                    if (_header_run_id
+                    if (_header_selected_stage != "parsing"
+                            and _header_run_id
                             and (_latest_state or {}).get(_next_status_key)
                             == "Processing"):
                         threading.Thread(
@@ -4138,9 +4455,14 @@ elif active_page == "My Workspace":
                                             _sel_id, _header_run_id,
                                             approved_by=_analyst_name)
                                     else:
-                                        wss.approve_reporting(
-                                            _sel_id, _header_run_id,
-                                            approved_by=_analyst_name)
+                                        approve_reporting_candidate(
+                                            _sel_id,
+                                            _header_run_id,
+                                            analyst=_analyst_name,
+                                            comments="",
+                                        )
+                                except ReportValidationError as _exc:
+                                    st.error(f"Could not approve: {_exc}")
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not approve: {_exc}")
                                 else:
@@ -4169,11 +4491,30 @@ elif active_page == "My Workspace":
                                 type="primary",
                                 use_container_width=True,
                                 help=(
+                                    "Open Triage without starting it."
+                                    if _header_selected_stage == "parsing" else
                                     "Go to the next workflow stage and start "
                                     "its queued process."
                                 ),
                             ):
                                 _proceed_to_next_workflow_stage()
+                            if (
+                                _header_selected_stage == "threat_intel"
+                                and st.button(
+                                    "Re-run Threat Intel",
+                                    key=(
+                                        "case_rerun_threat_intel_"
+                                        f"{_sel_id}"
+                                    ),
+                                    use_container_width=True,
+                                    help=(
+                                        "Run Threat Intelligence Enrichment again. "
+                                        "Investigation and Reporting outputs will "
+                                        "be cleared and regenerated."
+                                    ),
+                                )
+                            ):
+                                _rerun_selected_workflow_stage()
                         elif _header_can_rerun:
                             if st.button(
                                 "Re-run",
@@ -4202,7 +4543,10 @@ elif active_page == "My Workspace":
                                     "— Parsing will run on the cached incident summary "
                                     "only. Refresh the Incidents list first for "
                                     "complete per-alert data.")
-                            result = _run_triage_workflow_with_ui(_full_inc)
+                            result = _run_triage_workflow_with_ui(
+                                _full_inc,
+                                parsing_only=_header_selected_stage == "parsing",
+                            )
 
                             # Keep the analyst on the case detail page after
                             # starting the process.  This action used to arm the
@@ -4251,43 +4595,140 @@ elif active_page == "My Workspace":
                 try:
                     _findings, _verdict = _build_case_findings(inc)
                     _ctx = _build_case_context(inc, sev, status, alerts, _verdict)
-                    _sum_txt = _verdict.get("action") if _verdict.get("available") else ""
                     _titles = (inc.get("alertMeta") or {}).get("AlertTitles") or []
                     _summary = str(inc.get("summary") or "")[:280].strip()
-                    _thinking_parts = []
-                    if _verdict.get("available"):
-                        _thinking_parts.append(
-                            f"Unified triage verdict: {_verdict.get('level')}."
+                    _stage_result_columns = {
+                        "Parsing": "parsing_result_json",
+                        "Triage": "triage_result_json",
+                        "Threat Intelligence Enrichment": "threat_intel_result_json",
+                        "Investigation": "investigation_result_json",
+                        "Reporting": "reporting_result_json",
+                    }
+                    try:
+                        _stage_saved = _json.loads(
+                            _inc_row.get(
+                                _stage_result_columns.get(_selected_stage, "")
+                            ) or "{}"
                         )
-                    if _sum_txt:
-                        _thinking_parts.append(f"Recommended action: {_sum_txt}.")
-                    if _titles:
-                        _thinking_parts.append(
-                            "Observed behaviours: "
-                            f"{', '.join(list(dict.fromkeys(_titles))[:4])}."
+                    except Exception:
+                        _stage_saved = {}
+                    if not isinstance(_stage_saved, dict):
+                        _stage_saved = {}
+                    try:
+                        _stage_activity = (
+                            cv.build_activity(
+                                _sel_id, _inc_row.get("run_id")
+                            )
+                            if WORKFLOW_OK else []
                         )
-                    _thinking = " ".join(_thinking_parts)
-                    _nar = str(inc.get("summary") or "") + " " + " ".join(str(t) for t in _titles)
-                    if _selected_stage == "Parsing":
+                    except Exception:
+                        _stage_activity = []
+                    try:
+                        _thinking = (
+                            wf_render_agent_thinking_plain(
+                                _selected_stage,
+                                _stage_saved,
+                                workflow_state=_inc_row,
+                                activity=_stage_activity,
+                            ).strip()
+                            if WORKFLOW_OK else ""
+                        )
+                    except Exception:
+                        _thinking = ""
+                    # Every stage uses the same dedicated, LLM-generated
+                    # orientation summary. Native stage `summary` fields stay
+                    # in the Output view and are never reused as this card.
+                    # Older results are backfilled once and persisted.
+                    _saved_ai_summary = str(
+                        _stage_saved.get("ai_summary") or ""
+                    ).strip()
+                    _stage_ai_summary = (
+                        wf_limit_ai_summary_sentences(_saved_ai_summary)
+                        if WORKFLOW_OK else _saved_ai_summary
+                    )
+                    _saved_stage_status = str(
+                        _stage_saved.get("status") or ""
+                    ).strip().lower()
+                    _stage_result_ready = bool(_stage_saved) and (
+                        _saved_stage_status not in {
+                            "failed", "processing", "pending", "running"
+                        }
+                    )
+                    if (
+                        WORKFLOW_OK
+                        and _stage_result_ready
+                        and not _saved_ai_summary
+                    ):
                         try:
-                            _parsing_ai = _json.loads(_inc_row.get("parsing_result_json") or "{}")
+                            _generated_ai = (
+                                wf_generate_triage_ai_summary(_stage_saved)
+                                if _selected_stage == "Triage"
+                                else wf_generate_stage_ai_summary(
+                                    _selected_stage, _stage_saved
+                                )
+                            )
+                            _stage_saved.update(_generated_ai)
+                            _stage_ai_summary = (
+                                wf_limit_ai_summary_sentences(
+                                    _generated_ai.get("ai_summary")
+                                )
+                            )
+                            _run_id_bf = _inc_row.get("run_id")
+                            if _run_id_bf:
+                                wss.save_stage_ai_summary(
+                                    _sel_id,
+                                    _run_id_bf,
+                                    _selected_stage,
+                                    {
+                                        **_generated_ai,
+                                        "ai_summary": _stage_ai_summary,
+                                    },
+                                )
                         except Exception:
-                            _parsing_ai = {}
-                        _parsing_summary = str(_parsing_ai.get("ai_summary") or "").strip()
-                        st.markdown(_ui.ai_summary(
-                            _parsing_summary or
-                            "No AI summary yet — run Start Process to populate.",
-                            _ui.detect_fallback(_parsing_summary)), unsafe_allow_html=True)
+                            pass
+                    elif (
+                        WORKFLOW_OK
+                        and _stage_ai_summary
+                        and _stage_ai_summary != _saved_ai_summary
+                    ):
+                        # Enforce the same boundary on summaries persisted
+                        # before the two-sentence guard existed.
+                        try:
+                            _stage_saved["ai_summary"] = _stage_ai_summary
+                            _run_id_bf = _inc_row.get("run_id")
+                            if _run_id_bf:
+                                wss.save_stage_ai_summary(
+                                    _sel_id,
+                                    _run_id_bf,
+                                    _selected_stage,
+                                    {"ai_summary": _stage_ai_summary},
+                                )
+                        except Exception:
+                            pass
+                    if _selected_stage == "Parsing":
+                        _parsing_ai = _stage_saved
+                        _parsing_summary = _stage_ai_summary
+                        _summary_col, _thinking_col = st.columns(2)
+                        with _summary_col:
+                            st.markdown(_ui.ai_summary(
+                                _parsing_summary or
+                                "No AI summary yet — run Start Process to populate.",
+                                _ui.detect_fallback(_parsing_summary)),
+                                unsafe_allow_html=True)
+                        with _thinking_col:
+                            st.markdown(_ui.ai_summary(
+                                _thinking or
+                                "No thinking process yet — run Parsing to populate.",
+                                _ui.detect_fallback(_thinking),
+                                title="Thinking Process"),
+                                unsafe_allow_html=True)
                     elif _selected_stage == "Triage":
                         # Real LLM-generated summary/thinking from
                         # soc_workflow.generate_triage_ai_summary(), stored
                         # alongside the ticket by run_until_triage_approval() —
                         # same pattern as the Parsing stage above, not the
                         # ad hoc triage_verdict text used for other stages.
-                        try:
-                            _triage_saved = _json.loads(_inc_row.get("triage_result_json") or "{}")
-                        except Exception:
-                            _triage_saved = {}
+                        _triage_saved = _stage_saved
                         # Backfill: cases triaged before this feature existed
                         # have a saved ticket but no ai_summary yet — generate
                         # it once, on demand, and persist it so the LLM call
@@ -4313,8 +4754,13 @@ elif active_page == "My Workspace":
                         # before this rendering existed at all.
                         try:
                             _triage_ai_thinking = (
-                                wf_render_triage_thinking_plain(_triage_saved).strip()
-                                if WORKFLOW_OK and _triage_saved.get("trace") else "")
+                                wf_render_agent_thinking_plain(
+                                    "Triage",
+                                    _triage_saved,
+                                    workflow_state=_inc_row,
+                                    activity=_stage_activity,
+                                ).strip()
+                                if WORKFLOW_OK else "")
                         except Exception:
                             _triage_ai_thinking = ""
                         _summary_col, _thinking_col = st.columns(2)
@@ -4332,61 +4778,23 @@ elif active_page == "My Workspace":
                                 title="Thinking Process"),
                                 unsafe_allow_html=True)
                     else:
+                        _stage_summary = _stage_ai_summary
                         _summary_col, _thinking_col = st.columns(2)
                         with _summary_col:
                             st.markdown(_ui.ai_summary(
-                                _summary or
-                                "No AI summary yet — run Triage to populate.",
-                                _ui.detect_fallback(_nar)),
+                                _stage_summary or
+                                f"No AI summary yet — run {_selected_stage} to populate.",
+                                _ui.detect_fallback(_stage_summary)),
                                 unsafe_allow_html=True)
                         with _thinking_col:
                             st.markdown(_ui.ai_summary(
                                 _thinking or
-                                "No thinking process yet — run Triage to populate.",
-                                _ui.detect_fallback(_nar),
+                                f"No thinking process yet — run {_selected_stage} to populate.",
+                                _ui.detect_fallback(_thinking),
                                 title="Thinking Process"),
                                 unsafe_allow_html=True)
                 except Exception:
                     pass
-
-                # Generated Files — only meaningful once the reporting agent
-                # has actually run for this case (finalized_report stage).
-                if (_selected_stage != "Parsing"
-                        and _stage_key == "finalized_report"):
-                    _fin_row = next(
-                        (r for r in pipeline_load("finalized_report", limit=300)
-                         if str(r.get("incident_id")) == _sel_id), None)
-                    if _fin_row:
-                        try:
-                            _fj = _json.loads(_fin_row.get("raw_json") or "{}")
-                            _exports = ((_fj.get("report") or {})
-                                       .get("document_exports") or {})
-                        except Exception:
-                            _exports = {}
-                        st.markdown(
-                            '<div style="font-size:0.85rem;font-weight:700;'
-                            'color:var(--text);margin:14px 0 6px">Generated Files</div>',
-                            unsafe_allow_html=True)
-                        _gc1, _gc2 = st.columns(2)
-                        _docx_p, _pdf_p = _exports.get("docx"), _exports.get("pdf")
-                        if _docx_p and Path(str(_docx_p)).exists():
-                            _gc1.download_button(
-                                "Export Word", data=Path(str(_docx_p)).read_bytes(),
-                                file_name=f"report_{_sel_id}.docx", key="ws_docx",
-                                mime=("application/vnd.openxmlformats-officedocument"
-                                     ".wordprocessingml.document"),
-                                use_container_width=True)
-                        else:
-                            _gc1.button("Export Word", disabled=True, key="ws_docx_dis",
-                                       use_container_width=True)
-                        if _pdf_p and Path(str(_pdf_p)).exists():
-                            _gc2.download_button(
-                                "Export PDF", data=Path(str(_pdf_p)).read_bytes(),
-                                file_name=f"report_{_sel_id}.pdf", key="ws_pdf",
-                                mime="application/pdf", use_container_width=True)
-                        else:
-                            _gc2.button("Export PDF", disabled=True, key="ws_pdf_dis",
-                                       use_container_width=True)
 
                 if _selected_stage == "Parsing":
                     # Parsing produces structured data rather than an analytical
@@ -4482,11 +4890,9 @@ elif active_page == "My Workspace":
                     (_t_output,) = st.tabs(["Output"])
                     with _t_output:
                         # Reads the PERSISTED, run-scoped result saved by
-                        # soc_workflow.run_threat_intel() — never re-runs
-                        # enrichment live on every render (that used to call
-                        # enrich_iocs() on every page load, which could not
-                        # reflect the actual approved pipeline run and
-                        # violated "don't search for the newest file").
+                        # soc_workflow.run_threat_intel() (VirusTotal +
+                        # AbuseIPDB + AlienVault OTX via threat_intel.py) —
+                        # never re-runs enrichment live on every render.
                         try:
                             _ti = _json.loads(_inc_row.get("threat_intel_result_json") or "{}")
                         except Exception:
@@ -4497,125 +4903,304 @@ elif active_page == "My Workspace":
                         else:
                             _ti_status = (_inc_row.get("threat_intel_status")
                                          or _ti.get("status") or "Pending")
-                            _ti_stats = _ti.get("stats") or {}
-                            _internal_iocs = _ti.get("internal_iocs") or []
-                            _internal_count = (
-                                len(_internal_iocs)
-                                or int(_ti_stats.get("skipped_private_ips") or 0)
-                            )
-                            _behavioral = _ti.get("triage_behavioral_indicators") or {}
-                            _behavioral_count = int(_behavioral.get("count") or 0)
-                            if not _behavioral_count:
-                                # Backward compatibility for results persisted
-                                # before TI explicitly separated behavioral
-                                # findings from external reputation targets.
-                                try:
-                                    _saved_triage = _json.loads(
-                                        _inc_row.get("triage_result_json") or "{}")
-                                except Exception:
-                                    _saved_triage = {}
-                                _behavioral_count = int(
-                                    (_saved_triage.get("ticket") or {}).get(
-                                        "matched_ioc_count")
-                                    or 0
-                                )
-
-                            def _no_external_ioc_message() -> str:
-                                _msg = (
-                                    "No externally enrichable IOCs (public IPs, "
-                                    "domains, or hashes) were found."
-                                )
-                                if _internal_count:
-                                    _msg += (
-                                        f" {_internal_count} private/internal IP "
-                                        "address(es) were retained for Investigation "
-                                        "and were not submitted to external "
-                                        "threat-intelligence services."
-                                    )
-                                if _behavioral_count:
-                                    _msg += (
-                                        f" Triage's {_behavioral_count} behavioral "
-                                        "indicator(s) remain available to Investigation; "
-                                        "they are not external reputation-lookup targets."
-                                    )
-                                return _msg
+                            _ti_block = _ti.get("threat_intelligence") or {}
+                            _ti_iocs = _ti_block.get("iocs") or {}
+                            _ti_vt = _ti_block.get("virustotal") or {}
+                            _ti_abuse = _ti_block.get("abuseipdb") or {}
+                            _ti_otx = _ti_block.get("alienvault_otx") or {}
+                            _ti_notes = _ti_block.get("notes") or []
+                            _ti_warnings = _ti.get("warnings") or []
 
                             _ti_tone = {"Complete": "low", "Complete with Warnings": "high",
                                        "Failed": "critical",
                                        "Processing": "info"}.get(_ti_status, "info")
                             st.markdown(_ui.pill(_ti_status, _ti_tone), unsafe_allow_html=True)
                             st.markdown(
-                                f"**Risk level:** {_ti.get('risk_level', '—')}  ·  "
-                                f"**Risk score:** {_ti.get('risk_score', 0)}  ·  "
+                                f"**Risk level:** {_ti.get('enrichment_risk_level', '—')}  ·  "
+                                f"**Risk score:** {_ti.get('enrichment_risk_score', 0)}  ·  "
                                 f"**Last enriched:** {_ti.get('generated_at', '—')}")
-                            _ti_rows = []
-                            _ti_verdict_tone = {"MALICIOUS": "critical", "SUSPICIOUS": "high"}
-                            for _r in _ti.get("iocs", []):
-                                _v = _r.get("verdict", "")
-                                _tone2 = ("wait" if _v.startswith("UNKNOWN")
-                                         else _ti_verdict_tone.get(_v, "low"))
-                                _ti_rows.append([
-                                    {"mono": _r.get("value", "")}, _r.get("type", ""),
-                                    {"pill": _v, "kind": _tone2},
-                                    f"{_r.get('score', 0)} ({_r.get('confidence', '—')})",
-                                    ", ".join(_r.get("sources", [])) or "—",
-                                    "; ".join(_r.get("evidence", [])[:3]),
+                            if _ti.get("summary"):
+                                st.markdown(_ti["summary"])
+                            if _ti.get("recommended_next_action"):
+                                st.caption(_ti["recommended_next_action"])
+
+                            st.markdown("**Extracted IOCs**")
+                            st.markdown(_ui.queue_table(
+                                ["Field", "Value"],
+                                [
+                                    ["Possible file name", _ti_iocs.get("possible_file_name") or "—"],
+                                    ["File hash", {"mono": _ti_iocs.get("file_hash") or "—"}],
+                                    ["Public IP indicators",
+                                     ", ".join(_ti_iocs.get("ip_indicators") or []) or "—"],
+                                    ["Domain indicators",
+                                     ", ".join(_ti_iocs.get("domain_indicators") or []) or "—"],
+                                    ["URL indicators",
+                                     ", ".join(_ti_iocs.get("url_indicators") or []) or "—"],
+                                    ["PowerShell enrichment",
+                                     _ti_iocs.get("powershell_enrichment_note") or "—"],
+                                ]), unsafe_allow_html=True)
+
+                            st.markdown("**VirusTotal**")
+                            _vt_rows = []
+                            _vt_fh = _ti_vt.get("file_hash")
+                            if _vt_fh:
+                                _vt_rows.append([
+                                    "File hash", {"mono": _vt_fh.get("indicator", "—")},
+                                    _vt_fh.get("status", "—"), str(_vt_fh.get("malicious", "—")),
+                                    str(_vt_fh.get("suspicious", "—")), _vt_fh.get("reputation", "—"),
                                 ])
-                            if _ti_rows:
+                            for _r in _ti_vt.get("ip_results") or []:
+                                _vt_rows.append([
+                                    "IP", {"mono": _r.get("indicator", "—")}, _r.get("status", "—"),
+                                    str(_r.get("malicious", "—")), str(_r.get("suspicious", "—")),
+                                    _r.get("reputation", "—"),
+                                ])
+                            for _r in _ti_vt.get("domain_results") or []:
+                                _vt_rows.append([
+                                    "Domain", {"mono": _r.get("indicator", "—")}, _r.get("status", "—"),
+                                    str(_r.get("malicious", "—")), str(_r.get("suspicious", "—")),
+                                    _r.get("reputation", "—"),
+                                ])
+                            if _vt_rows:
                                 st.markdown(_ui.queue_table(
-                                    ["IOC", "Type", "Verdict", "Score", "Sources", "Evidence"],
-                                    _ti_rows), unsafe_allow_html=True)
+                                    ["Type", "Indicator", "Status", "Malicious",
+                                     "Suspicious", "Reputation"],
+                                    _vt_rows), unsafe_allow_html=True)
                             else:
-                                _no_lookup_msg = (
-                                    "No external reputation results to display. "
-                                    "Threat Intelligence only submits public IPs, "
-                                    "domains, and hashes to external services."
-                                )
-                                if _internal_count:
-                                    _no_lookup_msg += (
-                                        f" {_internal_count} private/internal IP "
-                                        f"address(es) were retained for Investigation."
-                                    )
-                                if _behavioral_count:
-                                    _no_lookup_msg += (
-                                        f" Triage's {_behavioral_count} behavioral "
-                                        "indicator(s) also remain available to Investigation."
-                                    )
-                                st.info(_no_lookup_msg)
-                            if _ti.get("warnings"):
-                                _display_warnings = [
-                                    (_no_external_ioc_message()
-                                     if str(_w).startswith(
-                                         "No IOCs found in the normalised alert")
-                                     else str(_w))
-                                    for _w in _ti["warnings"]
-                                ]
-                                st.warning("\n".join(
-                                    f"- {_w}" for _w in _display_warnings))
-                            if _ti.get("errors"):
-                                st.error("\n".join(f"- {e}" for e in _ti["errors"]))
-                            _ti_thinking = _ti.get("thinking_process")
-                            if _ti_thinking:
-                                with st.expander("Thinking Process"):
-                                    _display_thinking = dict(_ti_thinking)
-                                    _display_thinking.setdefault(
-                                        "externally_enrichable_iocs",
-                                        len(_ti.get("iocs") or []))
-                                    _display_thinking.setdefault(
-                                        "private_internal_ips_retained",
-                                        _internal_count)
-                                    _display_thinking.setdefault(
-                                        "triage_behavioral_indicators",
-                                        _behavioral_count)
-                                    if _display_thinking.get("warnings"):
-                                        _display_thinking["warnings"] = [
-                                            (_no_external_ioc_message()
-                                             if str(_w).startswith(
-                                                 "No IOCs found in the normalised alert")
-                                             else str(_w))
-                                            for _w in _display_thinking["warnings"]
-                                        ]
-                                    st.json(_display_thinking)
+                                st.caption("No VirusTotal results for this run.")
+
+                            st.markdown("**AbuseIPDB**")
+                            _abuse_rows = [[
+                                {"mono": _r.get("indicator", "—")},
+                                str(_r.get("abuse_confidence_score", "—")),
+                                str(_r.get("total_reports", "—")),
+                                _r.get("country_code", "—"), _r.get("isp", "—"),
+                                _r.get("domain", "—"), _r.get("usage_type", "—"),
+                                _r.get("last_reported_at", "—"),
+                            ] for _r in (_ti_abuse.get("ip_results") or [])]
+                            if _abuse_rows:
+                                st.markdown(_ui.queue_table(
+                                    ["IP", "Abuse confidence", "Total reports", "Country",
+                                     "ISP", "Domain", "Usage type", "Last reported"],
+                                    _abuse_rows), unsafe_allow_html=True)
+                            else:
+                                st.caption("No AbuseIPDB results for this run.")
+
+                            st.markdown("**AlienVault OTX**")
+                            _otx_rows = [[
+                                {"mono": _r.get("indicator", "—")}, _r.get("indicator_type", "—"),
+                                str(_r.get("pulse_count", "—")),
+                                ", ".join(_r.get("related_pulses") or []) or "—",
+                                ", ".join(_r.get("sections_available") or []) or "—",
+                            ] for _r in (_ti_otx.get("otx_results") or [])]
+                            if _otx_rows:
+                                st.markdown(_ui.queue_table(
+                                    ["Indicator", "Type", "Pulse count",
+                                     "Related pulses", "Available sections"],
+                                    _otx_rows), unsafe_allow_html=True)
+                            else:
+                                st.caption("No AlienVault OTX results for this run.")
+
+                            st.markdown("**Risk assessment**")
+                            st.markdown(
+                                f"**{_ti.get('enrichment_risk_level', '—')}** risk "
+                                f"(score {_ti.get('enrichment_risk_score', 0)})")
+                            for _reason in _ti.get("enrichment_risk_reasons") or []:
+                                st.markdown(f"- {_reason}")
+
+                            if _ti_notes:
+                                st.markdown("**Notes**")
+                                st.info("\n".join(f"- {n}" for n in _ti_notes))
+
+                            if _ti_warnings:
+                                st.markdown("**Warnings**")
+                                st.warning("\n".join(f"- {w}" for w in _ti_warnings))
+
+                            with st.expander("Technical Output (raw)"):
+                                st.json(_ti_block)
+                elif _selected_stage == "Reporting":
+                    # Preview data comes ONLY from case_view.build_reporting()
+                    # (case_view.py:build_reporting) — never from
+                    # Investigation's build_output()/_cv["output"], so the two
+                    # stages' tab content never gets mixed together. Reporting
+                    # uses the same header-level Approve and Re-run controls as
+                    # the other approval stages.
+                    _rep_run_id = _inc_row.get("run_id")
+                    _rep_state = wss.get_state(_sel_id) or {}
+                    _rep_cv = cv.build_reporting(_rep_state, _sel_id, _rep_run_id)
+                    _rep_status = _rep_cv.get("reporting_status") or "Pending"
+                    _rep_tone = {"Approved": "low", "Awaiting Approval": "info",
+                                "Failed": "critical", "Processing": "info",
+                                "Rejected": "critical"}.get(_rep_status, "info")
+                    _rep_cur = _rep_cv.get("current_attempt") or {}
+                    _rep_reports = _rep_cur.get("reports") or []
+                    _rep_analyst = (
+                        st.session_state.get("analyst_display_name")
+                        or "Unknown analyst"
+                    )
+
+                    _rt_overview, _rt_reports, _rt_export, _rt_activity = st.tabs(
+                        ["Overview", "Reports", "Export", "Activity"])
+
+                    with _rt_overview:
+                        st.markdown(_ui.pill(_rep_status, _rep_tone), unsafe_allow_html=True)
+                        if _rep_cur.get("summary"):
+                            st.markdown(_rep_cur["summary"])
+                        if _rep_cur.get("recommended_next_action"):
+                            st.caption(_rep_cur["recommended_next_action"])
+                        if _rep_cur.get("last_error"):
+                            st.error(_rep_cur["last_error"])
+                        for _rw in _rep_cv.get("warnings") or []:
+                            st.warning(_rw)
+                        # Non-blocking per-report warnings and blocking errors
+                        # are always visible here, distinct from each other —
+                        # a blocking error is what refuses approval; a warning
+                        # never does.
+                        for _rr in _rep_reports:
+                            _rv = _rr.get("validation") or {}
+                            for _re_ in _rv.get("errors") or []:
+                                st.error(f"{_rr.get('title')}: {_re_}")
+                            for _rwn in _rv.get("warnings") or []:
+                                st.warning(f"{_rr.get('title')}: {_rwn}")
+
+                        if _rep_status == "Processing":
+                            st.info(_rep_cv.get("worker_progress_note")
+                                   or "Reporting is processing.")
+                        elif _rep_status in ("Failed", "Rejected"):
+                            (st.error if _rep_status == "Failed" else st.warning)(
+                                f"Reporting {_rep_status.lower()}.")
+                        elif _rep_status == "Approved":
+                            st.success("Reporting approved. Downloads are available "
+                                      "in the Export tab.")
+
+                    with _rt_reports:
+                        _render_reports_workspace(
+                            _sel_id, _rep_run_id, _rep_cv, _rep_status, _rep_analyst, _rep_state)
+
+                    with _rt_export:
+                        if _rep_status != "Approved" or not _rep_cv.get("export_all_available"):
+                            st.caption("Downloads become available once Reporting is "
+                                      "approved for this attempt.")
+                        else:
+                            st.markdown("**Individual reports**")
+                            for _rr2 in _rep_reports:
+                                _rtype = _rr2.get("report_type")
+                                _rtitle = _rr2.get("title") or _rtype
+                                _dc1, _dc2 = st.columns(2)
+
+                                def _record_report_download(rtype=_rtype, fmt="docx", sha=""):
+                                    wss.record_activity(
+                                        _sel_id, _rep_run_id, "reporting",
+                                        "report_download_initiated", actor=_rep_analyst,
+                                        metadata={"report_type": rtype, "format": fmt,
+                                                 "file_hash": sha,
+                                                 "reporting_stage_attempt":
+                                                     _rep_cv.get("reporting_stage_attempt")})
+
+                                _docx_resolved = resolve_approved_report_file(
+                                    _sel_id, _rep_run_id, _rtype, "docx")
+                                with _dc1:
+                                    if _docx_resolved:
+                                        _db, _dsha = _docx_resolved
+                                        st.download_button(
+                                            f"{_rtitle} — Word", data=_db,
+                                            file_name=f"{_rtitle}.docx",
+                                            mime="application/vnd.openxmlformats-officedocument"
+                                                "wordprocessingml.document",
+                                            key=f"rep_dl_docx_{_rtype}_{_sel_id}",
+                                            on_click=_record_report_download,
+                                            kwargs={"rtype": _rtype, "fmt": "docx", "sha": _dsha},
+                                            use_container_width=True)
+                                    else:
+                                        st.button(f"{_rtitle} — Word", disabled=True,
+                                                 key=f"rep_dl_docx_dis_{_rtype}_{_sel_id}",
+                                                 use_container_width=True)
+                                _pdf_resolved = resolve_approved_report_file(
+                                    _sel_id, _rep_run_id, _rtype, "pdf")
+                                with _dc2:
+                                    if _pdf_resolved:
+                                        _pb, _psha = _pdf_resolved
+                                        st.download_button(
+                                            f"{_rtitle} — PDF", data=_pb,
+                                            file_name=f"{_rtitle}.pdf",
+                                            mime="application/pdf",
+                                            key=f"rep_dl_pdf_{_rtype}_{_sel_id}",
+                                            on_click=_record_report_download,
+                                            kwargs={"rtype": _rtype, "fmt": "pdf", "sha": _psha},
+                                            use_container_width=True)
+                                    else:
+                                        st.button(f"{_rtitle} — PDF", disabled=True,
+                                                 key=f"rep_dl_pdf_dis_{_rtype}_{_sel_id}",
+                                                 use_container_width=True)
+
+                            st.divider()
+                            st.markdown("**Export All Reports**")
+                            _zip_key = f"rep_prepared_zip_{_sel_id}"
+                            _zip_identity = (
+                                _sel_id, _rep_run_id,
+                                _rep_cv.get("reporting_stage_attempt"),
+                                _rep_cv.get("current_attempt", {}).get("report_set_id"))
+                            _prepared = st.session_state.get(_zip_key)
+                            if _prepared and _prepared.get("identity") != _zip_identity:
+                                _prepared = None
+                                st.session_state.pop(_zip_key, None)
+                            if not _prepared:
+                                if st.button("Prepare Export All", key=f"rep_prep_zip_{_sel_id}"):
+                                    try:
+                                        _zip_result = build_export_all_zip(_sel_id, _rep_run_id)
+                                    except ReportValidationError as _exc:
+                                        st.error(f"Could not prepare Export All: {_exc}")
+                                    else:
+                                        st.session_state[_zip_key] = {
+                                            **_zip_result, "identity": _zip_identity}
+                                        st.rerun()
+                            else:
+                                def _record_export_all_download():
+                                    wss.record_activity(
+                                        _sel_id, _rep_run_id, "reporting",
+                                        "export_all_download_initiated", actor=_rep_analyst,
+                                        metadata={"zip_sha256": _prepared.get("sha256"),
+                                                 "report_set_id": _prepared.get("report_set_id"),
+                                                 "reporting_stage_attempt":
+                                                     _prepared.get("reporting_stage_attempt")})
+                                st.download_button(
+                                    "Download Export All Reports",
+                                    data=_prepared["bytes"], file_name=_prepared["filename"],
+                                    mime="application/zip", key=f"rep_dl_zip_{_sel_id}",
+                                    on_click=_record_export_all_download,
+                                    use_container_width=True)
+                                if st.button("Re-prepare (discard cached ZIP)",
+                                            key=f"rep_reprep_zip_{_sel_id}"):
+                                    st.session_state.pop(_zip_key, None)
+                                    st.rerun()
+
+                    with _rt_activity:
+                        _rep_activity = [
+                            a for a in wss.get_activity(_sel_id, _rep_run_id)
+                            if a.get("stage") == "reporting"]
+                        _rep_approvals = _rep_cv.get("approval_history") or []
+                        if not _rep_activity and not _rep_approvals:
+                            st.caption("No Reporting activity recorded yet for this run.")
+                        else:
+                            _act_rows = [
+                                [a.get("occurred_at", "—"), a.get("action", "—"),
+                                 a.get("actor") or "—", a.get("comments") or "—"]
+                                for a in _rep_activity]
+                            _act_rows += [
+                                [a.get("decided_at", "—"), f"reporting_{a.get('decision', '—')}",
+                                 a.get("analyst") or "—", a.get("comments") or "—"]
+                                for a in _rep_approvals]
+                            _act_rows.sort(key=lambda r: r[0] or "")
+                            st.markdown(_ui.queue_table(
+                                ["Time", "Action", "Actor", "Comments"], _act_rows),
+                                unsafe_allow_html=True)
+                        if _rep_cv.get("historical_approved_sets"):
+                            st.markdown("**Previously Approved Packages**")
+                            for _h in _rep_cv["historical_approved_sets"]:
+                                st.caption(
+                                    f"Attempt {_h.get('reporting_stage_attempt')} — "
+                                    f"approved by {_h.get('approved_by')} at "
+                                    f"{_h.get('approved_at')}")
                 else:
                     # ── ONE call builds every tab's data — app.py no longer
                     # independently computes severity/verdict/host/user/IOC
@@ -5099,14 +5684,25 @@ elif active_page == "My Workspace":
 
                 _hist = st.session_state.workspace_chat.setdefault(_sel_id, [])
                 _prompt = None
+                # Stage-availability strip — reuses _stage_states (computed
+                # once at the top of this case's render, line ~3920) so this
+                # NEVER disagrees with the pipeline stepper above it. This is
+                # the always-visible, non-LLM-mediated confirmation of what
+                # Ask Aegis currently knows: a deterministic signal the chat
+                # replies themselves reinforce but shouldn't be the only
+                # place it's shown.
+                _aegis_stage_symbol = {"done": "✓", "approval": "⏳", "current": "…"}
+                _aegis_stage_strip = " · ".join(
+                    f'{_esc_html(s["name"])} {_aegis_stage_symbol.get(s["state"], "—")}'
+                    for s in _stage_states
+                )
                 with st.container(key="ws_ask_aegis"):
                     with st.container(key="ws_ask_header"):
                         st.markdown(
                             '<div class="ws-aegis-head">'
                             '<div class="ws-aegis-icon">✦</div>'
                             '<div><div class="ws-aegis-title">Ask Aegis</div>'
-                            '<div class="ws-aegis-sub">Shared across every agent stage &amp; '
-                            'Threat Intelligence Enrichment</div></div>'
+                            f'<div class="ws-aegis-sub">{_aegis_stage_strip}</div></div>'
                             f'<div class="ws-aegis-case">{_esc_html(_sel_id)}</div>'
                             '</div>',
                             unsafe_allow_html=True,
@@ -5156,10 +5752,26 @@ elif active_page == "My Workspace":
                         _hist.append({"role": "user", "content": _prompt})
                         with st.spinner("Aegis is thinking…"):
                             try:
+                                # Cumulative, cross-stage context — built fresh
+                                # on every send (never cached), so a stage that
+                                # just completed/was approved/was rerun is
+                                # always reflected on the very next question.
+                                # See case_view.build_aegis_context for why
+                                # rerun-invalidation needs no extra code here:
+                                # workflow_state_store.rerun_stage() already
+                                # nulls downstream stage columns at the DB
+                                # layer, so this call simply won't find stale
+                                # data. stage_states=_stage_states reuses the
+                                # pipeline stepper's own classification so
+                                # Aegis and the UI never disagree.
+                                _case_context = cv.build_aegis_context(
+                                    _sel_id, _inc_row.get("run_id"),
+                                    stage_states=_stage_states)
                                 _reply = chat_respond(
                                     _prompt, incident=inc,
                                     parsed_context=db_load_parsed_context(
-                                        str(inc.get("id") or inc.get("incidentId") or "")))
+                                        str(inc.get("id") or inc.get("incidentId") or "")),
+                                    case_context=_case_context)
                             except Exception as _ce:
                                 _reply = f"Error: {_ce}"
                         _hist.append({"role": "assistant", "content": _reply})
@@ -6011,11 +6623,10 @@ elif active_page == "Ask a Question":
         reply = "No response was generated."   # safe default
 
         # ── Triage trigger ─────────────────────────────────────────────────────
-        # Calls the SAME shared helper as the Start Process button — there is
-        # exactly one implementation of "run Parsing+Triage", used by both
-        # triggers. Does not start Investigation; the analyst must approve
-        # the Triage result first (see the mandatory approval gate in
-        # soc_workflow.run_until_triage_approval()).
+        # Chat explicitly requests the helper's full Parsing+Triage mode.
+        # The case-page Parsing action uses that helper's parsing-only mode.
+        # This path does not start Investigation; the analyst must approve
+        # the Triage result first (see the mandatory approval gate).
         if active_inc and _TRIAGE_TRIGGER.search(user_input):
             _inc_id = str(active_inc.get("id") or active_inc.get("incidentId") or "")
             result = _run_triage_workflow_with_ui(active_inc)
@@ -6047,8 +6658,19 @@ elif active_page == "Ask a Question":
         # ── Plain Q&A fallback ─────────────────────────────────────────────────
         else:
             try:
+                # Cross-stage context only exists for incidents that have
+                # actually entered the SOC workflow (a real run_id in
+                # workflow_state_store) — an ad-hoc uploaded file has no
+                # such row, so _active_state is None and case_context stays
+                # None, leaving that flow's behaviour exactly as before.
+                _active_inc_id = str(active_inc.get("id") or active_inc.get("incidentId") or "")
+                _active_state = wss_get_state(_active_inc_id) if _active_inc_id else None
+                _case_context = (
+                    cv.build_aegis_context(_active_inc_id, _active_state["run_id"])
+                    if _active_state and _active_state.get("run_id") else None)
                 with st.spinner("Agent thinking…"):
-                    reply = chat_respond(user_input, incident=active_inc)
+                    reply = chat_respond(user_input, incident=active_inc,
+                                         case_context=_case_context)
                 if not reply:
                     reply = "Agent returned an empty response."
             except Exception as exc:

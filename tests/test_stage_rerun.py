@@ -87,7 +87,12 @@ def test_rerun_reporting_reopens_a_completed_workflow():
         "workflow_status": "Awaiting Approval",
         "approval_stage": "reporting",
     })
-    wss.approve_reporting("INC-1", run_id, approved_by="analyst")
+    _state = wss.get_state("INC-1")
+    wss.commit_reporting_approval(
+        "INC-1", run_id,
+        expected_reporting_attempt=_state["reporting_attempt"],
+        expected_reporting_result_json=_state["reporting_result_json"],
+        metadata={}, approved_by="analyst")
 
     wss.rerun_stage("INC-1", run_id, "reporting")
 

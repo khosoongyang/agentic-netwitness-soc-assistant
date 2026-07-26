@@ -14,8 +14,10 @@ from reporting.editable_reports import (
 )
 from reporting.structured_report import (
     blocks_from_text,
+    convert_key_value_lines_to_tables,
     markdown_to_blocks,
     paragraph_contains_raw_pipe_table,
+    parse_pipe_table,
     repair_pipe_tables_in_blocks,
 )
 from reporting.template_document_exporter import _load_cached_json_blocks, markdown_to_report_blocks
@@ -190,4 +192,77 @@ def test_pdf_recovers_raw_blocks_before_rendering(tmp_path):
     ]
     _pdf_write_blocks(path, "Incident Report", raw_blocks, "INC-1", {})
     assert path.exists()
-    assert path.stat().st_size > 0
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Escaped-pipe scanner — state-machine tokenizer, not a naive .split("|")
+# or a single-character regex lookbehind (which can't tell odd vs. even
+# runs of backslashes apart).
+# ══════════════════════════════════════════════════════════════════════
+
+def test_escaped_pipe_stays_inside_one_cell():
+    lines = ["| Evidence | Description |",
+            "| IOC-1 | Command used A \\| B syntax |"]
+    table, consumed = parse_pipe_table(lines, 0)
+    assert consumed == 2
+    assert table["columns"] == ["Evidence", "Description"]
+    assert table["rows"] == [["IOC-1", "Command used A | B syntax"]]
+
+
+def test_double_backslash_before_pipe_is_one_literal_backslash_then_separator():
+    lines = ["| A | B |", "| A \\\\| B |"]
+    table, consumed = parse_pipe_table(lines, 0)
+    assert consumed == 2
+    # One escaped backslash (\\ -> \), then a REAL column separator.
+    assert table["rows"] == [["A \\", "B"]]
+
+
+def test_windows_path_in_cell_is_left_untouched():
+    lines = ["| Field | Value |", "| Path | C:\\Users\\x\\file.txt |"]
+    table, consumed = parse_pipe_table(lines, 0)
+    assert consumed == 2
+    assert table["rows"] == [["Path", "C:\\Users\\x\\file.txt"]]
+
+
+def test_malformed_row_produces_warning_not_silent_column_change():
+    lines = ["| A | B | C |", "| 1 | 2 |"]
+    table, consumed = parse_pipe_table(lines, 0)
+    assert table is not None
+    assert table["rows"] == [["1", "2", ""]]
+    assert any("padded" in w for w in table.get("row_warnings", []))
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Key/value-line table heuristic — "P1: Priority investigation | Owner:
+# Tier 1 | Approval Required: No" shaped lines, deliberately strict.
+# ══════════════════════════════════════════════════════════════════════
+
+def test_priority_line_pair_converts_to_table():
+    blocks = [
+        {"type": "paragraph", "text": "P1: Priority investigation | Owner: Tier 1 | Approval Required: No"},
+        {"type": "paragraph", "text": "P2: Monitor for recurrence | Owner: Tier 2 | Approval Required: Yes"},
+    ]
+    result = convert_key_value_lines_to_tables(blocks)
+    assert len(result) == 1
+    assert result[0]["type"] == "table"
+    assert result[0]["columns"] == ["Priority", "Action", "Owner", "Approval Required"]
+    assert result[0]["rows"] == [
+        ["P1", "Priority investigation", "Tier 1", "No"],
+        ["P2", "Monitor for recurrence", "Tier 2", "Yes"],
+    ]
+
+
+def test_single_matching_line_is_not_converted_alone():
+    blocks = [{"type": "paragraph",
+              "text": "P1: Priority investigation | Owner: Tier 1 | Approval Required: No"}]
+    result = convert_key_value_lines_to_tables(blocks)
+    assert len(result) == 1
+    assert result[0]["type"] == "paragraph"
+    assert "row_warnings" in result[0]
+
+
+def test_ordinary_prose_with_colon_and_pipe_is_not_converted():
+    blocks = [{"type": "paragraph",
+              "text": "The analyst noted: suspicious activity | further review needed"}]
+    result = convert_key_value_lines_to_tables(blocks)
+    assert result == blocks

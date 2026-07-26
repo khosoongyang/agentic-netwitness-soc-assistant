@@ -529,14 +529,33 @@ def build_evidence(state: dict, incident: dict, incident_id: str, run_id: str,
     ti_status = state.get("threat_intel_status")
     if ti_status in ("Complete", "Complete with Warnings"):
         ti_result = _json_or_empty(state.get("threat_intel_result_json"))
-        for i, ioc in enumerate(ti_result.get("iocs") or []):
+        ti_block = ti_result.get("threat_intelligence") or {}
+        ti_iocs = ti_block.get("iocs") or {}
+        related = [v for v in (
+            [ti_iocs.get("file_hash")]
+            + (ti_iocs.get("ip_indicators") or [])
+            + (ti_iocs.get("domain_indicators") or [])
+        ) if v]
+        items.append({
+            "evidence_id": "ti-summary", "evidence_type": "external_intelligence",
+            "source": "threat_intel", "timestamp": ti_result.get("generated_at"),
+            "summary": f"Threat Intelligence enrichment: "
+                      f"{ti_result.get('enrichment_risk_level', 'Unknown')} risk "
+                      f"(score {ti_result.get('enrichment_risk_score', 0)})",
+            "raw_reference": "threat_intel_result_json.threat_intelligence",
+            "related_entities": related,
+            "supported_findings": ti_result.get("enrichment_risk_reasons") or [],
+            "evidence_status": "external_intelligence",
+            "provenance": "virustotal, abuseipdb, alienvault_otx",
+        })
+        for i, note in enumerate(ti_block.get("notes") or []):
             items.append({
-                "evidence_id": f"ti-ioc-{i}", "evidence_type": "external_intelligence",
+                "evidence_id": f"ti-note-{i}", "evidence_type": "external_intelligence",
                 "source": "threat_intel", "timestamp": ti_result.get("generated_at"),
-                "summary": f"{ioc.get('value')} — {ioc.get('verdict', 'UNKNOWN')}",
-                "raw_reference": "threat_intel_result_json.iocs", "related_entities": [ioc.get("value")],
-                "supported_findings": [], "evidence_status": "external_intelligence",
-                "provenance": ", ".join(ioc.get("sources") or []) or "threat_intel",
+                "summary": note,
+                "raw_reference": "threat_intel_result_json.threat_intelligence.notes",
+                "related_entities": [], "supported_findings": [],
+                "evidence_status": "informational", "provenance": "threat_intel",
             })
 
     ioc_status = state.get("ioc_correlation_status")
@@ -697,6 +716,202 @@ def sanitize_investigation_result_for_display(result: dict) -> dict:
     return sanitized
 
 
+def _reporting_trusted_path(raw_path: str, *, attempt_dir) -> "Path | None":
+    """Read-only twin of reporting_approval._resolve_trusted_path — this
+    module never validates for approval purposes, only for safe preview
+    display, so a failure here returns None (rendered as an unavailable
+    preview) rather than raising."""
+    from pathlib import Path
+    try:
+        candidate = Path(raw_path)
+        if not candidate.is_absolute():
+            candidate = attempt_dir / raw_path
+        resolved = candidate.resolve()
+        trusted_root = sw._TRUSTED_OUTPUT_ROOT.resolve()
+        if not str(resolved).startswith(str(trusted_root)):
+            return None
+        if not str(resolved).startswith(str(attempt_dir.resolve())):
+            return None
+        if not resolved.is_file():
+            return None
+        return resolved
+    except Exception:
+        return None
+
+
+def _load_candidate_manifest_preview(incident_id: str, run_id: str, reporting_stage_attempt: int,
+                                     candidate_manifest_path: str) -> dict[str, Any]:
+    """Loads one Reporting attempt's candidate_manifest.json and, for each
+    report, its structured_content blocks — re-verified against the
+    manifest's own recorded SHA-256 at read time, so the preview can never
+    silently drift from what was actually hashed at generation/approval
+    time. Returns {"reports": [...], "warnings": [...]} — never raises;
+    a report whose file can't be verified is included with an
+    "unavailable" note instead of breaking the whole preview."""
+    import hashlib
+    import json as _json
+
+    attempt_dir = sw.reporting_attempt_dir(incident_id, run_id, reporting_stage_attempt)
+    manifest_path = _reporting_trusted_path(candidate_manifest_path, attempt_dir=attempt_dir)
+    if manifest_path is None:
+        return {"reports": [], "warnings": ["Candidate manifest could not be resolved for preview."]}
+    try:
+        manifest = _json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {"reports": [], "warnings": [f"Candidate manifest could not be read: {exc}"]}
+
+    reports: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for report in manifest.get("reports") or []:
+        report_type = report.get("report_type")
+        entry: dict[str, Any] = {
+            "report_type": report_type,
+            "title": report.get("title") or report_type,
+            "template": report.get("template"),
+            "generated_at": report.get("generated_at"),
+            "validation": report.get("validation") or {},
+            "docx": report.get("docx") or {},
+            "pdf": report.get("pdf") or {},
+            "structured_content": [],
+            "preview_available": False,
+        }
+        sc = report.get("structured_content") or {}
+        sc_path = _reporting_trusted_path(sc.get("path"), attempt_dir=attempt_dir) if sc.get("path") else None
+        if sc_path is not None:
+            try:
+                actual_sha256 = hashlib.sha256(sc_path.read_bytes()).hexdigest()
+                if actual_sha256 == sc.get("sha256"):
+                    entry["structured_content"] = _json.loads(sc_path.read_text(encoding="utf-8"))
+                    entry["preview_available"] = True
+                else:
+                    entry["preview_unavailable_reason"] = (
+                        "structured content no longer matches its recorded hash")
+            except Exception as exc:
+                entry["preview_unavailable_reason"] = f"structured content could not be read: {exc}"
+        reports.append(entry)
+    return {"reports": reports, "warnings": warnings,
+           "report_set_id": manifest.get("report_set_id"),
+           "candidate_manifest_sha256": manifest.get("candidate_manifest_sha256")}
+
+
+def build_reporting(state: dict, incident_id: str, run_id: str) -> dict:
+    """Reporting review model for the Reporting stage tab. Two distinct
+    read paths, because reporting_result_json is CLEARED by rerun_stage()
+    on every new attempt (see workflow_state_store.rerun_stage()):
+
+    - current_attempt: whatever reporting_attempt is right now (Processing/
+      Awaiting Approval/Approved/Failed), previewed from ITS OWN candidate
+      manifest's hash-verified structured_content — never from the mutable
+      report_manifest.json, drafts/editable directories, or a freshly
+      parsed DOCX.
+    - historical_approved_sets: every PRIOR approved decision (from
+      workflow_state_store.get_approved_reporting_sets(), which reads the
+      durable workflow_approvals.metadata_json — not a guessed path), so a
+      previously approved package stays resolvable even after a later
+      rerun clears reporting_result_json. Excludes whichever entry (if
+      any) matches the current attempt's own report_set_id.
+
+    export_all_available is true ONLY when the current attempt IS the most
+    recently approved one — never merely "some approval exists somewhere
+    in this run's history".
+    """
+    reporting_status = state.get("reporting_status") or "Pending"
+    reporting_stage_attempt = int(state.get("reporting_attempt") or 1)
+    raw_result = _json_or_empty(state.get("reporting_result_json"))
+    document_exports = raw_result.get("document_exports") or {}
+    candidate_manifest_path = document_exports.get("candidate_manifest_path")
+
+    current_preview: dict[str, Any] = {"reports": [], "warnings": []}
+    if candidate_manifest_path:
+        current_preview = _load_candidate_manifest_preview(
+            incident_id, run_id, reporting_stage_attempt, candidate_manifest_path)
+    elif reporting_status not in ("Pending", "Processing"):
+        current_preview["warnings"].append(
+            "No candidate report set is available to preview for this attempt.")
+
+    current_report_set_id = current_preview.get("report_set_id")
+
+    try:
+        approved_sets = wss.get_approved_reporting_sets(incident_id, run_id)
+    except Exception:
+        approved_sets = []
+    latest_approved = approved_sets[-1] if approved_sets else None
+    historical_approved_sets = [
+        a for a in approved_sets
+        if not (current_report_set_id and a.get("report_set_id") == current_report_set_id)
+    ]
+
+    export_all_available = bool(
+        reporting_status == "Approved" and latest_approved
+        and current_report_set_id and latest_approved.get("report_set_id") == current_report_set_id)
+
+    try:
+        approval_history = [
+            a for a in wss.get_approval_history(incident_id, run_id)
+            if a.get("approval_stage") == "reporting"]
+    except Exception:
+        approval_history = []
+
+    return {
+        "incident_id": str(incident_id),
+        "run_id": run_id,
+        "reporting_status": reporting_status,
+        "reporting_stage_attempt": reporting_stage_attempt,
+        "current_attempt": {
+            "reporting_status": reporting_status,
+            "reports": current_preview.get("reports", []),
+            "report_set_id": current_report_set_id,
+            "candidate_manifest_sha256": current_preview.get("candidate_manifest_sha256"),
+            "summary": raw_result.get("summary"),
+            "recommended_next_action": raw_result.get("recommended_next_action"),
+            "last_error": raw_result.get("error") or state.get("last_error"),
+        },
+        "historical_approved_sets": historical_approved_sets,
+        "export_all_available": export_all_available,
+        "approval": approval_history[-1] if approval_history else {},
+        "approval_history": approval_history,
+        "worker_progress_note": state.get("worker_progress_note"),
+        "reporting_updated_at": state.get("reporting_updated_at"),
+        "warnings": current_preview.get("warnings", []),
+    }
+
+
+def reporting_blocks_to_render_ops(blocks: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
+    """Pure mapping from structured report blocks (see
+    soc_reporting_agent/reporting/structured_report.py) to a small,
+    UI-framework-agnostic instruction list — kept separate from the actual
+    st.* calls in app.py so it's independently unit-testable: a
+    {"type":"table",...} block MUST produce a {"op":"table",...}
+    instruction (rendered via ui_components.queue_table()), never a
+    {"op":"markdown", text containing raw "|" pipe syntax} instruction."""
+    ops: list[dict[str, Any]] = []
+    if not isinstance(blocks, list):
+        return ops
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        btype = block.get("type")
+        if btype == "heading":
+            ops.append({"op": "heading", "level": int(block.get("level") or 2),
+                       "text": str(block.get("text") or "")})
+        elif btype == "table":
+            ops.append({"op": "table", "columns": list(block.get("columns") or []),
+                       "rows": [list(r or []) for r in block.get("rows") or []]})
+        elif btype == "bullet_list":
+            items = []
+            for item in block.get("items") or []:
+                if isinstance(item, dict):
+                    items.append({"text": str(item.get("text") or ""), "level": int(item.get("level") or 0)})
+                else:
+                    items.append({"text": str(item or ""), "level": 0})
+            ops.append({"op": "bullet_list", "items": items})
+        elif btype == "page_break":
+            ops.append({"op": "page_break"})
+        else:
+            ops.append({"op": "markdown", "text": str(block.get("text") or "")})
+    return ops
+
+
 def build_output(state: dict) -> dict:
     inv_status = state.get("investigation_status") or "Pending"
     raw_result = _json_or_empty(state.get("investigation_result_json"))
@@ -716,6 +931,391 @@ def build_output(state: dict) -> dict:
         "last_error": state.get("last_error"),
         "investigation_updated_at": state.get("investigation_updated_at"),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Ask Aegis chat context — cross-stage, size-bounded, chat-appropriate
+# ══════════════════════════════════════════════════════════════════════════
+# build_case_view() below is shaped for the case-detail UI (full sanitized
+# investigation result, entity graph, hash-verified report manifest
+# previews) and is fine to recompute once per Streamlit page render. A chat
+# turn happens once per message SEND, so this section deliberately skips
+# build_output()/build_reporting()'s file I/O and full-size payloads and
+# enforces a hard character budget instead (see _MAX_CONTEXT_CHARS) — a
+# chat prompt needs kilobytes, not build_case_view()'s 200KB display cap.
+
+_MAX_CONTEXT_CHARS = 8000          # ~2K tokens; generous for a chat prompt,
+                                   # far below _MAX_TOTAL_SIZE above
+_MAX_NARRATIVE_EXCERPT = 800
+_MAX_LIST_ITEMS = 10
+
+_STAGE_COLUMNS = [
+    ("Parsing", "parsing"),
+    ("Triage", "triage"),
+    ("Threat Intelligence Enrichment", "threat_intel"),
+    ("Investigation", "investigation"),
+    ("Reporting", "reporting"),
+]
+_NAME_TO_KEY = {name: key for name, key in _STAGE_COLUMNS}
+
+
+def _stage_status_summary(state: dict) -> list[dict]:
+    """Independent, deliberately-simplified 5-stage classifier for chat
+    grounding: done | awaiting_approval | failed | in_progress |
+    not_started.
+
+    This is NOT a port of app.py:_case_stage_states() — that function
+    additionally computes UI pipeline lock-cascades (which stage tab is
+    clickable when an earlier approval gate is unresolved), which a
+    chatbot has no use for, and touching that high-blast-radius UI
+    function isn't necessary for this. This is only a FALLBACK for
+    callers with no precomputed stage list in scope — build_aegis_context's
+    primary caller (My Workspace) passes its own _case_stage_states()
+    result instead, so this path is only exercised by standalone callers
+    (e.g. the Ask a Question page).
+
+    Threat Intelligence Enrichment has no analyst approval gate (confirmed
+    via workflow_state_store.rerun_stage()'s allowed_current_statuses for
+    "threat_intel", and workflow_validation.py's note that it "does not
+    require a separate approval") — it never reports awaiting_approval,
+    only done/failed/in_progress/not_started.
+    """
+    done_values = {
+        "parsing": {"complete"},
+        "triage": {"approved"},
+        "threat_intel": {"complete", "complete with warnings"},
+        "investigation": {"approved"},
+        "reporting": {"approved"},
+    }
+    approval_values = {"awaiting approval", "pending approval"}
+    out = []
+    for name, key in _STAGE_COLUMNS:
+        raw = str(state.get(f"{key}_status") or "").strip()
+        norm = raw.lower()
+        if key != "threat_intel" and norm in approval_values:
+            classified = "awaiting_approval"
+        elif norm in done_values[key]:
+            classified = "done"
+        elif norm == "failed":
+            classified = "failed"
+        elif norm in ("processing", "running"):
+            classified = "in_progress"
+        else:
+            classified = "not_started"
+        out.append({"name": name, "state": classified, "backend_status": raw})
+    return out
+
+
+def _approval_label(status_state: str) -> str:
+    return {
+        "done": "confirmed",
+        "awaiting_approval": "pending analyst approval — not yet confirmed",
+        "failed": "failed — last run did not complete",
+        "in_progress": "currently running",
+        "not_started": "not available yet",
+    }.get(status_state, "not available yet")
+
+
+def _cap_list(items: list, n: int = _MAX_LIST_ITEMS) -> list:
+    return list(items or [])[:n]
+
+
+def _cap_text(value: Any, n: int = _MAX_NARRATIVE_EXCERPT) -> str | None:
+    """Caps any free-text field before it enters the chat context. Several
+    agent-produced text fields (investigation's `summary`, not just its
+    `narrative_report`) are effectively unbounded multi-paragraph prose —
+    every such field must go through this, not just the ones that were
+    empirically observed to be long, or the size cap below silently stops
+    being a guarantee again the next time an agent's output gets wordier."""
+    if not value:
+        return None
+    text = str(value)
+    if len(text) > n:
+        text = text[:n] + "... [truncated]"
+    return text
+
+
+def _summarize_investigation_for_chat(state: dict) -> dict | None:
+    """Reads investigation_result_json directly off `state` — bypasses
+    build_output()'s full-size sanitized forward (fine at one-page-render
+    frequency, oversized for a chat prompt). Extracts only the fields a
+    chat answer actually needs, with every free-text field capped via
+    _cap_text (the investigation agent's `summary` is itself often a long
+    multi-paragraph narrative, not a short one-liner — capping only
+    `narrative_report` and leaving `summary` unbounded was the initial
+    version of this function and is exactly the kind of gap that defeats
+    the size budget below)."""
+    raw = _json_or_empty(state.get("investigation_result_json"))
+    if not raw:
+        return None
+    return {
+        "summary": _cap_text(raw.get("summary")),
+        "severity": raw.get("severity"),
+        "classification": raw.get("classification"),
+        "indicators": _cap_list(raw.get("indicators")),
+        "missing_evidence": _cap_list(raw.get("missing_evidence")),
+        "narrative_excerpt": _cap_text(raw.get("narrative_report")),
+    }
+
+
+def _summarize_reporting_for_chat(state: dict) -> dict | None:
+    """Reads reporting_result_json directly off `state` — bypasses
+    build_reporting()'s file I/O + SHA-256 manifest verification, which
+    exists for on-screen report preview, not chat grounding."""
+    raw = _json_or_empty(state.get("reporting_result_json"))
+    if not raw:
+        return None
+    return {
+        "report_status": raw.get("report_status"),
+        "summary": _cap_text(raw.get("summary")),
+        "recommended_next_action": _cap_text(raw.get("recommended_next_action")),
+    }
+
+
+def _confirmed_facts_block(state: dict, stages: list[dict]) -> dict:
+    """Per-stage dict: internal key -> {"label": ..., ...fields}. 'label'
+    names which of confirmed / pending-approval / failed / not-available
+    this stage's content is. Investigation and Reporting use their OWN
+    Approved/Awaiting Approval/other status (not the coarser 5-way
+    `stages` classification) because build_overview()/build_mitre()/
+    build_evidence() above already surface "Awaiting Approval"
+    investigation content elsewhere in this module (they gate on
+    `inv_status in ("Awaiting Approval", "Approved")`, not "Approved"
+    alone) — this block must label that content the same way, not omit
+    it, or Ask Aegis would contradict the case-view UI tabs it's built
+    from.
+    """
+    state_by_key = {_NAME_TO_KEY[s["name"]]: s["state"]
+                   for s in stages if s["name"] in _NAME_TO_KEY}
+    facts: dict[str, Any] = {}
+
+    parsing_state = state_by_key.get("parsing", "not_started")
+    if parsing_state == "done":
+        parsed = _json_or_empty(state.get("parsing_result_json"))
+        facts["parsing"] = {"label": "confirmed",
+                            "summary": _cap_text(parsed.get("ai_summary")) or "Parsing completed."}
+    else:
+        facts["parsing"] = {"label": _approval_label(parsing_state)}
+
+    triage_state = state_by_key.get("triage", "not_started")
+    if triage_state == "done":
+        tri = _json_or_empty(state.get("triage_result_json"))
+        ticket = tri.get("ticket") or {}
+        facts["triage"] = {
+            "label": "confirmed",
+            "severity": tri.get("severity"), "confidence": tri.get("confidence"),
+            "classification": ticket.get("classification") or tri.get("classification"),
+            "summary": _cap_text(ticket.get("summary")),
+            "recommended_actions": _cap_list(ticket.get("recommended_actions")),
+            "confirmed_facts": _cap_list(tri.get("confirmed_facts")),
+            "evidence_gaps": _cap_list(tri.get("evidence_gaps")),
+        }
+    else:
+        facts["triage"] = {"label": _approval_label(triage_state)}
+
+    ti_state = state_by_key.get("threat_intel", "not_started")
+    if ti_state == "done":
+        ti = _json_or_empty(state.get("threat_intel_result_json"))
+        block = ti.get("threat_intelligence") or {}
+        facts["threat_intel"] = {
+            "label": "confirmed",
+            "risk_level": ti.get("enrichment_risk_level"),
+            "risk_score": ti.get("enrichment_risk_score"),
+            "risk_reasons": _cap_list(ti.get("enrichment_risk_reasons")),
+            "iocs": {k: v for k, v in (block.get("iocs") or {}).items() if v},
+            "notes": _cap_list(block.get("notes")),
+        }
+    else:
+        facts["threat_intel"] = {"label": _approval_label(ti_state)}
+
+    inv_status = str(state.get("investigation_status") or "")
+    if inv_status == "Approved":
+        facts["investigation"] = {"label": "confirmed",
+                                  **(_summarize_investigation_for_chat(state) or {})}
+    elif inv_status == "Awaiting Approval":
+        facts["investigation"] = {"label": _approval_label("awaiting_approval"),
+                                  **(_summarize_investigation_for_chat(state) or {})}
+    elif inv_status == "Failed":
+        facts["investigation"] = {"label": _approval_label("failed")}
+    else:
+        facts["investigation"] = {"label": _approval_label("not_started")}
+
+    rep_status = str(state.get("reporting_status") or "")
+    if rep_status == "Approved":
+        facts["reporting"] = {"label": "confirmed",
+                              **(_summarize_reporting_for_chat(state) or {})}
+    elif rep_status == "Awaiting Approval":
+        facts["reporting"] = {"label": _approval_label("awaiting_approval"),
+                              **(_summarize_reporting_for_chat(state) or {})}
+    elif rep_status == "Failed":
+        facts["reporting"] = {"label": _approval_label("failed")}
+    else:
+        facts["reporting"] = {"label": _approval_label("not_started")}
+
+    return facts
+
+
+def _flatten_case_summary(case_context: dict) -> dict:
+    """Strips build_overview()'s per-field provenance envelope (source_
+    stage/source_field/incident_id/run_id/updated_at/evidence_status) down
+    to bare values. That metadata exists so the case-detail UI can offer
+    "click to see source" — a chat prompt doesn't need it, and repeating
+    incident_id/run_id on every single field was a meaningful, avoidable
+    share of the context budget for zero grounding benefit here (the
+    STAGE STATUS section already conveys evidentiary confidence)."""
+    flat: dict[str, Any] = {}
+    for key, v in (case_context or {}).items():
+        if key == "unified_verdict" and isinstance(v, dict):
+            flat[key] = {"value": v.get("value"), "reasons": _cap_list(v.get("reasons"), 3)}
+        elif isinstance(v, dict) and "value" in v:
+            flat[key] = v.get("value")
+        else:
+            flat[key] = v
+    return flat
+
+
+def build_aegis_context(incident_id: str, run_id: str | None = None,
+                        stage_states: list[dict] | None = None) -> dict:
+    """Cumulative, size-bounded, cross-stage context for Ask Aegis.
+
+    stage_states: an optional precomputed 5-stage list in the shape
+    app.py's _case_stage_states() returns ([{"name", "state", ...
+    "backend_status"}, ...] with state in {"done","current","approval",
+    "locked"}). My Workspace already computes this before the chat panel
+    renders — passing it through here guarantees Ask Aegis and the
+    pipeline-stepper UI never disagree about what's done. When not
+    supplied (e.g. the Ask a Question page, which has no such list in
+    scope), falls back to _stage_status_summary()'s independent
+    classification.
+
+    Called fresh on every chat send — nothing here is cached anywhere.
+    That is what makes rerun-invalidation automatic: workflow_state_store.
+    rerun_stage() already nulls every downstream stage's result_json when
+    an earlier stage is re-run, so the very next call to this function
+    simply stops finding that data. No separate invalidation logic exists
+    or is needed here.
+
+    Reuses build_overview()/build_mitre()/build_evidence()/
+    load_incident_for_case_view() above directly — cheap, pure, and
+    already the correct cross-stage grounding logic this module exists to
+    centralize (see the module docstring's aggregate_verdict() bug-class
+    note). Deliberately does NOT call build_output() or build_reporting()
+    (file I/O, SHA-256 manifest verification, full-size payloads sized
+    for a 200KB display cap) — uses _summarize_investigation_for_chat()/
+    _summarize_reporting_for_chat() instead.
+
+    Returns {incident_id, run_id, available, data_availability,
+    stage_status, case_summary, key_findings, mitre, confirmed_facts,
+    evidence_highlights, warnings}. available=False (with an explanatory
+    warning, never a guess) when no workflow state exists yet, or a
+    stale/foreign run_id was requested — mirrors build_case_view()'s own
+    guard clauses.
+    """
+    state = wss.get_state(incident_id)
+    if state is None:
+        return {"incident_id": str(incident_id), "run_id": run_id, "available": False,
+                "warnings": [f"No workflow state found for incident {incident_id!r} — "
+                            "this incident has not entered the SOC workflow yet."]}
+    resolved_run_id = run_id or state.get("run_id")
+    if run_id and state.get("run_id") != run_id:
+        return {"incident_id": str(incident_id), "run_id": run_id, "available": False,
+                "warnings": [f"run_id {run_id!r} does not match this incident's current "
+                            f"run ({state.get('run_id')!r})."]}
+
+    if stage_states:
+        # Remap app.py's UI vocabulary (done/current/approval/locked) onto
+        # this module's grounding vocabulary, using each stage's own
+        # backend_status for the finer in_progress/failed distinction the
+        # UI classifier collapses into "current" for pill-rendering
+        # purposes (see app.py:_case_stage_states) — a chatbot benefits
+        # from being able to say a stage failed outright.
+        stages = []
+        for s in stage_states:
+            backend = str(s.get("backend_status") or "").strip().lower()
+            if s.get("state") == "done":
+                classified = "done"
+            elif s.get("state") == "approval":
+                classified = "awaiting_approval"
+            elif backend == "failed":
+                classified = "failed"
+            elif backend in ("processing", "running"):
+                classified = "in_progress"
+            else:
+                classified = "not_started"
+            stages.append({"name": s["name"], "state": classified,
+                           "backend_status": s.get("backend_status", "")})
+        # Threat Intel has no real approval gate (see _stage_status_
+        # summary's docstring); app.py's classifier tolerates a legacy
+        # "Approved" value there defensively, but Aegis must never claim
+        # an approval gate that doesn't exist.
+        for s in stages:
+            if s["name"] == "Threat Intelligence Enrichment" and s["state"] == "awaiting_approval":
+                s["state"] = "done"
+    else:
+        stages = _stage_status_summary(state)
+
+    incident, data_availability, incident_source = load_incident_for_case_view(
+        incident_id, resolved_run_id)
+
+    overview = build_overview(state, incident, incident_id, resolved_run_id)
+    mitre = build_mitre(state, incident, incident_id, resolved_run_id)
+    evidence = build_evidence(state, incident, incident_id, resolved_run_id, data_availability)
+
+    context = {
+        "incident_id": str(incident_id), "run_id": resolved_run_id, "available": True,
+        "data_availability": data_availability,
+        "stage_status": stages,
+        "case_summary": _flatten_case_summary(overview.get("case_context", {})),
+        "key_findings": overview.get("key_findings", [])[:_MAX_LIST_ITEMS],
+        "mitre": [
+            {"tactic": m.get("tactic"), "technique_id": m.get("technique_id"),
+             "technique_name": m.get("technique_name"), "origin": m.get("origin")}
+            for m in _cap_list(mitre.get("mappings", []))
+        ],
+        "confirmed_facts": _confirmed_facts_block(state, stages),
+        "evidence_highlights": [
+            {"evidence_type": e.get("evidence_type"), "source": e.get("source"),
+             "summary": e.get("summary")}
+            for e in _cap_list(evidence, _MAX_LIST_ITEMS)
+        ],
+        "warnings": list(data_availability.get("warnings") or []),
+    }
+
+    # Final defensive size cap — mirrors sanitize_investigation_result_for_
+    # display()'s progressive total-size-budget pattern above (trim the
+    # biggest contributor, re-measure, trim the next), at a chat-
+    # appropriate scale (thousands of chars, not the 200KB display cap).
+    # A single untargeted pass isn't enough here: for a busy case (e.g.
+    # Investigation Awaiting Approval with a long narrative excerpt plus a
+    # populated Triage/Threat-Intel confirmed_facts block), confirmed_facts
+    # — not the capped lists trimmed first — is usually the largest
+    # contributor, so trimming only converges if it's shrunk too.
+    def _context_size() -> int:
+        try:
+            return len(json.dumps(context, default=str))
+        except Exception:
+            return 0
+
+    if _context_size() > _MAX_CONTEXT_CHARS:
+        context["evidence_highlights"] = context["evidence_highlights"][:3]
+        context["mitre"] = context["mitre"][:3]
+        context["key_findings"] = context["key_findings"][:3]
+        context.setdefault("warnings", []).append(
+            "Some case detail was trimmed to fit the assistant's context budget.")
+
+    if _context_size() > _MAX_CONTEXT_CHARS:
+        for block in context["confirmed_facts"].values():
+            if not isinstance(block, dict):
+                continue
+            excerpt = block.get("narrative_excerpt")
+            if excerpt:
+                block["narrative_excerpt"] = str(excerpt)[:200] + "... [excerpt shortened]"
+            for list_key in ("recommended_actions", "confirmed_facts", "evidence_gaps",
+                             "risk_reasons", "notes", "indicators", "missing_evidence"):
+                if isinstance(block.get(list_key), list):
+                    block[list_key] = block[list_key][:3]
+
+    return context
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -744,6 +1344,7 @@ def build_case_view(incident_id: str, run_id: str | None = None) -> dict:
     overview = build_overview(state, incident, incident_id, resolved_run_id)
     mitre = build_mitre(state, incident, incident_id, resolved_run_id)
     output = build_output(state)
+    reporting = build_reporting(state, incident_id, resolved_run_id)
     timeline = build_timeline(state, incident, incident_id, resolved_run_id, data_availability)
     entity_graph = build_entity_graph(incident, data_availability)
     evidence = build_evidence(state, incident, incident_id, resolved_run_id, data_availability)
@@ -754,6 +1355,7 @@ def build_case_view(incident_id: str, run_id: str | None = None) -> dict:
         "data_availability": data_availability, "incident_source": incident_source,
         "overview": overview,
         "output": output,
+        "reporting": reporting,
         "timeline": timeline,
         "mitre": mitre.get("mappings", []),
         "mitre_warnings": mitre.get("warnings", []),

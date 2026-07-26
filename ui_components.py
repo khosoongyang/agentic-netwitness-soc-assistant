@@ -273,6 +273,18 @@ html, body, .stApp, p, div:not([data-testid*="Icon"]), button, input, select, te
 .ag-ring b{position:relative;z-index:1;font-size:.9rem;color:var(--text);}
 .ag-ringwrap .rl b{display:block;font-size:.8rem;color:var(--text);}
 .ag-ringwrap .rl small{display:block;font-size:.68rem;color:var(--sub);}
+
+/* Reports tab — Generated Files row head (icon + title + description) */
+.ag-rf-head{display:flex;align-items:flex-start;gap:11px;padding:2px 0;}
+.ag-rf-icon{width:34px;height:34px;min-width:34px;border-radius:9px;display:grid;
+  place-items:center;font-size:16px;color:#fff;}
+.ag-rf-icon.blue{background:#2b5cd8;}
+.ag-rf-icon.green{background:#1f8a5c;}
+.ag-rf-icon.purple{background:#6b46c1;}
+.ag-rf-icon.gold{background:#b9860b;}
+.ag-rf-icon.slate{background:#3a4863;}
+.ag-rf-title{font-size:.85rem;font-weight:800;color:var(--text);margin:0 0 2px;}
+.ag-rf-desc{font-size:.72rem;color:var(--sub);margin:0;}
 </style>
 """
 
@@ -958,3 +970,37 @@ def agent_ring(pct: Any, label: str = "", sub: str = "") -> str:
                 + (f"<small>{_e(sub)}</small>" if sub else "") + "</div>")
     return (f'<div class="ag-ringwrap"><div class="{ring_cls}" style="--pct:{p}">'
             f'<b>{p}%</b></div>{side}</div>')
+
+
+def report_file_head(icon: str, color: str, title: str, description: str) -> str:
+    """Reports tab 'Generated Files' row head — colored icon square + title +
+    description, matching the reference design's document rows. `color` is
+    one of blue|green|purple|gold|slate (see .ag-rf-icon.* in COMPONENT_CSS)."""
+    return (f'<div class="ag-rf-head"><div class="ag-rf-icon {_e(color)}">{_e(icon)}</div>'
+            f'<div><p class="ag-rf-title">{_e(title)}</p>'
+            f'<p class="ag-rf-desc">{_e(description)}</p></div></div>')
+
+
+def humanize_timestamp(iso_str: str | None) -> str:
+    """"Generated today at 5:52 PM" / "Edited yesterday at 3:20 PM" style
+    display string for the Reports tab's Last Saved column. `iso_str` is a
+    plain ISO-8601 UTC timestamp (as produced throughout this app);
+    falls back to the raw string (or "—") when it can't be parsed."""
+    if not iso_str:
+        return "—"
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+        dt = _dt.fromisoformat(str(iso_str).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=_tz.utc)
+        local = dt.astimezone()
+        now = _dt.now(local.tzinfo)
+        time_part = local.strftime("%I:%M %p").lstrip("0")
+        day_delta = (now.date() - local.date()).days
+        if day_delta == 0:
+            return f"today at {time_part}"
+        if day_delta == 1:
+            return f"yesterday at {time_part}"
+        return local.strftime("%b %d, %Y at ") + time_part
+    except Exception:
+        return str(iso_str)

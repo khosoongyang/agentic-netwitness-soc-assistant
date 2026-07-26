@@ -423,6 +423,19 @@ def _artifact_dir(incident_id: str, run_id: str) -> Path:
     return _TRUSTED_OUTPUT_ROOT / f"{safe_id}-{id_hash}" / run_hash
 
 
+def reporting_attempt_dir(incident_id: str, run_id: str, reporting_stage_attempt: int) -> Path:
+    """Native run-scoped Reporting workspace root for one attempt —
+    reporting_attempt_dir(...)/inputs and .../outputs are passed to the
+    Reporting subprocess chain as REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR
+    (see handoff_to_reporting()/run_reporting()/run_reporting_stage()), so
+    drafts/confirmed/exports/candidate_manifest.json for this attempt are
+    isolated by construction — a later rerun gets a brand-new attempt
+    directory and never touches this one. Public (no leading underscore)
+    because reporting_approval.py also needs to resolve this same path when
+    validating a candidate set for approval."""
+    return _artifact_dir(incident_id, run_id) / "reporting" / f"attempt_{int(reporting_stage_attempt)}"
+
+
 def _atomic_write_json(path: Path, data: dict) -> None:
     """Write-temp-then-replace so a crash or restart mid-write can never
     leave a partially-written file behind to be loaded."""
@@ -709,6 +722,256 @@ def _split_ai_summary_sections(text: str) -> tuple[str, str]:
     return text.strip(), ""
 
 
+_AI_SUMMARY_MAX_SENTENCES = 2
+_AI_SUMMARY_MAX_WORDS = 80
+_AI_SUMMARY_ABBREVIATIONS = {
+    "e.g.", "i.e.", "etc.", "mr.", "mrs.", "ms.", "dr.", "prof.",
+    "inc.", "ltd.", "vs.", "no.",
+}
+
+
+def limit_ai_summary_sentences(
+    text: Any,
+    *,
+    max_sentences: int = _AI_SUMMARY_MAX_SENTENCES,
+    max_words: int = _AI_SUMMARY_MAX_WORDS,
+) -> str:
+    """Return a concise, plain-text AI summary with a hard sentence cap.
+
+    Prompts request one or two sentences, but model instructions alone are
+    not a reliable output boundary. This guard is applied both when a
+    summary is generated and when an older persisted summary is rendered.
+    Decimal values and IP addresses are not treated as sentence boundaries.
+    """
+    cleaned = str(text or "").strip()
+    if not cleaned:
+        return ""
+    cleaned = re.sub(
+        r"(?i)^\s*(?:summary|ai[- ]generated summary)\s*:\s*", "", cleaned
+    )
+    cleaned = re.sub(r"(?m)^\s*(?:[-*•]\s+|\d+[.)]\s+)", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return ""
+
+    sentences: list[str] = []
+    start = 0
+    length = len(cleaned)
+    index = 0
+    while index < length and len(sentences) < max(1, max_sentences):
+        char = cleaned[index]
+        if char not in ".!?":
+            index += 1
+            continue
+
+        next_index = index + 1
+        while next_index < length and cleaned[next_index] in "\"')]}":
+            next_index += 1
+
+        if char == ".":
+            next_non_space = next_index
+            while (
+                next_non_space < length
+                and cleaned[next_non_space].isspace()
+            ):
+                next_non_space += 1
+            if (
+                index > 0
+                and cleaned[index - 1].isdigit()
+                and next_non_space < length
+                and cleaned[next_non_space].isdigit()
+            ):
+                index += 1
+                continue
+            prior_token_match = re.search(
+                r"([A-Za-z.]+)\.$", cleaned[: index + 1]
+            )
+            prior_token = (
+                prior_token_match.group(0).lower()
+                if prior_token_match else ""
+            )
+            if prior_token in _AI_SUMMARY_ABBREVIATIONS:
+                index += 1
+                continue
+
+        boundary = next_index >= length
+        if not boundary and cleaned[next_index].isspace():
+            boundary = True
+        if boundary:
+            sentence = cleaned[start:next_index].strip()
+            if sentence:
+                sentences.append(sentence)
+            start = next_index
+            while start < length and cleaned[start].isspace():
+                start += 1
+            index = start
+            continue
+        index += 1
+
+    if len(sentences) < max(1, max_sentences) and start < length:
+        remainder = cleaned[start:].strip()
+        if remainder:
+            sentences.append(remainder)
+
+    limited = " ".join(sentences[:max(1, max_sentences)]).strip()
+    words = limited.split()
+    if max_words > 0 and len(words) > max_words:
+        limited = " ".join(words[:max_words]).rstrip(" ,;:—-")
+        if limited and limited[-1] not in ".!?":
+            limited += "."
+    return limited
+
+
+def _stage_ai_summary_context(stage: str, result: dict) -> str:
+    """Build a bounded, stage-specific fact packet for the summary model."""
+    key = re.sub(r"[^a-z]+", "_", str(stage or "").strip().lower()).strip("_")
+    aliases = {
+        "parsing_and_normalisation": "parsing",
+        "parsing_normalisation": "parsing",
+        "threat_intelligence_enrichment": "threat_intel",
+        "threat_intelligence": "threat_intel",
+        "investigation_agent": "investigation",
+        "reporting_agent": "reporting",
+    }
+    key = aliases.get(key, key)
+    result = result if isinstance(result, dict) else {}
+
+    if key == "parsing":
+        context = {
+            "status": result.get("status"),
+            "parser_confidence": result.get("parser_confidence"),
+            "normalised_alert_count": result.get("normalised_alert_count"),
+            "selected_alert_id": result.get("selected_alert_id"),
+            "processed_alert": result.get("processed_alert"),
+            "missing_important_fields": result.get("missing_important_fields"),
+            "recommended_next_action": result.get("recommended_next_action"),
+        }
+    elif key == "triage":
+        ticket = result.get("ticket") or {}
+        meta = result.get("metakeys_payload") or {}
+        context = {
+            "classification": ticket.get("classification"),
+            "incident_category": ticket.get("incident_category"),
+            "mitre_tactic": ticket.get("mitre_tactic"),
+            "mitre_technique": ticket.get("mitre_technique"),
+            "risk_rating": ticket.get("risk_rating"),
+            "stage_output_summary": ticket.get("summary"),
+            "recommended_actions": ticket.get("recommended_actions"),
+            "matched_metakeys": ticket.get("metakeys"),
+            "matched_ioc_count": ticket.get("matched_ioc_count"),
+            "ioc_summary": meta.get("ioc_summary"),
+            "risk_level": meta.get("risk_level"),
+        }
+    elif key == "threat_intel":
+        context = {
+            "status": result.get("status"),
+            "enrichment_risk_level": result.get("enrichment_risk_level"),
+            "enrichment_risk_score": result.get("enrichment_risk_score"),
+            "enrichment_risk_reasons": result.get("enrichment_risk_reasons"),
+            "threat_intelligence": result.get("threat_intelligence"),
+            "warnings": result.get("warnings"),
+            "stage_output_summary": result.get("summary"),
+            "recommended_next_action": result.get("recommended_next_action"),
+        }
+    elif key == "investigation":
+        context = {
+            "status": result.get("status"),
+            "incident_id": (
+                result.get("investigated_for") or result.get("incident_id")
+            ),
+            "incident_folder": result.get("incident_folder"),
+            "cluster_alert_ids": result.get("cluster_alert_ids"),
+            "severity": result.get("severity"),
+            "indicators": result.get("indicators"),
+            "stage_output_summary": result.get("summary"),
+            "missing_evidence": result.get("missing_evidence"),
+            "feedback_loop": result.get("feedback_loop"),
+            "severity_divergence": result.get("severity_divergence"),
+            "narrative_report_excerpt": str(
+                result.get("narrative_report") or ""
+            )[:4000],
+        }
+    elif key == "reporting":
+        context = {
+            "status": result.get("status"),
+            "report_status": (
+                result.get("report_status_display")
+                or result.get("report_status")
+            ),
+            "validation_status": (
+                result.get("validation_status_display")
+                or result.get("validation_status")
+            ),
+            "report_completeness_score": result.get(
+                "report_completeness_score"
+            ),
+            "report_quality_score": result.get("report_quality_score"),
+            "report_manifest": result.get("report_manifest"),
+            "generated_reports": result.get("generated_reports"),
+            "stage_output_summary": result.get("summary"),
+            "investigation_limitations": (
+                result.get("investigation_limitations")
+                or result.get("limitations")
+            ),
+            "warnings": result.get("warnings"),
+            "recommended_next_action": result.get("recommended_next_action"),
+        }
+    else:
+        context = {
+            key_name: value for key_name, value in result.items()
+            if key_name not in {
+                "subprocess", "orchestrator_subprocess", "artifacts",
+                "output_files", "ai_thinking",
+            }
+        }
+    return json.dumps(context, indent=2, default=str)[:9000]
+
+
+def generate_stage_ai_summary(
+    stage: str,
+    stage_result: dict,
+    model: str | None = None,
+) -> dict:
+    """Generate the one-to-two sentence analyst summary for any stage.
+
+    The detailed native stage result remains unchanged and available in its
+    Output view. This is a separate, deliberately short orientation layer.
+    """
+    rep_dir = str(REP_DIR)
+    if rep_dir not in sys.path:
+        sys.path.insert(0, rep_dir)
+    from backend.openai_client import invoke_openai_text
+
+    selected_model = model or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
+    context = _stage_ai_summary_context(stage, stage_result)
+    try:
+        summary = invoke_openai_text(
+            f"{stage} stage result fields:\n{context}",
+            system=(
+                "You are a SOC analyst assistant summarising the current "
+                "workflow stage for an analyst. Return exactly one or two "
+                "concise plain-English sentences, with no heading, bullets, "
+                "brackets, or raw field dump, and no more than 70 words total. "
+                "State what happened or was found; use the second sentence only "
+                "for why it matters or the next action. Use only facts in the "
+                "provided stage result and never invent missing values."
+            ),
+            model=selected_model,
+            max_output_tokens=180,
+        )
+        summary = limit_ai_summary_sentences(summary)
+    except Exception as exc:
+        summary = limit_ai_summary_sentences(
+            f"AI summary unavailable — LLM call failed: {exc}"
+        )
+
+    return {
+        "ai_summary": summary,
+        "ai_summary_model": selected_model,
+        "ai_summary_generated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
 def generate_parsing_ai_summary(parsing_result: dict, model: str | None = None) -> dict:
     """Ask OpenAI for a plain-English summary of what the Parsing &
     Normalisation stage extracted, based on its processed_alert output.
@@ -730,8 +993,9 @@ def generate_parsing_ai_summary(parsing_result: dict, model: str | None = None) 
                 "You are a SOC analyst assistant. You are given the parsed and "
                 "normalised fields extracted from a NetWitness alert by the "
                 "parsing pipeline. Reply in exactly this format:\n"
-                "SUMMARY: <2-3 plain-English sentences on what this alert is "
-                "and why it matters>\n"
+                "SUMMARY: <exactly 1-2 concise plain-English sentences, no "
+                "more than 70 words total, on what this alert is and why it "
+                "matters>\n"
                 "THINKING: <2-4 short bullet points on the specific indicators "
                 "(host, IPs, user, file, process, MITRE technique) that drove "
                 "your read>\n"
@@ -739,11 +1003,15 @@ def generate_parsing_ai_summary(parsing_result: dict, model: str | None = None) 
                 "values that aren't there."
             ),
             model=selected_model,
-            max_output_tokens=600,
+            max_output_tokens=420,
         )
         summary, thinking = _split_ai_summary_sections(raw)
+        summary = limit_ai_summary_sentences(summary)
     except Exception as exc:
-        summary = thinking = f"AI summary unavailable — LLM call failed: {exc}"
+        summary = limit_ai_summary_sentences(
+            f"AI summary unavailable — LLM call failed: {exc}"
+        )
+        thinking = summary
 
     return {
         "ai_summary": summary,
@@ -817,6 +1085,460 @@ def render_triage_thinking_plain(triage_result: dict) -> str:
     return "\n\n".join(paragraphs)
 
 
+def _thinking_fragment(value: Any, limit: int = 560) -> str:
+    """Collapse persisted agent output into a short, card-safe sentence."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
+
+
+def _investigation_trace_rows(narrative_report: str, limit: int = 3) -> list[dict]:
+    """Read orchestrator.py's persisted Playbook Execution Trace table.
+
+    main.py writes FinalIncidentAnalysis.execution_trace to the Markdown
+    report. soc_workflow.run_investigation() then persists that report in
+    investigation_result_json.narrative_report. Reading that exact table
+    keeps the UI tied to the Investigation agent's real milestone decisions.
+    """
+    if "## Playbook Execution Trace" not in str(narrative_report or ""):
+        return []
+    section = narrative_report.split("## Playbook Execution Trace", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    rows: list[dict] = []
+    pattern = re.compile(
+        r"^\|\s*`([^`]+)`\s*\|\s*(.*?)\s*\|\s*\*\*([^*]+)\*\*\s*\|\s*(.*?)\s*\|\s*$"
+    )
+    for line in section.splitlines():
+        match = pattern.match(line.strip())
+        if not match:
+            continue
+        rows.append({
+            "step_id": match.group(1),
+            "instruction": match.group(2),
+            "status": match.group(3),
+            "findings": match.group(4),
+        })
+        if len(rows) >= limit:
+            break
+    return rows
+
+
+def _parse_progress_datetime(value: Any) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _format_progress_datetime(value: Any) -> str:
+    parsed = _parse_progress_datetime(value)
+    if parsed is None:
+        return str(value or "Time not recorded")
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc)
+        return parsed.strftime("%Y-%m-%d %H:%M:%S UTC")
+    return parsed.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _format_elapsed(started_at: Any, finished_at: Any) -> str:
+    started = _parse_progress_datetime(started_at)
+    finished = _parse_progress_datetime(finished_at)
+    if started is None or finished is None:
+        return ""
+    if started.tzinfo is None and finished.tzinfo is not None:
+        finished = finished.replace(tzinfo=None)
+    elif started.tzinfo is not None and finished.tzinfo is None:
+        started = started.replace(tzinfo=None)
+    seconds = max(0, int((finished - started).total_seconds()))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _render_stage_progress_plain(
+    stage_key: str,
+    stage_label: str,
+    result: dict,
+    workflow_state: dict,
+    activity: list[dict],
+) -> str:
+    """Timestamped stage progress from the durable workflow ledger."""
+    stage_aliases = {
+        "parsing": {"parsing", "parsing_normalisation"},
+        "triage": {"triage"},
+        "threat_intel": {"threat_intel", "threat_intelligence"},
+        "investigation": {"investigation"},
+        "reporting": {"reporting"},
+    }
+    matching_stages = stage_aliases.get(stage_key, {stage_key})
+    relevant = [
+        item for item in (activity or [])
+        if str(item.get("stage") or "").strip().lower() in matching_stages
+    ]
+
+    status_column = {
+        "parsing": "parsing_status",
+        "triage": "triage_status",
+        "threat_intel": "threat_intel_status",
+        "investigation": "investigation_status",
+        "reporting": "reporting_status",
+    }.get(stage_key)
+    updated_column = {
+        "threat_intel": "threat_intel_updated_at",
+        "investigation": "investigation_updated_at",
+        "reporting": "reporting_updated_at",
+    }.get(stage_key)
+    status = str(workflow_state.get(status_column) or result.get("status") or "Pending")
+    status_lower = status.strip().lower()
+
+    lines: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    started_at = None
+    finished_at = None
+    latest_event_at = None
+
+    action_labels = {
+        "stage_started": f"{stage_label} started.",
+        "stage_succeeded": f"{stage_label} processing completed.",
+        "stage_failed": f"{stage_label} failed.",
+        "approved": f"{stage_label} was approved by the SOC analyst.",
+        "rejected": f"{stage_label} was rejected by the SOC analyst.",
+    }
+    for item in relevant:
+        action = str(item.get("action") or "").strip().lower()
+        message = action_labels.get(action)
+        if not message:
+            continue
+        timestamp = item.get("timestamp") or item.get("occurred_at")
+        identity = (str(timestamp or ""), message)
+        if identity in seen:
+            continue
+        seen.add(identity)
+        lines.append(f"{_format_progress_datetime(timestamp)} — {message}")
+        latest_event_at = timestamp or latest_event_at
+        if action == "stage_started" and started_at is None:
+            started_at = timestamp
+        if action in {"stage_succeeded", "stage_failed"}:
+            finished_at = timestamp
+
+    worker_matches_stage = (
+        str(workflow_state.get("worker_stage") or "").strip().lower()
+        in matching_stages
+    )
+    if worker_matches_stage and workflow_state.get("worker_started_at"):
+        worker_started = workflow_state.get("worker_started_at")
+        if started_at is None:
+            started_at = worker_started
+            message = f"{stage_label} started."
+            identity = (str(worker_started), message)
+            if identity not in seen:
+                lines.append(
+                    f"{_format_progress_datetime(worker_started)} — {message}"
+                )
+                seen.add(identity)
+
+    if not finished_at and updated_column:
+        finished_at = workflow_state.get(updated_column)
+    if not finished_at:
+        finished_at = (
+            result.get("generated_at")
+            or result.get("created_at")
+            or result.get("ai_summary_generated_at")
+        )
+
+    has_terminal_event = any(
+        text.endswith(
+            (
+                "processing completed.",
+                "failed.",
+                "was approved by the SOC analyst.",
+                "was rejected by the SOC analyst.",
+            )
+        )
+        for text in lines
+    )
+    if finished_at and not has_terminal_event and status_lower not in {
+        "pending", "processing", "running", "in progress"
+    }:
+        terminal_message = (
+            f"{stage_label} failed."
+            if status_lower == "failed"
+            else f"{stage_label} processing completed."
+        )
+        lines.append(
+            f"{_format_progress_datetime(finished_at)} — {terminal_message}"
+        )
+
+    if status_lower in {"processing", "running", "in progress"}:
+        heartbeat = workflow_state.get("worker_heartbeat_at")
+        current_time = (
+            heartbeat
+            or workflow_state.get("worker_started_at")
+            or workflow_state.get("workflow_updated_at")
+        )
+        if started_at is None:
+            started_at = current_time
+        progress_note = str(
+            workflow_state.get("worker_progress_note") or ""
+        ).strip()
+        current_message = f"Current stage: {stage_label} is processing"
+        if progress_note:
+            current_message += f" — {progress_note}"
+        lines.append(
+            f"{_format_progress_datetime(current_time)} — "
+            f"{current_message}."
+        )
+    else:
+        status_text = {
+            "awaiting approval": "complete and awaiting SOC analyst approval",
+            "approved": "approved",
+            "complete": "complete",
+            "complete with warnings": "complete with warnings",
+            "failed": "failed",
+            "rejected": "rejected",
+            "blocked": "blocked",
+            "pending": "pending",
+        }.get(status_lower, status)
+        current_time = (
+            latest_event_at
+            or finished_at
+            or workflow_state.get("workflow_updated_at")
+        )
+        lines.append(
+            f"{_format_progress_datetime(current_time)} — "
+            f"Current stage: {stage_label} is {status_text}."
+        )
+
+    elapsed = _format_elapsed(started_at, finished_at)
+    if elapsed:
+        lines.append(f"Elapsed stage time: {elapsed}.")
+    return "\n\n".join(lines)
+
+
+def render_agent_thinking_plain(
+    stage: str,
+    result: dict | None,
+    *,
+    workflow_state: dict | None = None,
+    activity: list[dict] | None = None,
+) -> str:
+    """Render every agent's timestamped Thinking Process progress.
+
+    The case workspace supplies workflow_state + activity, producing the
+    durable stage_started/stage_succeeded/stage_failed/approval timeline,
+    current worker heartbeat, and elapsed stage time. The result-only
+    branches remain as a backwards-compatible fallback for non-workspace
+    callers. No hidden model chain-of-thought or generic case verdict is used.
+    """
+    result = result if isinstance(result, dict) else {}
+    key = re.sub(r"[^a-z]+", "_", str(stage or "").strip().lower()).strip("_")
+    aliases = {
+        "parsing_and_normalisation": "parsing",
+        "parsing_normalisation": "parsing",
+        "threat_intelligence_enrichment": "threat_intel",
+        "threat_intelligence": "threat_intel",
+        "investigation_agent": "investigation",
+        "reporting_agent": "reporting",
+    }
+    key = aliases.get(key, key)
+
+    if workflow_state is not None or activity is not None:
+        stage_labels = {
+            "parsing": "Parsing",
+            "triage": "Triage",
+            "threat_intel": "Threat Intelligence Enrichment",
+            "investigation": "Investigation",
+            "reporting": "Reporting",
+        }
+        return _render_stage_progress_plain(
+            key,
+            stage_labels.get(key, str(stage or "Selected stage")),
+            result,
+            workflow_state or {},
+            activity or [],
+        )
+
+    if not result:
+        return ""
+
+    if key == "parsing":
+        direct = str(result.get("ai_thinking") or "").strip()
+        if direct:
+            return direct
+        paragraphs = []
+        count = result.get("normalised_alert_count")
+        selected = result.get("selected_alert_id")
+        if result.get("status") == "completed":
+            subject = f"alert {selected}" if selected else "the selected alert"
+            count_text = (
+                f" and produced {count} normalised alert record(s)"
+                if count is not None else ""
+            )
+            paragraphs.append(
+                f"Parsing and normalisation completed for {subject}{count_text}."
+            )
+        missing = result.get("missing_important_fields") or []
+        if missing:
+            paragraphs.append(
+                "The parser flagged missing fields for downstream review: "
+                + ", ".join(str(item) for item in missing[:8]) + "."
+            )
+        if result.get("processed_alert"):
+            paragraphs.append(
+                "The resulting processed alert was handed to Triage as the "
+                "validated workflow input."
+            )
+        return "\n\n".join(paragraphs)
+
+    if key == "triage":
+        return render_triage_thinking_plain(result)
+
+    if key == "threat_intel":
+        paragraphs = []
+        level = result.get("enrichment_risk_level") or "Unknown"
+        score = result.get("enrichment_risk_score")
+        reasons = result.get("enrichment_risk_reasons") or []
+        risk_text = f"Threat Intelligence rated the enrichment risk {level}"
+        if score is not None:
+            risk_text += f" with a score of {score}"
+        if reasons:
+            risk_text += ": " + "; ".join(
+                _thinking_fragment(reason, 220) for reason in reasons[:4]
+            )
+        paragraphs.append(risk_text.rstrip(".") + ".")
+
+        ti = result.get("threat_intelligence") or {}
+        notes = result.get("warnings") or ti.get("notes") or []
+        if notes:
+            paragraphs.append(
+                "Provider checks and limitations: "
+                + "; ".join(_thinking_fragment(note, 220) for note in notes[:4])
+            )
+        next_action = result.get("recommended_next_action")
+        if next_action:
+            paragraphs.append(
+                "Therefore, the workflow action is: "
+                + _thinking_fragment(next_action, 320)
+            )
+        return "\n\n".join(paragraphs)
+
+    if key == "investigation":
+        paragraphs = []
+        incident_id = result.get("investigated_for") or result.get("incident_id")
+        folder = result.get("incident_folder")
+        cluster_ids = result.get("cluster_alert_ids") or []
+        if folder:
+            sync_text = (
+                f"sync_engine.py synchronized the evidence for "
+                f"{incident_id or 'this alert'} into {folder}"
+            )
+            if cluster_ids:
+                sync_text += (
+                    f", where {len(cluster_ids)} alert(s) formed the "
+                    "investigation timeline"
+                )
+            paragraphs.append(sync_text + ".")
+
+        trace_rows = _investigation_trace_rows(result.get("narrative_report") or "")
+        if trace_rows:
+            decisions = []
+            for row in trace_rows:
+                decisions.append(
+                    f"{row['step_id']} {row['status']}: "
+                    f"{_thinking_fragment(row['findings'], 260)}"
+                )
+            paragraphs.append(
+                "orchestrator.py evaluated the playbook milestones. "
+                + " ".join(decisions)
+            )
+
+        severity = result.get("severity")
+        summary = _thinking_fragment(result.get("summary"), 620)
+        if severity or summary:
+            conclusion = (
+                f"The resulting investigation severity is {severity}. "
+                if severity else ""
+            )
+            conclusion += summary
+            paragraphs.append(conclusion.strip())
+
+        feedback = result.get("feedback_loop") or {}
+        if feedback.get("triggered"):
+            gaps = feedback.get("gaps") or []
+            paragraphs.append(
+                f"The evidence-gap feedback loop was triggered for "
+                f"{len(gaps)} gap(s); Triage supplement and re-investigation "
+                "results were retained in this persisted output."
+            )
+        return "\n\n".join(paragraphs)
+
+    if key == "reporting":
+        paragraphs = []
+        manifest = result.get("report_manifest") or {}
+        sections = manifest.get("sections") or {}
+        generated = result.get("generated_reports") or []
+        count = len(sections) or len(generated)
+        report_status = (
+            result.get("report_status_display")
+            or manifest.get("display_status")
+            or result.get("report_status")
+            or result.get("status")
+            or "generated"
+        )
+        paragraphs.append(
+            f"soc_workflow.py handed the approved investigation context to "
+            f"Reporting, which produced {count} report section(s). Current "
+            f"report state: {report_status}."
+        )
+
+        completeness = result.get("report_completeness_score")
+        quality = result.get("report_quality_score")
+        validation = (
+            result.get("validation_status_display")
+            or result.get("validation_status")
+        )
+        checks = []
+        if completeness is not None:
+            checks.append(f"completeness {completeness}")
+        if quality is not None:
+            checks.append(f"quality {quality}")
+        if validation:
+            checks.append(f"validation {validation}")
+        if checks:
+            paragraphs.append(
+                "The reporting checks recorded " + ", ".join(checks) + "."
+            )
+
+        limitations = (
+            result.get("investigation_limitations")
+            or result.get("limitations")
+            or result.get("warnings")
+            or []
+        )
+        if limitations:
+            paragraphs.append(
+                "Limitations carried into analyst review: "
+                + "; ".join(
+                    _thinking_fragment(item, 220) for item in limitations[:4]
+                )
+            )
+        paragraphs.append(
+            "The generated candidate set remains subject to the persisted SOC "
+            "analyst review and approval gate before closure."
+        )
+        return "\n\n".join(paragraphs)
+
+    return _thinking_fragment(
+        result.get("summary")
+        or result.get("status")
+        or result.get("recommended_next_action")
+    )
+
+
 def generate_triage_ai_summary(triage_result: dict, model: str | None = None) -> dict:
     """Ask OpenAI for a plain-English summary of what TriageAgent.triage()
     produced (the 'AI-Generated Summary' panel). The 'Thinking Process'
@@ -854,16 +1576,20 @@ def generate_triage_ai_summary(triage_result: dict, model: str | None = None) ->
                 "You are a SOC analyst assistant. You are given the structured "
                 "output of the Triage agent for a NetWitness incident — its "
                 "classification, MITRE mapping, risk rating, matched IOCs, and "
-                "recommended actions. Reply with 2-3 plain-English sentences on "
-                "what this incident is and why it was classified this way. "
+                "recommended actions. Reply with exactly one or two concise "
+                "plain-English sentences, no more than 70 words total, on what "
+                "this incident is and why it was classified this way. "
                 "Only state facts present in the data below — never invent "
                 "values that aren't there."
             ),
             model=selected_model,
-            max_output_tokens=300,
+            max_output_tokens=180,
         ).strip()
+        summary = limit_ai_summary_sentences(summary)
     except Exception as exc:
-        summary = f"AI summary unavailable — LLM call failed: {exc}"
+        summary = limit_ai_summary_sentences(
+            f"AI summary unavailable — LLM call failed: {exc}"
+        )
 
     return {
         "ai_summary": summary,
@@ -923,56 +1649,30 @@ def needs_investigation(triage_result: dict) -> bool:
 # ══════════════════════════════════════════════════════════════════════════════
 # 3.5  STAGE — THREAT INTELLIGENCE ENRICHMENT  (in-process)
 # ══════════════════════════════════════════════════════════════════════════════
-# Reuses threat_intel.enrich_iocs() unmodified in its reputation model —
-# IP/domain/hash IOCs via VirusTotal + AbuseIPDB (both already gated on
-# their existing env vars), same scoring/caching/verdict logic. This
-# section is the thin orchestration wrapper: explicit inputs only (never
-# "find the latest file" itself), incident/run identity validation,
-# honest per-IOC bucketing, and the structured Thinking Process record.
+# Thin orchestration wrapper around threat_intel.run_threat_intel_for_dashboard()
+# (VirusTotal + AbuseIPDB + AlienVault OTX, case-level enrichment_risk_score/
+# enrichment_risk_level/enrichment_risk_reasons — no per-IOC verdict system).
+# This section only does incident/run identity validation and re-keys the
+# engine's own result onto the workflow's stage-result envelope; the engine
+# itself already computes notes vs. warnings and writes its output files
+# before returning, so nothing here mutates the result further.
 
 class ThreatIntelValidationError(Exception):
     """Raised when inputs handed to run_threat_intel() don't belong to the
     same incident/run — refuses a stale or mismatched enrichment."""
 
 
-def _classify_ioc(r: dict) -> str:
-    """Exactly one bucket per IOC — never contradictory. An IOC is
-    lookup_failed ONLY when every applicable, configured source that was
-    actually attempted for it failed/timed out/rate-limited AND none
-    succeeded. If any applicable source completed, the IOC keeps its
-    real verdict; other sources' failures become a stage-level warning
-    instead of relabeling the IOC. NO_FINDINGS is never called 'benign' —
-    the sources answered and found nothing adverse, which is not the
-    same as proof the IOC is clean."""
-    verdict = r["verdict"]
-    if verdict == "MALICIOUS":
-        return "malicious"
-    if verdict == "SUSPICIOUS":
-        return "suspicious"
-    statuses = [s for s in (r.get("source_status") or {}).values()
-               if s != "not_applicable"]
-    completed = [s for s in statuses if s == "completed"]
-    attempted_and_failed = [s for s in statuses
-                            if s in ("timed_out", "rate_limited", "failed")]
-    if completed:
-        return "no_findings" if verdict == "NO_FINDINGS" else "unknown"
-    if attempted_and_failed:
-        return "lookup_failed"
-    return "unknown"   # nothing applicable/configured was even attempted
-
-
 def run_threat_intel(incident_id: str, run_id: str,
                      normalised_alert: dict | None,
-                     triage_result: dict, incident: dict | None = None,
-                     max_iocs: int = 8, deadline_seconds: float = 25.0) -> dict:
+                     triage_result: dict, incident: dict | None = None) -> dict:
     """Threat Intelligence Enrichment stage. Takes the already-loaded,
     already-validated Triage + Parsing outputs (and, where available, the
     full raw incident) for THIS incident/run explicitly — never re-reads
-    "the latest" state itself. Never raises on lookup failures
-    (enrich_iocs already guarantees that); only raises
-    ThreatIntelValidationError if the triage_result's own embedded
-    incident_id doesn't match incident_id."""
-    from threat_intel import enrich_iocs
+    "the latest" state itself. Never raises on lookup failures (the engine
+    degrades every provider call to a "skipped"/"error" status instead);
+    only raises ThreatIntelValidationError if the triage_result's own
+    embedded incident_id doesn't match incident_id."""
+    import threat_intel
 
     ticket = triage_result.get("ticket") or {}
     meta   = triage_result.get("metakeys_payload") or {}
@@ -982,133 +1682,25 @@ def run_threat_intel(incident_id: str, run_id: str,
             f"triage_result belongs to incident {tri_inc_id!r}, expected "
             f"{incident_id!r} — refusing stale/mismatched threat-intel run")
 
-    generated_at = datetime.now(timezone.utc).isoformat()
-    warnings: list[str] = []
+    output_dir = REP_DIR / "outputs" / _safe(str(incident_id)) / _safe(run_id) / "threat_intel"
+    flat_alert = threat_intel._build_flat_alert(incident or {}, triage_result, normalised_alert)
+    dashboard_result = threat_intel.run_threat_intel_for_dashboard(flat_alert, output_dir=output_dir)
 
-    enr = enrich_iocs(incident or {}, triage_result,
-                      normalised_alert=normalised_alert,
-                      max_iocs=max_iocs, deadline_seconds=deadline_seconds)
-    results, stats = enr["results"], enr["stats"]
-    private_ips_retained = stats.get("private_ips_retained") or []
-
-    trace_ioc = next(
-        (step for step in (triage_result.get("trace") or [])
-         if step.get("step") == "IOC Checklist"),
-        {},
-    )
-    behavioral_ioc_names: list[str] = []
-    for category in (trace_ioc.get("per_category") or {}).values():
-        behavioral_ioc_names.extend(category.get("matched_ioc_names") or [])
-    behavioral_ioc_names = list(dict.fromkeys(behavioral_ioc_names))
-    try:
-        behavioral_ioc_count = int(
-            ticket.get("matched_ioc_count")
-            or trace_ioc.get("total_ioc_count")
-            or len(behavioral_ioc_names)
-        )
-    except (TypeError, ValueError):
-        behavioral_ioc_count = len(behavioral_ioc_names)
-
-    buckets: dict[str, list[str]] = {
-        "malicious": [], "suspicious": [], "no_findings": [],
-        "unknown": [], "lookup_failed": [],
-    }
-    partial_failure_count = 0
-    for r in results:
-        buckets[_classify_ioc(r)].append(r["value"])
-        statuses = [s for s in (r.get("source_status") or {}).values()
-                   if s != "not_applicable"]
-        if (any(s == "completed" for s in statuses)
-                and any(s in ("timed_out", "rate_limited", "failed") for s in statuses)):
-            partial_failure_count += 1
-
-    if not results:
-        no_external_iocs = (
-            "No externally enrichable IOCs (public IPs, domains, or hashes) "
-            "were found."
-        )
-        if private_ips_retained:
-            no_external_iocs += (
-                f" {len(private_ips_retained)} private/internal IP address(es) "
-                "were retained for Investigation and were not submitted to "
-                "external threat-intelligence services."
-            )
-        if behavioral_ioc_count:
-            no_external_iocs += (
-                f" Triage's {behavioral_ioc_count} behavioral indicator(s) "
-                "remain available to Investigation; they are not external "
-                "reputation-lookup targets."
-            )
-        warnings.append(no_external_iocs)
-    if stats.get("truncated"):
-        warnings.append(f"IOC list truncated to the enrichment budget "
-                        f"({max_iocs}) — not every extracted IOC was looked up.")
-    for env_key, label in (("VT_API_KEY", "VirusTotal"),
-                           ("ABUSEIPDB_API_KEY", "AbuseIPDB")):
-        if not os.environ.get(env_key):
-            warnings.append(f"{label} not queried — {env_key} is not configured.")
-    if buckets["lookup_failed"]:
-        warnings.append(f"{len(buckets['lookup_failed'])} IOC(s) had a lookup "
-                        "failure against every applicable source.")
-    if partial_failure_count:
-        warnings.append(f"{partial_failure_count} IOC(s) had at least one source "
-                        "fail while another source still returned a verdict.")
-
-    source_results: dict[str, dict] = {}
-    for r in results:
-        for src, status in (r.get("source_status") or {}).items():
-            bucket = source_results.setdefault(src, {})
-            bucket[status] = bucket.get(status, 0) + 1
-
-    risk_score = max((r["score"] for r in results), default=0)
-    risk_level = ("High" if buckets["malicious"] else
-                 "Medium" if buckets["suspicious"] else
-                 "Low" if results else "Unknown")
-    status = "completed_with_warnings" if warnings else "completed"
-
-    result = {
+    return {
         "incident_id": str(incident_id), "run_id": run_id,
-        "stage": "threat_intelligence", "status": status,
-        "generated_at": generated_at,
-        "risk_level": risk_level, "risk_score": risk_score,
-        "iocs": results, "source_results": source_results,
-        "internal_iocs": [
-            {
-                "value": value,
-                "type": "ip",
-                "scope": "private/internal",
-                "disposition": "retained_for_investigation",
-            }
-            for value in private_ips_retained
-        ],
-        "triage_behavioral_indicators": {
-            "count": behavioral_ioc_count,
-            "names": behavioral_ioc_names,
-            "disposition": "retained_for_investigation",
-        },
-        "malicious_iocs": buckets["malicious"], "suspicious_iocs": buckets["suspicious"],
-        "no_findings_iocs": buckets["no_findings"], "unknown_iocs": buckets["unknown"],
-        "lookup_failed_iocs": buckets["lookup_failed"],
-        "warnings": warnings, "errors": [], "stats": stats,
-    }
-    result["thinking_process"] = {
         "stage": "threat_intelligence",
-        "decision": "Threat Intelligence enrichment completed",
-        "iocs_extracted": len(results),
-        "externally_enrichable_iocs": len(results),
-        "private_internal_ips_retained": len(private_ips_retained),
-        "triage_behavioral_indicators": behavioral_ioc_count,
-        "sources_attempted": sorted(source_results.keys()),
-        "source_outcomes": source_results,
-        "malicious_iocs": len(buckets["malicious"]),
-        "suspicious_iocs": len(buckets["suspicious"]),
-        "no_findings_iocs": len(buckets["no_findings"]),
-        "unknown_iocs": len(buckets["unknown"]),
-        "lookup_failed_iocs": len(buckets["lookup_failed"]),
-        "risk_level": risk_level, "warnings": warnings,
-        "next_stage": "investigation",
+        "status": dashboard_result["status"],
+        "generated_at": dashboard_result["created_at"],
+        "threat_intelligence": dashboard_result["threat_intelligence"],
+        "enrichment_risk_score": dashboard_result["enrichment_risk_score"],
+        "enrichment_risk_level": dashboard_result["enrichment_risk_level"],
+        "enrichment_risk_reasons": dashboard_result["enrichment_risk_reasons"],
+        "warnings": dashboard_result["warnings"],
+        "enriched_alert": dashboard_result["enriched_alert"],
+        "summary": dashboard_result["summary"],
+        "recommended_next_action": dashboard_result["recommended_next_action"],
+        "output_files": dashboard_result["output_files"],
     }
-    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1227,10 +1819,12 @@ def _to_iso_timestamp(value) -> str:
 # investigation alert, to keep soc_investigation_agent/ free of our upgrades.
 # threat_intel.py is the one exception (as of the Threat Intelligence stage
 # being wired into the mandatory pipeline): its enrichment result IS now
-# embedded below, under "threat_intelligence" — a deliberate, reviewed
-# reversal of the original "keep it out" policy for this one skill, since
-# it now runs as a mandatory pipeline stage before Investigation rather
-# than an on-demand UI-only lookup.
+# embedded below — a deliberate, reviewed reversal of the original "keep it
+# out" policy for this one skill, since it now runs as a mandatory pipeline
+# stage before Investigation rather than an on-demand UI-only lookup. The
+# embed surfaces the exact fields the stage produces: enriched_alert,
+# threat_intelligence, enrichment_risk_score, enrichment_risk_level,
+# enrichment_risk_reasons — not the whole stage-result envelope.
 
 
 def build_investigation_alert(triage_result: dict, incident: dict,
@@ -1451,7 +2045,13 @@ def build_investigation_alert(triage_result: dict, incident: dict,
                      "in the UI are intentionally unchanged/simple.",
         },
         **({"triage_deep_dive": supplement} if supplement else {}),
-        **({"threat_intelligence": threat_intel_result} if threat_intel_result else {}),
+        **({
+            "enriched_alert": threat_intel_result.get("enriched_alert"),
+            "threat_intelligence": threat_intel_result.get("threat_intelligence"),
+            "enrichment_risk_score": threat_intel_result.get("enrichment_risk_score"),
+            "enrichment_risk_level": threat_intel_result.get("enrichment_risk_level"),
+            "enrichment_risk_reasons": threat_intel_result.get("enrichment_risk_reasons"),
+        } if threat_intel_result else {}),
     }
 
 
@@ -1907,8 +2507,26 @@ def run_investigation(incident_id: str, timeout: int = 600,
 
 def handoff_to_reporting(triage_result: dict, incident: dict,
                          investigation_result: dict | None,
-                         threat_intel_result: dict | None = None) -> str:
+                         threat_intel_result: dict | None = None, *,
+                         incident_id: str | None = None, run_id: str | None = None,
+                         reporting_stage_attempt: int | None = None) -> str:
     """Write the input files the reporting agent's adapter expects.
+
+    When incident_id/run_id/reporting_stage_attempt are ALL given (the
+    durable run_reporting_stage() path), writes into a native run-scoped
+    workspace (reporting_attempt_dir(...)) rather than the shared, flat
+    REP_DIR/inputs|outputs paths — every rerun gets its own attempt
+    directory, so nothing written here is ever silently overwritten or
+    bled into by a different run/attempt — and additionally writes
+    processed_alert.json, approval_history.json, workflow_metadata.json,
+    and a hash-verified handoff_manifest.json.
+
+    Left at their defaults (None), this falls back to the exact original
+    flat-path behaviour — used by the legacy in-memory Agent Board engine
+    (app.py's `_wfm.handoff_to_reporting(tri, incident, inv)`, which has no
+    run-scoping concept) and by tests that call this directly against a
+    monkeypatched REP_DIR.
+
     Returns the sanitized ticket id used for per-ticket output folders.
 
     threat_intel_result is written explicitly (a separate
@@ -1923,8 +2541,17 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
     title   = payload.get("incident_title") or ticket.get("title") or "SOC incident"
     ticket_id = _safe_ticket_id(ticket.get("unc"))
 
-    outputs = REP_DIR / "outputs"
-    inputs  = REP_DIR / "inputs"
+    run_scoped = incident_id is not None and run_id is not None and reporting_stage_attempt is not None
+    if run_scoped:
+        attempt_dir = reporting_attempt_dir(incident_id, run_id, reporting_stage_attempt)
+        outputs = attempt_dir / "outputs"
+        inputs  = attempt_dir / "inputs"
+    else:
+        attempt_dir = None
+        outputs = REP_DIR / "outputs"
+        inputs  = REP_DIR / "inputs"
+    outputs.mkdir(parents=True, exist_ok=True)
+    inputs.mkdir(parents=True, exist_ok=True)
 
     triage_doc = {
         "agent": "Triage Agent",
@@ -2018,9 +2645,84 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
 
     _write_json(outputs / "investigation_result.json", investigation_result)
     if threat_intel_result is not None:
+        _write_json(inputs / "threat_intel_result.json", threat_intel_result)
         _write_json(outputs / "threat_intel_result.json", threat_intel_result)
 
-    _log("HANDOFF", f"triage+investigation -> reporting (ticket {ticket_id})")
+    if run_scoped:
+        # Parsing's own output — input_loader.py's existing "processed_alert"
+        # input key, promoted to hard-required for a current-run generation
+        # (see HARD_REQUIRED_INPUT_KEYS). Sourced from Parsing's own run-scoped
+        # output directory (the same path run_parsing() writes to), with an
+        # identity check mirroring workflow_validation.validate_parsing_result()'s
+        # existing precedent: only copy it in if its own incident_id matches.
+        try:
+            parsing_output_dir = REP_DIR / "outputs" / _safe(incident_id) / _safe(run_id) / "parsing"
+            processed_alert_src = parsing_output_dir / "processed_alert.json"
+            if processed_alert_src.exists():
+                processed_alert_data = json.loads(processed_alert_src.read_text(encoding="utf-8"))
+                parsed_incident_id = str(processed_alert_data.get("incident_id") or "")
+                if not parsed_incident_id or parsed_incident_id == str(incident_id):
+                    _write_json(inputs / "processed_alert.json", processed_alert_data)
+                else:
+                    _log("HANDOFF", f"processed_alert.json belongs to incident "
+                                    f"{parsed_incident_id!r}, expected {incident_id!r} — "
+                                    "refusing stale/mismatched handoff")
+            else:
+                _log("HANDOFF", f"processed_alert.json not found at {processed_alert_src} "
+                                "— Reporting will fail safely on this required input")
+        except Exception as exc:
+            _log("HANDOFF", f"processed_alert.json handoff failed: {exc}")
+
+        # Approval history as of this moment (Triage's + Investigation's
+        # decisions, plus any prior Reporting reject/rerun for this run) —
+        # never this attempt's own not-yet-existing Reporting decision.
+        try:
+            approval_history = wss.get_approval_history(incident_id, run_id)
+        except Exception:
+            approval_history = []
+        _write_json(inputs / "approval_history.json", approval_history)
+
+        try:
+            state_now = wss.get_state(incident_id) or {}
+        except Exception:
+            state_now = {}
+        workflow_metadata = {
+            "incident_id": str(incident_id),
+            "run_id": run_id,
+            "reporting_stage_attempt": reporting_stage_attempt,
+            "reporting_execution_id": f"{incident_id}::{run_id}::attempt_{reporting_stage_attempt}",
+            "triage_status": state_now.get("triage_status"),
+            "threat_intel_status": state_now.get("threat_intel_status"),
+            "investigation_status": state_now.get("investigation_status"),
+            "reporting_status": state_now.get("reporting_status"),
+            "execution_started_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _write_json(inputs / "workflow_metadata.json", workflow_metadata)
+
+        # Hash-verified hand-off manifest — every file this call just wrote,
+        # with size + SHA-256, so run_reporting_stage() can re-verify content
+        # (not just presence) before launching the Reporting subprocess.
+        _handoff_files: dict[str, str] = {}
+        for _d in (outputs, inputs):
+            for _p in sorted(_d.glob("*.json")):
+                try:
+                    _handoff_files[str(_p.relative_to(attempt_dir))] = str(_p)
+                except Exception:
+                    pass
+        handoff_manifest = {
+            "incident_id": str(incident_id),
+            "run_id": run_id,
+            "reporting_stage_attempt": reporting_stage_attempt,
+            "files": {
+                rel: {"sha256": hashlib.sha256(Path(p).read_bytes()).hexdigest(),
+                     "size": Path(p).stat().st_size}
+                for rel, p in _handoff_files.items()
+            },
+        }
+        _write_json(inputs / "handoff_manifest.json", handoff_manifest)
+
+    _log("HANDOFF", f"triage+investigation -> reporting (ticket {ticket_id}, "
+                    f"attempt {reporting_stage_attempt})")
     return ticket_id
 
 
@@ -2052,9 +2754,21 @@ def _archive_run_exports(exports: dict, run_stamp: str) -> dict:
 
 
 def run_reporting(ticket_id: str, timeout: int = 900,
-                  run_stamp: str | None = None, line_cb=None) -> dict:
+                  run_stamp: str | None = None, line_cb=None, *,
+                  reporting_input_dir: Path | None = None,
+                  reporting_output_dir: Path | None = None,
+                  run_id: str | None = None,
+                  reporting_stage_attempt: int | None = None) -> dict:
+    """reporting_input_dir/reporting_output_dir, when given (the durable
+    run_reporting_stage() path), point the subprocess chain at a native
+    run-scoped workspace via REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR
+    instead of the shared, flat REP_DIR/inputs|outputs — see
+    reporting_attempt_dir(). Left None (the legacy in-memory Agent Board
+    engine's call path, unchanged) falls back to the original flat
+    behaviour exactly as before."""
     llm_env = _openai_compat_env()
     has_llm = bool(os.environ.get("OPENAI_API_KEY", "").strip() or llm_env)
+    output_dir = reporting_output_dir or (REP_DIR / "outputs")
     extra_env = {
         **llm_env,
         "SOC_TICKET_ID": ticket_id,
@@ -2074,6 +2788,14 @@ def run_reporting(ticket_id: str, timeout: int = 900,
         # Give the inner adapter->agent subprocess most of our budget.
         "REPORTING_TIMEOUT": str(max(timeout - 60, 300)),
     }
+    if reporting_input_dir is not None:
+        extra_env["REPORTING_INPUT_DIR"] = str(reporting_input_dir)
+    if reporting_output_dir is not None:
+        extra_env["REPORTING_OUTPUT_DIR"] = str(reporting_output_dir)
+    if run_id is not None:
+        extra_env["SOC_RUN_ID"] = run_id
+    if reporting_stage_attempt is not None:
+        extra_env["SOC_REPORTING_ATTEMPT"] = str(reporting_stage_attempt)
     if llm_env.get("OPENAI_MODEL"):
         # The Cisco TGI endpoint has no Responses API — force chat completions.
         extra_env["REPORTING_LLM_MODEL"] = llm_env["OPENAI_MODEL"]
@@ -2087,7 +2809,7 @@ def run_reporting(ticket_id: str, timeout: int = 900,
             [sys.executable, str(REP_DIR / "adapters" / "run_reporting.py")],
             cwd=REP_DIR, timeout=timeout, extra_env=extra_env)
 
-    final = _read_json(REP_DIR / "outputs" / "final_report.json", {})
+    final = _read_json(output_dir / "final_report.json", {})
     if not final:
         return {"agent": "Reporting Agent", "status": "failed",
                 "error": (run.get("stderr") or run.get("stdout") or "")[-1500:],
@@ -2095,17 +2817,22 @@ def run_reporting(ticket_id: str, timeout: int = 900,
     final["orchestrator_subprocess"] = {k: run[k] for k in ("returncode", "success")
                                         if k in run}
     if final.get("status") != "failed":
-        exports = export_report_documents(final.get("incident_id"))
+        exports = export_report_documents(
+            final.get("incident_id"), reporting_output_dir=reporting_output_dir,
+            run_id=run_id, reporting_stage_attempt=reporting_stage_attempt)
         if run_stamp:
             exports = _archive_run_exports(exports, run_stamp)
         final["document_exports"] = exports
         # Persist exports into the on-disk wrapper too, so the CLI / error
         # files / dashboard all see the same export outcome.
-        _write_json(REP_DIR / "outputs" / "final_report.json", final)
+        _write_json(output_dir / "final_report.json", final)
     return final
 
 
-def export_report_documents(incident_id: str | None, timeout: int = 180) -> dict:
+def export_report_documents(incident_id: str | None, timeout: int = 180, *,
+                            reporting_output_dir: Path | None = None,
+                            run_id: str | None = None,
+                            reporting_stage_attempt: int | None = None) -> dict:
     """Confirm all report sections and export combined DOCX + PDF via the
     reporting package's own exporters. Returns {docx, pdf, ...errors}.
 
@@ -2115,7 +2842,14 @@ def export_report_documents(incident_id: str | None, timeout: int = 180) -> dict
     cmd = [sys.executable, str(REP_DIR / "adapters" / "export_documents.py")]
     if incident_id:
         cmd.append(str(incident_id))
-    run = _run_subprocess(cmd, cwd=REP_DIR, timeout=timeout)
+    extra_env: dict[str, str] = {}
+    if reporting_output_dir is not None:
+        extra_env["REPORTING_OUTPUT_DIR"] = str(reporting_output_dir)
+    if run_id is not None:
+        extra_env["SOC_RUN_ID"] = run_id
+    if reporting_stage_attempt is not None:
+        extra_env["SOC_REPORTING_ATTEMPT"] = str(reporting_stage_attempt)
+    run = _run_subprocess(cmd, cwd=REP_DIR, timeout=timeout, extra_env=extra_env or None)
     out: dict = {}
     for line in (run.get("stdout") or "").splitlines():
         if line.startswith("EXPORT_JSON:"):
@@ -2153,12 +2887,14 @@ def export_report_documents(incident_id: str | None, timeout: int = 180) -> dict
 
 def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
                               force_triage: bool = False, allow_retry: bool = False,
-                              progress_fn=None) -> dict:
-    """The single Parsing -> Triage entry point. Both the Start Process
-    button and the chat trigger in app.py call this through the shared
-    _run_triage_workflow_with_ui() helper — there is no second,
-    independently-sequenced path. Stops after the mandatory SOC Analyst
-    approval pause; does not start Investigation.
+                              progress_fn=None, parsing_only: bool = False) -> dict:
+    """Run Parsing and, unless ``parsing_only`` is true, Triage.
+
+    The case-page Parsing action uses ``parsing_only=True`` so completing
+    Parsing leaves Triage pending for an explicit later action. The chat
+    triage trigger retains the full Parsing -> Triage path. Full runs stop
+    after the mandatory SOC Analyst approval pause and do not start
+    Investigation.
 
     Raises workflow_state_store.WorkflowAlreadyRunningError if a run is
     already Processing or Awaiting Approval for this incident and
@@ -2233,7 +2969,6 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
 
     ctx["stages"]["parsing"] = "completed"
     wss.set_parsing_status(inc_id, run_id, "Complete")
-    wss.set_triage_status(inc_id, run_id, "Processing")
     try:
         wss.save_parsing_result(inc_id, run_id, {
             "run_id": run_id,
@@ -2268,6 +3003,17 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
         return ctx
     ctx["parsing_validation"] = validation
 
+    if parsing_only:
+        # Parsing is a discrete case-page action. Do not mark Triage as
+        # Processing (or invoke it) until the analyst explicitly starts it.
+        wss.set_triage_status(inc_id, run_id, "Pending")
+        wss.set_workflow_status(inc_id, run_id, "Awaiting Action")
+        ctx["stages"]["triage"] = "pending"
+        ctx["stages"]["workflow"] = "awaiting_action"
+        _log("WORKFLOW", "parsing complete; triage remains pending")
+        return ctx
+
+    wss.set_triage_status(inc_id, run_id, "Processing")
     parsed_context = parsing_result.get("processed_alert") or None
 
     # ── Stage 1: Triage ───────────────────────────────────────────────────────
@@ -2395,6 +3141,12 @@ def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
             incident_id=incident_id, run_id=run_id, incident=incident,
             normalised_alert=parsing_result.get("processed_alert"),
             triage_result=triage_result)
+        if ti_result.get("status") != "failed":
+            ti_result.update(
+                generate_stage_ai_summary(
+                    "Threat Intelligence Enrichment", ti_result
+                )
+            )
         if renewer.lease_lost.is_set():
             raise StageClaimError(f"threat_intel: worker {worker_id} lost its lease mid-run")
         ok = complete_stage(
@@ -2410,8 +3162,10 @@ def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
         if not ok:
             raise StageClaimError(f"threat_intel: lease for {incident_id}/{run_id} "
                                   "was reassigned before this result could be saved")
-        _log("THREAT_INTEL", f"{ti_result['status']} — risk={ti_result['risk_level']} "
-                             f"({len(ti_result['iocs'])} IOCs)")
+        _log("THREAT_INTEL", f"{ti_result['status']} — "
+                             f"risk={ti_result['enrichment_risk_level']} "
+                             f"(score={ti_result['enrichment_risk_score']}, "
+                             f"warnings={len(ti_result.get('warnings') or [])})")
         return ti_result
     except StageClaimError:
         raise   # a losing race is not a crash — run_stage_chain just stops quietly
@@ -2509,6 +3263,10 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
             threat_intel_result=ti_result,
             feedback_cb=lambda ev, d: _log("FEEDBACK", f"{ev}: {d}"),
             watchdog_cb=lambda: renew_global_lock(_INVESTIGATION_LOCK, worker_id))
+        if inv_result.get("status") not in {"failed", "lock_lost"}:
+            inv_result.update(
+                generate_stage_ai_summary("Investigation", inv_result)
+            )
 
         if renewer.lease_lost.is_set():
             raise StageClaimError(f"investigation: worker {worker_id} lost its lease mid-run")
@@ -2589,8 +3347,9 @@ _REPORTING_LOCK = "reporting_workspace"
 def run_reporting_stage(incident_id: str, run_id: str) -> dict:
     """Durable Reporting stage wrapper — reuses handoff_to_reporting()/
     run_reporting() unmodified. Ends in 'Awaiting Approval' on success;
-    only approve_reporting() (workflow_state_store.py) ever sets
-    workflow_status to 'Complete'.
+    only reporting_approval.approve_reporting_candidate() (which validates
+    the candidate set, then calls workflow_state_store.
+    commit_reporting_approval()) ever sets workflow_status to 'Complete'.
 
     Threat Intelligence is loaded and passed to handoff_to_reporting()
     explicitly (not assumed to be embedded in investigation_result). The
@@ -2655,8 +3414,41 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
             _log("REPORTING", f"reporting_handoff run-artifact persist failed "
                               f"(non-fatal): {exc}")
 
-        ticket_id = handoff_to_reporting(triage_result, incident, investigation_result,
-                                         threat_intel_result=threat_intel_result)
+        attempt_dir = reporting_attempt_dir(incident_id, run_id, _stage_attempt)
+        reporting_input_dir = attempt_dir / "inputs"
+        reporting_output_dir = attempt_dir / "outputs"
+
+        ticket_id = handoff_to_reporting(
+            triage_result, incident, investigation_result,
+            threat_intel_result=threat_intel_result,
+            incident_id=incident_id, run_id=run_id,
+            reporting_stage_attempt=_stage_attempt)
+
+        # Verify the hand-off by CONTENT (hash), not just presence — a
+        # same-size, different-content file would pass a size-only check.
+        try:
+            handoff_manifest = json.loads(
+                (reporting_input_dir / "handoff_manifest.json").read_text(encoding="utf-8"))
+            if (str(handoff_manifest.get("incident_id")) != str(incident_id)
+                    or handoff_manifest.get("run_id") != run_id
+                    or handoff_manifest.get("reporting_stage_attempt") != _stage_attempt):
+                raise ValueError(
+                    f"handoff_manifest.json identity mismatch: {handoff_manifest.get('incident_id')!r}/"
+                    f"{handoff_manifest.get('run_id')!r}/{handoff_manifest.get('reporting_stage_attempt')!r} "
+                    f"!= expected {incident_id!r}/{run_id!r}/{_stage_attempt!r}")
+            for rel, meta in (handoff_manifest.get("files") or {}).items():
+                p = attempt_dir / rel
+                if not p.exists():
+                    raise ValueError(f"hand-off file missing before subprocess launch: {rel}")
+                if not str(p.resolve()).startswith(str(attempt_dir.resolve())):
+                    raise ValueError(f"hand-off file escapes the trusted attempt root: {rel}")
+                actual_size = p.stat().st_size
+                actual_sha256 = hashlib.sha256(p.read_bytes()).hexdigest()
+                if actual_size != meta.get("size") or actual_sha256 != meta.get("sha256"):
+                    raise ValueError(f"hand-off file content changed after being written: {rel}")
+        except Exception as exc:
+            raise RuntimeError(f"reporting hand-off verification failed: {exc}") from exc
+
         try:
             pipeline_insert("pending_ticket_report", {
                 "id": f"pending_{ticket.get('unc') or incident_id}",
@@ -2667,7 +3459,11 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
             pass
 
         _log("REPORTING", "running reporting agent (subprocess)…")
-        reporting_result = run_reporting(ticket_id, run_stamp=run_stamp)
+        reporting_result = run_reporting(
+            ticket_id, run_stamp=run_stamp,
+            reporting_input_dir=reporting_input_dir,
+            reporting_output_dir=reporting_output_dir,
+            run_id=run_id, reporting_stage_attempt=_stage_attempt)
 
         if renewer.lease_lost.is_set():
             raise StageClaimError(f"reporting: worker {worker_id} lost its lease mid-run")
@@ -2703,7 +3499,36 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
                               f"(non-fatal): {exc}")
 
         failed = reporting_result.get("status") == "failed"
+
+        # Validate the candidate manifest's identity — all three of
+        # incident_id/run_id/reporting_stage_attempt, not incident_id
+        # alone — before accepting this attempt's output as good. A
+        # mismatch here means something is badly wrong (not merely a
+        # possible outcome to warn about, unlike the ticket_id check
+        # above) — treat it exactly like a generation failure.
         if not failed:
+            candidate_manifest_path_str = (reporting_result.get("document_exports") or {}).get(
+                "candidate_manifest_path")
+            try:
+                cm = json.loads(Path(candidate_manifest_path_str).read_text(encoding="utf-8")) \
+                    if candidate_manifest_path_str else {}
+            except Exception:
+                cm = {}
+            if cm and (str(cm.get("incident_id")) != str(incident_id)
+                      or cm.get("run_id") != run_id
+                      or cm.get("reporting_stage_attempt") != _stage_attempt):
+                _log("REPORTING", f"candidate manifest identity mismatch: "
+                                  f"{cm.get('incident_id')!r}/{cm.get('run_id')!r}/"
+                                  f"{cm.get('reporting_stage_attempt')!r} != expected "
+                                  f"{incident_id!r}/{run_id!r}/{_stage_attempt!r}")
+                failed = True
+                reporting_result["status"] = "failed"
+                reporting_result["error"] = "candidate manifest identity mismatch"
+
+        if not failed:
+            reporting_result.update(
+                generate_stage_ai_summary("Reporting", reporting_result)
+            )
             try:
                 pipeline_insert("finalized_report", {
                     "id": f"final_{ticket.get('unc') or incident_id}@{run_stamp}",
@@ -2722,7 +3547,8 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
             status_updates=(
                 {"reporting_status": "Failed", "workflow_status": "Failed"} if failed else
                 {"reporting_status": "Awaiting Approval",
-                 "workflow_status": "Awaiting Approval", "approval_stage": "reporting"}))
+                 "workflow_status": "Awaiting Approval", "approval_stage": "reporting"}),
+            expected_stage_attempt=_stage_attempt)
         if not ok:
             raise StageClaimError(f"reporting: lease for {incident_id}/{run_id} "
                                   "was reassigned before this result could be saved")
@@ -2737,7 +3563,8 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
                 incident_id, run_id, worker_id, stage="reporting",
                 result_column="reporting_result_json",
                 result={"status": "failed", "error": str(exc)[:300]},
-                status_updates={"reporting_status": "Failed", "workflow_status": "Failed"})
+                status_updates={"reporting_status": "Failed", "workflow_status": "Failed"},
+                expected_stage_attempt=_stage_attempt)
         except Exception:
             pass
         wss.set_last_error(incident_id, run_id, f"reporting failed: {str(exc)[:300]}")

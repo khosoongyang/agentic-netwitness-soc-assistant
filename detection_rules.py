@@ -86,22 +86,17 @@ def _is_public_ip(v: str) -> bool:
         return False
 
 
-def _select_indicators(incident: dict, triage_result: dict | None,
-                       threat_intel: dict | None) -> dict:
-    """Pull the detectable indicators. Prefers threat-intel MALICIOUS/
-    SUSPICIOUS IOCs; falls back to public destination IPs from alertMeta.
+def _select_indicators(incident: dict, triage_result: dict | None) -> dict:
+    """Pull the detectable indicators: public destination IPs from
+    alertMeta, plus domains/hashes/process names from triage metakeys.
     Also collects endpoint indicators (process/hash) when present — dormant
-    until the alerts fetch is fixed."""
+    until the alerts fetch is fixed. No per-IOC threat-intel ranking —
+    threat_intel's enrichment_risk_level is a case-level verdict, not a
+    per-IOC one, so it has nothing legitimate to rank these by."""
     dst_ips: list[str] = []
     domains: list[str] = []
     hashes: list[str] = []
     processes: list[str] = []
-
-    ti_flagged = set()
-    if threat_intel:
-        for r in threat_intel.get("results", []):
-            if r.get("verdict", "").startswith(("MALICIOUS", "SUSPICIOUS")):
-                ti_flagged.add(r["value"])
 
     am = incident.get("alertMeta") or {}
     for v in am.get("DestinationIp") or []:
@@ -126,23 +121,17 @@ def _select_indicators(incident: dict, triage_result: dict | None,
     def dedup(seq):
         return list(dict.fromkeys(seq))
 
-    # rank flagged indicators first
-    dst_ips = dedup([i for i in dst_ips if i in ti_flagged]
-                    + [i for i in dst_ips if i not in ti_flagged])
     return {
-        "dst_ips": dst_ips[:15], "domains": dedup(domains)[:15],
+        "dst_ips": dedup(dst_ips)[:15], "domains": dedup(domains)[:15],
         "hashes": dedup(hashes)[:10], "processes": dedup(processes)[:10],
-        "ti_flagged": ti_flagged,
         "endpoint": bool(hashes or processes),
     }
 
 
 def _severity_level(asset: dict | None, threat_intel: dict | None) -> str:
-    """Sigma level from asset tier + TI verdict (deterministic)."""
+    """Sigma level from asset tier + the case-level TI risk (deterministic)."""
     rank = (asset or {}).get("highest_rank", 0)
-    has_malicious = bool(threat_intel and any(
-        r.get("verdict", "").startswith("MALICIOUS")
-        for r in threat_intel.get("results", [])))
+    has_malicious = bool(threat_intel and threat_intel.get("enrichment_risk_level") == "High")
     if has_malicious and rank >= 2:
         return "critical"
     if has_malicious or rank >= 3:
@@ -172,7 +161,7 @@ def build_sigma_rule(incident: dict, triage_result: dict | None = None,
     if m:
         title_entity = m.group(1).strip()
 
-    ind = _select_indicators(incident, triage_result, threat_intel)
+    ind = _select_indicators(incident, triage_result)
     ticket = (triage_result or {}).get("ticket", {})
     tactic = str(((triage_result or {}).get("metakeys_payload") or {}).get("mitre_tactic")
                  or ticket.get("mitre_tactic") or incident.get("mitre_tactic") or "")

@@ -521,7 +521,15 @@ def _threat_intel_index(enriched: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def rebuild_iocs(context: dict[str, Any], evidence_index: dict[str, list[str]]) -> list[dict[str, Any]]:
     raw = context.get("raw_inputs") or {}
     enriched = raw.get("enriched_alert") or {}
-    ti_index = _threat_intel_index(enriched)
+    # Threat Intelligence is passed explicitly via threat_intel_result.json
+    # (see input_loader.py/context_builder.py) rather than assumed to have
+    # survived into enriched_alert.json — that file is a separate,
+    # hand-rolled harvest built at handoff time and does not reliably carry
+    # the real computed threat_intelligence payload. Prefer the explicit
+    # threat_intel_result; fall back to enriched_alert only for legacy
+    # inputs that predate this wiring.
+    ti_source = context.get("threat_intel_result") or enriched
+    ti_index = _threat_intel_index(ti_source)
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     total_candidates = 0

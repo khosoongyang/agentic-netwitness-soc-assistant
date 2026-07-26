@@ -2530,25 +2530,8 @@ function activityList(items) {
 }
 
 function reportsSection(t) {
-  if (!t) return `<section class="panel"><div class="empty-state">Select a ticket to view report options.</div></section>`;
-  const available = t.reporting_result || {};
-  const reportingAgent = arrayOf(t.agent_panel).find(agent => canonicalAgentKey(agent.key || agent.label) === "reporting") || {};
-  const workflowActions = prioritisedAgentActions(reportingAgent).map(action => actionButtonForAgent(action, reportingAgent)).join("");
-  const cards = [
-    ["Executive Summary", available.executive_summary ? "available" : "not_ready"],
-    ["Technical Findings", available.technical_findings ? "available" : "not_ready"],
-    ["SOC Analyst Review", available.soc_analyst_review ? "available" : "not_ready"],
-    ["Final Incident Report", available.final_incident_report ? "available" : "not_ready"],
-  ].map(([label, status]) => `<div class="report-card ${status}"><strong>${esc(label)}</strong><small>${status === "available" ? "Ready" : "Not ready"}</small></div>`).join("");
-  return `<section class="panel reports-panel">
-    <div class="panel-head"><h2>Reports</h2><span class="panel-sub">Ticket-specific reporting options</span></div>
-    <div class="reports-grid">${cards}</div>
-    <div class="panel-actions">
-      ${workflowActions}
-      <button class="soc-btn ghost" data-action="export-report" data-type="docx"><i class="ti ti-file-type-docx"></i> Download DOCX</button>
-      <button class="soc-btn ghost" data-action="export-report" data-type="pdf"><i class="ti ti-file-type-pdf"></i> Download PDF</button>
-    </div>
-  </section>`;
+  if (!t) return `<section class="panel"><div class="empty-state">Select a ticket to view generated reports.</div></section>`;
+  return renderSocReportReviewWorkspace(t);
 }
 
 function askPanel(t) {
@@ -2738,6 +2721,7 @@ async function action(name, el) {
   if (name === "toggle-ticket-preview") return toggleTicketPreview();
   if (name === "view-agent-output") return viewAgentOutput(el.dataset.agent, ticketId);
   if (name === "view-summary-json" || name === "download-agent-summary-json") return downloadAgentSummaryJson(el.dataset.agent || state.selectedAgentKey, ticketId);
+  if (name === "download-reporting-data") return downloadReportingDataJson(ticketId);
   if (name === "export-agent-summary-word" || name === "download-agent-summary-word") return downloadAgentSummaryWord(el.dataset.agent || state.selectedAgentKey, ticketId);
   if (name === "export-agent-summary-pdf" || name === "download-agent-summary-pdf") return downloadAgentSummaryPdf(el.dataset.agent || state.selectedAgentKey, ticketId);
   if (name === "download-report-json") return downloadReportingReport(el.dataset.reportKey, ticketId, "json");
@@ -2761,8 +2745,6 @@ async function action(name, el) {
   if (name === "ask-agent") return askAgent(ticketId, el.dataset.agent || state.selectedAgentKey);
   if (name === "search-history") return searchHistoryFromInputs();
   if (name === "filter-search") return ticketSearch();
-  if (name === "confirm-report") return confirmReport();
-  if (name === "export-report") return exportReport(el.dataset.type);
 }
 
 async function runNext(ticketId) {
@@ -4257,6 +4239,25 @@ function downloadAgentSummaryJson(agentKey, ticketId) {
   toast("JSON summary downloaded.", "green");
 }
 
+function downloadReportingDataJson(ticketId) {
+  const ticket = state.selectedTicket;
+  if (!ticket || ticket.ticket_id !== ticketId) return toast("Select the ticket first.", "yellow");
+  const reportingData = ticket.reporting_result;
+  if (!reportingData || !Object.keys(reportingData).length) return toast("Reporting data has not been generated yet.", "yellow");
+  const payload = {
+    ticket_id: ticket.ticket_id,
+    incident_id: ticket.incident_id || ticket.ticket_id,
+    generated_at: reportingData.created_at || reportingData.generated_at || ticket.updated_at || null,
+    reporting_data: reportingData,
+  };
+  downloadBlob(
+    `${safeFilename(ticket.ticket_id)}_reporting_data.json`,
+    JSON.stringify(payload, null, 2),
+    "application/json;charset=utf-8"
+  );
+  toast("Reporting data downloaded.", "green");
+}
+
 function exportAgentSummaryWord(agentKey, ticketId) {
   return downloadAgentSummaryWord(agentKey, ticketId);
 }
@@ -5621,10 +5622,10 @@ async function downloadReportingReport(reportKey, ticketId, format) {
 
 function socReportDefinitions() {
   return [
-    { key: "executive_summary", title: "Executive Summary", description: "Management-level summary for leadership and handover." },
-    { key: "technical_findings", title: "Technical Findings", description: "Technical evidence, IOCs, findings, and validation notes." },
-    { key: "soc_analyst_review", title: "SOC Analyst Review", description: "Analyst review checklist, limitations, and final SOC judgement." },
-    { key: "final_incident_report", title: "Final Incident Report", description: "Complete report for approved Word/PDF export." },
+    { key: "executive_summary", title: "Executive Summary", description: "High-level overview of the incident and key findings.", icon: "ti-file-text", tone: "blue" },
+    { key: "technical_findings", title: "Technical Findings", description: "Detailed technical analysis, evidence, and indicators.", icon: "ti-list-details", tone: "green" },
+    { key: "soc_analyst_review", title: "SOC Analyst Review", description: "Analyst assessment, decisions, and recommendations.", icon: "ti-user", tone: "purple" },
+    { key: "final_incident_report", title: "Final Incident Report", description: "Comprehensive report combining all approved sections.", icon: "ti-clipboard-text", tone: "amber" },
   ];
 }
 
@@ -5693,49 +5694,91 @@ function renderSocReportReviewWorkspace(ticket = {}, options = {}) {
   const ticketId = ticket.ticket_id || state.selectedTicket?.ticket_id || "";
   const manifest = reportManifestFromTicket(ticket);
   const definitions = socReportDefinitions();
-  const allConfirmed = definitions.every(def => reportReviewStatus((manifest.sections || {})[def.key], ticket).exportReady);
+  const sections = manifest.sections || {};
+  const allConfirmed = definitions.every(def => reportReviewStatus(sections[def.key], ticket).exportReady);
   const reportingMode = ticket.reporting_result?.reporting_mode || manifest.reporting_mode || "standard";
   const limitations = arrayOf(ticket.reporting_result?.investigation_limitations || ticket.reporting_result?.limitations || []);
+  const generatedAt = ticket.reporting_result?.created_at || ticket.reporting_result?.generated_at || ticket.updated_at;
+  const workflowActions = !ticket.reporting_result
+    ? prioritisedAgentActions(reportingAgent).map(action => actionButtonForAgent(action, reportingAgent)).join("")
+    : "";
 
-  const cards = definitions.map(def => {
-    const section = (manifest.sections || {})[def.key] || {};
+  const rows = definitions.map(def => {
+    const section = sections[def.key] || {};
     const status = reportReviewStatus(section, ticket);
-    const saved = section.last_saved_at || section.confirmed_at || "Not saved yet";
-    const lockedMessage = status.exportReady ? "Approved export ready" : "Export locked until this report is edited, saved as a draft, and confirmed.";
-    return `<article class="soc-report-card ${esc(status.tone)}">
-      <div class="soc-report-card-head">
-        <div>
-          <span class="summary-eyebrow">SOC report</span>
-          <h3>${esc(def.title)}</h3>
+    const available = Boolean(
+      section.path
+      || section.draft_path
+      || section.confirmed_path
+      || section.structured_draft_path
+      || section.structured_confirmed_path
+      || ticket.reporting_result?.[def.key]
+    );
+    const saved = available ? section.confirmed_at || section.last_saved_at || generatedAt : null;
+    const openTitle = available ? `Open and edit ${def.title}` : `${def.title} has not been generated yet`;
+    const exportTitle = status.exportReady ? `Export the reviewed ${def.title}` : "Open and edit the report, then choose Save & Enable Export.";
+    const displayStatus = !available ? "Not generated" : status.exportReady ? "Export ready" : status.label === "Generated for review" ? "Draft ready" : status.label;
+    const displayTone = available ? status.tone : "red";
+    return `<div class="generated-file-row report-file-row" role="row">
+      <div class="generated-file-document" role="cell">
+        <span class="generated-file-icon ${esc(def.tone)}"><i class="ti ${esc(def.icon)}"></i></span>
+        <div class="generated-file-copy">
+          <div class="generated-file-title-line">
+            <strong>${esc(def.title)}</strong>
+            ${badge(displayStatus, displayTone)}
+          </div>
           <p>${esc(def.description)}</p>
         </div>
-        ${badge(status.label, status.tone)}
       </div>
-      <div class="soc-report-meta-grid">
-        <span><strong>Last saved</strong>${esc(shortDate(saved))}</span>
-        <span><strong>Reviewed by</strong>${esc(section.confirmed_by || section.last_saved_by || "Pending SOC analyst")}</span>
-        <span><strong>Export</strong>${esc(lockedMessage)}</span>
+      <div class="generated-file-saved" role="cell">
+        <span>${esc(saved ? shortDate(saved) : "Not generated")}</span>
+        <small>${esc(section.confirmed_by ? `Reviewed by ${section.confirmed_by}` : section.last_saved_by ? `Edited by ${section.last_saved_by}` : "Generated draft")}</small>
       </div>
-      <div class="soc-report-actions">
-        <button class="soc-btn primary" data-action="open-report-editor" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(def.key)}"><i class="ti ti-edit"></i> Edit Report</button>
-        <button class="soc-btn green" data-action="confirm-report-section" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(def.key)}"><i class="ti ti-user-check"></i> Confirm Review</button>
-        <button class="soc-btn ghost ${status.exportReady ? "" : "disabled"}" ${status.exportReady ? "" : "disabled"} data-action="download-report-word" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(def.key)}"><i class="ti ti-file-type-docx"></i> Download Word</button>
-        <button class="soc-btn ghost ${status.exportReady ? "" : "disabled"}" ${status.exportReady ? "" : "disabled"} data-action="download-report-pdf" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(def.key)}"><i class="ti ti-file-type-pdf"></i> Download PDF</button>
+      <div class="generated-file-actions" role="cell">
+        <button class="soc-btn primary report-open-action" ${available ? "" : "disabled"} title="${esc(openTitle)}" data-action="open-report-editor" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(def.key)}"><i class="ti ti-edit"></i> Open &amp; Edit</button>
+        <button class="soc-btn ghost report-word-action ${status.exportReady ? "" : "disabled"}" ${status.exportReady ? "" : "disabled"} title="${esc(exportTitle)}" data-action="download-report-word" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(def.key)}"><i class="ti ti-file-type-docx"></i> Export Word</button>
+        <button class="soc-btn ghost report-pdf-action ${status.exportReady ? "" : "disabled"}" ${status.exportReady ? "" : "disabled"} title="${esc(exportTitle)}" data-action="download-report-pdf" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(def.key)}"><i class="ti ti-file-type-pdf"></i> Export PDF</button>
       </div>
-    </article>`;
+    </div>`;
   }).join("");
 
-  return `<section class="panel soc-report-review-workspace">
-    <div class="panel-head report-review-head">
+  return `<section class="panel soc-report-review-workspace report-files-workspace">
+    <div class="panel-head generated-files-head">
       <div>
-        <h2>SOC Report Review Workspace</h2>
-        <span class="panel-sub">Edit each generated report as real report sections and tables. Exports unlock only after SOC analyst confirmation.</span>
+        <h2>Generated Files</h2>
+        <span class="panel-sub">Open a generated report to review and edit it. Word and PDF export use the analyst-reviewed version.</span>
       </div>
-      ${badge(allConfirmed ? "All Reports Confirmed" : "Analyst Review Required", allConfirmed ? "green" : "yellow")}
+      <div class="generated-files-status">
+        ${workflowActions}
+        ${badge(allConfirmed ? "All exports ready" : "Analyst review required", allConfirmed ? "green" : "yellow")}
+      </div>
     </div>
     ${reportingMode === "with_limitations" || limitations.length ? `<div class="report-review-warning"><i class="ti ti-alert-triangle"></i><div><strong>Reporting with limitations</strong><p>Investigation evidence gaps must remain documented in the reviewed reports.</p>${limitations.length ? `<ul>${limitations.map(item => `<li>${esc(typeof item === "string" ? item : item.gap || item.reason || JSON.stringify(item))}</li>`).join("")}</ul>` : ""}</div></div>` : ""}
-    <div class="report-review-rule"><i class="ti ti-lock"></i> Generated reports are drafts. SOC analysts must edit, save a draft, and confirm each report before Word/PDF export is available.</div>
-    <div class="soc-report-grid">${cards}</div>
+    <div class="report-review-rule"><i class="ti ti-pencil-check"></i> Open and edit a draft, then select <strong>Save &amp; Enable Export</strong>. The Word and PDF actions will export those saved edits.</div>
+    <div class="generated-files-table" role="table" aria-label="Generated reporting files">
+      <div class="generated-files-columns" role="row">
+        <span role="columnheader">Document</span>
+        <span role="columnheader">Last saved</span>
+        <span role="columnheader">Actions</span>
+      </div>
+      <div class="generated-file-row reporting-data-row" role="row">
+        <div class="generated-file-document" role="cell">
+          <span class="generated-file-icon slate"><i class="ti ti-code"></i></span>
+          <div class="generated-file-copy">
+            <div class="generated-file-title-line"><strong>Reporting Data</strong></div>
+            <p>Structured stage data used to generate the reporting documents.</p>
+          </div>
+        </div>
+        <div class="generated-file-saved" role="cell">
+          <span>${esc(generatedAt ? shortDate(generatedAt) : "Not generated")}</span>
+          <small>Source data</small>
+        </div>
+        <div class="generated-file-actions" role="cell">
+          <button class="soc-btn ghost report-json-action" ${ticket.reporting_result ? "" : "disabled"} data-action="download-reporting-data" data-ticket-id="${esc(ticketId)}" title="${ticket.reporting_result ? "Download structured reporting data" : "Reporting data has not been generated yet"}"><i class="ti ti-download"></i> Download JSON</button>
+        </div>
+      </div>
+      ${rows}
+    </div>
   </section>`;
 }
 
@@ -5827,12 +5870,16 @@ function renderStructuredReportEditor(ticketId, reportKey, payload = {}) {
   const def = socReportDefinitions().find(item => item.key === reportKey) || { title: reportKey };
   const blocks = normaliseEditorBlocks(payload.blocks || []).filter((block, index) => index !== 0 || !isDuplicateReportTitleBlock(block, def.title));
   const section = payload.section || {};
+  const exportReady = reportReviewStatus(section, state.selectedTicket).exportReady;
+  const exportTitle = exportReady ? `Export ${def.title}` : "Save and enable export first";
   return `<div class="structured-report-editor-shell" id="report-editor-root" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(reportKey)}">
     <div class="structured-report-toolbar">
       <div><strong>${esc(def.title)}</strong><span id="report-editor-status">${esc(reportReviewStatus(section, state.selectedTicket).label)}</span></div>
-      <div class="panel-actions">
-        <button class="soc-btn primary" data-action="save-report-draft" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(reportKey)}"><i class="ti ti-device-floppy"></i> Save Draft</button>
-        <button class="soc-btn green" data-action="confirm-report-section" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(reportKey)}"><i class="ti ti-user-check"></i> Confirm Review</button>
+      <div class="panel-actions report-editor-actions">
+        <button class="soc-btn ghost" data-action="save-report-draft" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(reportKey)}"><i class="ti ti-device-floppy"></i> Save Draft</button>
+        <button class="soc-btn primary" data-action="confirm-report-section" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(reportKey)}"><i class="ti ti-pencil-check"></i> Save &amp; Enable Export</button>
+        <button class="soc-btn ghost editor-export-action ${exportReady ? "" : "disabled"}" ${exportReady ? "" : "disabled"} title="${esc(exportTitle)}" data-action="download-report-word" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(reportKey)}"><i class="ti ti-file-type-docx"></i> Word</button>
+        <button class="soc-btn ghost editor-export-action report-pdf-action ${exportReady ? "" : "disabled"}" ${exportReady ? "" : "disabled"} title="${esc(exportTitle)}" data-action="download-report-pdf" data-ticket-id="${esc(ticketId)}" data-report-key="${esc(reportKey)}"><i class="ti ti-file-type-pdf"></i> PDF</button>
       </div>
     </div>
     <div class="editable-report-page">
@@ -5942,9 +5989,25 @@ async function confirmStructuredReportSection(ticketId, reportKey) {
     body: JSON.stringify(body),
   });
   if (res.success) {
-    toast("Report confirmed. Export is now unlocked. You remain in the report editor.", "green");
+    toast("Edits saved. Word and PDF export are now ready.", "green");
     const status = document.querySelector("#report-editor-status");
-    if (status) status.textContent = "Confirmed by SOC Analyst";
+    if (status) status.textContent = "Saved · Export ready";
+    document.querySelectorAll("#report-editor-root .editor-export-action").forEach(button => {
+      button.disabled = false;
+      button.classList.remove("disabled");
+      button.title = "Export the saved analyst-reviewed report";
+    });
+    document.querySelectorAll(`.generated-files-table [data-report-key="${reportKey}"][data-action="download-report-word"], .generated-files-table [data-report-key="${reportKey}"][data-action="download-report-pdf"]`).forEach(button => {
+      button.disabled = false;
+      button.classList.remove("disabled");
+      button.title = "Export the saved analyst-reviewed report";
+      const rowBadge = button.closest(".generated-file-row")?.querySelector(".soc-badge");
+      if (rowBadge) {
+        rowBadge.textContent = "Export ready";
+        rowBadge.classList.remove("blue", "yellow", "red");
+        rowBadge.classList.add("green");
+      }
+    });
     await refreshSelectedTicket(ticketId, { renderAfter: false });
   } else toast(res.status || "Report confirmation failed.", "red");
 }
