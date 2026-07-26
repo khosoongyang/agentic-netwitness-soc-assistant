@@ -1,13 +1,25 @@
 {
-  "incident_id": "INC-LLM-SUCCESS",
-  "alert_id": "INC-LLM-SUCCESS",
-  "alert_name": "SOC incident",
-  "severity": "Medium",
-  "status": "completed",
-  "process_indicators": {},
-  "network_indicators": {},
-  "user_and_host_indicators": {
-    "hostname": null,
-    "username": null
-  }
+  "incident_id": "INC-TI-RAW-0001",
+  "alert_id": "ALERT-TI-RAW-0001",
+  "alert_title": "Suspicious File Execution with External DNS Lookup",
+  "incident_title": "Raw Endpoint Malware Alert with External IOC Context",
+  "severity": "High",
+  "risk_score": 88,
+  "timestamp": "2026-06-18T10:15:00+00:00",
+  "hostname": "wkstn-sg-ti-raw-001",
+  "source_ip": "10.20.30.41",
+  "destination_ip": "8.8.8.8",
+  "file_hash": "44d88612fea8a8f36de82e1278abb02f",
+  "event_domain": "example.com",
+  "url": "https://example.com/download/eicar_test_file.exe",
+  "iocs": [
+    {
+      "type": "ip",
+      "value": "8.8.8.8"
+    },
+    {
+      "type": "file_hash",
+      "value": "44d88612fea8a8f36de82e1278abb02f"
+    }
+  ]
 }

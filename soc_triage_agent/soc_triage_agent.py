@@ -1268,15 +1268,23 @@ def render_triage_trace(trace: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def format_ticket_display(ticket: dict) -> str:
+def format_ticket_display(ticket: dict, include_header: bool = True) -> str:
+    """Markdown rendering of a triage ticket.
+
+    include_header=False drops only the leading rule + "## <icon> Ticket
+    <unc>" line, leaving every section below it byte-identical. The case
+    detail page's Triage stage uses that so it can draw its own header row
+    (ticket title on the left, Open & Edit / Export Word / Export PDF on the
+    right) in place of the UNC; the chat and workflow-board renderings keep
+    the header as-is.
+    """
     rr    = ticket.get("risk_rating") or {}
     unc   = ticket.get("unc") or "—"
     cls   = (ticket.get("classification") or "—").upper()
     icons = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}
     icon  = icons.get(cls, "⚪")
     lines = [
-        "---",
-        f"## {icon} Ticket `{unc}`",
+        *(["---", f"## {icon} Ticket `{unc}`"] if include_header else []),
         "| Field | Value |",
         "|-------|-------|",
         f"| **Incident ID** | `{ticket.get('incident_id') or '—'}` |",

@@ -122,6 +122,7 @@ import case_view as cv
 from reporting_approval import (approve_reporting_candidate, ReportValidationError,
                                resolve_approved_report_file, build_export_all_zip)
 import report_editing
+import triage_ticket_editing
 
 # ── Multi-agent workflow (triage → investigation → reporting) ────────────────
 try:
@@ -309,26 +310,6 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False,
 
     st.session_state.triage_in_flight = None
     return result
-
-
-def _ctx_thread(*args, **kwargs):
-    """threading.Thread that carries this session's Streamlit script-run context.
-
-    Workflow workers call st.* (progress, thinking container, session_state).
-    A thread without the context raises on the first such call; the bare
-    `except Exception` handlers then swallow it and the thread dies silently,
-    leaving the UI frozen on its last progress value. The fetch threads already
-    did this (see add_script_run_ctx at the startup/auto-fetch spawns) -- the
-    workflow spawns did not.
-    """
-    import threading as _t
-    from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
-    _thread = _t.Thread(*args, **kwargs)
-    try:
-        add_script_run_ctx(_thread, get_script_run_ctx())
-    except Exception:
-        pass
-    return _thread
 
 
 def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
@@ -735,9 +716,15 @@ def _render_reporting_ops_readonly(blocks: list) -> None:
 
 
 def _render_report_editor(incident_id: str, run_id: str, report_type: str, row_state: dict,
-                          reporting_stage_attempt: int, analyst: str) -> None:
+                          reporting_stage_attempt: int, analyst: str, *,
+                          editor_module=None, active_key: str | None = None) -> None:
+    """editor_module/active_key exist so the Triage stage's ticket can reuse
+    this exact block editor (see triage_ticket_editing.py, whose
+    save_report_edit/discard_report_edit are signature-compatible). The
+    defaults are the Reporting behaviour, unchanged."""
+    editor_module = editor_module or report_editing
     prefix = f"{incident_id}_{run_id}_{report_type}"
-    active_key = f"rw_active_{incident_id}"
+    active_key = active_key or f"rw_active_{incident_id}"
     skeleton_key = f"rw_skeleton_{prefix}"
     baseline_key = f"rw_baseline_{prefix}"
 
@@ -775,7 +762,7 @@ def _render_report_editor(incident_id: str, run_id: str, report_type: str, row_s
         with wcol2:
             if st.button("Replace with latest AI version", key=f"rw_replace_ed_{prefix}",
                         use_container_width=True):
-                report_editing.discard_report_edit(incident_id, run_id, report_type, analyst)
+                editor_module.discard_report_edit(incident_id, run_id, report_type, analyst)
                 _clear_report_editor_state(prefix)
                 st.session_state[active_key] = None
                 st.rerun()
@@ -841,7 +828,7 @@ def _render_report_editor(incident_id: str, run_id: str, report_type: str, row_s
         if st.button("Save Changes", type="primary", key=f"rw_save_{prefix}",
                     use_container_width=True, disabled=not is_dirty):
             try:
-                report_editing.save_report_edit(
+                editor_module.save_report_edit(
                     incident_id, run_id, report_type, edited_blocks, analyst,
                     original_blocks=row_state["original_blocks"],
                     source_report_set_id=row_state["current_report_set_id"])
@@ -871,7 +858,9 @@ def _render_report_editor(incident_id: str, run_id: str, report_type: str, row_s
 
 def _render_report_export_actions(incident_id: str, run_id: str, report_type: str,
                                   file_type: str, row_state: dict,
-                                  reporting_stage_attempt: int, analyst: str) -> None:
+                                  reporting_stage_attempt: int, analyst: str, *,
+                                  editor_module=None) -> None:
+    editor_module = editor_module or report_editing
     label = "Export Word" if file_type == "docx" else "Export PDF"
     cache_key = f"rw_export_{incident_id}_{run_id}_{report_type}_{file_type}"
     identity = (row_state.get("version"), row_state.get("last_saved_iso"))
@@ -890,7 +879,7 @@ def _render_report_export_actions(incident_id: str, run_id: str, report_type: st
                 disabled=not row_state["exists"]):
         with st.spinner(f"Preparing {label.split()[-1]} export..."):
             try:
-                data, filename = report_editing.export_report(
+                data, filename = editor_module.export_report(
                     incident_id, run_id, report_type, file_type, row_state=row_state,
                     reporting_stage_attempt=reporting_stage_attempt, analyst=analyst)
             except Exception as exc:
@@ -2927,14 +2916,7 @@ maybe_auto_fetch()
 # NOTE: there is no password/auth behind this — it's a single-operator desktop
 # tool, so the point of the toggle is to make "guest" mean something (hide/
 # disable the destructive Data Pipeline tools) rather than to gate a login.
-# Default comes from APP_ANALYST_MODE (default "true") so a single operator gets
-# the connection card, endpoint diagnostics and pipeline tools without hunting for
-# the toggle every fresh session. Set APP_ANALYST_MODE=false to start as a guest.
-st.session_state.setdefault(
-    "analyst_mode_on",
-    os.environ.get("APP_ANALYST_MODE", "true").strip().lower()
-    in ("1", "true", "yes", "on"),
-)
+st.session_state.setdefault("analyst_mode_on", False)
 st.session_state.user_role = "developer" if st.session_state.analyst_mode_on else "guest"
 _is_dev = st.session_state.user_role == "developer"
 
@@ -3648,7 +3630,12 @@ def _render_case_table(rows: list, *, key_prefix: str, heading: str = "Open case
                 transition: color 140ms ease, background-color 140ms ease,
                             transform 140ms ease, text-shadow 140ms ease !important;
             }}
-            div.st-key-{_row_key} div.stButton > button::before {{
+            div.st-key-{_row_key} [data-testid="stColumn"]:first-child div.stButton > button {{
+                font-family: var(--mono) !important;
+                color: #7ea6d8 !important;
+                font-size: 0.8rem !important;
+            }}
+            div.st-key-{_row_key} [data-testid="stColumn"]:first-child div.stButton > button::before {{
                 content: "" !important;
                 position: absolute !important;
                 left: 0 !important;
@@ -3657,6 +3644,9 @@ def _render_case_table(rows: list, *, key_prefix: str, heading: str = "Open case
                 width: 3px !important;
                 border-radius: 3px !important;
                 background: {_border_col} !important;
+            }}
+            div.st-key-{_row_key} [data-testid="stColumn"]:not(:first-child) div.stButton > button::before {{
+                display: none !important;
             }}
             div.st-key-{_row_key} div.stButton > button:hover {{
                 color: var(--accent) !important;
@@ -3720,15 +3710,19 @@ def _render_case_table(rows: list, *, key_prefix: str, heading: str = "Open case
 
             with st.container(key=_row_key):
                 _c = st.columns(_col_ratios, vertical_alignment="center")
-                _c[0].markdown(
-                    f'<div class="case-id-cell" style="font-family:var(--mono);'
-                    f'font-size:0.8rem;color:#7ea6d8">'
-                    f'{_esc_html(inc_id[:16])}</div>',
-                    unsafe_allow_html=True)
+                with _c[0]:
+                    if st.button(inc_id[:16], key=f"{_row_key}_id_open",
+                                use_container_width=True,
+                                help="Open this case in My Workspace"):
+                        st.query_params.clear()
+                        st.session_state.selected_case_id = inc_id
+                        st.session_state.nav_page = "My Workspace"
+                        st.rerun()
                 with _c[1]:
                     if st.button(title[:56], key=f"{_row_key}_open",
                                 use_container_width=True,
                                 help="Open this case in My Workspace"):
+                        st.query_params.clear()
                         st.session_state.selected_case_id = inc_id
                         st.session_state.nav_page = "My Workspace"
                         st.rerun()
@@ -3798,6 +3792,7 @@ def _render_overview_header():
         "Operations overview",
         f"{active:,} active · {total:,} in session · last sync {last_sync}"),
         unsafe_allow_html=True)
+    return
 
     try:
         _nm, _nm_meta = _pick_next_move(incidents)
@@ -4064,7 +4059,7 @@ def _render_top_nav(active_page: str) -> None:
                                label_visibility="collapsed")
             if _q.strip() and _q.strip() != st.session_state.get("_topnav_search_prev", ""):
                 st.session_state._topnav_search_prev = _q.strip()
-                st.session_state.hist_search_override = _q.strip()
+                st.session_state.hist_search_val = _q.strip()
                 st.session_state.nav_page = "All Cases"
                 st.rerun()
         with _profile_col:
@@ -4418,7 +4413,7 @@ elif active_page == "My Workspace":
                         st.warning(f"Could not re-run: {_exc}")
                         return
 
-                    _ctx_thread(
+                    threading.Thread(
                         target=wf_run_stage_chain,
                         args=(_sel_id, _header_run_id),
                         daemon=True,
@@ -4445,7 +4440,7 @@ elif active_page == "My Workspace":
                             and _header_run_id
                             and (_latest_state or {}).get(_next_status_key)
                             == "Processing"):
-                        _ctx_thread(
+                        threading.Thread(
                             target=wf_run_stage_chain,
                             args=(_sel_id, _header_run_id),
                             daemon=True,
@@ -4503,7 +4498,7 @@ elif active_page == "My Workspace":
                                     st.warning(f"Could not approve: {_exc}")
                                 else:
                                     if _header_approval_stage != "reporting":
-                                        _ctx_thread(
+                                        threading.Thread(
                                             target=wf_run_stage_chain,
                                             args=(_sel_id, _header_run_id),
                                             daemon=True,
@@ -4993,12 +4988,115 @@ elif active_page == "My Workspace":
                         except Exception:
                             _triage_out = {}
                         _out_ticket = _triage_out.get("ticket")
-                        if _out_ticket:
-                            st.markdown(
-                                render_triage_trace(_triage_out.get("trace") or [])
-                                + "\n" + format_ticket_display(_out_ticket))
-                        else:
+                        if not _out_ticket:
                             st.caption("No triage output yet — run Triage to populate.")
+                        else:
+                            # Ticket actions mirror the Reporting tab's
+                            # Generated Files row (Open & Edit / Export Word /
+                            # Export PDF) and reuse the very same editor,
+                            # exporters and document styling — see
+                            # triage_ticket_editing.py. The ticket's own
+                            # markdown format is untouched; the header line is
+                            # dropped (format_ticket_display(include_header=
+                            # False)) only so the buttons can sit where the UNC
+                            # used to be.
+                            try:
+                                _tk_ti = _json.loads(
+                                    _inc_row.get("threat_intel_result_json") or "{}")
+                            except Exception:
+                                _tk_ti = {}
+                            _tk_run_id = _inc_row.get("run_id") or ""
+                            _tk_analyst = (st.session_state.get("analyst_display_name")
+                                          or "Unknown analyst")
+                            _tk_active_key = f"tw_active_{_sel_id}"
+                            _tk_row = triage_ticket_editing.ticket_row_state(
+                                _sel_id, _tk_run_id, ticket=_out_ticket,
+                                threat_intel=_tk_ti,
+                                triage_status=_inc_row.get("triage_status"),
+                                triage_updated_at=(updated if updated != "—" else created))
+
+                            if st.session_state.get(_tk_active_key):
+                                _render_report_editor(
+                                    _sel_id, _tk_run_id,
+                                    triage_ticket_editing.TICKET_REPORT_TYPE,
+                                    _tk_row, 1, _tk_analyst,
+                                    editor_module=triage_ticket_editing,
+                                    active_key=_tk_active_key)
+                            else:
+                                st.markdown(
+                                    render_triage_trace(_triage_out.get("trace") or []))
+                                _tk_icon = {"CRITICAL": "🔴", "HIGH": "🟠",
+                                           "MEDIUM": "🟡", "LOW": "🟢"}.get(
+                                    str(_out_ticket.get("classification") or "").upper(),
+                                    "⚪")
+                                st.markdown("---")
+                                _tk_h, _tk_b1, _tk_b2, _tk_b3 = st.columns(
+                                    [2.4, 1.2, 1.2, 1.2], vertical_alignment="center")
+                                with _tk_h:
+                                    st.markdown(f"## {_tk_icon} Ticket")
+                                with _tk_b1:
+                                    if st.button("Open & Edit", type="primary",
+                                                key=f"tw_open_{_sel_id}",
+                                                use_container_width=True,
+                                                disabled=not _tk_row["exists"]):
+                                        st.session_state[_tk_active_key] = True
+                                        st.rerun()
+                                with _tk_b2:
+                                    _render_report_export_actions(
+                                        _sel_id, _tk_run_id,
+                                        triage_ticket_editing.TICKET_REPORT_TYPE,
+                                        "docx", _tk_row, 1, _tk_analyst,
+                                        editor_module=triage_ticket_editing)
+                                with _tk_b3:
+                                    _render_report_export_actions(
+                                        _sel_id, _tk_run_id,
+                                        triage_ticket_editing.TICKET_REPORT_TYPE,
+                                        "pdf", _tk_row, 1, _tk_analyst,
+                                        editor_module=triage_ticket_editing)
+
+                                _tk_meta = st.columns([1.4, 4])
+                                with _tk_meta[0]:
+                                    st.markdown(_ui.pill(_tk_row["status"], _tk_row["tone"]),
+                                               unsafe_allow_html=True)
+                                with _tk_meta[1]:
+                                    if not _tk_row["has_threat_intel"]:
+                                        st.caption(
+                                            "Threat Intelligence enrichment not available "
+                                            "yet — exports will note it as pending.")
+                                    elif _tk_row["last_saved_iso"]:
+                                        st.caption(
+                                            ("Edited " if _tk_row["has_edits"] else "Generated ")
+                                            + _ui.humanize_timestamp(_tk_row["last_saved_iso"])
+                                            + " · enriched with threat intelligence")
+                                    else:
+                                        st.caption("Enriched with threat intelligence")
+
+                                if _tk_row["is_stale"]:
+                                    _tk_w1, _tk_w2 = st.columns([4, 1])
+                                    with _tk_w1:
+                                        st.warning(
+                                            "The triage ticket has been regenerated since "
+                                            "these edits were saved. Your saved edits below "
+                                            "are based on an older version.")
+                                    with _tk_w2:
+                                        if st.button("Replace with latest AI version",
+                                                    key=f"tw_replace_{_sel_id}",
+                                                    use_container_width=True):
+                                            triage_ticket_editing.discard_report_edit(
+                                                _sel_id, _tk_run_id,
+                                                triage_ticket_editing.TICKET_REPORT_TYPE,
+                                                _tk_analyst)
+                                            st.rerun()
+
+                                if _tk_row["has_edits"]:
+                                    # Saved analyst edits are what the exports
+                                    # contain, so they are what gets shown —
+                                    # otherwise the page and the .docx/.pdf
+                                    # would disagree.
+                                    _render_reporting_ops_readonly(_tk_row["blocks"])
+                                else:
+                                    st.markdown(format_ticket_display(
+                                        _out_ticket, include_header=False))
                 elif _selected_stage == "Threat Intelligence Enrichment":
                     (_t_output,) = st.tabs(["Output"])
                     with _t_output:
@@ -5346,7 +5444,7 @@ elif active_page == "My Workspace":
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not approve: {_exc}")
                                 else:
-                                    _ctx_thread(target=wf_run_stage_chain,
+                                    threading.Thread(target=wf_run_stage_chain,
                                                      args=(_sel_id, _inc_row.get("run_id")),
                                                      daemon=True).start()
                                     st.rerun()
@@ -5455,7 +5553,7 @@ elif active_page == "My Workspace":
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not retry: {_exc}")
                                 else:
-                                    _ctx_thread(
+                                    threading.Thread(
                                         target=wf_run_stage_chain,
                                         args=(_sel_id, _inc_row.get("run_id")),
                                         daemon=True).start()
@@ -5597,7 +5695,7 @@ elif active_page == "My Workspace":
                                       f"{_inc_row.get('worker_stage') or '—'}, "
                                       f"no active worker lease).")
                             if st.button("Resume Workflow", key=f"resume_wf_{_sel_id}"):
-                                _ctx_thread(target=wf_run_stage_chain,
+                                threading.Thread(target=wf_run_stage_chain,
                                                  args=(_sel_id, _wf_run_id),
                                                  daemon=True).start()
                                 st.rerun()
@@ -5612,7 +5710,7 @@ elif active_page == "My Workspace":
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not retry: {_exc}")
                                 else:
-                                    _ctx_thread(target=wf_run_stage_chain,
+                                    threading.Thread(target=wf_run_stage_chain,
                                                      args=(_sel_id, _wf_run_id),
                                                      daemon=True).start()
                                     st.rerun()
@@ -6281,7 +6379,7 @@ elif active_page == "Ask a Question":
                     import threading as _th2
                     _hitl_run["_spawned"] = True
                     _hitl_run["awaiting"] = None
-                    _ctx_thread(target=_workflow_worker,
+                    _th2.Thread(target=_workflow_worker,
                                 args=(_hitl_run, _hitl_run["_tri"],
                                       _hitl_run["_incident"]),
                                 daemon=True).start()
@@ -6856,12 +6954,15 @@ elif active_page == "All Cases":
                                  key="hist_status", label_visibility="collapsed")
     # Pre-filled once from the top-nav search box (see _render_top_nav),
     # then consumed -- doesn't stick around overriding manual edits below.
+    if "hist_search_val" in st.session_state:
+        st.session_state["hist_search"] = st.session_state.pop("hist_search_val")
     hist_search = hf3.text_input(
         "Search title / ID / assignee",
-        value=st.session_state.pop("hist_search_override", ""),
+        key="hist_search",
         placeholder="Type to filter…",
         label_visibility="collapsed")
     hist_limit  = hf4.number_input("Limit", 10, 5000, 200,
+                                    key="hist_limit",
                                     label_visibility="collapsed")
 
     # ── Load rows ────────────────────────────────────────────

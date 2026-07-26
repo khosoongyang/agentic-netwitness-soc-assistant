@@ -1,4 +1,8 @@
 {
-  "ticket": {},
-  "ticket_id": "TKT-UNKNOWN"
+  "ticket": {
+    "incident_id": "INC-1",
+    "unc": "#001",
+    "classification": "MEDIUM"
+  },
+  "ticket_id": "TKT-001"
 }

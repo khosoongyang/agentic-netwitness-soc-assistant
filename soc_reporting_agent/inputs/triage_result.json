@@ -1,21 +1,8 @@
 {
-  "agent": "Triage Agent",
-  "status": "completed",
-  "incident_id": "INC-LLM-SUCCESS",
-  "alert_id": "INC-LLM-SUCCESS",
-  "title": "SOC incident",
-  "severity": null,
-  "classification": null,
-  "mitre_tactic": "Unknown",
-  "mitre_technique": "Unknown",
-  "risk_rating": null,
-  "ioc_summary": null,
-  "matched_metakeys": null,
-  "matched_ioc_count": null,
-  "incident_category": null,
-  "initial_response_time": null,
-  "summary": null,
-  "recommended_actions": null,
-  "ticket": {},
-  "created_at": null
+  "incident_id": "INC-TI-RAW-0001",
+  "alert_id": "ALERT-TI-RAW-0001",
+  "severity": "High",
+  "confidence": "High",
+  "classification": "Suspicious endpoint malware activity",
+  "likely_scenario": "Endpoint malware execution with external DNS/HTTPS activity"
 }
