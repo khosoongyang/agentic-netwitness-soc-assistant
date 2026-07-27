@@ -1,0 +1,219 @@
+{
+  "incident_id": "INC-52825",
+  "classification": {
+    "alert_type": "Lateral Movement",
+    "severity": "HIGH",
+    "risk_score": {
+      "likelihood_initiation": "High",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "High",
+      "overall_risk": "High",
+      "rationale": "Known-bad HTTPS traffic from a SYSTEM-run vmtoolsd.exe on a VMware Tools path indicates a highly likely adversary-triggered action, the event appears as a single observed alert rather than frequent recurrence, and privileged execution with suspicious network IOCs makes adverse impact highly likely."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "timestamp": "2025-07-14T11:21:34+00:00",
+    "description": "NetWitness detected suspicious endpoint activity on BETHANYCHUCHU involving vmtoolsd.exe running as NT AUTHORITY\\SYSTEM and making outbound HTTPS connections to 4.145.79.81, which is flagged in the IOC set. The behavior suggests possible compromise or unauthorized use of a privileged process, but there is no clear evidence of active destructive actions or confirmed malware execution from the parsed telemetry.",
+    "mitre_att&ck": {
+      "tactic": "Lateral Movement",
+      "technique": "T1071.001 Web Protocols"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "fe80:0:0:0:9706:3f55:e752:75ca",
+      "hostname": "BETHANYCHUCHU"
+    },
+    "destination": {
+      "ip_address": "124.155.222.24",
+      "domain": "BETHANYCHUCHU"
+    }
+  },
+  "endpoint_indicators": {
+    "user": "NT AUTHORITY\\SYSTEM",
+    "hostname": "BETHANYCHUCHU",
+    "operating_system": "windows",
+    "files": {
+      "filename": [
+        "vmtoolsd.exe",
+        "NWEAgent.exe",
+        "upfc.exe",
+        "mousocoreworker.exe",
+        "resume-vm-default.bat"
+      ],
+      "hashes": [
+        "8f490791f7164633e2bc3bfe129c829986a45b918566c2fe1d63f3c77b0eb28c",
+        "9d7738bb9f12a783d7656b8051321ada1c45f18d68d541c34b99fcc704ad507e",
+        "463c6c8a6655107ce45b4121988ebe3f",
+        "9e63d657b41e13b75aebb261e7f93c0655d52ee82811b37e7470f4119e5b6054",
+        "ecfd9b55800aebb164a07d9a402dc9dd"
+      ]
+    }
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_2: Was it horizontal or vertical",
+      "step_3: Was any malicious process spawned on the victim's machine?"
+    ],
+    "gap_findings": {
+      "step_2": "The evidence strongly suggests horizontal movement rather than vertical. The alert title explicitly includes 'Chu Wen - Lateral Move Detected', which is a direct indicator of lateral movement. Network context supports this: the host BETHANYCHUCHU shows traffic involving multiple internal RFC1918 addresses (e.g., 192.168.10.204, 192.168.10.205, 192.168.10.207, 192.168.20.201, 192.168.20.16) and broadcast/multicast destinations, implying activity across peer systems within the same internal address space. Because the data does not show a clear privilege transition (e.g., standard user to admin/root) but does show inter-host internal movement, the best-supported conclusion is horizontal movement. Vertical escalation may be adjacent but is not evidenced by IP/subnet relationships alone.",
+      "step_3": "A potentially malicious process was present/associated on the victim machine, but the data is incomplete on parent-child spawning details. The host contains suspicious and administrative-related executables and behaviors: cmd.exe, sc.exe, and services.exe appear alongside 'modifies registry using command-line registry tool', 'runs service control tool', 'starts local service', and 'disables uac'. These behaviors are consistent with malware or attacker tradecraft executing service-control and registry tampering on the endpoint. However, the incident extract does not explicitly show a process tree or which child process was spawned by which parent, so we cannot definitively state the exact malicious process lineage. The safest conclusion is that malicious process activity is likely present, but the specific spawned process relationship is not directly exposed in the provided data.",
+      "title_context": "The incident is an endpoint alert bundle for BETHANYCHUCHU with high risk score 70 and 1558 events, indicating sustained suspicious endpoint activity rather than a single isolated event. The presence of SYSTEM, LOCAL SERVICE, and NETWORK SERVICE users suggests service-level execution contexts, which is common in persistence or privilege-related abuse.",
+      "user_context": "Observed user contexts include NT AUTHORITY\\SYSTEM, NT AUTHORITY\\NETWORK SERVICE, NT AUTHORITY\\LOCAL SERVICE, and BETHANYCHUCHU\\Bethany Chu. SYSTEM/service accounts imply elevated or service execution contexts, while the named user suggests workstation user activity was also involved.",
+      "os_host_context": "The hostname BETHANYCHUCHU looks like a Windows workstation naming convention. Process names such as services.exe, winlogon.exe, csrss.exe, explorer.exe, lsass.exe, WmiPrvSE.exe, and NWEAgent.exe are consistent with a Windows endpoint and EDR telemetry.",
+      "malicious_behavior_context": "The BehavioralIOC list includes 'disables uac', 'modifies registry using command-line registry tool', 'runs service control tool', and 'starts local service', all of which are compatible with post-compromise system modification and possible persistence or defense evasion."
+    },
+    "confidence_per_gap": {
+      "step_2": "high",
+      "step_3": "medium"
+    },
+    "actionable_queries": {
+      "step_2": "Query EDR/network telemetry for the exact source and destination host pairings and authentication events. In Windows Security logs, review Event ID 4624/4625 for logons from 192.168.10.204 / 192.168.10.205 / 192.168.10.207 and correlate with Event ID 4776 if NTLM was used. In EDR, pivot on 'Chu Wen - Lateral Move Detected' and search remote service creation, PsExec/WMI/WinRM artifacts, and SMB/RPC connections between internal 192.168.10.0/24 and 192.168.20.0/24 hosts.",
+      "step_3": "Collect a process tree from EDR for BETHANYCHUCHU around 2025-07-14 10:31:54Z and search for spawned children of cmd.exe, sc.exe, and services.exe. If Windows logs are available, query Security Event ID 4688 (process creation) with command-line logging enabled, and System Event IDs 7040/7045 for service changes/creation. Also query Sysmon Event ID 1 (Process Create), Event ID 6 (Driver loaded) if applicable, and Event ID 13/12 for registry modifications to confirm the malicious child process and its parent.",
+      "title_context": "Review the alert rule output in NetWitness Endpoint for correlated process execution and parent-child relationships, and export the raw event sequence around the first alert time.",
+      "user_context": "Query Security Event ID 4672 for special privileges assigned to logon sessions and Event ID 4648 for explicit credential use to determine whether SYSTEM/service activity was initiated by a user or remote tool.",
+      "os_host_context": "Run EDR host inventory query for BETHANYCHUCHU to retrieve OS build/version, logged-in user history, and agent-reported process ancestry; if unavailable, use hostname inventory or AD computer object attributes.",
+      "malicious_behavior_context": "Search registry audit/Sysmon Event ID 13 for UAC-related keys (e.g., LocalAccountTokenFilterPolicy, EnableLUA) and service-control artifacts via Event ID 7045 plus SCM logs to identify whether the process was used for persistence or defense evasion."
+    },
+    "extracted_values": {
+      "incident.id": "INC-52825",
+      "host.name": "BETHANYCHUCHU",
+      "user.name": "NT AUTHORITY\\SYSTEM",
+      "user.name.1": "BETHANYCHUCHU\\Bethany Chu",
+      "user.name.2": "NT AUTHORITY\\NETWORK SERVICE",
+      "user.name.3": "NT AUTHORITY\\LOCAL SERVICE",
+      "source.ip": "192.168.10.204",
+      "source.ip.1": "192.168.20.201",
+      "source.ip.2": "192.168.10.207",
+      "destination.ip": "192.168.10.205",
+      "destination.ip.1": "192.168.20.16",
+      "destination.ip.2": "8.8.8.8",
+      "destination.ip.3": "8.8.4.4",
+      "process.name": "cmd.exe",
+      "process.name.1": "sc.exe",
+      "process.name.2": "services.exe",
+      "process.name.3": "explorer.exe",
+      "process.name.4": "WmiPrvSE.exe",
+      "behavior.indicator": "disables UAC",
+      "behavior.indicator.1": "runs service control tool",
+      "behavior.indicator.2": "modifies registry using command-line registry tool",
+      "behavior.indicator.3": "starts local service",
+      "alert.title": "Chu Wen - Lateral Move Detected",
+      "alert.title.1": "Disables UAC",
+      "severity.priority": "HIGH",
+      "risk.score": "70"
+    },
+    "mitre_tactic": "Lateral Movement",
+    "incident_category": "Lateral Movement",
+    "classification": "HIGH",
+    "deep_dive_summary": "The incident is best explained as horizontal/lateral movement activity on a Windows endpoint, supported directly by the alert title and internal IP-to-IP relationships across the same private network ranges. There are also strong signs of malicious system modification and service-control activity (cmd.exe, sc.exe, registry/UAC changes), but the provided data does not expose a complete process tree, so the exact spawned malicious child process remains unconfirmed.",
+    "feedback_pass": 1
+  },
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "possible_file_name": "['vmtoolsd.exe']",
+      "file_hash": "8f490791f7164633e2bc3bfe129c829986a45b918566c2fe1d63f3c77b0eb28c",
+      "ip_indicators": [
+        "4.145.79.81"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "completed",
+        "indicator": "8f490791f7164633e2bc3bfe129c829986a45b918566c2fe1d63f3c77b0eb28c",
+        "malicious": 0,
+        "suspicious": 0,
+        "harmless": 0,
+        "undetected": 69,
+        "reputation": 1,
+        "meaningful_name": "vmtoolsd.exe",
+        "first_submission_date": 1661273670,
+        "last_analysis_date": 1783354250
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "4.145.79.81",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 56,
+          "undetected": 35,
+          "reputation": 0,
+          "country": "SG",
+          "as_owner": "Microsoft Corporation"
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "4.145.79.81",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "country_code": "SG",
+          "isp": "Microsoft Corporation",
+          "domain": "microsoft.com",
+          "usage_type": "Data Center/Web Hosting/Transit",
+          "last_reported_at": "2026-01-29T13:40:01+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "8f490791f7164633e2bc3bfe129c829986a45b918566c2fe1d63f3c77b0eb28c",
+          "indicator_type": "file",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "4.145.79.81",
+          "indicator_type": "IPv4",
+          "pulse_count": 2,
+          "related_pulses": [
+            "WarzoneRAT impacts Social Media of users with compromised systems",
+            "DShield Public Data Feed - 2025-08-25"
+          ],
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 20,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "AlienVault OTX found 2 related pulse(s) for 4.145.79.81."
+  ]
+}

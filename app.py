@@ -2709,15 +2709,15 @@ if not st.session_state._startup_done and _env["host"] and _env["username"] and 
                 st.session_state.last_fetch_mode = (
                     "full" if since is None else "incremental")
                 db_upsert_incidents(items)
-        except Exception as _exc:
+        except (Exception, BaseException) as _exc:
             try:
                 st.session_state.nw_msg = f"Startup fetch failed: {_exc}"
-            except Exception:
+            except BaseException:
                 pass
         finally:
             try:
                 st.session_state._startup_fetching = False
-            except Exception:
+            except BaseException:
                 pass
 
     import threading as _threading
@@ -2811,12 +2811,12 @@ def maybe_auto_fetch():
                     if since is None:
                         st.session_state.last_full_fetch = st.session_state.last_fetch
                     db_upsert_incidents(items)   # ← persist every fetch to SQLite
-            except Exception:
+            except BaseException:
                 pass   # failed auto-refresh = stale data; next due cycle retries
             finally:
                 try:
                     st.session_state._bg_fetching = False
-                except Exception:
+                except BaseException:
                     pass
 
         import threading as _threading

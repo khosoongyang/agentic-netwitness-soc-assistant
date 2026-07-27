@@ -1,0 +1,195 @@
+{
+  "incident_id": "INC-51772",
+  "classification": {
+    "alert_type": "Compromised asset (non-critical)",
+    "severity": "HIGH",
+    "risk_score": {
+      "likelihood_initiation": "High",
+      "likelihood_occurrence": "High",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "High",
+      "rationale": "The alert has a high risk score (70), privileged SYSTEM-context activity, suspicious process/file indicators, and multiple IOC matches including unusual multicast and external network targets, making initiation and recurrence highly likely while impact is medium because no concrete evidence of exfiltration, persistence, or service disruption is present."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "timestamp": "2025-07-08T11:29:53+00:00",
+    "description": "This alert shows high-risk endpoint activity on host BETHANYCHUCHU involving SYSTEM context execution and suspicious network communication to multicast/WS-Discovery destinations, with additional indicator overlap for unusual binaries and privileged-account activity. No clear evidence of active destructive behavior, confirmed malware execution, or exfiltration is present, but the combination of high risk score and anomalous process/network telemetry indicates a likely compromised endpoint requiring prompt investigation.",
+    "mitre_att&ck": {
+      "tactic": "Defense Evasion"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.201",
+      "hostname": "BETHANYCHUCHU"
+    },
+    "destination": {
+      "ip_address": "52.123.129.14",
+      "domain": "BETHANYCHUCHU"
+    }
+  },
+  "endpoint_indicators": {
+    "user": "SYSTEM",
+    "hostname": "BETHANYCHUCHU",
+    "operating_system": "windows",
+    "processes": {
+      "command_line": [
+        "OneDrive.exe /background",
+        "cmd.exe /c \"\"C:\\Program Files\\VMware\\VMware Tools\\suspend-vm-default.bat\"\"",
+        "svchost.exe -k LocalServiceAndNoImpersonation -p",
+        "dashost.exe {5b1e40d1-5367-46d2-977e4aed200c65e3}",
+        "--type=gpu-process --noerrdialogs --user-data-dir=\"C:\\Users\\Bethany Chu\\AppData\\Local\\Packages\\Microsoft.Windows.Search_cw5n1h2txyewy\\LocalState\\EBWebView\" --webview-exe-name=SearchApp.exe --webview-exe-version=10.0.19041.5915 --embedded-browser-webview=1",
+        "svchost.exe -k netsvcs -p",
+        "cmd.exe /c \"\"C:\\Program Files\\VMware\\VMware Tools\\resume-vm-default.bat\"\"",
+        "SearchApp.exe -ServerName:CortanaUI.AppX8z9r6jm96hw4bsbneegw0kyxx296wr9t.mca",
+        "svchost.exe -k DcomLaunch -p",
+        "backgroundTaskHost.exe -ServerName:ShellFeedsUI.AppXnj65k2d1a1rnztt2t2nng5ctmk3e76pn.mca",
+        "svchost.exe -k LocalSystemNetworkRestricted -p",
+        "vmtoolsd.exe",
+        "powershell.exe \"E:\\WinDefender_Update_2025.ps1\"",
+        "taskhostw.exe LocalUserSyncDataAvailable",
+        "backgroundTaskHost.exe -ServerName:Global.DesktopSpotlight.AppXz2j21w56bgxkgsjhtn7zkjsepq96erz2.mca",
+        "AUDIODG.EXE 0x40c",
+        "svchost.exe -k LocalServiceNetworkRestricted -p",
+        "NWEAgent.exe /runasservice",
+        "RuntimeBroker.exe -Embedding",
+        "PhoneExperienceHost.exe -ComServer:Background -Embedding",
+        "smartscreen.exe -Embedding",
+        "Sandy.exe -server http://192.168.10.205:8888 -group red",
+        "backgroundTaskHost.exe -ServerName:CortanaUI.AppX3bn25b6f886wmg6twh46972vprk9tnbf.mca",
+        "powershell.exe -ExecutionPolicy Bypass -C Clear-History;Clear",
+        "svchost.exe -k NetworkService -p",
+        "SearchIndexer.exe /Embedding",
+        "TiWorker.exe -Embedding",
+        "svchost.exe -k utcsvc -p",
+        "MpDefenderCoreService.exe",
+        "OneDriveStandaloneUpdater.exe /reporting",
+        "msedgewebview2.exe --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --noerrdialogs --user-data-dir=\"C:\\Users\\Bethany Chu\\AppData\\Local\\Packages\\Microsoft.Windows.Search_cw5n1h2txyewy\\LocalState\\EBWebVi",
+        "AUDIODG.EXE 0x40c 0x4ac"
+      ]
+    },
+    "files": {
+      "filename": [
+        "services.exe",
+        "winlogon.exe",
+        "vm3dservice.exe",
+        "dasHost.exe",
+        "[FLOATING_CODE_3D874CEBB9B9BB87A8EFC35CFC192105]"
+      ],
+      "hashes": [
+        "4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428",
+        "b0e868fbd016fb982366ec7e462594431a80146fa4be3c44c5af8662c9d8a2fd",
+        "04253d6072b4cdd6cc205b192be055cb",
+        "9af901fe53bc6b0a5ee97ab65e2709baf74f4ed407d3003f93f44425ac744c7d",
+        "9b6611203bfed37516e065d12687f9e0"
+      ]
+    }
+  },
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "possible_file_name": "['services.exe']",
+      "file_hash": "4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428",
+      "ip_indicators": [
+        "239.255.255.250"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": true,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "completed",
+        "indicator": "4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428",
+        "malicious": 0,
+        "suspicious": 0,
+        "harmless": 0,
+        "undetected": 67,
+        "reputation": 1,
+        "meaningful_name": "services.exe",
+        "first_submission_date": 1744825151,
+        "last_analysis_date": 1785057128
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "malicious": 1,
+          "suspicious": 0,
+          "harmless": 53,
+          "undetected": 37,
+          "reputation": -151
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "abuse_confidence_score": 0,
+          "total_reports": 1,
+          "usage_type": "Reserved",
+          "last_reported_at": "2026-05-28T01:50:05+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428",
+          "indicator_type": "file",
+          "pulse_count": 5,
+          "related_pulses": [
+            "C:\\Windows\\system32\\free",
+            "MODULE: ProcessCheck",
+            "THOR MODULE: ProcessCheck",
+            "Thor Lite - 07.27.25 - APT Detections [by Disable_Duck]",
+            "Thor Lite - 07.27.25 - APT Detections [un-enriched]"
+          ],
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped.",
+      "PowerShell activity was detected, but no decodable EncodedCommand content was available for IOC extraction."
+    ]
+  },
+  "enrichment_risk_score": 45,
+  "enrichment_risk_level": "Medium",
+  "enrichment_risk_reasons": [
+    "VirusTotal reported 1 malicious detection(s) for IP 239.255.255.250.",
+    "AlienVault OTX found 5 related pulse(s) for 4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428."
+  ]
+}
