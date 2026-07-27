@@ -106,12 +106,23 @@ class _Graph:
 
 def _walk_alert(g: _Graph, inc_node: str, alert: dict, timeline: list[dict]) -> None:
     """Extract entities/edges from one raw alert (Respond API shape)."""
-    a_id = str(alert.get("id") or "?")
+    a_id = str(alert.get("id") or alert.get("_id") or alert.get("alertId") or alert.get("signature_id") or "?")
     ev_tag = f"alert {a_id}"
-    when = alert.get("created") or alert.get("receivedTime")
+    when = alert.get("created") or alert.get("receivedTime") or alert.get("timestamp") or alert.get("time")
+
+    title = (
+        alert.get("title") or alert.get("name") or alert.get("signature_id")
+        or alert.get("type") or alert.get("detail")
+    )
+    if not title and isinstance(alert.get("alertMeta"), dict):
+        titles = alert["alertMeta"].get("AlertTitles") or []
+        if titles:
+            title = titles[0]
+    if not title:
+        title = f"Alert {a_id}" if a_id != "?" else "Security Alert"
+
     if when:
-        timeline.append({"time": str(when),
-                         "event": alert.get("title") or alert.get("name") or f"alert {a_id}"})
+        timeline.append({"time": str(when), "event": str(title)})
 
     # flat convenience fields some alert shapes carry
     flat = {

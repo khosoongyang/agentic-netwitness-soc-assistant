@@ -880,6 +880,8 @@ def _stage_ai_summary_context(stage: str, result: dict) -> str:
             "incident_id": (
                 result.get("investigated_for") or result.get("incident_id")
             ),
+            "triage_classification": result.get("triage_classification"),
+            "alert_logs_ingested": result.get("alert_count") or len(result.get("cluster_alert_ids") or [1]),
             "incident_folder": result.get("incident_folder"),
             "cluster_alert_ids": result.get("cluster_alert_ids"),
             "severity": result.get("severity"),
@@ -1215,6 +1217,18 @@ def _render_stage_progress_plain(
         if not message:
             continue
         timestamp = item.get("timestamp") or item.get("occurred_at")
+
+        if action == "stage_started":
+            details = []
+            alert_count = result.get("alert_count") or result.get("alert_logs_ingested")
+            cls = result.get("triage_classification") or result.get("classification") or workflow_state.get("severity")
+            if alert_count:
+                details.append(f"ingested {alert_count} alert log(s)")
+            if cls and str(cls).upper() != "UNRATED":
+                details.append(f"classified as {cls}")
+            if details:
+                message = f"{stage_label} started ({', '.join(details)})."
+
         identity = (str(timestamp or ""), message)
         if identity in seen:
             continue
@@ -1234,7 +1248,14 @@ def _render_stage_progress_plain(
         worker_started = workflow_state.get("worker_started_at")
         if started_at is None:
             started_at = worker_started
-            message = f"{stage_label} started."
+            details = []
+            alert_count = result.get("alert_count") or result.get("alert_logs_ingested")
+            cls = result.get("triage_classification") or result.get("classification") or workflow_state.get("severity")
+            if alert_count:
+                details.append(f"ingested {alert_count} alert log(s)")
+            if cls and str(cls).upper() != "UNRATED":
+                details.append(f"classified as {cls}")
+            message = f"{stage_label} started" + (f" ({', '.join(details)})." if details else ".")
             identity = (str(worker_started), message)
             if identity not in seen:
                 lines.append(
@@ -1273,6 +1294,25 @@ def _render_stage_progress_plain(
         lines.append(
             f"{_format_progress_datetime(finished_at)} — {terminal_message}"
         )
+
+    # Insert concise incident folder classification note if available in result
+    folder_name = (
+        result.get("incident_folder")
+        or result.get("incident_category")
+        or result.get("cluster_name")
+    )
+    if not folder_name:
+        narrative = str(result.get("narrative_report") or result.get("summary") or "")
+        m = re.search(r"\b(?:cluster|folder)\s+([A-Za-z0-9_-]+)", narrative, re.IGNORECASE)
+        if m:
+            folder_name = m.group(1).strip()
+    if folder_name:
+        ts = finished_at or latest_event_at
+        folder_msg = f"Classified under incident folder: {folder_name}."
+        identity = (str(ts or ""), folder_msg)
+        if identity not in seen:
+            lines.append(f"{_format_progress_datetime(ts)} — {folder_msg}")
+            seen.add(identity)
 
     if status_lower in {"processing", "running", "in progress"}:
         heartbeat = workflow_state.get("worker_heartbeat_at")
@@ -3196,10 +3236,13 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
         incident       = load_raw_incident_for_run(incident_id, run_id) or {}
         parsing_result = load_parsing_result_for_run(incident_id, run_id) or {}
         ticket = triage_result.get("ticket") or {}
-        title  = incident.get("title") or incident.get("name") or "Untitled"
-        run_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        triage_cls = ticket.get("classification") or state.get("severity") or "UNRATED"
+        alert_list = incident.get("alerts") or (incident.get("alertMeta") or {}).get("AlertTitles") or []
+        alert_count = max(len(alert_list), 1)
+        progress_note = f"Ingested {alert_count} alert log(s) for incident {incident_id} (classified as {triage_cls}) — Investigation processing..."
+        set_worker_progress_note(incident_id, run_id, progress_note)
 
-        _log("INVESTIGATION", "running investigation agent (subprocess)…")
+        _log("INVESTIGATION", f"running investigation agent for {incident_id} ({alert_count} alerts, {triage_cls})…")
         inv_result = investigate_with_feedback(
             triage_result, incident, incident_id,
             threat_intel_result=ti_result,
@@ -3207,6 +3250,8 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
             feedback_cb=lambda ev, d: _log("FEEDBACK", f"{ev}: {d}"),
             watchdog_cb=lambda: renew_global_lock(_INVESTIGATION_LOCK, worker_id))
         if inv_result.get("status") not in {"failed", "lock_lost"}:
+            inv_result.setdefault("alert_count", alert_count)
+            inv_result.setdefault("triage_classification", triage_cls)
             inv_result.update(
                 generate_stage_ai_summary("Investigation", inv_result)
             )

@@ -5590,7 +5590,7 @@ elif active_page == "My Workspace":
                         _tl = _cv["timeline"]
                         if _tl:
                             st.markdown("\n".join(
-                                f"- `{(t['timestamp'] or '')[:19]}` — {t['event']} "
+                                f"- `{t['timestamp'] or '—'}` — {t['event']} "
                                 f"_{('(' + t['event_type'] + ')') if t.get('event_type') else ''}_"
                                 for t in _tl[:40]))
                         else:

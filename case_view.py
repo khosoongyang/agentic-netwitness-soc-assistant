@@ -118,6 +118,133 @@ def _unique_ips(alert_meta: dict, *fields: str) -> list[str]:
 # Overview
 # ══════════════════════════════════════════════════════════════════════════
 
+def _extract_agent_key_findings(inv_result: dict | None, triage_result: dict | None,
+                                incident_id: str, run_id: str) -> list[dict]:
+    findings: list[dict] = []
+    if inv_result and isinstance(inv_result, dict):
+        raw_kf = inv_result.get("key_findings")
+        if isinstance(raw_kf, list) and raw_kf:
+            for item in raw_kf[:5]:
+                text = str(item.get("title") if isinstance(item, dict) else item).strip()
+                if text:
+                    findings.append({
+                        "icon": "⌕", "title": text[:120], "desc": "Investigation Agent interpretation",
+                        "confidence": "high", "origin": "investigation_agent_finding",
+                        "provenance": _provenance(text[:120], source_stage="investigation",
+                                                  source_field="investigation_result_json.key_findings",
+                                                  incident_id=incident_id, run_id=run_id),
+                    })
+        elif inv_result.get("summary"):
+            summary_text = str(inv_result["summary"]).strip()
+            if summary_text:
+                findings.append({
+                    "icon": "⌕", "title": summary_text[:120], "desc": "Investigation Agent summary",
+                    "confidence": "high", "origin": "investigation_agent_summary",
+                    "provenance": _provenance(summary_text[:120], source_stage="investigation",
+                                              source_field="investigation_result_json.summary",
+                                              incident_id=incident_id, run_id=run_id),
+                })
+        elif inv_result.get("narrative_report"):
+            report = str(inv_result["narrative_report"])
+            lines = report.splitlines()
+            in_section = False
+            extracted_bullets = []
+            for line in lines:
+                l_strip = line.strip()
+                if l_strip.startswith("#"):
+                    l_low = l_strip.lower()
+                    if "key finding" in l_low or "executive summary" in l_low or "key analytical finding" in l_low:
+                        in_section = True
+                        continue
+                    elif in_section:
+                        in_section = False
+                if in_section and (l_strip.startswith("- ") or l_strip.startswith("* ") or re.match(r"^\d+\.", l_strip)):
+                    clean_line = re.sub(r"^\s*[-*\d.]+\s*", "", l_strip)
+                    clean_line = re.sub(r"\*\*|\*", "", clean_line).strip()
+                    if clean_line and len(clean_line) > 10:
+                        extracted_bullets.append(clean_line)
+                        if len(extracted_bullets) >= 4:
+                            break
+            for bullet in extracted_bullets:
+                findings.append({
+                    "icon": "⌕", "title": bullet[:120], "desc": "Investigation Agent narrative finding",
+                    "confidence": "high", "origin": "investigation_agent_narrative",
+                    "provenance": _provenance(bullet[:120], source_stage="investigation",
+                                              source_field="investigation_result_json.narrative_report",
+                                              incident_id=incident_id, run_id=run_id),
+                })
+
+    if not findings and triage_result and isinstance(triage_result, dict):
+        ticket = triage_result.get("ticket") or {}
+        tr_kf = triage_result.get("key_findings") or ticket.get("key_findings")
+        if isinstance(tr_kf, list) and tr_kf:
+            for item in tr_kf[:5]:
+                text = str(item.get("title") if isinstance(item, dict) else item).strip()
+                if text:
+                    findings.append({
+                        "icon": "⚡", "title": text[:120], "desc": "Triage Agent interpretation",
+                        "confidence": "elevated", "origin": "triage_agent_finding",
+                        "provenance": _provenance(text[:120], source_stage="triage",
+                                                  source_field="triage_result_json.key_findings",
+                                                  incident_id=incident_id, run_id=run_id),
+                    })
+        elif ticket.get("summary"):
+            sum_text = str(ticket["summary"]).strip()
+            if sum_text:
+                findings.append({
+                    "icon": "⚡", "title": sum_text[:120], "desc": "Triage Agent summary",
+                    "confidence": "elevated", "origin": "triage_agent_summary",
+                    "provenance": _provenance(sum_text[:120], source_stage="triage",
+                                              source_field="triage_result_json.ticket.summary",
+                                              incident_id=incident_id, run_id=run_id),
+                })
+
+    return findings
+
+
+def _collect_alert_titles(incident: dict, state: dict) -> list[str]:
+    titles: list[str] = []
+    am = incident.get("alertMeta") or {}
+    if am.get("AlertTitles"):
+        for t in am["AlertTitles"]:
+            if t and str(t) not in titles:
+                titles.append(str(t))
+
+    for alert in incident.get("alerts") or []:
+        if isinstance(alert, dict):
+            t = (alert.get("title") or alert.get("name") or alert.get("signature_id") or alert.get("type"))
+            if t and str(t) not in titles:
+                titles.append(str(t))
+
+    parsed = _json_or_empty(state.get("parsing_result_json"))
+    if parsed.get("alert_titles"):
+        for t in parsed["alert_titles"]:
+            if t and str(t) not in titles:
+                titles.append(str(t))
+    elif (parsed.get("processed_alert") or {}).get("alert_name"):
+        aname = str(parsed["processed_alert"]["alert_name"])
+        if aname not in titles:
+            titles.append(aname)
+
+    triage = _json_or_empty(state.get("triage_result_json"))
+    t_ticket = triage.get("ticket") or {}
+    if t_ticket.get("title") and t_ticket["title"] not in titles:
+        titles.append(str(t_ticket["title"]))
+
+    inv = _json_or_empty(state.get("investigation_result_json"))
+    if inv.get("alert_titles"):
+        for t in inv["alert_titles"]:
+            if t and str(t) not in titles:
+                titles.append(str(t))
+
+    if not titles and (incident.get("title") or incident.get("name")):
+        inc_title = str(incident.get("title") or incident.get("name"))
+        if inc_title and inc_title != "?":
+            titles.append(inc_title)
+
+    return titles
+
+
 def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -> dict:
     am = incident.get("alertMeta") or {}
     triage_result = _json_or_empty(state.get("triage_result_json"))
@@ -134,31 +261,28 @@ def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -
                                investigation_result=inv_result,
                                ioc_correlation_result=ioc_corr)
 
-    # Key findings — same distilled-alert-title + elevated-signal shape the
-    # old _build_case_findings() produced, but now backed by the CORRECT
-    # aggregate_verdict() call above (persisted triage/TI/investigation),
-    # not the bare aggregate_verdict(inc) bug.
     key_findings: list[dict] = []
     _kw = [("hta", ""), ("c2", ""), ("command", ""), ("exfil", ""),
            ("autorun", ""), ("credential", ""), ("powershell", "⌘"),
            ("lateral", "↔"), ("ransom", ""), ("phish", ""), ("beacon", "")]
-    for t in list(dict.fromkeys(am.get("AlertTitles") or []))[:6]:
+    collected_titles = _collect_alert_titles(incident, state)
+    for t in list(dict.fromkeys(collected_titles))[:6]:
         tl = str(t).lower()
         icon = next((e for k, e in _kw if k in tl), "")
         key_findings.append({
             "icon": icon, "title": str(t)[:72], "desc": "Observed alert behaviour",
-            "confidence": "", "origin": "netwitness_alert_title",
+            "confidence": "", "origin": "collected_alert_title",
             "provenance": _provenance(str(t), source_stage="raw_incident",
-                                      source_field="alertMeta.AlertTitles",
+                                      source_field="alert_titles",
                                       incident_id=incident_id, run_id=run_id),
         })
+
+    agent_findings = _extract_agent_key_findings(
+        inv_result, triage_result, incident_id, run_id)
+    key_findings.extend(agent_findings)
+
     if verdict.get("available"):
         _conf = {3: "high", 2: "elevated", 1: "moderate", 0: "low"}
-        # "base severity" is triage_verdict.py's internal signal name and
-        # covers TWO different sources (triage classification, or a raw
-        # incident-field fallback when no triage result exists) — display
-        # the name that matches which one actually fired, per detail,
-        # rather than the generic internal name (never "Base Severity").
         _signal_display_name = {
             "base severity": {"triage classification": "Triage Classification",
                               "incident severity": "NetWitness Severity"},
@@ -423,6 +547,24 @@ def _availability_warning(data_availability: dict) -> str | None:
     return "Full event-level data was unavailable for this workflow run."
 
 
+def _format_timestamp(ts: Any) -> str | None:
+    if ts is None:
+        return None
+    s = str(ts).strip()
+    if not s:
+        return None
+    try:
+        val = float(s)
+        if val > 1_000_000_000_000:
+            val = val / 1000.0
+        if val > 1_000_000_000:
+            dt = datetime.fromtimestamp(val, tz=timezone.utc)
+            return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+    except (ValueError, OverflowError):
+        pass
+    return s
+
+
 def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                    data_availability: dict) -> list[dict]:
     imap = build_incident_map(incident)
@@ -433,7 +575,7 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
         # Genuinely-empty (a successful fetch that found nothing) reads
         # differently from "we don't know" — see data_availability.
         items.append({
-            "timestamp": ev.get("time"), "event": ev.get("event"),
+            "timestamp": _format_timestamp(ev.get("time")), "event": ev.get("event"),
             "event_type": "security", "source_stage": "raw_incident",
             "evidence_reference": "incident_map", "incident_id": str(incident_id),
             "run_id": run_id,
@@ -453,15 +595,16 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                       ("investigation", "investigation_updated_at"),
                       ("reporting", "reporting_updated_at")):
         if col and state.get(col):
-            items.append({"timestamp": state[col], "event": f"{stage.replace('_', ' ').title()} completed",
-                         "event_type": "workflow", "source_stage": stage,
-                         "evidence_reference": col, "incident_id": str(incident_id),
-                         "run_id": run_id})
+            items.append({"timestamp": _format_timestamp(state[col]),
+                          "event": f"{stage.replace('_', ' ').title()} completed",
+                          "event_type": "workflow", "source_stage": stage,
+                          "evidence_reference": col, "incident_id": str(incident_id),
+                          "run_id": run_id})
 
     # Analyst approval decisions.
     for row in wss.get_approval_history(incident_id, run_id):
         items.append({
-            "timestamp": row.get("decided_at"),
+            "timestamp": _format_timestamp(row.get("decided_at")),
             "event": f"{row.get('approval_stage', '').title()} {row.get('decision')} "
                     f"by {row.get('analyst') or 'unknown'} "
                     f"(attempt {row.get('stage_attempt', 1)}/{row.get('approval_attempt', 1)})",
