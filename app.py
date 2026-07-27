@@ -3887,24 +3887,77 @@ def _render_circular_pipeline_section():
             _steps.append({"name": _nm, "count": _c,
                            "label": (f"{_c} in stage" if _c else "empty")})
 
-        # Real average, not a placeholder — computed from the same
-        # workflow_runs audit rows _workflow_worker() already writes
-        # (duration_seconds is embedded in each row's raw_json).
+        # Real average cycle time computed from workflow_state_store incidents,
+        # approval decision durations, and pipeline workflow_runs.
         _avg_cycle = "—"
         try:
-            _recent_runs = pipeline_load("workflow_runs", limit=20)
-            _durations = []
+            _durations: list[float] = []
+            # 1. Incident workflow durations from workflow_state_store
+            with wss.db_connect() as _con:
+                _rows = _con.execute("""
+                    SELECT created_at, worker_started_at, threat_intel_updated_at,
+                           investigation_updated_at, reporting_updated_at, approved_at,
+                           workflow_updated_at
+                    FROM incidents
+                """).fetchall()
+                for _r in _rows:
+                    _rd = dict(_r)
+                    _t_start = _rd.get("created_at") or _rd.get("worker_started_at")
+                    _t_end = (
+                        _rd.get("approved_at")
+                        or _rd.get("reporting_updated_at")
+                        or _rd.get("investigation_updated_at")
+                        or _rd.get("threat_intel_updated_at")
+                        or _rd.get("workflow_updated_at")
+                    )
+                    if _t_start and _t_end and _t_start != _t_end:
+                        try:
+                            _dt1 = datetime.fromisoformat(str(_t_start).replace("Z", "+00:00"))
+                            _dt2 = datetime.fromisoformat(str(_t_end).replace("Z", "+00:00"))
+                            _diff = (_dt2 - _dt1).total_seconds()
+                            if 0 < _diff < 86400 * 7:
+                                _durations.append(_diff)
+                        except Exception:
+                            pass
+
+            # 2. Stage transition durations from workflow_approvals
+            with wss.db_connect() as _con:
+                _app_rows = _con.execute("SELECT decided_at FROM workflow_approvals ORDER BY id ASC").fetchall()
+                _d_times = []
+                for _ar in _app_rows:
+                    if _ar["decided_at"]:
+                        try:
+                            _d_times.append(datetime.fromisoformat(str(_ar["decided_at"]).replace("Z", "+00:00")))
+                        except Exception:
+                            pass
+                for _i in range(1, len(_d_times)):
+                    _diff = (_d_times[_i] - _d_times[_i-1]).total_seconds()
+                    if 0 < _diff < 3600:
+                        _durations.append(_diff)
+
+            # 3. Pipeline workflow_runs audit table
+            _recent_runs = pipeline_load("workflow_runs", limit=100)
             for _rr in _recent_runs:
                 try:
                     _rrj = _json.loads(_rr.get("raw_json") or "{}")
                     _d = _rrj.get("duration_seconds")
-                    if _d is not None:
+                    if _d is not None and float(_d) > 0:
                         _durations.append(float(_d))
                 except Exception:
                     continue
+
             if _durations:
                 _avg_s = int(round(sum(_durations) / len(_durations)))
-                _avg_cycle = f"{_avg_s // 60}m {_avg_s % 60}s"
+                if _avg_s < 60:
+                    _avg_cycle = f"{_avg_s}s"
+                elif _avg_s < 3600:
+                    _m = _avg_s // 60
+                    _s = _avg_s % 60
+                    _avg_cycle = f"{_m}m {_s}s" if _s > 0 else f"{_m}m"
+                else:
+                    _h = _avg_s // 3600
+                    _m = (_avg_s % 3600) // 60
+                    _avg_cycle = f"{_h}h {_m}m"
         except Exception:
             pass
 

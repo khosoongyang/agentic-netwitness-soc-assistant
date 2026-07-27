@@ -458,7 +458,7 @@ def circular_pipeline(stages: Iterable[dict]) -> str:
             fill_bg = "#0c261b"
             stroke_w = "4"
             stroke_dash = ""
-            display_count = f"✓ {cnt_val}"
+            display_count = f"{cnt_val}"
             title_color = "#43d28c"
             sub_txt = f"{cnt_val} completed"
         elif is_active:
@@ -488,7 +488,7 @@ def circular_pipeline(stages: Iterable[dict]) -> str:
         nodes_svg.append(
             f'<g class="ag-circ-node">'
             f'<circle cx="{nx:.1f}" cy="{ny:.1f}" r="26" fill="{fill_bg}" stroke="{color}" stroke-width="{stroke_w}" {stroke_dash} />'
-            f'<text x="{nx:.1f}" y="{ny + 6:.1f}" text-anchor="middle" fill="{color if not is_active else "#ffffff"}" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="{13 if is_finalized else 16}" font-weight="700">{_e(display_count)}</text>'
+            f'<text x="{nx:.1f}" y="{ny + 6:.1f}" text-anchor="middle" fill="{color if not is_active else "#ffffff"}" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="16" font-weight="700">{_e(display_count)}</text>'
             f'</g>'
         )
         
@@ -521,7 +521,7 @@ def circular_pipeline(stages: Iterable[dict]) -> str:
         labels_svg.append(
             f'<g class="ag-circ-label" text-anchor="{anchor}">'
             f'<text x="{tx:.1f}" y="{t1_y:.1f}" fill="{title_color}" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="14" font-weight="700">{name}</text>'
-            f'<text x="{tx:.1f}" y="{t2_y:.1f}" fill="{color if is_finalized else "#8b9bb2"}" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400">{_e(sub_txt)}</text>'
+            f'<text x="{tx:.1f}" y="{t2_y:.1f}" fill="#8b9bb2" font-family="IBM Plex Sans, Segoe UI, sans-serif" font-size="12" font-weight="400">{_e(sub_txt)}</text>'
             f'</g>'
         )
         
