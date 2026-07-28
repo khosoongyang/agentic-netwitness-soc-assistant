@@ -42,24 +42,95 @@ def authenticate_netwitness(host: str, username: str, password: str) -> str:
         session_token = res_data.get("accessToken") or res_data.get("access_token")
         if session_token:
             print("[NetWitness Respond API] Authentication successful! Session token acquired.")
+            os.environ["NW_TOKEN"] = session_token
+            os.environ["NETWITNESS_TOKEN"] = session_token
             return session_token
         raise RuntimeError(f"Login succeeded but no token returned: {res_data}")
     else:
         raise RuntimeError(f"Authentication failed (HTTP {response.status_code}): {response.text[:200]}")
 
 
-def fetch_incident_details(host: str, headers: dict, incident_id: str) -> dict:
+def _is_expired_token_response(response: requests.Response | None) -> bool:
+    """Check if API response indicates an expired or invalid token."""
+    if response is None:
+        return False
+    if response.status_code in (500, 401, 403, 400):
+        text_lower = response.text.lower()
+        if "expired token" in text_lower or "token expired" in text_lower or "expired_token" in text_lower:
+            return True
+        try:
+            body = response.json()
+            if isinstance(body, dict):
+                errors = body.get("errors", [])
+                if isinstance(errors, list):
+                    for err in errors:
+                        msg = err.get("message", "") if isinstance(err, dict) else str(err)
+                        if "expired" in str(msg).lower() or "token" in str(msg).lower():
+                            return True
+        except Exception:
+            pass
+    return False
+
+
+def get_auth_token(host: str | None = None, token: str | None = None, force_refresh: bool = False) -> str | None:
+    """Get an active NetWitness session token.
+    If an explicit token is provided and force_refresh is False, return it.
+    Otherwise, if token is not in memory or force_refresh is True,
+    dynamically authenticate via NetWitness Respond API using NW_USERNAME & NW_PASSWORD.
+    """
+    if token and not force_refresh:
+        return token.strip().strip("'\"")
+
+    if not force_refresh:
+        cached_token = os.getenv("NW_TOKEN", os.getenv("NETWITNESS_TOKEN", "")).strip().strip("'\"")
+        if cached_token:
+            return cached_token
+
+    load_dotenv(override=True)
+    target_host = (host or os.getenv("NW_HOST", os.getenv("NETWITNESS_HOST", "https://192.168.20.11"))).strip().rstrip("/")
+    username = os.getenv("NW_USERNAME", os.getenv("NETWITNESS_USERNAME", "")).strip()
+    raw_password = os.getenv("NW_PASSWORD", os.getenv("NETWITNESS_PASSWORD", "")).strip()
+    password = _maybe_b64_decode(raw_password)
+
+    if not username or not password:
+        print("[APIRetrieval] Cannot authenticate: NW_USERNAME or NW_PASSWORD not found in environment.")
+        return None
+
+    try:
+        print(f"[APIRetrieval] Authenticating user '{username}' at {target_host} to acquire fresh token...")
+        session_token = authenticate_netwitness(target_host, username, password)
+        return session_token
+    except Exception as err:
+        print(f"[APIRetrieval] Authentication failed: {err}")
+        return None
+
+
+def refresh_token(host: str | None = None) -> str | None:
+    """Re-authenticate using NW_USERNAME / NW_PASSWORD from environment to acquire a fresh token."""
+    return get_auth_token(host=host, force_refresh=True)
+
+
+def fetch_incident_details(host: str, headers: dict, incident_id: str, auto_refresh: bool = True) -> dict:
     """Fetch Incident details from NetWitness Respond API (/rest/api/incidents/{incident_id})."""
     url = f"{host}/rest/api/incidents/{incident_id}"
     print(f"[NetWitness Respond API] Fetching Incident metadata from {url}...")
     res = requests.get(url, headers=headers, verify=False, timeout=15)
     if res.status_code == 200:
         return res.json()
+
+    if auto_refresh and _is_expired_token_response(res):
+        print(f"[APIRetrieval] Expired token detected on Incident metadata call (HTTP {res.status_code}). Attempting token refresh...")
+        new_token = refresh_token(host)
+        if new_token:
+            new_headers = dict(headers)
+            new_headers["NetWitness-Token"] = new_token
+            return fetch_incident_details(host, new_headers, incident_id, auto_refresh=False)
+
     print(f"Warning: Incident metadata call returned HTTP {res.status_code}")
     return {}
 
 
-def fetch_incident_via_fetch_api(host: str, token: str, incident_id: str) -> dict:
+def fetch_incident_via_fetch_api(host: str, token: str, incident_id: str, auto_refresh: bool = True) -> dict:
     """Fetch Incident details using NetWitness FETCH API (/rest/api/incident/fetch) as in nw_respond_inc-alert_call-comprehensive.sh."""
     url = f"{host}/rest/api/incident/fetch"
     headers = {
@@ -76,11 +147,18 @@ def fetch_incident_via_fetch_api(host: str, token: str, incident_id: str) -> dic
             return items[0]
         elif isinstance(items, dict):
             return items
+
+    if auto_refresh and _is_expired_token_response(res):
+        print(f"[APIRetrieval] Expired token detected on FETCH incident API (HTTP {res.status_code}). Attempting token refresh...")
+        new_token = refresh_token(host)
+        if new_token:
+            return fetch_incident_via_fetch_api(host, new_token, incident_id, auto_refresh=False)
+
     print(f"Warning: FETCH incident API returned HTTP {res.status_code}: {res.text[:150]}")
     return {}
 
 
-def fetch_alerts_via_fetch_api(host: str, token: str, incident_id: str, count: int = 1000) -> list:
+def fetch_alerts_via_fetch_api(host: str, token: str, incident_id: str, count: int = 1000, auto_refresh: bool = True) -> list:
     """Fetch full raw originalAlert items using NetWitness FETCH API (/rest/api/alert/fetch) as in nw_respond_inc-alert_call-comprehensive.sh."""
     url = f"{host}/rest/api/alert/fetch"
     headers = {
@@ -101,28 +179,44 @@ def fetch_alerts_via_fetch_api(host: str, token: str, incident_id: str, count: i
         if isinstance(items, list):
             print(f"  -> Successfully retrieved {len(items)} comprehensive raw alerts from FETCH API.")
             return items
+
+    if auto_refresh and _is_expired_token_response(res):
+        print(f"[APIRetrieval] Expired token detected on FETCH alert API (HTTP {res.status_code}). Attempting token refresh...")
+        new_token = refresh_token(host)
+        if new_token:
+            return fetch_alerts_via_fetch_api(host, new_token, incident_id, count=count, auto_refresh=False)
+
     print(f"Warning: FETCH alert API returned HTTP {res.status_code}: {res.text[:150]}")
     return []
 
 
-def fetch_all_alerts_and_endpoint_events(host: str, headers: dict, incident_id: str) -> tuple[list, dict]:
+def fetch_all_alerts_and_endpoint_events(host: str, headers: dict, incident_id: str, auto_refresh: bool = True) -> tuple[list, dict]:
     """Paginate through ALL pages of /rest/api/incidents/{incident_id}/alerts to extract 100% of alerts and events."""
     alerts_url = f"{host}/rest/api/incidents/{incident_id}/alerts"
     all_alerts = []
     page = 0
     page_size = 100
     pagination_info = {}
+    curr_headers = dict(headers)
+    refreshed_already = False
 
     print(f"[NetWitness Respond API] Fetching ALL Alert & Endpoint Event Data from {alerts_url}...")
     while True:
         res = requests.get(
             alerts_url,
-            headers=headers,
+            headers=curr_headers,
             params={"pageSize": page_size, "pageNumber": page},
             verify=False,
             timeout=25,
         )
         if res.status_code != 200:
+            if auto_refresh and not refreshed_already and _is_expired_token_response(res):
+                print(f"[APIRetrieval] Expired token detected on paginated alerts call (HTTP {res.status_code}). Attempting token refresh...")
+                new_token = refresh_token(host)
+                if new_token:
+                    refreshed_already = True
+                    curr_headers["NetWitness-Token"] = new_token
+                    continue
             print(f"Failed to fetch alerts page {page}: HTTP {res.status_code}")
             break
 
@@ -354,20 +448,25 @@ def get_comprehensive_incident_payload(incident_id: str, host: str | None = None
             except Exception as exc:
                 print(f"[APIRetrieval] Warning: error reading {cfile}: {exc}")
 
-    # 2. Live NetWitness FETCH API Lookup
-    live_host = (host or os.getenv("NW_HOST", "")).strip().rstrip("/")
-    live_token = (token or os.getenv("NW_TOKEN", os.getenv("NETWITNESS_TOKEN", ""))).strip().strip("'\"")
+    # 2. Live NetWitness FETCH API Lookup (Dynamic Auth via Username & Password)
+    live_host = (host or os.getenv("NW_HOST", os.getenv("NETWITNESS_HOST", "https://192.168.20.11"))).strip().rstrip("/")
+    live_token = get_auth_token(host=live_host, token=token)
 
     if live_host and live_token and inc_clean:
         try:
             print(f"[APIRetrieval] Fetching live FETCH API telemetry for incident {inc_clean}...")
             inc_details = fetch_incident_via_fetch_api(live_host, live_token, inc_clean)
-            headers = {"NetWitness-Token": live_token, "Accept": "application/json"}
+            active_token = get_auth_token(host=live_host, token=live_token)
+            headers = {"NetWitness-Token": active_token, "Accept": "application/json"}
             if not inc_details:
                 inc_details = fetch_incident_details(live_host, headers, inc_clean)
+                active_token = get_auth_token(host=live_host, token=active_token)
+                headers["NetWitness-Token"] = active_token
             
-            raw_alerts = fetch_alerts_via_fetch_api(live_host, live_token, inc_clean, count=1000)
+            raw_alerts = fetch_alerts_via_fetch_api(live_host, active_token, inc_clean, count=1000)
             if not raw_alerts:
+                active_token = get_auth_token(host=live_host, token=active_token)
+                headers["NetWitness-Token"] = active_token
                 raw_alerts, _ = fetch_all_alerts_and_endpoint_events(live_host, headers, inc_clean)
             
             return {
@@ -395,28 +494,11 @@ def main():
         pagination_info = export_data.get("counts", {})
     else:
         incident_id = target_arg
-        host = os.getenv("NW_HOST", "https://192.168.20.11").strip().rstrip("/")
-        username = os.getenv("NW_USERNAME", "").strip()
-        raw_password = os.getenv("NW_PASSWORD", "").strip()
-        password = _maybe_b64_decode(raw_password)
-        token = os.getenv("NW_TOKEN", os.getenv("NETWITNESS_TOKEN", "")).strip().strip("'\"")
+        host = os.getenv("NW_HOST", os.getenv("NETWITNESS_HOST", "https://192.168.20.11")).strip().rstrip("/")
+        session_token = get_auth_token(host=host)
 
-        # 1. Authenticate & Obtain Token
-        if username and password:
-            try:
-                session_token = authenticate_netwitness(host, username, password)
-            except Exception as err:
-                print(f"Authentication error: {err}")
-                if token:
-                    print("Falling back to NW_TOKEN from environment.")
-                    session_token = token
-                else:
-                    sys.exit(1)
-        elif token:
-            print("Using NW_TOKEN from environment.")
-            session_token = token
-        else:
-            print("Error: No authentication credentials found.")
+        if not session_token:
+            print("Error: No valid NetWitness authentication token could be acquired.")
             sys.exit(1)
 
         headers = {"NetWitness-Token": session_token}
