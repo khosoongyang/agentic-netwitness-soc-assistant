@@ -661,14 +661,6 @@ def _add_title_block(doc: Any, title: str, incident_id: str, manifest: dict[str,
     if RGBColor is not None:
         subtitle.runs[0].font.color.rgb = RGBColor.from_string("526071")
 
-    divider = doc.add_paragraph()
-    divider_run = divider.add_run("━" * 80)
-    _apply_report_font(divider_run)
-    if RGBColor is not None:
-        divider_run.font.color.rgb = RGBColor.from_string("2F66D0")
-    if Pt is not None:
-        divider_run.font.size = Pt(8)
-
     meta = doc.add_table(rows=1, cols=2)
     meta.style = "Table Grid"
     values = [
