@@ -920,18 +920,126 @@ def replace_low_value_placeholders(context: dict[str, Any]) -> None:
     context["alert"] = alert
 
 
-def _timeline_event(time_value: Any, event: str, source: str, evidence_refs: list[str] | None = None) -> dict[str, Any] | None:
-    if is_unknown(time_value) and is_unknown(event):
-        return None
-    return {
-        "time": first_present(time_value, default=""),
-        "timestamp": first_present(time_value, default=""),
-        "event": event,
-        "description": event,
-        "source": source,
-        "evidence_refs": evidence_refs or [],
-        "significance": "Supports analyst timeline reconstruction.",
-    }
+_INCIDENT_TIMESTAMP_RE = re.compile(
+    r"(?:\bat\s+)?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)(?:\s*:)?"
+)
+_CHRONOLOGY_HEADING_RE = re.compile(r"^#{1,6}\s*Technical Chronology\b.*$", re.IGNORECASE | re.MULTILINE)
+
+# Keyword heuristics used only to LABEL a sentence the Investigation Agent
+# already wrote -- never to invent or alter its content. Checked in order
+# (a limitation caveat inside an otherwise-suspicious sentence still reads
+# as a limitation, since that is the more analyst-relevant flag).
+_TIMELINE_LIMITATION_MARKERS = (
+    "no confirmed", "not confirmed", "did not confirm", "no evidence",
+    "cannot be", "could not", "not proven", "unable to", "not present",
+    "no hash", "no decodable", "not available", "no usable", "lack of",
+    "no process", "no endpoint", "no hostname", "without process",
+    "without host", "remained unresolved", "did not prove", "no host telemetry",
+    "not directly available", "is not confirmed", "not confirmed as",
+)
+_TIMELINE_SUSPECTED_MARKERS = (
+    "suspicious", "potential", "possible", "suggest", "appears",
+    "unconfirmed", "may indicate", "likely", "consistent with",
+)
+
+
+def _classify_timeline_activity(sentence: str) -> str:
+    """Label a chronology sentence as confirmed, suspected/unconfirmed, or an
+    investigation limitation, based purely on the Investigation Agent's own
+    wording -- the sentence text itself is never altered."""
+    lowered = sentence.lower()
+    if any(marker in lowered for marker in _TIMELINE_LIMITATION_MARKERS):
+        return "Investigation limitation"
+    if any(marker in lowered for marker in _TIMELINE_SUSPECTED_MARKERS):
+        return "Suspected or unconfirmed activity"
+    return "Confirmed activity"
+
+
+def _extract_technical_chronology_narrative(narrative_report: Any) -> str:
+    """Return the Investigation Agent's own free-text account of the real
+    incident: the paragraph it writes under its "Technical Chronology &
+    MITRE ATT&CK TTP Mapping" heading (orchestrator.FinalIncidentAnalysis.
+    incident_summary), stopping before the MITRE mapping table that follows
+    it. This is the actual attacker/host/process/file/network chronology --
+    as opposed to internal workflow milestones (triage, approval, report
+    generation), which must never appear in the Incident Timeline."""
+    text = str(narrative_report or "")
+    if not text:
+        return ""
+    match = _CHRONOLOGY_HEADING_RE.search(text)
+    if not match:
+        return ""
+    lines: list[str] = []
+    for line in text[match.end():].splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if lines:
+                break
+            continue
+        if stripped.startswith("#") or stripped.startswith("|"):
+            break
+        lines.append(stripped)
+    return " ".join(lines).strip()
+
+
+def _incident_timeline_from_chronology(chronology_text: str) -> list[dict[str, Any]]:
+    """Turn the Investigation Agent's chronology paragraph into one timeline
+    entry per described event, carrying forward the most recent explicit
+    timestamp mentioned in the text. Never invents a timestamp: an event
+    described before any timestamp has appeared is recorded as such."""
+    if not chronology_text:
+        return []
+    events: list[dict[str, Any]] = []
+    current_time = ""
+    for raw_sentence in split_into_sentences(chronology_text):
+        match = _INCIDENT_TIMESTAMP_RE.search(raw_sentence)
+        if match:
+            current_time = match.group(1)
+            sentence = raw_sentence[:match.start()] + raw_sentence[match.end():]
+        else:
+            sentence = raw_sentence
+        sentence = re.sub(r"\s{2,}", " ", sentence).strip(" .,:;-")
+        if not sentence:
+            continue
+        events.append({
+            "time": current_time or "Time not available",
+            "timestamp": current_time or "Time not available",
+            "event": sentence + ".",
+            "description": sentence + ".",
+            "source": "",
+            "evidence_refs": [],
+            "significance": _classify_timeline_activity(sentence),
+        })
+    return events
+
+
+def _incident_timeline_from_mitre_mapping(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Fallback source for when the Investigation Agent's narrative has no
+    chronology paragraph to parse: its own structured MITRE ATT&CK mapping
+    (timeline_phase / observed_evidence, already resolved onto the context by
+    repair_mitre_mapping) still describes real, chronologically-ordered
+    incident activity. No timestamp accompanies this data, so the time is
+    stated as unavailable rather than invented."""
+    mitre_mappings = context.get("mitre_attack_mapping") or context.get("mitre_mapping") or []
+    events: list[dict[str, Any]] = []
+    for item in mitre_mappings:
+        if not isinstance(item, dict):
+            continue
+        phase = str(first_present(item.get("timeline_phase"), default="")).strip()
+        evidence = str(first_present(item.get("observed_evidence"), default="")).strip()
+        if is_unknown(phase) and is_unknown(evidence):
+            continue
+        event = ": ".join(part for part in (phase, evidence) if part and not is_unknown(part))
+        events.append({
+            "time": "Time not available",
+            "timestamp": "Time not available",
+            "event": event,
+            "description": event,
+            "source": "",
+            "evidence_refs": [],
+            "significance": _classify_timeline_activity(event),
+        })
+    return events
 
 
 def _is_placeholder_timeline_event(item: Any) -> bool:
@@ -942,45 +1050,28 @@ def _is_placeholder_timeline_event(item: Any) -> bool:
 
 
 def derive_timeline(context: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build the Incident Timeline strictly from the Investigation Agent's
+    own account of the real incident. Internal workflow/processing
+    milestones (alert ingestion, triage, investigation, approval, or report
+    generation) are not incident events and must never appear here."""
     raw = context.get("raw_inputs") or {}
-    enriched = raw.get("enriched_alert") or {}
-    processed = raw.get("processed_alert") or {}
-    triage = raw.get("triage_result") or context.get("triage") or {}
     investigation = raw.get("investigation_result") or context.get("investigation") or {}
-    approval_result = context.get("approval_result") or {}
-    timeline = list(context.get("timeline") or [])
 
-    candidates = [
-        _timeline_event(first_present(enriched.get("first_seen"), enriched.get("firstAlertTime"), enriched.get("alert_timestamp"), processed.get("timestamp"), default=None), "Alert first observed by monitoring source", first_present(context.get("alert", {}).get("source"), default="NetWitness"), ["enriched_alert"]),
-        _timeline_event(triage.get("created_at"), "Triage completed and severity/confidence assigned", "Triage Agent", ["triage_result.json"]),
-        _timeline_event(investigation.get("created_at"), "Investigation completed or completed with limitations", "Investigation Agent", ["investigation_result.json"]),
-        _timeline_event(approval_result.get("created_at"), "SOC analyst approval decision recorded", "SOC Analyst", ["approval_result.json"]),
-        _timeline_event(context.get("created_at") or context.get("generated_at"), "Report generated for SOC analyst review", "Reporting Agent", ["final_report"]),
+    chronology_text = _extract_technical_chronology_narrative(investigation.get("narrative_report"))
+    timeline = _incident_timeline_from_chronology(chronology_text)
+    if not timeline:
+        timeline = _incident_timeline_from_mitre_mapping(context)
+
+    # A genuinely populated investigation.timeline (time/event/significance
+    # supplied directly by the Investigation Agent, distinct from this
+    # module's own unresolved placeholder shape) describes real incident
+    # data too, and is kept alongside the chronology/MITRE-derived events.
+    explicit_timeline = [
+        item for item in as_list(context.get("timeline"))
+        if isinstance(item, dict) and not _is_placeholder_timeline_event(item)
     ]
-    for item in candidates:
-        if item:
-            timeline.append(item)
 
-    activity_log = get_path(enriched, "ticket_context.activity_log", []) or get_path(context.get("ticket"), "activity_log", []) or []
-    for item in as_list(activity_log):
-        if not isinstance(item, dict):
-            continue
-        event = first_present(item.get("message"), item.get("action"), default="Ticket activity recorded")
-        timeline.append({
-            "time": first_present(item.get("created_at"), item.get("timestamp"), default=""),
-            "timestamp": first_present(item.get("created_at"), item.get("timestamp"), default=""),
-            "event": event,
-            "description": event,
-            "source": first_present(item.get("actor"), default="Ticket Workflow"),
-            "evidence_refs": ["ticket_activity_log"],
-            "significance": "Ticket workflow event used for case reconstruction.",
-        })
-
-    deduped = _dedupe(timeline, ("time", "event"))
-    better_events = [item for item in deduped if not _is_placeholder_timeline_event(item)]
-    if better_events:
-        return better_events
-    return deduped
+    return _dedupe(explicit_timeline + timeline, ("time", "event"))
 
 
 def _apply_field_provenance(context: dict[str, Any], evidence_index: dict[str, list[str]]) -> None:
@@ -1381,8 +1472,8 @@ def build_compact_render_tables(context: dict[str, Any]) -> dict[str, Any]:
             gaps,
         ),
         "timeline": compact_table(
-            ["Time", "Event", "Source", "Evidence", "Significance"],
-            [[e.get("time") or e.get("timestamp"), e.get("event") or e.get("description"), e.get("source"), ", ".join(as_list(e.get("evidence_refs"))), e.get("significance")] for e in timeline if isinstance(e, dict)],
+            ["Time", "Observed Incident Activity", "Classification"],
+            [[e.get("time") or e.get("timestamp"), e.get("event") or e.get("description"), e.get("significance")] for e in timeline if isinstance(e, dict)],
             "Incident timeline",
             gaps,
         ),

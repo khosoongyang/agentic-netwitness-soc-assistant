@@ -1,0 +1,114 @@
+{
+  "incident_id": "INC-52987",
+  "classification": {
+    "alert_type": "Suspicious Script Execution / Malware",
+    "severity": "MEDIUM",
+    "risk_score": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Low",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "Medium",
+      "rationale": "The alert has a moderate risk score (70) and a suspicious HTA file executed from a user download path, indicating some likelihood of malicious initiation, but only 2 raw events and no decoded PowerShell or network activity make repeated occurrence less likely; adverse impact is still plausible because HTA execution from Downloads can enable script-based compromise."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "timestamp": "2025-07-17T06:47:09+00:00",
+    "description": "The alert shows execution of a suspicious HTA file, Password_Reset.hta, from a user Downloads path on the KELLYWANG host. There is no decoded PowerShell or direct evidence of network activity, credential theft, or lateral movement, but the file/process behavior is unusual and warrants investigation.",
+    "mitre_att&ck": {
+      "tactic": "Initial Access",
+      "technique": "T1218.005 Mshta"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.20.16",
+      "hostname": "KELLYWANG"
+    }
+  },
+  "endpoint_indicators": {
+    "hostname": "KELLYWANG",
+    "operating_system": "windows",
+    "files": {
+      "filename": [
+        "Password_Reset.hta"
+      ]
+    }
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
+      "step_5: Based on the analysis, determine if further investigation is necessary and the containment steps"
+    ],
+    "gap_findings": {
+      "step_4": "The incident data does not contain a process tree, parent/child process relationships, spawned process names, or command-line telemetry. What is present is a malicious HTA file detection: Password_Reset.hta in C:\\Users\\Kelly Wang\\Downloads\\ResetTool\\ on a Windows 10 Pro host (KELLYWANG). HTA files are commonly used as script containers and can execute via mshta.exe, which raises concern for execution and post-execution activity, but there is no direct evidence here of privilege escalation, lateral movement, or data exfiltration. The source trail 'admin@192.168.20.16:50005' and alias IPs 192.168.20.22 / 192.168.10.204 suggest the host was managed/observed in an internal environment, but do not establish malicious movement. Therefore, malicious activity is plausible but unproven from the available data; the missing process tree is the key gap.",
+      "step_5": "Further investigation is necessary because the alert is high risk, involves a suspicious HTA in a user Downloads subfolder, and the evidence is insufficient to determine whether execution occurred or whether follow-on behaviors happened. Containment should be proportional to the unknowns: isolate KELLYWANG from the network if not already contained, preserve volatile evidence, and inspect for mshta.exe/script-host activity and any child processes or network connections. Since no process tree or execution artifacts are present, the playbook cannot safely conclude benign file quarantine only; this should be treated as potential script execution / initial access with pending confirmation."
+    },
+    "confidence_per_gap": {
+      "step_4": "none",
+      "step_5": "medium"
+    },
+    "actionable_queries": {
+      "step_4": "Query endpoint telemetry / EDR process creation logs for KELLYWANG around 2025-07-17 05:57:24 UTC: Windows Security 4688, Sysmon Event ID 1, and if available EDR process tree for parent/child relationships involving mshta.exe, wscript.exe, cscript.exe, powershell.exe, cmd.exe, rundll32.exe, regsvr32.exe, or any suspicious child process. Also query Sysmon Event ID 3 for outbound network connections and Event ID 11/15 for file creation/modification related to Password_Reset.hta.",
+      "step_5": "Run EDR containment validation search for KELLYWANG: look for process lineage starting with explorer.exe -> mshta.exe (or browser/email client -> mshta.exe), plus host isolation status and recent network connections. If Windows logs are available, query Event ID 4624 for logons and 4672 for privileged logons on KELLYWANG, and Event ID 4688 for process execution to determine whether script execution occurred. Recommended immediate action: isolate host via EDR network containment and collect triage package (running processes, autoruns, scheduled tasks, network sockets, recent downloads)."
+    },
+    "extracted_values": {
+      "incident.id": "INC-52987",
+      "incident.title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+      "host.name": "KELLYWANG",
+      "host.os": "Microsoft Windows 10 Pro",
+      "user.display_name": "Kelly Wang",
+      "file.name": "Password_Reset.hta",
+      "file.path": "C:\\Users\\Kelly Wang\\Downloads\\ResetTool\\",
+      "file.extension": "hta",
+      "source_trail": "admin@192.168.20.16:50005",
+      "host.alias_ip": "192.168.20.22",
+      "host.alias_ip_2": "192.168.10.204",
+      "alert.severity": "7",
+      "risk.score": "70",
+      "alert.title": "Malicious HTA file detected (kelly)",
+      "event.sessionid": "992525",
+      "event.agent_id": "8B929051-16DD-F5CD-2911-7F8B393128D6",
+      "event.device_type": "nwendpoint"
+    },
+    "mitre_tactic": "Initial Access",
+    "incident_category": "Suspicious Script Execution / Malware",
+    "classification": "HIGH",
+    "deep_dive_summary": "The evidence shows a high-risk malicious HTA file detected on a Windows 10 endpoint under a user Downloads path, which is consistent with a potential script-based execution attempt. However, the raw incident data lacks process tree, command-line, network, and child-process evidence, so privilege escalation, lateral movement, or exfiltration cannot be confirmed; endpoint process and network telemetry are required before closing or narrowing scope.",
+    "feedback_pass": 1
+  },
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "possible_file_name": "Password_Reset.hta",
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      }
+    },
+    "notes": [
+      "Password_Reset.hta was extracted, but no file hash was found. VirusTotal and OTX file reputation checks require a hash.",
+      "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

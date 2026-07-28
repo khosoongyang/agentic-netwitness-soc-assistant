@@ -66,7 +66,15 @@ def _start_and_reach_triage_approval(incident_id: str = "INC-1") -> str:
 
 
 def _approve_triage(incident_id: str, run_id: str) -> None:
+    """Approve Triage AND start Threat Intelligence — mirrors the real
+    two-step UI flow (Approve unlocks it Pending; a separate Start
+    Process click calls begin_stage() to flip it to Processing). Most
+    tests below only care about exercising Threat Intelligence itself,
+    not the approve/begin_stage boundary, so this helper folds both
+    steps together; see test_approve_triage_unlocks_but_does_not_start_*
+    for tests of that boundary in isolation."""
     wss.approve_triage(incident_id, run_id, approved_by="tester")
+    wss.begin_stage(incident_id, run_id, "threat_intel")
 
 
 def _save_raw_incident(incident_id: str, run_id: str, incident: dict | None = None) -> None:
@@ -85,14 +93,39 @@ def _mock_all_ti_keys_absent(monkeypatch):
 # Approval atomicity
 # ══════════════════════════════════════════════════════════════════════════
 
-def test_approve_triage_starts_threat_intel_exactly_once():
+def test_approve_triage_unlocks_but_does_not_start_threat_intel():
+    """Approving Triage must only save the decision and unlock Threat
+    Intelligence (left "Pending") — it must never itself start it. That
+    is a separate, explicit action (begin_stage()), fired only when the
+    analyst clicks Threat Intelligence's own Start Process button."""
     run_id = _start_and_reach_triage_approval("INC-1")
-    _approve_triage("INC-1", run_id)
+    wss.approve_triage("INC-1", run_id, approved_by="tester")
+    state = wss.get_state("INC-1")
+    assert state["triage_status"] == "Approved"
+    assert state["threat_intel_status"] == "Pending"
+    assert state["workflow_status"] == "Awaiting Action"
+    assert state["approval_stage"] is None
+
+
+def test_begin_stage_starts_threat_intel_exactly_once_after_approval():
+    run_id = _start_and_reach_triage_approval("INC-1")
+    wss.approve_triage("INC-1", run_id, approved_by="tester")
+    wss.begin_stage("INC-1", run_id, "threat_intel")
     state = wss.get_state("INC-1")
     assert state["threat_intel_status"] == "Processing"
-    assert state["triage_status"] == "Approved"
     assert state["workflow_status"] == "Processing"
-    assert state["approval_stage"] is None
+    with pytest.raises(wss.ApprovalConflictError):
+        wss.begin_stage("INC-1", run_id, "threat_intel")
+
+
+def test_begin_stage_refuses_a_stage_that_was_never_unlocked():
+    """Threat Intelligence cannot be started before Triage is Approved —
+    begin_stage() must check the upstream precondition itself, not just
+    the target stage's own "Pending" status."""
+    run_id = wss.start_run("INC-1")
+    wss._guarded_update("INC-1", run_id, {"workflow_status": "Awaiting Action"})
+    with pytest.raises(wss.ApprovalConflictError):
+        wss.begin_stage("INC-1", run_id, "threat_intel")
 
 
 def test_duplicate_approve_click_raises_conflict():
@@ -125,7 +158,11 @@ def test_rejection_is_atomic_and_blocks_downstream_stage():
         wss.reject_triage("INC-1", run_id, rejected_by="tester", reason="again")
 
 
-def test_investigation_approval_routes_to_reporting_not_workflow_complete():
+def test_investigation_approval_unlocks_but_does_not_start_reporting():
+    """Approving Investigation must only unlock Reporting (left
+    "Pending"), never start it — and must never jump straight to
+    workflow_status "Complete" either; only commit_reporting_approval()
+    may ever set that."""
     run_id = wss.start_run("INC-1")
     wss._guarded_update("INC-1", run_id, {
         "workflow_status": "Awaiting Approval", "approval_stage": "investigation",
@@ -133,9 +170,21 @@ def test_investigation_approval_routes_to_reporting_not_workflow_complete():
     wss.approve_investigation("INC-1", run_id, approved_by="tester")
     state = wss.get_state("INC-1")
     assert state["investigation_status"] == "Approved"
+    assert state["reporting_status"] == "Pending"
+    assert state["workflow_status"] == "Awaiting Action"
+    assert state["workflow_status"] != "Complete"
+
+
+def test_begin_stage_starts_reporting_after_investigation_approval():
+    run_id = wss.start_run("INC-1")
+    wss._guarded_update("INC-1", run_id, {
+        "workflow_status": "Awaiting Approval", "approval_stage": "investigation",
+        "investigation_status": "Awaiting Approval"})
+    wss.approve_investigation("INC-1", run_id, approved_by="tester")
+    wss.begin_stage("INC-1", run_id, "reporting")
+    state = wss.get_state("INC-1")
     assert state["reporting_status"] == "Processing"
     assert state["workflow_status"] == "Processing"
-    assert state["workflow_status"] != "Complete"
 
 
 def test_reporting_approval_is_required_for_workflow_complete():

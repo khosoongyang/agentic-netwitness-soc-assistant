@@ -4380,12 +4380,6 @@ elif active_page == "My Workspace":
                     _header_selected_has_run
                     and not _process_running
                 )
-                _process_label = (
-                    "Process running" if _process_running else
-                    "Process complete" if _process_closed else
-                    "Proceed" if _header_selected_stage == "parsing" else
-                    "▶ Start Process"
-                )
                 st.html("""
                 <style>
                 div.st-key-case_header_action {
@@ -4426,6 +4420,29 @@ elif active_page == "My Workspace":
                         min-width: 100% !important;
                     }
                 }
+                /* Running state: animated CSS spinner, centred beside the
+                   label text. Scoped by a substring match on the button's
+                   key so it applies no matter which case id is interpolated
+                   into it. */
+                div[class*="st-key-case_running_"] div.stButton > button {
+                    display: flex !important;
+                    align-items: center !important;
+                    justify-content: center !important;
+                    gap: 8px !important;
+                }
+                div[class*="st-key-case_running_"] div.stButton > button::before {
+                    content: "";
+                    width: 14px;
+                    height: 14px;
+                    flex-shrink: 0;
+                    border-radius: 50%;
+                    border: 2px solid rgba(255, 255, 255, .35);
+                    border-top-color: #fff;
+                    animation: ag-btn-spin .8s linear infinite;
+                }
+                @keyframes ag-btn-spin {
+                    to { transform: rotate(360deg); }
+                }
                 </style>
                 """)
 
@@ -4464,20 +4481,36 @@ elif active_page == "My Workspace":
                     st.rerun()
 
                 def _proceed_to_next_workflow_stage() -> None:
-                    """Open the next stage, starting only eligible later workers."""
+                    """Change the displayed stage only — never start it.
+
+                    Approving/completing a stage leaves the next one
+                    "Pending" (see workflow_state_store.approve_triage()/
+                    approve_investigation()), so this is navigation-only for
+                    every stage, including Parsing -> Triage. The one
+                    exception is a defensive resume: Threat Intelligence's
+                    own completion can auto-continue into Investigation
+                    (pre-existing, unrelated to any approval or Proceed
+                    click) by leaving investigation_status "Processing" —
+                    if that ever lands with nobody actively servicing it,
+                    make sure a worker thread is running rather than
+                    leaving the page stuck. This never flips a "Pending"
+                    stage to "Processing" itself.
+                    """
                     _next_stage = {
                         "parsing": "Triage",
+                        "triage": "Threat Intelligence Enrichment",
                         "threat_intel": "Investigation",
+                        "investigation": "Reporting",
                     }.get(_header_selected_stage)
                     if not _next_stage:
                         return
 
-                    # Parsing -> Triage is navigation-only. Completing Parsing
-                    # must never implicitly launch the Triage agent.
                     _latest_state = wss.get_state(_sel_id) if WORKFLOW_OK else {}
                     _next_status_key = {
                         "Triage": "triage_status",
+                        "Threat Intelligence Enrichment": "threat_intel_status",
                         "Investigation": "investigation_status",
+                        "Reporting": "reporting_status",
                     }[_next_stage]
                     if (_header_selected_stage != "parsing"
                             and _header_run_id
@@ -4540,12 +4573,16 @@ elif active_page == "My Workspace":
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not approve: {_exc}")
                                 else:
-                                    if _header_approval_stage != "reporting":
-                                        threading.Thread(
-                                            target=wf_run_stage_chain,
-                                            args=(_sel_id, _header_run_id),
-                                            daemon=True,
-                                        ).start()
+                                    # Approval only saves the decision and
+                                    # unlocks the next stage (left "Pending"
+                                    # by approve_triage()/
+                                    # approve_investigation()) — it must
+                                    # never itself start it. The analyst
+                                    # stays on this stage and sees "Proceed
+                                    # to Next Stage"; only that stage's own
+                                    # later Start Process click (see
+                                    # workflow_state_store.begin_stage())
+                                    # may spawn a worker.
                                     st.rerun()
 
                             if st.button(
@@ -4555,20 +4592,26 @@ elif active_page == "My Workspace":
                             ):
                                 _rerun_selected_workflow_stage()
                         elif (
-                            _header_selected_stage in {"parsing", "threat_intel"}
-                            and _header_selected_status
-                            in {"Complete", "Complete with Warnings"}
+                            (_header_selected_stage in {"parsing", "threat_intel"}
+                             and _header_selected_status
+                             in {"Complete", "Complete with Warnings"})
+                            or (_header_selected_stage in {"triage", "investigation"}
+                                and _header_selected_status == "Approved")
                         ):
                             if st.button(
-                                "Proceed",
+                                "Proceed to Next Stage",
                                 key=f"case_proceed_{_header_selected_stage}_{_sel_id}",
                                 type="primary",
                                 use_container_width=True,
                                 help=(
                                     "Open Triage without starting it."
                                     if _header_selected_stage == "parsing" else
-                                    "Go to the next workflow stage and start "
-                                    "its queued process."
+                                    "Open Threat Intelligence Enrichment "
+                                    "without starting it."
+                                    if _header_selected_stage == "triage" else
+                                    "Open Investigation without starting it."
+                                    if _header_selected_stage == "threat_intel" else
+                                    "Open Reporting without starting it."
                                 ),
                             ):
                                 _proceed_to_next_workflow_stage()
@@ -4589,6 +4632,15 @@ elif active_page == "My Workspace":
                                 )
                             ):
                                 _rerun_selected_workflow_stage()
+                            if (
+                                _header_selected_stage in {"triage", "investigation"}
+                                and st.button(
+                                    "Re-run",
+                                    key=f"case_rerun_{_header_selected_stage}_{_sel_id}",
+                                    use_container_width=True,
+                                )
+                            ):
+                                _rerun_selected_workflow_stage()
                         elif _header_can_rerun:
                             if st.button(
                                 "Re-run",
@@ -4596,45 +4648,89 @@ elif active_page == "My Workspace":
                                 use_container_width=True,
                             ):
                                 _rerun_selected_workflow_stage()
+                        elif _process_running:
+                            # Disabled placeholder — the animated spinner is
+                            # painted beside the label via the scoped CSS
+                            # above. No click handler: this state must keep
+                            # the analyst on the current stage until the
+                            # in-flight run genuinely finishes.
+                            st.button(
+                                "Running...",
+                                key=f"case_running_{_sel_id}",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=True,
+                                help="This case's workflow is already running.",
+                            )
+                        elif _process_closed:
+                            st.button(
+                                "Process complete",
+                                key=f"case_process_complete_{_sel_id}",
+                                type="primary",
+                                use_container_width=True,
+                                disabled=True,
+                                help="This case is closed.",
+                            )
                         elif st.button(
-                                _process_label,
+                                "Start Process",
                                 key=f"case_start_process_{_sel_id}",
                                 type="primary",
                                 use_container_width=True,
-                                disabled=_process_running or _process_closed,
-                                help=(
-                                    "This case's workflow is already running."
-                                    if _process_running else
-                                    "This case is closed."
-                                    if _process_closed else
-                                    "Start triage, investigation and reporting "
-                                    "for this case."
-                                )):
-                            _full_inc, _is_full = _resolve_full_incident(_sel_id, inc)
-                            if not _is_full:
-                                st.warning(
-                                    "Full alert data isn't cached in this session yet "
-                                    "— Parsing will run on the cached incident summary "
-                                    "only. Refresh the Incidents list first for "
-                                    "complete per-alert data.")
-                            result = _run_triage_workflow_with_ui(
-                                _full_inc,
-                                parsing_only=_header_selected_stage == "parsing",
-                            )
+                                help="Start triage, investigation and reporting "
+                                    "for this case.",
+                                ):
+                            if (
+                                WORKFLOW_OK
+                                and _header_run_id
+                                and _header_selected_stage
+                                in {"threat_intel", "investigation", "reporting"}
+                                and _header_selected_status == "Pending"
+                            ):
+                                # A prior approval unlocked this stage but
+                                # deliberately left it Pending (see
+                                # workflow_state_store.approve_triage()/
+                                # approve_investigation()) — only this
+                                # explicit Start Process click may flip it
+                                # to Processing and spawn its worker.
+                                try:
+                                    wss.begin_stage(
+                                        _sel_id, _header_run_id,
+                                        _header_selected_stage)
+                                except ApprovalConflictError as _exc:
+                                    st.warning(f"Could not start: {_exc}")
+                                else:
+                                    threading.Thread(
+                                        target=wf_run_stage_chain,
+                                        args=(_sel_id, _header_run_id),
+                                        daemon=True,
+                                    ).start()
+                                    st.rerun()
+                            else:
+                                _full_inc, _is_full = _resolve_full_incident(_sel_id, inc)
+                                if not _is_full:
+                                    st.warning(
+                                        "Full alert data isn't cached in this session yet "
+                                        "— Parsing will run on the cached incident summary "
+                                        "only. Refresh the Incidents list first for "
+                                        "complete per-alert data.")
+                                result = _run_triage_workflow_with_ui(
+                                    _full_inc,
+                                    parsing_only=_header_selected_stage == "parsing",
+                                )
 
-                            # Keep the analyst on the case detail page after
-                            # starting the process.  This action used to arm the
-                            # Ask-a-Question auto-triage flow and navigate there
-                            # on rerun, which unexpectedly replaced the case
-                            # view with the agent board.
-                            if result is not None:
-                                st.session_state.chat_incident = _full_inc
-                                st.session_state.pending_auto_triage = False
-                                st.session_state.nav_page = "My Workspace"
-                                st.rerun()
-                            # else: already running, or the workflow failed —
-                            # the message was already shown above; no rerun,
-                            # so the analyst can read it.
+                                # Keep the analyst on the case detail page after
+                                # starting the process.  This action used to arm the
+                                # Ask-a-Question auto-triage flow and navigate there
+                                # on rerun, which unexpectedly replaced the case
+                                # view with the agent board.
+                                if result is not None:
+                                    st.session_state.chat_incident = _full_inc
+                                    st.session_state.pending_auto_triage = False
+                                    st.session_state.nav_page = "My Workspace"
+                                    st.rerun()
+                                # else: already running, or the workflow failed —
+                                # the message was already shown above; no rerun,
+                                # so the analyst can read it.
 
                 _render_case_stage_selector(
                     _stage_states, selected_stage=_selected_stage,
@@ -5487,9 +5583,11 @@ elif active_page == "My Workspace":
                                 except ApprovalConflictError as _exc:
                                     st.warning(f"Could not approve: {_exc}")
                                 else:
-                                    threading.Thread(target=wf_run_stage_chain,
-                                                     args=(_sel_id, _inc_row.get("run_id")),
-                                                     daemon=True).start()
+                                    # Only saves the decision and unlocks
+                                    # Reporting (left "Pending") — never
+                                    # starts it. Same rule as the case
+                                    # header's quick Approve action; see
+                                    # workflow_state_store.approve_investigation().
                                     st.rerun()
                         with _cac2:
                             _inv_reject_reason = st.text_input(
@@ -5799,20 +5897,24 @@ elif active_page == "My Workspace":
                 }
                 .ws-aegis-head {
                     display: grid;
-                    grid-template-columns: 42px minmax(0, 1fr) auto;
+                    grid-template-columns: 36px minmax(0, 1fr) auto;
                     align-items: center;
                     gap: 13px;
                 }
                 .ws-aegis-icon {
                     display: grid;
                     place-items: center;
-                    width: 42px;
-                    height: 42px;
-                    border-radius: 11px;
+                    width: 36px;
+                    height: 36px;
+                    border-radius: 10px;
                     color: #fff;
-                    font-size: 21px;
+                    font-size: 18px;
                     background: linear-gradient(145deg, #7889ff, #4b5bd4);
                     box-shadow: inset 0 1px 0 rgba(255,255,255,.2);
+                    flex-shrink: 0;
+                }
+                .ws-aegis-titlewrap {
+                    min-width: 0;
                 }
                 .ws-aegis-title {
                     color: #eef2f8;
@@ -5820,11 +5922,42 @@ elif active_page == "My Workspace":
                     font-weight: 750;
                     line-height: 1.2;
                 }
-                .ws-aegis-sub {
-                    color: #8d9bb0;
+                .ws-aegis-sub,
+                .ws-aegis-progress {
                     font-size: .76rem;
                     line-height: 1.4;
-                    margin-top: 3px;
+                    margin-top: 4px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+                .ws-aegis-sub {
+                    color: #8d9bb0;
+                }
+                .ws-aegis-progress {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    color: #8d97ff;
+                    font-weight: 600;
+                }
+                .ws-aegis-progress span.ws-aegis-progress-text {
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                    min-width: 0;
+                }
+                .ws-aegis-spinner {
+                    flex-shrink: 0;
+                    width: 10px;
+                    height: 10px;
+                    border-radius: 50%;
+                    border: 2px solid rgba(141, 151, 255, .28);
+                    border-top-color: #8d97ff;
+                    animation: ws-aegis-spin .8s linear infinite;
+                }
+                @keyframes ws-aegis-spin {
+                    to { transform: rotate(360deg); }
                 }
                 .ws-aegis-case {
                     border: 1px solid #34455e;
@@ -5838,6 +5971,15 @@ elif active_page == "My Workspace":
                 div.st-key-ws_ask_messages {
                     background: #0b1524;
                     padding: 12px 14px 8px;
+                    max-height: 420px;
+                    overflow-y: auto;
+                }
+                /* Messages render in plain chronological (oldest-first) DOM
+                   order — see the sorted-by-_seq loop below. Auto-scroll to
+                   the newest message is handled by the small JS snippet
+                   emitted after the loop, not by any layout/order trickery. */
+                div.st-key-ws_ask_messages > div[data-testid="stVerticalBlock"] {
+                    gap: 0 !important;
                 }
                 div.st-key-ws_ask_messages .bubble-user,
                 div.st-key-ws_ask_messages .bubble-agent {
@@ -5849,27 +5991,65 @@ elif active_page == "My Workspace":
                     margin: 0 0 9px;
                     padding: 11px 12px;
                 }
+                div.st-key-ws_ask_messages iframe {
+                    display: block;
+                    height: 0 !important;
+                    width: 0 !important;
+                    border: 0 !important;
+                    margin: 0 !important;
+                }
+                .ws-aegis-loading-bubble {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 4px;
+                }
+                .ws-aegis-loading-label {
+                    color: #8d97ff;
+                    font-weight: 700;
+                    font-size: .68rem;
+                }
+                .ws-aegis-loading-row {
+                    display: flex;
+                    align-items: center;
+                    gap: 6px;
+                    color: #aab7ca;
+                }
+                .ws-aegis-dots {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 3px;
+                }
+                .ws-aegis-dots span {
+                    width: 4px;
+                    height: 4px;
+                    border-radius: 50%;
+                    background: #8d97ff;
+                    opacity: .25;
+                    animation: ws-aegis-dot-pulse 1.1s ease-in-out infinite;
+                }
+                .ws-aegis-dots span:nth-child(2) { animation-delay: .15s; }
+                .ws-aegis-dots span:nth-child(3) { animation-delay: .3s; }
+                @keyframes ws-aegis-dot-pulse {
+                    0%, 60%, 100% { opacity: .25; transform: translateY(0); }
+                    30% { opacity: 1; transform: translateY(-2px); }
+                }
                 div.st-key-ws_ask_actions {
                     padding: 4px var(--ws-aegis-inline-padding) 10px;
                 }
                 div.st-key-ws_ask_actions [data-testid="stHorizontalBlock"] {
                     display: flex !important;
                     flex-wrap: wrap !important;
+                    justify-content: flex-start !important;
                     gap: 6px !important;
                 }
                 div.st-key-ws_ask_actions [data-testid="stColumn"] {
-                    flex: 1 1 calc(50% - 3px) !important;
-                    width: calc(50% - 3px) !important;
-                    max-width: calc(50% - 3px) !important;
+                    flex: 0 0 auto !important;
+                    width: auto !important;
+                    max-width: 100% !important;
                     min-width: 0 !important;
                 }
-                div.st-key-ws_ask_actions [data-testid="stColumn"]:nth-child(3) {
-                    flex: 0 0 100% !important;
-                    width: 100% !important;
-                    max-width: 100% !important;
-                }
                 div.st-key-ws_ask_actions div.stButton > button {
-                    width: 100% !important;
+                    width: auto !important;
                     min-height: 27px !important;
                     height: 27px !important;
                     border-radius: 999px !important;
@@ -5937,37 +6117,120 @@ elif active_page == "My Workspace":
                 """, unsafe_allow_html=True)
 
                 _hist = st.session_state.workspace_chat.setdefault(_sel_id, [])
-                _prompt = None
-                # Stage-availability strip — reuses _stage_states (computed
+                st.session_state.setdefault("ws_ask_pending", False)
+                st.session_state.setdefault("ws_ask_pending_prompt", "")
+                st.session_state.setdefault("ws_chat_input_seq", 0)
+                st.session_state.setdefault("ws_chat_seq_counter", 0)
+                _ask_pending = st.session_state.ws_ask_pending
+
+                def _ws_next_seq() -> int:
+                    # Monotonic ordering key stamped on every message so the
+                    # render loop can sort strictly on "when it was added"
+                    # rather than relying on list/DOM position — the earlier
+                    # bug (loading bubble and reply rendering above the user's
+                    # message) came from reasoning about DOM order instead of
+                    # an explicit, reliable sequence value.
+                    st.session_state.ws_chat_seq_counter += 1
+                    return st.session_state.ws_chat_seq_counter
+
+                def _ws_ask_start(text: str) -> None:
+                    """Begin a turn: append the user message plus a loading
+                    placeholder — in that order — then let the pending-response
+                    block (after the composer, below) generate the real reply
+                    on this same run. Guarded on ws_ask_pending so Enter-then-
+                    Send, or a stray click while the input is disabled, can't
+                    double-submit."""
+                    if st.session_state.get("ws_ask_pending"):
+                        return
+                    text = (text or "").strip()
+                    if not text:
+                        return
+                    _h = st.session_state.workspace_chat.setdefault(_sel_id, [])
+                    _h.append({"role": "user", "content": text, "_seq": _ws_next_seq()})
+                    _h.append({"role": "assistant", "content": "", "loading": True,
+                               "_seq": _ws_next_seq()})
+                    st.session_state.ws_ask_pending = True
+                    st.session_state.ws_ask_pending_prompt = text
+                    st.session_state.ws_chat_input_seq += 1
+
+                def _ws_ask_submit_typed(key: str) -> None:
+                    # Looks up the value fresh at callback time (Streamlit has
+                    # already synced the committed text into session_state by
+                    # then) rather than capturing it when the widget was
+                    # declared, which would be one keystroke stale.
+                    _ws_ask_start(st.session_state.get(key, ""))
+
+                # Stage-availability summary — reuses _stage_states (computed
                 # once at the top of this case's render, line ~3920) so this
                 # NEVER disagrees with the pipeline stepper above it. This is
                 # the always-visible, non-LLM-mediated confirmation of what
                 # Ask Aegis currently knows: a deterministic signal the chat
                 # replies themselves reinforce but shouldn't be the only
-                # place it's shown.
-                _aegis_stage_symbol = {"done": "✓", "approval": "⏳", "current": "…"}
-                _aegis_stage_strip = " · ".join(
-                    f'{_esc_html(s["name"])} {_aegis_stage_symbol.get(s["state"], "—")}'
-                    for s in _stage_states
+                # place it's shown. Collapsed from a per-stage strip into a
+                # two-line summary: the latest stage whose data is available,
+                # plus whichever single stage is actively running/awaiting
+                # approval (there is at most one, per _case_stage_states).
+                _aegis_done_names = [s["name"] for s in _stage_states if s["state"] == "done"]
+                _aegis_active = next(
+                    (s["name"] for s in _stage_states if s["state"] in ("current", "approval")),
+                    None,
                 )
+                if _aegis_active is None and _aegis_done_names and \
+                        len(_aegis_done_names) == len(_stage_states):
+                    _aegis_context_line = "All workflow context available"
+                elif _aegis_done_names:
+                    _aegis_context_line = f"Context available through {_aegis_done_names[-1]}"
+                else:
+                    _aegis_context_line = "No workflow context available yet"
+
+                _aegis_progress_html = ""
+                if _aegis_active:
+                    _aegis_progress_html = (
+                        '<div class="ws-aegis-progress">'
+                        '<span class="ws-aegis-spinner"></span>'
+                        '<span class="ws-aegis-progress-text">'
+                        f'{_esc_html(_aegis_active)} in progress...</span></div>'
+                    )
+
                 with st.container(key="ws_ask_aegis"):
                     with st.container(key="ws_ask_header"):
                         st.markdown(
                             '<div class="ws-aegis-head">'
                             '<div class="ws-aegis-icon">✦</div>'
-                            '<div><div class="ws-aegis-title">Ask Aegis</div>'
-                            f'<div class="ws-aegis-sub">{_aegis_stage_strip}</div></div>'
+                            '<div class="ws-aegis-titlewrap">'
+                            '<div class="ws-aegis-title">Ask Aegis</div>'
+                            f'<div class="ws-aegis-sub">{_esc_html(_aegis_context_line)}</div>'
+                            f'{_aegis_progress_html}'
+                            '</div>'
                             f'<div class="ws-aegis-case">{_esc_html(_sel_id)}</div>'
                             '</div>',
                             unsafe_allow_html=True,
                         )
 
-                    with st.container(height=520, border=False, key="ws_ask_messages"):
-                        for _m in _hist[-20:]:
+                    with st.container(border=False, key="ws_ask_messages"):
+                        # Strict chronological order by _seq (never by role,
+                        # and never by DOM/list-position tricks) — this is the
+                        # single source of truth for where a message lands, so
+                        # the user's message always precedes its own loading
+                        # bubble and reply.
+                        _ordered_hist = sorted(_hist[-20:], key=lambda m: m.get("_seq", 0))
+                        for _m in _ordered_hist:
                             if _m["role"] == "user":
                                 st.markdown(
                                     '<div class="bubble-user" style="font-size:0.72rem">'
                                     f'{_esc_html(_m["content"])}</div>',
+                                    unsafe_allow_html=True,
+                                )
+                            elif _m.get("loading"):
+                                st.markdown(
+                                    '<div class="bubble-agent ws-aegis-loading-bubble" '
+                                    'style="font-size:0.72rem">'
+                                    '<div class="ws-aegis-loading-label">✦ Aegis</div>'
+                                    '<div class="ws-aegis-loading-row">'
+                                    'Analysing the incident context'
+                                    '<span class="ws-aegis-dots">'
+                                    '<span></span><span></span><span></span>'
+                                    '</span></div></div>',
                                     unsafe_allow_html=True,
                                 )
                             else:
@@ -5977,58 +6240,105 @@ elif active_page == "My Workspace":
                                     unsafe_allow_html=True,
                                 )
 
+                        # Auto-scroll to the newest message. Gated on _seq (via
+                        # a marker stashed on the parent window) so it fires
+                        # exactly when new content actually landed — a new user
+                        # message, the loading bubble, or the completed reply —
+                        # and not on an unrelated rerun elsewhere on the page.
+                        _ws_scroll_seq = _ordered_hist[-1].get("_seq", 0) if _ordered_hist else 0
+                        components.html(
+                            f"""
+                            <script>
+                            (function() {{
+                                const doc = window.parent.document;
+                                const el = doc.querySelector('div.st-key-ws_ask_messages');
+                                if (!el) return;
+                                if (window.parent.__wsAegisLastSeq !== {_ws_scroll_seq}) {{
+                                    window.parent.__wsAegisLastSeq = {_ws_scroll_seq};
+                                    el.scrollTop = el.scrollHeight;
+                                }}
+                            }})();
+                            </script>
+                            """,
+                            height=0,
+                        )
+
                     with st.container(key="ws_ask_actions"):
                         _p1, _p2, _p3 = st.columns([1, 1, 1])
-                        if _p1.button("Summarise investigation", key="ws_chip_sum",
-                                     help="Summarise investigation"):
-                            _prompt = "Summarise the investigation on this case."
-                        if _p2.button("Explain key findings", key="ws_chip_find",
-                                     help="Explain key findings"):
-                            _prompt = "Explain the key findings for this case."
-                        if _p3.button("What requires analyst attention?",
-                                     key="ws_chip_next",
-                                     help="What requires analyst attention?"):
-                            _prompt = "What requires analyst attention on this case?"
+                        _p1.button("Summarise investigation", key="ws_chip_sum",
+                                   help="Summarise investigation",
+                                   on_click=_ws_ask_start,
+                                   args=("Summarise the investigation on this case.",))
+                        _p2.button("Explain key findings", key="ws_chip_find",
+                                   help="Explain key findings",
+                                   on_click=_ws_ask_start,
+                                   args=("Explain the key findings for this case.",))
+                        _p3.button("What requires analyst attention?",
+                                   key="ws_chip_next",
+                                   help="What requires analyst attention?",
+                                   on_click=_ws_ask_start,
+                                   args=("What requires analyst attention on this case?",))
 
                     with st.container(key="ws_ask_composer"):
                         _wc1, _wc2 = st.columns([5, 1])
-                        _typed = _wc1.text_input(
+                        _input_key = f"ws_chat_typed_{st.session_state.ws_chat_input_seq}"
+                        _wc1.text_input(
                             "Ask about this case…",
-                            key="ws_chat_typed",
+                            key=_input_key,
                             label_visibility="collapsed",
                             placeholder="Ask about this case…",
+                            disabled=_ask_pending,
+                            on_change=_ws_ask_submit_typed,
+                            args=(_input_key,),
                         )
-                        if _wc2.button("Send", key="ws_chat_send",
-                                       use_container_width=True):
-                            _prompt = _typed.strip() or None
+                        _wc2.button(
+                            "Sending..." if _ask_pending else "Send",
+                            key="ws_chat_send",
+                            use_container_width=True,
+                            disabled=_ask_pending,
+                            on_click=_ws_ask_submit_typed,
+                            args=(_input_key,),
+                        )
 
-                    if _prompt:
-                        _hist.append({"role": "user", "content": _prompt})
-                        with st.spinner("Aegis is thinking…"):
-                            try:
-                                # Cumulative, cross-stage context — built fresh
-                                # on every send (never cached), so a stage that
-                                # just completed/was approved/was rerun is
-                                # always reflected on the very next question.
-                                # See case_view.build_aegis_context for why
-                                # rerun-invalidation needs no extra code here:
-                                # workflow_state_store.rerun_stage() already
-                                # nulls downstream stage columns at the DB
-                                # layer, so this call simply won't find stale
-                                # data. stage_states=_stage_states reuses the
-                                # pipeline stepper's own classification so
-                                # Aegis and the UI never disagree.
-                                _case_context = cv.build_aegis_context(
-                                    _sel_id, _inc_row.get("run_id"),
-                                    stage_states=_stage_states)
-                                _reply = chat_respond(
-                                    _prompt, incident=inc,
-                                    parsed_context=db_load_parsed_context(
-                                        str(inc.get("id") or inc.get("incidentId") or "")),
-                                    case_context=_case_context)
-                            except Exception as _ce:
-                                _reply = f"Error: {_ce}"
-                        _hist.append({"role": "assistant", "content": _reply})
+                    if st.session_state.ws_ask_pending:
+                        _pending_prompt = st.session_state.get("ws_ask_pending_prompt", "")
+                        try:
+                            # Cumulative, cross-stage context — built fresh
+                            # on every send (never cached), so a stage that
+                            # just completed/was approved/was rerun is
+                            # always reflected on the very next question.
+                            # See case_view.build_aegis_context for why
+                            # rerun-invalidation needs no extra code here:
+                            # workflow_state_store.rerun_stage() already
+                            # nulls downstream stage columns at the DB
+                            # layer, so this call simply won't find stale
+                            # data. stage_states=_stage_states reuses the
+                            # pipeline stepper's own classification so
+                            # Aegis and the UI never disagree.
+                            _case_context = cv.build_aegis_context(
+                                _sel_id, _inc_row.get("run_id"),
+                                stage_states=_stage_states)
+                            _reply = chat_respond(
+                                _pending_prompt, incident=inc,
+                                parsed_context=db_load_parsed_context(
+                                    str(inc.get("id") or inc.get("incidentId") or "")),
+                                case_context=_case_context)
+                        except Exception as _ce:
+                            _reply = f"Error: {_ce}"
+                        # Replace the loading placeholder in place rather than
+                        # appending, so the reply lands in the same spot (right
+                        # after the user's message, at the end of the history)
+                        # and no duplicate assistant message is created. The
+                        # _seq is still bumped so the auto-scroll marker below
+                        # notices this content change and scrolls again.
+                        if _hist and _hist[-1].get("loading"):
+                            _hist[-1] = {"role": "assistant", "content": _reply,
+                                         "_seq": _ws_next_seq()}
+                        else:
+                            _hist.append({"role": "assistant", "content": _reply,
+                                           "_seq": _ws_next_seq()})
+                        st.session_state.ws_ask_pending = False
+                        st.session_state.ws_ask_pending_prompt = ""
                         st.rerun()
 
 

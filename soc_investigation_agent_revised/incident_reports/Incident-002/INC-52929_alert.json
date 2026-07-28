@@ -1,0 +1,164 @@
+{
+  "incident_id": "INC-52929",
+  "classification": {
+    "alert_type": "Network Discovery / Potentially Benign Multicast or False Positive",
+    "severity": "MEDIUM",
+    "risk_score": {
+      "likelihood_initiation": "Low",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is low because the alert shows only repeated mDNS traffic to 224.0.0.251 on port 5353 with no PowerShell, endpoint, file, or clear malicious payload evidence; occurrence is medium because the same network pattern appears across 14 raw events and the alert risk score is 70; adverse impact is low because there is no demonstrated exfiltration, compromise, or host impact beyond unusual network behavior."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: ESA for 192.168.1.64",
+    "timestamp": "2025-07-15T07:03:30+00:00",
+    "description": "This is a network-only alert showing repeated multicast traffic from 192.168.1.64 to 224.0.0.251 on port 5353, with no supporting endpoint, process, file, or PowerShell evidence. The activity appears unusual but there is no clear indication of malicious execution, exfiltration, or confirmed compromise, so it warrants investigation rather than urgent escalation.",
+    "mitre_att&ck": {
+      "tactic": "Discovery",
+      "technique": "T1046 Network Service Discovery"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.1.64",
+      "mac_address": [
+        "94:e1:ac:28:4b:43",
+        "01:00:5e:00:00:fb"
+      ]
+    },
+    "destination": {
+      "ip_address": "224.0.0.251"
+    }
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_2: Was it horizontal or vertical",
+      "step_3: Was any malicious process spawned on the victim's machine?",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System"
+    ],
+    "gap_findings": {
+      "step_1": "User identity is not explicitly present in the incident data. The only contextual clue is the source trail 'admin2@192.168.20.14:50005', which looks like an analyst/investigator access trail or pivot source, not necessarily the compromised user on 192.168.1.64. The victim host is identified as 192.168.1.64 with MAC 94:e1:ac:28:4b:43. Login details, computer name, and operating system are not provided. The alert is network-only and the event payload is a single-sided UDP mDNS packet to 224.0.0.251:5353, which does not expose interactive logon context.",
+      "step_2": "The alert title says 'Lateral Move Detected,' but the observed traffic is from 192.168.1.64 to multicast 224.0.0.251 over UDP/5353 (mDNS). That is not evidence of host-to-host lateral movement in the usual sense, and the destination is not a peer endpoint but a multicast service announcement. If forced to classify movement type from the IP/subnet context alone, it is neither clearly horizontal nor vertical; however, because the target is multicast on the same local network segment, the activity is more consistent with local network discovery/broadcast behavior than true vertical privilege escalation or cross-host lateral movement. Confidence is low because no second host, subnet mask, or authentication event is present.",
+      "step_3": "No malicious process spawn is evidenced in the incident data. The alert is based on network telemetry only and contains no process name, parent PID, command line, hash, or endpoint execution artifact. Therefore we cannot confirm any malicious process was spawned on the victim machine from the available record.",
+      "step_4": "A process tree cannot be analyzed from this incident because no endpoint process telemetry is included. There are no parent-child process references, privilege escalation indicators, remote execution artifacts, or exfiltration markers. The only behavioral signal is UDP multicast traffic to 224.0.0.251:5353, which more strongly resembles mDNS/Bonjour-style discovery than privilege escalation, lateral movement, or data exfiltration. The initial 'Lateral Move Detected' classification is not supported by the payload alone and may be a rule false positive or a generic network anomaly label rather than confirmed malicious lateral movement."
+    },
+    "confidence_per_gap": {
+      "step_1": "low",
+      "step_2": "low",
+      "step_3": "none",
+      "step_4": "none"
+    },
+    "actionable_queries": {
+      "step_1": "Query Windows Security Logs on host 192.168.1.64 for Event ID 4624 (successful logon), 4625 (failed logon), 4672 (special privileges assigned), and 4688 (process creation) around 2025-07-15 06:13:49 UTC. If EDR is available, search device 192.168.1.64 / MAC 94:e1:ac:28:4b:43 for hostname, logged-on user, and OS inventory. For hostname/OS, query DNS/asset inventory or run 'systeminfo' and 'hostname' on the endpoint.",
+      "step_2": "To determine horizontal vs vertical movement, query Security Event ID 4624/4769/4771 on 192.168.1.64 and adjacent hosts for source and target IPs, plus subnet mask via 'ipconfig /all' or EDR network inventory. If remote service creation is suspected, query Event ID 7045 (Service Control Manager) and 4688 for remote execution artifacts; if credential use is suspected, query 4648 (explicit credential logon).",
+      "step_3": "Collect endpoint process telemetry from EDR or Windows Event ID 4688 with command-line auditing enabled to identify any spawned process on 192.168.1.64. Supplement with Sysmon Event ID 1 (Process Create) and Event ID 7 (Image Load), or run EDR hunt for the time window 2025-07-15 06:10-06:20 UTC filtering on host 192.168.1.64.",
+      "step_4": "Pull full process tree from EDR for host 192.168.1.64 and time window around 2025-07-15 06:13:49 UTC; if unavailable, query Sysmon Event ID 1 and Windows Security 4688 for parent-child lineage. To assess exfiltration, review network telemetry for unusual outbound connections, large transfers, and DNS/HTTP/S sessions; for privilege escalation, inspect Event IDs 4672, 4688, 4728/4732/4756, and 7040/7045."
+    },
+    "extracted_values": {
+      "incident.id": "INC-52929",
+      "incident.title": "High Risk Alerts: ESA for 192.168.1.64",
+      "host.ip": "192.168.1.64",
+      "host.mac": "94:e1:ac:28:4b:43",
+      "destination.ip": "224.0.0.251",
+      "destination.mac": "01:00:5e:00:00:fb",
+      "destination.port": "5353",
+      "source.port": "5353",
+      "protocol": "UDP",
+      "alert.name": "Chu Wen - Lateral Move Detected",
+      "alert.source": "Event Stream Analysis",
+      "alert.vendor": "RSA Netwitness",
+      "analysis_session": "single sided udp",
+      "direction": "lateral",
+      "source_trail": "admin2@192.168.20.14:50005",
+      "session_id": "6215139",
+      "severity": "7",
+      "riskScore": "70",
+      "timestamp_utc": "2025-07-15T06:13:49.623+00:00"
+    },
+    "mitre_tactic": "Discovery",
+    "incident_category": "Network Discovery / Potentially Benign Multicast or False Positive",
+    "classification": "MEDIUM",
+    "deep_dive_summary": "The incident is driven by a single UDP mDNS packet from 192.168.1.64 to multicast 224.0.0.251:5353, which is more consistent with local network discovery than confirmed lateral movement. No username, login details, hostname, operating system, or process telemetry are present, so malicious process execution and process-tree analysis cannot be validated from this record. The initial lateral-movement label is not supported by the observed payload alone and likely requires endpoint and authenticatio",
+    "feedback_pass": 1
+  },
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "ip_indicators": [
+        "224.0.0.251"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "224.0.0.251",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 54,
+          "undetected": 37,
+          "reputation": -69
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "224.0.0.251",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "usage_type": "Reserved",
+          "last_reported_at": "2025-05-08T04:49:16+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "224.0.0.251",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

@@ -14,9 +14,11 @@ This module is a PURE database layer: it validates and records state
 transitions, but never runs a workflow stage and never spawns a worker
 thread. soc_workflow.py runs stages (including the stage-claim/lease
 machinery, which needs its own transactional access and lives there,
-reusing `_tx()` from here); app.py starts the worker thread after a
-successful approval. Keeping this boundary strict avoids a circular
-import between this module and soc_workflow.py.
+reusing `_tx()` from here). Approving a stage only unlocks the next one
+(leaves it "Pending") — it never starts it; app.py starts the worker
+thread only when the analyst explicitly clicks that next stage's own
+Start Process button (see begin_stage()). Keeping this boundary strict
+avoids a circular import between this module and soc_workflow.py.
 
 Not related to soc_investigation_agent_revised/sync_engine.py, which
 persists Investigation-stage Incident objects + a Chroma vector index for
@@ -598,15 +600,19 @@ def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
 
 def approve_triage(incident_id: str, run_id: str, *, approved_by: str,
                    comments: str = "") -> dict:
-    """Approving Triage starts Threat Intelligence — this transition ONLY
-    flips the status columns; app.py spawns soc_workflow.run_stage_chain
-    right after this call succeeds."""
+    """Approving Triage only unlocks Threat Intelligence — it leaves
+    threat_intel_status "Pending" and workflow_status "Awaiting Action"
+    (the same idiom run_until_triage_approval() uses for a parsing-only
+    completion). It never starts Threat Intelligence; the analyst must
+    explicitly click that stage's own Start Process button, which calls
+    begin_stage() to flip it to Processing and only then spawns
+    soc_workflow.run_stage_chain."""
     return _atomic_stage_transition(
         incident_id, run_id,
         expect={"run_id": run_id, "workflow_status": "Awaiting Approval",
                "approval_stage": "triage", "triage_status": "Awaiting Approval"},
-        sets={"triage_status": "Approved", "threat_intel_status": "Processing",
-             "workflow_status": "Processing", "approval_stage": None},
+        sets={"triage_status": "Approved", "threat_intel_status": "Pending",
+             "workflow_status": "Awaiting Action", "approval_stage": None},
         approval_stage="triage", decision="approved",
         analyst=approved_by, comments=comments)
 
@@ -625,17 +631,18 @@ def reject_triage(incident_id: str, run_id: str, *, rejected_by: str,
 
 def approve_investigation(incident_id: str, run_id: str, *, approved_by: str,
                           comments: str = "") -> dict:
-    """Approving Investigation starts Reporting — pure DB transition, no
-    thread spawn (see module docstring); app.py spawns
-    soc_workflow.run_stage_chain right after this call succeeds, exactly
-    like approve_triage()."""
+    """Approving Investigation only unlocks Reporting — it leaves
+    reporting_status "Pending" and workflow_status "Awaiting Action",
+    exactly like approve_triage(). It never starts Reporting; the
+    analyst must explicitly click that stage's own Start Process button
+    (see begin_stage())."""
     return _atomic_stage_transition(
         incident_id, run_id,
         expect={"run_id": run_id, "workflow_status": "Awaiting Approval",
                "approval_stage": "investigation",
                "investigation_status": "Awaiting Approval"},
-        sets={"investigation_status": "Approved", "reporting_status": "Processing",
-             "workflow_status": "Processing", "approval_stage": None},
+        sets={"investigation_status": "Approved", "reporting_status": "Pending",
+             "workflow_status": "Awaiting Action", "approval_stage": None},
         approval_stage="investigation", decision="approved",
         analyst=approved_by, comments=comments)
 
@@ -916,6 +923,58 @@ def retry_threat_intel(incident_id: str, run_id: str) -> dict:
             "WHERE id=? AND run_id=?",
             ("Processing", "Pending", "Processing", now, str(incident_id), run_id))
         return {"incident_id": str(incident_id), "run_id": run_id}
+    return _tx(_do)
+
+
+_STAGE_UPSTREAM_READY = {
+    "threat_intel": lambda row: row["triage_status"] == "Approved",
+    "investigation": lambda row: row["threat_intel_status"]
+        in {"Complete", "Complete with Warnings"},
+    "reporting": lambda row: row["investigation_status"] == "Approved",
+}
+
+
+def begin_stage(incident_id: str, run_id: str, stage: str) -> dict:
+    """Explicitly starts a stage that a prior approval unlocked but
+    deliberately left "Pending" (see approve_triage()/
+    approve_investigation()). Approving a stage only unlocks the next
+    one — it must never itself start it — so this is the ONLY
+    transition that flips a newly-unlocked, never-yet-attempted stage
+    to "Processing", and it must only be called in direct response to
+    the analyst clicking that stage's own Start Process button, never
+    from an approval handler, a rerun, a navigation click, or a
+    background poll. Pure DB transition, like every other function in
+    this module — the caller spawns soc_workflow.run_stage_chain()
+    afterward to actually do the work."""
+    stage = str(stage or "").strip().lower()
+    if stage not in _STAGE_UPSTREAM_READY:
+        raise ApprovalConflictError(
+            f"{stage or 'stage'} cannot be started with this transition")
+    status_column = f"{stage}_status"
+    upstream_ready = _STAGE_UPSTREAM_READY[stage]
+
+    def _do(con):
+        row = con.execute("SELECT * FROM incidents WHERE id=?",
+                          (str(incident_id),)).fetchone()
+        if (row is None or row["run_id"] != run_id
+                or row["workflow_status"] == "Processing"
+                or row[status_column] != "Pending"
+                or not upstream_ready(row)):
+            got = {
+                "run_id": row["run_id"] if row else None,
+                "workflow_status": row["workflow_status"] if row else None,
+                status_column: row[status_column] if row else None,
+            }
+            raise ApprovalConflictError(
+                f"{stage} cannot be started from the current workflow "
+                f"state: {got}")
+        now = datetime.now(timezone.utc).isoformat()
+        con.execute(
+            f"UPDATE incidents SET {status_column}=?, workflow_status=?, "
+            "workflow_updated_at=? WHERE id=? AND run_id=?",
+            ("Processing", "Processing", now, str(incident_id), run_id))
+        return {"incident_id": str(incident_id), "run_id": run_id, "stage": stage}
+
     return _tx(_do)
 
 

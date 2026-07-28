@@ -273,11 +273,12 @@ def test_rerun_approved_investigation_preserves_prior_decision():
     assert history_before[0]["stage_attempt"] == 1
     assert history_before[0]["approval_attempt"] == 1
 
-    # approve_investigation() just started Reporting (workflow_status=
-    # "Processing") — simulate Reporting having since paused/finished so
-    # rerun_stage()'s "not while another stage is processing" guard doesn't
-    # block this test's rerun attempt (that guard is itself correct
-    # behavior, just not what this test is exercising).
+    # approve_investigation() only unlocks Reporting (workflow_status=
+    # "Awaiting Action") — it never starts it, so rerun_stage()'s "not
+    # while another stage is processing" guard is already satisfied here.
+    # This explicit reset just keeps the state shape the same as before
+    # Reporting's own approval-pending flow begins, which is what this
+    # test is actually exercising.
     wss._guarded_update("INC-1", run_id, {"workflow_status": "Awaiting Approval"})
     wss.rerun_stage("INC-1", run_id, "investigation")
     state = wss.get_state("INC-1")

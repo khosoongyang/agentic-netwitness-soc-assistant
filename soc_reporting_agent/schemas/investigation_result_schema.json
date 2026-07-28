@@ -47,7 +47,7 @@
     "correlated_alerts": {"type": "array"},
     "correlation_summary": {"type": "string"},
     "attack_chain": {"type": "array"},
-    "timeline": {"type": "array"},
+    "timeline": {"type": "array", "description": "Optional, directly-supplied real-incident chronology (time/event/significance per entry). When absent, the Reporting Agent derives the Incident Timeline itself from narrative_report's 'Technical Chronology & MITRE ATT&CK TTP Mapping' text and, failing that, from mitre_mappings -- never from internal workflow/processing timestamps (triage, approval, report generation)."},
     "investigation_timeline": {"type": "array"},
     "affected_assets": {"type": "array"},
     "affected_users": {"type": "array"},
