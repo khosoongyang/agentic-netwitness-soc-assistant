@@ -345,13 +345,39 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     if not isinstance(powershell_analysis, dict):
         powershell_analysis = {}
 
-    recommendations = [_normalise_recommendation(x, idx + 1) for idx, x in enumerate(_list(_first(investigation.get("recommended_actions"), triage.get("recommended_actions"), triage.get("recommendations"), reporting.get("recommended_actions"), default=[])))]
+    # recommended_containment / containment_recommendations are the Investigation
+    # Agent's own field names for this data (orchestrator.FinalIncidentAnalysis.
+    # recommended_containment); they must be checked ahead of recommended_actions
+    # so a real, specific containment finding is never mistaken for "not supplied"
+    # and backfilled with generic text.
+    raw_recommended_containment = _list(_first(
+        investigation.get("recommended_containment"),
+        investigation.get("containment_recommendations"),
+        investigation.get("recommended_actions"),
+        triage.get("recommended_actions"),
+        triage.get("recommendations"),
+        reporting.get("recommended_actions"),
+        default=[],
+    ))
+    recommendations = [_normalise_recommendation(x, idx + 1) for idx, x in enumerate(raw_recommended_containment)]
     if not recommendations:
         recommendations = [
             _normalise_recommendation("Review available alert context, logs, and telemetry to determine the activity source and scope.", 1),
             _normalise_recommendation("Validate whether the event represents true malicious activity, a policy violation, or a false positive.", 2),
             _normalise_recommendation("Document findings and escalate if evidence of compromise, active attack, or critical asset impact is discovered.", 3),
         ]
+    # Verbatim bullet text for report section 10.3 — preserves the Investigation
+    # Agent's exact wording (hostnames, IPs, processes, registry paths, event IDs,
+    # hashes, subnets) rather than the table-shaped/enriched recommendations above.
+    recommended_containment_actions = []
+    for item in raw_recommended_containment:
+        if isinstance(item, dict):
+            text = _first(item.get("recommendation"), item.get("action"), item.get("title"), default="")
+        else:
+            text = item
+        text = str(text or "").strip()
+        if text:
+            recommended_containment_actions.append(text)
 
     approval = {
         "approval_required": _first(approval_result.get("approval_required"), triage.get("approval_required")),
@@ -545,8 +571,16 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "iocs": iocs,
         "evidence": evidence,
         "timeline": timeline,
-        "mitre_mapping": _list(_first(investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
-        "mitre_attack_mapping": _list(_first(investigation.get("mitre_attack_mapping"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
+        # mitre_mappings (plural) is the Investigation Agent's own structured
+        # MITRE ATT&CK mapping — timeline_phase/observed_evidence/tactic/
+        # technique_name/technique_id per entry, recovered verbatim from
+        # narrative_report by soc_workflow._investigation_mitre_mappings. It
+        # must be checked ahead of the older mitre_attack_mapping/mitre_mapping
+        # fields so genuine, per-technique evidence is never mistaken for "not
+        # supplied" and backfilled by export_context_enhancer's generic
+        # technique-ID scan.
+        "mitre_mapping": _list(_first(investigation.get("mitre_mappings"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
+        "mitre_attack_mapping": _list(_first(investigation.get("mitre_mappings"), investigation.get("mitre_attack_mapping"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
         "powershell_analysis": powershell_analysis,
         "powershell_command_analysis": powershell_analysis,
         "missing_evidence": evidence_gaps,
@@ -555,6 +589,7 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "missing_required_fields": missing_required_fields,
         "recommendations": recommendations,
         "recommended_actions": recommendations,
+        "recommended_containment_actions": recommended_containment_actions,
         "management_action_plan": management_action_plan,
         "key_findings": evidence_backed_findings,
         "evidence_backed_findings": evidence_backed_findings,

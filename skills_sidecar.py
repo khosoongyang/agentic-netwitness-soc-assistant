@@ -528,11 +528,27 @@ def enrich_investigation_result(investigation_result: dict | None,
             inv["affected_users"] = bundle["affected_users"]
 
         # Recommended actions — fill if empty, else append skill recs (deduped).
+        # An investigation that already reported containment actions under its
+        # own field name (orchestrator.FinalIncidentAnalysis.recommended_containment,
+        # or the schema's containment_recommendations) counts as "not empty"
+        # here too — otherwise this additive sidecar would overwrite the
+        # analyst-visible recommendations with generic triage-verdict text
+        # just because it only ever checked recommended_actions.
+        real_containment_actions = (
+            _as_list(inv.get("recommended_actions"))
+            or _as_list(inv.get("recommended_containment"))
+            or _as_list(inv.get("containment_recommendations"))
+        )
         if bundle.get("recommended_actions"):
-            if inv.get("recommended_actions"):
-                inv["recommended_actions"] = _merge_lists(
-                    inv["recommended_actions"], bundle["recommended_actions"],
-                    key=lambda x: str(x.get("recommendation") if isinstance(x, dict) else x).strip().lower())
+            if real_containment_actions:
+                if inv.get("recommended_actions"):
+                    inv["recommended_actions"] = _merge_lists(
+                        inv["recommended_actions"], bundle["recommended_actions"],
+                        key=lambda x: str(x.get("recommendation") if isinstance(x, dict) else x).strip().lower())
+                # else: the real containment actions live under
+                # recommended_containment/containment_recommendations —
+                # leave them as-is rather than fabricating a
+                # recommended_actions list that would shadow them.
             else:
                 inv["recommended_actions"] = bundle["recommended_actions"]
 

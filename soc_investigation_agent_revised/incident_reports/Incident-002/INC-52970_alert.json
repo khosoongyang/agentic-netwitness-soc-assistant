@@ -1,0 +1,201 @@
+{
+  "incident_id": "INC-52970",
+  "classification": {
+    "alert_type": "Suspicious Network Activity / Lateral Movement Alert (unconfirmed)",
+    "severity": "MEDIUM",
+    "risk_score": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Medium",
+      "rationale": "The alert score is elevated and shows repeated DNS/HTTP/HTTPS activity plus suspicious file/process artifacts, but the destinations include common Windows/Microsoft and DNS infrastructure with no decoded PowerShell or confirmed malicious execution, making initiation and occurrence somewhat likely while adverse impact remains unlikely."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: ESA for 192.168.10.200",
+    "timestamp": "2025-07-15T09:38:52+00:00",
+    "description": "The alert shows unusual network activity from internal host 192.168.10.200, including DNS/HTTP/HTTPS traffic to public and Microsoft-related domains, with suspicious file/process artifacts such as authrootstl.cab and pR5k1Jb0=. No PowerShell payload or clear malicious execution was found, and the current evidence is more consistent with suspicious device behavior than confirmed compromise.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control",
+      "technique": "T1071.004 Application Layer Protocol: DNS"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.200",
+      "hostname": "ctldl.windowsupdate.com"
+    },
+    "destination": {
+      "ip_address": "8.8.8.8",
+      "domain": "starhub.net.sg"
+    }
+  },
+  "endpoint_indicators": {
+    "hostname": "ctldl.windowsupdate.com",
+    "files": {
+      "filename": [
+        "authrootstl.cab",
+        "pR5k1Jb0="
+      ]
+    }
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_2: Was it horizontal or vertical",
+      "step_3: Was any malicious process spawned on the victim's machine?",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System"
+    ],
+    "gap_findings": {
+      "step_2": "The evidence most strongly supports horizontal movement, not vertical. The alert title is literally 'Chu Wen - Lateral Move Detected,' which is a lateral movement detector, but the only concrete traffic shown is a single-sided UDP DNS query from 192.168.10.200 to 8.8.8.8:53. There is no evidence of interaction with a different privilege level, no target host-to-host connection, and no internal remote host IP shown. Because the only observed destination is a public DNS resolver and the alert context is generic network activity, the 'lateral' classification appears to be rule-driven rather than proven by the event payload. If forced to reason from available IP context, we cannot establish vertical escalation; horizontal movement is the more plausible interpretation only because the detector labels it as such, but the underlying packet does not prove it.",
+      "step_3": "No malicious process spawned on the victim machine is present in the incident data. The alert payload is network-only, with no process name, parent process, command line, PID, executable path, or process tree fields populated. The only observed activity is UDP/53 traffic from source port 53539 to 8.8.8.8, plus no host-side telemetry such as EDR process creation or Windows event logs. Therefore, there is no evidence here of a spawned malicious process.",
+      "step_4": "A process tree cannot be analyzed from this dataset because no process telemetry exists. There are no parent-child process references, no execution chains, no privileged process indicators, and no evidence of data exfiltration or lateral tooling in the incident record. The only indirect clue is repeated DNS-related network activity and the presence of a suspicious filename field 'pR5k1Jb0=' and 'authrootstl.cab', which may suggest file retrieval or encoded artifact handling, but this is insufficient to establish a process tree, privilege escalation, lateral movement, or exfiltration. The alert appears network-centric and unresolved from the host perspective.",
+      "step_1": "Username: not present in incident data. IP address: 192.168.10.200 is the source host/IP, with outbound connections to 8.8.8.8 and several other public IPs. Login details: not present; there is a source trail 'admin2@192.168.20.14:50005' which suggests the data was viewed or investigated by an admin account from 192.168.20.14, but it is not evidence of the victim's login. Computer name: not present. Operating system: not present. The host appears to be an internal private address in 192.168.10.0/24, and the network session is single-sided UDP DNS traffic, but no endpoint identity or OS fingerprint is available."
+    },
+    "confidence_per_gap": {
+      "step_2": "medium",
+      "step_3": "high",
+      "step_4": "none",
+      "step_1": "low"
+    },
+    "actionable_queries": {
+      "step_2": "Query EDR/network telemetry for internal east-west connections from 192.168.10.200 to RFC1918 addresses; in Windows logs, correlate with Security Event ID 4624/4625/4648 and 4776 for logons, and with NetFlow/Zeek for internal destination IPs to determine true lateral vs vertical movement.",
+      "step_3": "Collect Windows Security Event ID 4688 (process creation) and Sysmon Event ID 1 from host 192.168.10.200, or run EDR search for process lineage on that endpoint around 2025-07-15T08:49:11Z; also query PowerShell Event IDs 4103/4104 if script spawning is suspected.",
+      "step_4": "Pull full host telemetry for 192.168.10.200: Sysmon Event ID 1 (Process Create), 3 (Network Connect), 7 (Image Loaded), 10 (Process Access), 11 (File Create), 12/13/14 (Registry), and 22 (DNS); supplement with Windows Security 4688 and EDR process-tree queries to reconstruct parent-child execution and identify escalation/exfiltration patterns.",
+      "step_1": "Query endpoint inventory/EDR asset details for IP 192.168.10.200 to obtain hostname and OS; query Windows Security Event ID 4624 on the host to recover interactive/network logon usernames and logon type, and use DHCP/CMDB/EDR agent metadata to map IP-to-hostname and operating system."
+    },
+    "extracted_values": {
+      "incident.id": "INC-52970",
+      "incident.title": "High Risk Alerts: ESA for 192.168.10.200",
+      "host.ip": "192.168.10.200",
+      "network.destination_ips": [
+        "8.8.8.8",
+        "52.167.249.196",
+        "52.182.143.209",
+        "124.155.222.17",
+        "124.155.222.19",
+        "13.107.5.93",
+        "4.145.79.81",
+        "124.155.222.10",
+        "224.0.0.251",
+        "23.15.147.118",
+        "109.61.38.38"
+      ],
+      "alert.title": "Chu Wen - Lateral Move Detected",
+      "network.protocol": "UDP",
+      "destination.ip": "8.8.8.8",
+      "destination.port": "53",
+      "source.port": "53539",
+      "session.analysis": "single sided udp",
+      "source.mac": "a8:1e:84:9b:3e:9d",
+      "destination.mac": "f0:7f:06:7e:c4:26",
+      "source.trail": "admin2@192.168.20.14:50005",
+      "file.names": [
+        "authrootstl.cab",
+        "pR5k1Jb0="
+      ],
+      "hostname_candidates": [
+        "ctldl.windowsupdate.com",
+        "ocsp.digicert.com"
+      ],
+      "riskScore": "70",
+      "priority": "HIGH"
+    },
+    "mitre_tactic": "Command and Control",
+    "incident_category": "Suspicious Network Activity / Lateral Movement Alert (unconfirmed)",
+    "classification": "HIGH",
+    "deep_dive_summary": "The incident data is almost entirely network-only and centers on a single-sided UDP DNS session from 192.168.10.200 to 8.8.8.8, with additional outbound contacts to several public IPs and an alert label indicating lateral movement. However, there is no host telemetry to confirm process execution, process trees, user logons, hostname, or OS details, so the case cannot yet substantiate malware execution or true lateral movement. The strongest next step is to collect endpoint process creation and l",
+    "feedback_pass": 1
+  },
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "possible_file_name": "authrootstl.cab",
+      "ip_indicators": [
+        "8.8.8.8"
+      ],
+      "domain_indicators": [
+        "['ctldl.windowsupdate.com']"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 54,
+          "undetected": 37,
+          "reputation": 556,
+          "country": "US",
+          "as_owner": "Google LLC"
+        }
+      ],
+      "domain_results": [
+        {
+          "status": "error",
+          "indicator": "['ctldl.windowsupdate.com']",
+          "status_code": 400,
+          "response": "{\"error\": {\"code\": \"InvalidArgumentError\", \"message\": \"Domain \\\"b\\\"['ctldl.windowsupdate.com']\\\"\\\" is not a valid domain pattern\"}}"
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "abuse_confidence_score": 0,
+          "total_reports": 123,
+          "country_code": "US",
+          "isp": "Google LLC",
+          "domain": "google.com",
+          "usage_type": "Content Delivery Network",
+          "last_reported_at": "2026-07-28T10:35:42+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "error",
+          "indicator": "8.8.8.8",
+          "indicator_type": "IPv4",
+          "reason": "HTTPSConnectionPool(host='otx.alienvault.com', port=443): Read timed out. (read timeout=20)"
+        },
+        {
+          "status": "error",
+          "indicator": "['ctldl.windowsupdate.com']",
+          "indicator_type": "domain",
+          "status_code": 400,
+          "response": "{\"detail\": \"Invalid domain (['ctldl.windowsupdate.com'])\", \"error\": \"unable to parse domain or hostname\"}"
+        }
+      ]
+    },
+    "notes": [
+      "authrootstl.cab was extracted, but no file hash was found. VirusTotal and OTX file reputation checks require a hash."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

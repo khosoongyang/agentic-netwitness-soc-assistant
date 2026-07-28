@@ -232,25 +232,15 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False,
         _board_touch("triage", status="running", think="Workflow started")
 
     _prog = {"done": 0}
-    _parsing_ui = {"status": None}
 
     def on_progress(event, label, text=""):
         key = next((p for p in ALL_PHASES if label == p or label in p or p in label), label)
         if event == "phase_start":
             desc = PHASE_DESC.get(key, label)
-            if key == "Parsing and Normalisation":
-                _parsing_ui["status"] = st.status(
-                    f"{desc}…", expanded=True)
             if not parsing_only:
                 _board_touch("triage", think=f"▶ {desc}")
         elif event == "phase_complete":
             phase_result = f" — {text}" if text else ""
-            if key == "Parsing and Normalisation" and _parsing_ui["status"]:
-                _parsing_ui["status"].update(
-                    label=f"Parsing and Normalisation{phase_result}",
-                    state="complete",
-                    expanded=False,
-                )
             _prog["done"] += 1
             if not parsing_only:
                 _board_touch(
@@ -258,12 +248,6 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False,
                     progress=round(
                         _prog["done"] / max(1, len(ALL_PHASES)) * 100))
         elif event == "phase_error":
-            if key == "Parsing and Normalisation" and _parsing_ui["status"]:
-                _parsing_ui["status"].update(
-                    label=f"Parsing and Normalisation — failed: {text}",
-                    state="error",
-                    expanded=True,
-                )
             if not parsing_only:
                 _board_touch("triage", think=f"{key} — failed: {text}")
 
@@ -856,37 +840,43 @@ def _render_report_editor(incident_id: str, run_id: str, report_type: str, row_s
             st.rerun()
 
 
+@st.cache_data(show_spinner=False)
+def _cached_report_export_bytes(incident_id: str, run_id: str, report_type: str,
+                                file_type: str, identity: tuple, reporting_stage_attempt: int,
+                                analyst: str, _editor_module, _row_state: dict) -> tuple[bytes, str]:
+    """Memoized by content identity (row_state's version/last_saved_iso) rather
+    than session state, so the Download button below always has bytes ready for
+    a genuine single click, while the actual render — which for PDF shells out
+    to a LibreOffice conversion — only reruns when the saved content actually
+    changes, not on every unrelated Streamlit rerun of this page."""
+    return _editor_module.export_report(
+        incident_id, run_id, report_type, file_type, row_state=_row_state,
+        reporting_stage_attempt=reporting_stage_attempt, analyst=analyst)
+
+
 def _render_report_export_actions(incident_id: str, run_id: str, report_type: str,
                                   file_type: str, row_state: dict,
                                   reporting_stage_attempt: int, analyst: str, *,
                                   editor_module=None) -> None:
     editor_module = editor_module or report_editing
-    label = "Export Word" if file_type == "docx" else "Export PDF"
-    cache_key = f"rw_export_{incident_id}_{run_id}_{report_type}_{file_type}"
-    identity = (row_state.get("version"), row_state.get("last_saved_iso"))
-    cached = st.session_state.get(cache_key)
-    if cached and cached.get("identity") != identity:
-        cached = None
-        st.session_state.pop(cache_key, None)
-    if cached:
-        mime = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-               if file_type == "docx" else "application/pdf")
-        st.download_button(f"Download {'Word' if file_type == 'docx' else 'PDF'} file",
-                          data=cached["data"], file_name=cached["filename"], mime=mime,
-                          key=f"rw_dl_{cache_key}", use_container_width=True)
+    label = "Download Word" if file_type == "docx" else "Download PDF"
+    key = f"rw_dl_{incident_id}_{run_id}_{report_type}_{file_type}"
+    if not row_state["exists"]:
+        st.button(label, key=key, use_container_width=True, disabled=True)
         return
-    if st.button(label, key=f"rw_exp_btn_{cache_key}", use_container_width=True,
-                disabled=not row_state["exists"]):
+    identity = (row_state.get("version"), row_state.get("last_saved_iso"))
+    try:
         with st.spinner(f"Preparing {label.split()[-1]} export..."):
-            try:
-                data, filename = editor_module.export_report(
-                    incident_id, run_id, report_type, file_type, row_state=row_state,
-                    reporting_stage_attempt=reporting_stage_attempt, analyst=analyst)
-            except Exception as exc:
-                st.error(f"Export failed: {exc}")
-            else:
-                st.session_state[cache_key] = {"data": data, "filename": filename, "identity": identity}
-                st.rerun()
+            data, filename = _cached_report_export_bytes(
+                incident_id, run_id, report_type, file_type, identity,
+                reporting_stage_attempt, analyst, editor_module, row_state)
+    except Exception as exc:
+        st.error(f"Export failed: {exc}")
+        return
+    mime = ("application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+           if file_type == "docx" else "application/pdf")
+    st.download_button(label, data=data, file_name=filename, mime=mime,
+                      key=key, use_container_width=True)
 
 
 def _render_reports_workspace(incident_id: str, run_id: str, rep_cv: dict,

@@ -531,21 +531,12 @@ No evidence of data access, data exfiltration, encryption impact, or personal da
 
 ### 10.3 Recommended Actions
 
-{% if recommended_actions %}
-{% set tbl = compact_tables.recommendations | default({}) %}
-{% if tbl.summary %}
-{{ tbl.summary }}
-
-{% endif %}
-{% if tbl.columns %}
-| {% for col in tbl.columns %}{{ col }} | {% endfor %}
-| {% for col in tbl.columns %}--- | {% endfor %}
-{% for row in tbl.rows %}
-| {% for cell in row %}{{ cell }} | {% endfor %}
-{% endfor %}
-{% endif %}
+{% if recommended_containment_actions %}
+{%- for action in recommended_containment_actions %}
+- {{ action }}
+{%- endfor %}
 {% else %}
-No recommended actions were provided.
+No recommended containment actions were provided by the Investigation Agent.
 {% endif %}
 
 ---

@@ -1,0 +1,174 @@
+{
+  "incident_id": "INC-52975",
+  "classification": {
+    "alert_type": "Lateral Movement",
+    "severity": "MEDIUM",
+    "risk_score": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "Medium",
+      "rationale": "The alert has a moderate risk score (70), multiple IOC-bearing network connections from the internal host to external IPs including a suspicious HTTPS destination, and 38 raw events, but no endpoint/process evidence or PowerShell indicators to support a higher confidence or impact level."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: ESA for 192.168.10.200",
+    "timestamp": "2025-07-15T09:49:52+00:00",
+    "description": "NetWitness flagged high-risk network activity from internal host 192.168.10.200 to external IP 4.145.79.81 over HTTPS, with additional DNS/multicast traffic observed. No PowerShell indicators or endpoint/file evidence were available, so this is suspicious network behavior but not enough to confirm compromise or active intrusion.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control",
+      "technique": "T1071 Application Layer Protocol"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.200"
+    },
+    "destination": {
+      "ip_address": "8.8.8.8"
+    }
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_2: Was it horizontal or vertical",
+      "step_3: Was any malicious process spawned on the victim's machine?",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System"
+    ],
+    "gap_findings": {
+      "step_1": "Username: not present in incident data. The network alert has empty username/user fields, but the source trail shows 'admin2@192.168.20.14:50005', which strongly suggests the originating authenticated user/session was 'admin2'. IP address: 192.168.10.200 is the grouped source IP and the alert's from host; a related trail references 192.168.20.14 as the upstream source of the analyzed session. Login details: likely an authenticated remote session on port 50005, but the actual login type/protocol is not explicitly provided. Computer name: not present in incident data. Operating system: not present in incident data. Overall, this is a network-only alert with partial identity clues, not a full endpoint telemetry record.",
+      "step_2": "Was it horizontal or vertical: the evidence is more consistent with horizontal movement than vertical. The alert is explicitly labeled 'Chu Wen - Lateral Move Detected', and the connection is from internal host 192.168.10.200 to 4.145.79.81:443. Because the destination is an external Azure IP rather than another internal subnet host, this is not classic lateral movement between peer systems; however, if the alert author intended the label literally, it may reflect lateral movement behavior originating from the internal host. There is no direct evidence of privilege escalation or access to a higher-privileged host, so vertical movement is not supported.",
+      "step_3": "Was any malicious process spawned on the victim's machine: not present in incident data. This record only shows a network session and does not include endpoint process telemetry, parent-child execution, or command line data. Therefore, no malicious spawned process can be confirmed from the available evidence.",
+      "step_4": "Analyze the process tree for signs of malicious activity: not present in incident data. No process tree, process image names, parent/child relationships, or execution context are included. The only observable activity is outbound TCP 443 traffic from 192.168.10.200 to 4.145.79.81, which could be consistent with C2, proxying, or benign cloud traffic, but process-level confirmation is missing. Because there is no endpoint telemetry, privilege escalation, lateral movement, or exfiltration cannot be proven from this dataset alone."
+    },
+    "confidence_per_gap": {
+      "step_1": "medium",
+      "step_2": "low",
+      "step_3": "none",
+      "step_4": "none"
+    },
+    "actionable_queries": {
+      "step_1": "Query Windows Security Logs on the suspected source host(s) for Event ID 4624 (successful logon), 4634 (logoff), and 4648 (explicit credential use); correlate LogonType with the session on port 50005. Also query EDR/asset inventory for hostname and OS tied to 192.168.10.200 and 192.168.20.14. If RSA/NW is available, pivot on sessionid 6216854 and event_source_id 3caac18f-9013-4fa4-a8e2-242abe6d2a07:50005:6216854.",
+      "step_2": "Run an EDR/network hunt for all connections from 192.168.10.200 and 192.168.20.14 to internal RFC1918 ranges versus external destinations; specifically query for same-subnet peers in 192.168.10.0/24 and 192.168.20.0/24, plus Windows Event ID 5140/5145 for SMB share access if lateral movement is suspected. If using Defender for Endpoint, search DeviceNetworkEvents for RemoteIP in internal ranges and DeviceLogonEvents for remote interactive logons.",
+      "step_3": "Collect endpoint process creation telemetry from the victim host: Windows Security Event ID 4688, Sysmon Event ID 1, or EDR process execution events. Search for any process starting around 2025-07-15 09:00 UTC on 192.168.10.200, especially browsers, scripting engines, shells, or remote admin tools, and correlate with network connection to 4.145.79.81:443.",
+      "step_4": "Pull full process tree from EDR (e.g., Microsoft Defender for Endpoint Advanced Hunting: DeviceProcessEvents joined to InitiatingProcess*) and Sysmon Event IDs 1, 3, 7, 11, 22, plus network telemetry around the same timestamp. Also inspect Windows Event IDs 4672, 4688, 4697, 7045, and 4104 (PowerShell) for privilege escalation, service creation, or script-based exfiltration."
+    },
+    "extracted_values": {
+      "incident.id": "INC-52975",
+      "incident.title": "High Risk Alerts: ESA for 192.168.10.200",
+      "source.ip": "192.168.10.200",
+      "destination.ip": "4.145.79.81",
+      "destination.ip_list": "8.8.8.8, 20.189.173.8, 51.104.15.252, 4.145.79.81, 224.0.0.252, 224.0.0.251",
+      "destination.port": "443",
+      "source.port": "59821",
+      "alert.name": "Chu Wen - Lateral Move Detected",
+      "alert.severity": "7",
+      "alert.priority": "HIGH",
+      "session.id": "6216854",
+      "event_source_id": "3caac18f-9013-4fa4-a8e2-242abe6d2a07:50005:6216854",
+      "source_trail_user": "admin2",
+      "source_trail_host": "192.168.20.14",
+      "country_dst": "Singapore",
+      "org_dst": "Microsoft Azure",
+      "direction": "outbound",
+      "mac.src": "a8:1e:84:9b:3e:9d",
+      "mac.dst": "f0:7f:06:7e:c4:26",
+      "protocol": "TCP",
+      "hostname": "not present in incident data",
+      "operating_system": "not present in incident data",
+      "username": "not present in incident data; inferred possible user admin2 from source trail",
+      "login_details": "likely authenticated session on port 50005; exact logon type not present"
+    },
+    "mitre_tactic": "Command and Control",
+    "incident_category": "Lateral Movement",
+    "classification": "HIGH",
+    "deep_dive_summary": "The incident is a network-only alert centered on 192.168.10.200 making outbound TCP/443 connections to an Azure IP, with a related source trail hinting at an admin2 session from 192.168.20.14. The label says 'Lateral Move Detected,' but the data does not show endpoint process activity or a full process tree, so process spawning, privilege escalation, and exfiltration remain unconfirmed. The strongest corrected framing from available evidence is potential Command and Control with possible lateral",
+    "feedback_pass": 1
+  },
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "ip_indicators": [
+        "4.145.79.81"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "4.145.79.81",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 56,
+          "undetected": 35,
+          "reputation": 0,
+          "country": "SG",
+          "as_owner": "Microsoft Corporation"
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "4.145.79.81",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "country_code": "SG",
+          "isp": "Microsoft Corporation",
+          "domain": "microsoft.com",
+          "usage_type": "Data Center/Web Hosting/Transit",
+          "last_reported_at": "2026-01-29T13:40:01+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "4.145.79.81",
+          "indicator_type": "IPv4",
+          "pulse_count": 2,
+          "related_pulses": [
+            "WarzoneRAT impacts Social Media of users with compromised systems",
+            "DShield Public Data Feed - 2025-08-25"
+          ],
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 20,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "AlienVault OTX found 2 related pulse(s) for 4.145.79.81."
+  ]
+}

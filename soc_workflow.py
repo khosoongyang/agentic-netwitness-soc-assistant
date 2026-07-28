@@ -1127,6 +1127,119 @@ def _investigation_trace_rows(narrative_report: str, limit: int = 3) -> list[dic
     return rows
 
 
+def _investigation_recommended_containment_actions(narrative_report: str) -> list[str]:
+    """Read orchestrator.py's persisted Recommended Containment Actions bullets.
+
+    main.py writes FinalIncidentAnalysis.recommended_containment (the
+    Investigation agent's specific, policy-driven containment findings — e.g.
+    exact hostnames, IPs, processes, registry paths) to the Markdown report as
+    a bullet list under this heading. run_investigation() otherwise only
+    keeps that report as an opaque narrative_report blob, so without this the
+    reporting handoff never sees the real containment actions under any of
+    the field names (recommended_containment / recommended_actions) it reads —
+    it only sees the generic skills_sidecar fallback. Reading the bullets back
+    out here keeps section 10.3 of the analyst-facing report tied to the
+    Investigation agent's own containment findings, verbatim.
+    """
+    text = str(narrative_report or "")
+    if "## Recommended Containment Actions" not in text:
+        return []
+    section = text.split("## Recommended Containment Actions", 1)[1]
+    section = section.split("\n## ", 1)[0]
+    actions: list[str] = []
+    for line in section.splitlines():
+        line = line.strip()
+        if line.startswith("- "):
+            action = line[2:].strip()
+            if action:
+                actions.append(action)
+    return actions
+
+
+# Column-header aliases for the MITRE ATT&CK table mitre_mapper.
+# generate_markdown_table() writes (orchestrator.FinalIncidentAnalysis.
+# mitre_mappings / mitre_mapper.MitreTTPMapping). Mirrors case_view.py's own
+# _MITRE_HEADER_ALIASES so the reporting handoff parses the identical table
+# the Investigation stage's own MITRE ATT&CK tab reads — case_view.py cannot
+# be imported here (it imports this module), so the small deterministic
+# parser is intentionally duplicated rather than shared.
+_MITRE_HEADER_ALIASES = {
+    "timeline phase / activity": "timeline_phase",
+    "timeline phase": "timeline_phase",
+    "observed evidence": "observed_evidence",
+    "mitre tactic": "tactic",
+    "tactic": "tactic",
+    "mitre technique name": "technique_name",
+    "technique name": "technique_name",
+    "mitre id": "technique_id",
+    "mitre technique id": "technique_id",
+    "technique id": "technique_id",
+}
+
+
+def _split_mitre_table_row(line: str) -> list[str]:
+    line = line.strip()
+    if line.startswith("|"):
+        line = line[1:]
+    if line.endswith("|"):
+        line = line[:-1]
+    cells = re.split(r"(?<!\\)\|", line)
+    return [c.replace("\\|", "|").strip() for c in cells]
+
+
+def _investigation_mitre_mappings(narrative_report: str) -> list[dict]:
+    """Read orchestrator.py's persisted MITRE ATT&CK TTP Mapping table.
+
+    main.py writes FinalIncidentAnalysis.mitre_mappings (mitre_mapper.
+    MitreTTPMapping — timeline_phase, observed_evidence, tactic,
+    technique_name, technique_id) to the Markdown report as a table under the
+    "Technical Chronology & MITRE ATT&CK TTP Mapping" heading. Investigation's
+    own raw JSON result never carries this structured field (only the
+    narrative_report blob does), so the table is located by its header row —
+    any line whose cells include MITRE Tactic / MITRE Technique ID, in any
+    order — rather than assumed to sit at a fixed position. A missing column
+    yields "" for that field rather than raising; the row is skipped only if
+    every field is empty. This keeps section 7.1 of the analyst-facing report
+    tied to the Investigation agent's own MITRE ATT&CK findings, verbatim,
+    and matching what the Investigation stage's own MITRE ATT&CK tab shows.
+    """
+    text = str(narrative_report or "")
+    if not text:
+        return []
+    lines = text.splitlines()
+    header_idx = None
+    col_map: dict[int, str] = {}
+    for i, line in enumerate(lines):
+        if "|" not in line:
+            continue
+        cells = [c.lower() for c in _split_mitre_table_row(line)]
+        found = {idx: _MITRE_HEADER_ALIASES[c] for idx, c in enumerate(cells)
+                if c in _MITRE_HEADER_ALIASES}
+        if {"tactic", "technique_id"} <= set(found.values()):
+            header_idx = i
+            col_map = found
+            break
+    if header_idx is None:
+        return []
+    row_start = header_idx + 1
+    if row_start < len(lines) and re.match(r"^\s*\|?[\s:|-]+\|?\s*$", lines[row_start]):
+        row_start += 1
+    mappings: list[dict] = []
+    for line in lines[row_start:]:
+        if "|" not in line.strip() or not line.strip().startswith("|"):
+            break
+        cells = _split_mitre_table_row(line)
+        row = {"timeline_phase": "", "observed_evidence": "",
+               "tactic": "", "technique_name": "", "technique_id": ""}
+        for idx, field in col_map.items():
+            if idx < len(cells):
+                row[field] = cells[idx]
+        if not (row["tactic"] or row["technique_id"] or row["technique_name"]):
+            continue
+        mappings.append(row)
+    return mappings
+
+
 def _parse_progress_datetime(value: Any) -> datetime | None:
     raw = str(value or "").strip()
     if not raw:
@@ -2423,6 +2536,19 @@ def run_investigation(incident_id: str, timeout: int = 600,
         "severity": sev,
         "indicators": data.get("indicators") or [],
         "narrative_report": narrative,
+        # Structured, verbatim containment bullets recovered from the
+        # narrative report (see _investigation_recommended_containment_actions)
+        # — the reporting handoff's investigation_result.json needs this under
+        # the Investigation agent's own field name so it is never mistaken for
+        # "no recommendation supplied" and backfilled with generic text.
+        "recommended_containment": _investigation_recommended_containment_actions(narrative),
+        # Structured MITRE ATT&CK TTP mappings recovered from the narrative
+        # report (see _investigation_mitre_mappings) under the Investigation
+        # agent's own field name (orchestrator.FinalIncidentAnalysis.
+        # mitre_mappings) — without this, the reporting handoff's section 7.1
+        # never sees the real per-technique timeline_phase/observed_evidence
+        # and falls back to a generic technique-ID scan of unrelated fields.
+        "mitre_mappings": _investigation_mitre_mappings(narrative),
         "artifacts": {
             "incident_folder": str(target),
             "incident_data": str(target / "incident_data.json"),

@@ -1173,14 +1173,53 @@ def _normalise_mitre_item(item: dict[str, Any], evidence_index: dict[str, list[s
     }
 
 
+def _is_genuine_investigation_mitre_item(item: dict[str, Any]) -> bool:
+    """True for a MITRE mapping entry that actually came from the
+    Investigation Agent's own structured analysis (mitre_mapper.
+    MitreTTPMapping / orchestrator.FinalIncidentAnalysis.mitre_mappings,
+    surfaced via context_builder's investigation.mitre_mappings). No other
+    source in this pipeline populates timeline_phase/observed_evidence, so
+    their presence is what distinguishes real Investigation-stage output
+    from the generic technique-ID scan below."""
+    return not is_unknown(item.get("observed_evidence")) or not is_unknown(item.get("timeline_phase"))
+
+
+def _dedupe_mitre_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Collapse only EXACT duplicate rows (same technique, tactic, timeline
+    phase, AND evidence). A row sharing a technique_id with another but
+    describing different evidence or a different activity step is a
+    distinct chronological entry and must be kept, never merged."""
+    seen: set[tuple[str, str, str, str, str]] = set()
+    out: list[dict[str, Any]] = []
+    for item in items:
+        key = tuple(
+            re.sub(r"\s+", " ", str(item.get(field) or "").strip().lower())
+            for field in ("technique_id", "tactic", "technique_name", "timeline_phase", "observed_evidence")
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
 def repair_mitre_mapping(context: dict[str, Any], evidence_index: dict[str, list[str]]) -> list[dict[str, Any]]:
     existing = context.get("mitre_attack_mapping") or context.get("mitre_mapping") or []
+    existing_items = [item for item in as_list(existing) if isinstance(item, dict)]
+
+    # The Investigation stage's own MITRE ATT&CK mapping must be shown
+    # verbatim — never merged with the generic regex-scan fallback below,
+    # never relabelled with a placeholder "recovered from..." reason, and
+    # never dropped in favour of unrelated technique IDs found elsewhere in
+    # the report context.
+    genuine = [item for item in existing_items if _is_genuine_investigation_mitre_item(item)]
+    if genuine:
+        return _dedupe_mitre_rows(genuine)
+
     recovered = _mitre_candidates(context, evidence_index)
     repaired: list[dict[str, Any]] = []
     seen: set[str] = set()
-    for item in as_list(existing) + recovered:
-        if not isinstance(item, dict):
-            continue
+    for item in existing_items + recovered:
         normalised = _normalise_mitre_item(item, evidence_index, context)
         if not normalised:
             continue
@@ -1304,6 +1343,15 @@ def enrich_recommendations(context: dict[str, Any], evidence_index: dict[str, li
     return enriched
 
 
+def _mitre_cell(value: Any) -> str:
+    """Markdown-table-safe cell text: collapse embedded newlines (which would
+    otherwise split a table row) and escape literal '|' characters (which
+    otherwise read as a new column) — e.g. in observed-evidence text quoting a
+    command line or log line. No wording is altered, only made table-safe."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text.replace("|", "\\|")
+
+
 def build_compact_render_tables(context: dict[str, Any]) -> dict[str, Any]:
     assets = context.get("affected_assets") or []
     users = context.get("affected_users") or []
@@ -1339,8 +1387,17 @@ def build_compact_render_tables(context: dict[str, Any]) -> dict[str, Any]:
             gaps,
         ),
         "mitre": compact_table(
-            ["Tactic", "Technique", "Reason / Evidence", "Confidence"],
-            [[m.get("tactic"), " ".join(str(x) for x in [m.get("technique_id"), m.get("technique_name")] if x), m.get("reason") or ", ".join(as_list(m.get("evidence_refs"))), m.get("confidence")] for m in mitre if isinstance(m, dict)],
+            ["Timeline Phase / Activity", "Observed Evidence", "MITRE Tactic", "MITRE Technique Name", "MITRE ID"],
+            [
+                [
+                    _mitre_cell(m.get("timeline_phase")),
+                    _mitre_cell(m.get("observed_evidence")) or ", ".join(as_list(m.get("evidence_refs"))),
+                    _mitre_cell(m.get("tactic")),
+                    _mitre_cell(m.get("technique_name")),
+                    _mitre_cell(m.get("technique_id")),
+                ]
+                for m in mitre if isinstance(m, dict)
+            ],
             "MITRE ATT&CK mapping",
             gaps,
         ),
