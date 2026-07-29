@@ -217,9 +217,11 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
             suser = sa.get("user") or user
             sip = sa.get("source_ip") or ip
             sdesc = sa.get("description") or ""
-            step_str = f"{idx}. [{sts}] Alert '{stitle}' detected on host '{shost}' ({sip}) for user '{suser}'."
+            ts_prefix = f"On {sts}, " if sts and sts != "Unknown Time" else ""
             if sdesc:
-                step_str += f" Details: {sdesc}"
+                step_str = f"{ts_prefix}user '{suser}' on host '{shost}' ({sip}) triggered alert '{stitle}': {sdesc}"
+            else:
+                step_str = f"{ts_prefix}user '{suser}' on host '{shost}' ({sip}) performed actions associated with alert '{stitle}'."
             summary_steps.append(step_str)
             
         recommended_actions.append(f"Isolate host '{host}' at IP {ip} immediately from the network to prevent lateral movement.")
@@ -229,8 +231,9 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         sender = email_art.get("sender", "Unknown Sender")
         recipient = email_art.get("recipient", "Unknown Recipient")
         filename = email_art.get("attachment", {}).get("filename", "attachment.exe")
-        summary_steps.append(f"1. A spearphishing email was sent from '{sender}' to '{recipient}' containing the attachment '{filename}'.")
-        summary_steps.append(f"2. The recipient user executed the attachment '{filename}' on host '{host}' ({ip}).")
+        ts_prefix = f"On {timestamp}, " if timestamp and timestamp != "unknown time" else ""
+        summary_steps.append(f"{ts_prefix}user '{recipient}' received a spearphishing email from '{sender}' containing attachment '{filename}'.")
+        summary_steps.append(f"User '{recipient}' opened and executed '{filename}' on host '{host}' ({ip}).")
         
         # Check if malicious process spawned
         has_process = False
@@ -239,7 +242,7 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
                 has_process = True
                 
         if has_process or end_ind.get("spawned_process") or "cmd.exe" in doc.lower():
-            summary_steps.append(f"3. The executable successfully spawned a malicious process, establishing a reverse shell connection.")
+            summary_steps.append(f"The executed attachment spawned a malicious child process, establishing an outbound reverse shell connection.")
             
         recommended_actions.append(f"Isolate host {host} at IP {ip} immediately from the network to prevent lateral movement (disable its network interface or block its IP at the local switch).")
         recommended_actions.append(f"Remove the malicious email attachment '{filename}' from the mail server and block sender '{sender}'.")
@@ -247,9 +250,9 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         
     elif "privilege" in alert_type_lower or "escalation" in alert_type_lower:
         privilege = log_ind.get("requested_privilege") or "SeSecurityPrivilege"
-        summary_steps.append(f"1. An unauthorized attempt was made to escalate privileges on host '{host}' ({ip}) by user '{user}'.")
-        summary_steps.append(f"2. The user account requested administrative privilege '{privilege}'.")
-        summary_steps.append(f"3. The privilege escalation requests failed and were flagged by local security auditing.")
+        ts_prefix = f"On {timestamp}, " if timestamp and timestamp != "unknown time" else ""
+        summary_steps.append(f"{ts_prefix}user account '{user}' on host '{host}' ({ip}) attempted unauthorized privilege escalation requesting administrative privilege '{privilege}'.")
+        summary_steps.append(f"The privilege escalation attempt was blocked and flagged by local system security auditing.")
         
         recommended_actions.append(f"Temporarily disable the user account '{user}' to prevent further unauthorized privilege escalation attempts.")
         recommended_actions.append(f"Isolate the affected machine {host} at IP {ip} (disable its network interface or block traffic at the switch) until the host is verified clean.")
@@ -259,9 +262,9 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         src_ip = net_ind.get("source_ip", "attacker IP")
         target_user = auth_det.get("attempted_target_user", "user")
         domain = net_ind.get("destination_domain") or "internal domain"
-        summary_steps.append(f"1. Multiple authentication attempts were initiated from source IP {src_ip} targeting the user account '{target_user}' on {domain}.")
-        summary_steps.append(f"2. The login attempts resulted in failures, indicating a brute-force attack.")
-        summary_steps.append(f"3. The suspicious authentication traffic was detected and flagged at the perimeter firewall.")
+        ts_prefix = f"On {timestamp}, " if timestamp and timestamp != "unknown time" else ""
+        summary_steps.append(f"{ts_prefix}source IP {src_ip} initiated multiple rapid authentication attempts targeting user account '{target_user}' on {domain}.")
+        summary_steps.append(f"The repeated authentication failures triggered perimeter firewall security alerts for brute-force activity.")
         
         recommended_actions.append(f"Block all traffic from the external attacker IP {src_ip} at the perimeter firewall immediately.")
         recommended_actions.append(f"Reset the password for user account '{target_user}' and enforce multi-factor authentication (MFA).")
@@ -270,8 +273,9 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
     elif "dns response" in alert_type_lower or "anomalous dns" in alert_type_lower:
         src_ip = net_ind.get("source_ip", "affected host IP")
         domain = net_ind.get("queried_domain", "suspicious domain")
-        summary_steps.append(f"1. Host at IP {src_ip} performed multiple anomalous DNS queries for lookalike/phishing domain '{domain}'.")
-        summary_steps.append(f"2. The query lookup triggered a reputation alert for potential command-and-control communication.")
+        ts_prefix = f"On {timestamp}, " if timestamp and timestamp != "unknown time" else ""
+        summary_steps.append(f"{ts_prefix}host '{host}' at IP {src_ip} performed anomalous DNS queries for lookalike domain '{domain}'.")
+        summary_steps.append(f"The query lookup triggered reputation alerts indicating command-and-control communication.")
         
         recommended_actions.append(f"Isolate the host at IP {src_ip} from the local network by disabling its network interface to prevent command-and-control communications.")
         recommended_actions.append(f"Block resolution of the lookalike domain '{domain}' on all internal DNS servers.")
@@ -281,9 +285,9 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         src_ip = net_ind.get("source_ip", "internal IP")
         dest_ip = net_ind.get("destination_ip", "external IP")
         payload = net_ind.get("tunnel_payload_file_context", "googleclient.txt")
-        summary_steps.append(f"1. An internal system at IP {src_ip} initiated a connection to external IP {dest_ip}.")
-        summary_steps.append(f"2. DNS tunneling traffic was detected over a TCP port, potentially transferring payload '{payload}'.")
-        summary_steps.append(f"3. The non-standard tunneling activity was flagged for command-and-control evasion.")
+        ts_prefix = f"On {timestamp}, " if timestamp and timestamp != "unknown time" else ""
+        summary_steps.append(f"{ts_prefix}internal system at IP {src_ip} initiated outbound connection to external IP {dest_ip}.")
+        summary_steps.append(f"DNS tunneling traffic was detected transferring payload context '{payload}', triggering evasion alerts.")
         
         recommended_actions.append(f"Isolate the host at IP {src_ip} from the network immediately (block IP {src_ip} on the switch or disable its network adapter) to terminate the active DNS tunnel.")
         recommended_actions.append(f"Block all traffic to destination IP {dest_ip} at the firewall.")
@@ -291,9 +295,8 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         
     else:
         # Fallback / Generic
-        summary_steps.append(f"1. An anomalous security event '{alert_type}' was detected on the network/endpoint.")
-        summary_steps.append(f"2. The event involved host '{host}' ({ip}) and user '{user}'.")
-        summary_steps.append(f"3. Incident details processed for host '{host}' ({ip}).")
+        ts_prefix = f"On {timestamp}, " if timestamp and timestamp != "unknown time" else ""
+        summary_steps.append(f"{ts_prefix}anomalous security event '{alert_type}' occurred on host '{host}' ({ip}) involving user '{user}'.")
         
         recommended_actions.append(f"Isolate the affected host '{host}' at IP {ip} by disabling its network interface or blocking it at the switch.")
         recommended_actions.append(f"Monitor the host for anomalous baseline transitions.")
