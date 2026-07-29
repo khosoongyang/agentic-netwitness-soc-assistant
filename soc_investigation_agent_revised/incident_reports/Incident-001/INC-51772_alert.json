@@ -1,0 +1,4468 @@
+{
+  "incident_id": "INC-51772",
+  "classification": {
+    "alert_type": "Compromised asset (non-critical)",
+    "severity": "HIGH",
+    "risk_score": {
+      "likelihood_initiation": "High",
+      "likelihood_occurrence": "High",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "High",
+      "rationale": "SYSTEM-level execution on host BETHANYCHUCHU with suspicious services.exe/OneDrive.exe context, explicit IOC matches, and unusual multicast/network activity make initiation and recurrence highly likely, while the lack of confirmed malicious payload or decoded PowerShell keeps adverse impact at medium."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "timestamp": "2025-07-08T11:29:53+00:00",
+    "description": "The alert shows suspicious SYSTEM-level activity on host BETHANYCHUCHU involving services.exe and unusual OneDrive/powershell-related context, with network traffic to a multicast service-discovery address and multiple IOCs. This indicates a likely compromised endpoint or abnormal process behavior, but there is no clear evidence of active data loss, destructive action, or confirmed malware outbreak.",
+    "mitre_att&ck": {
+      "tactic": "Defense Evasion",
+      "technique": "T1036 Masquerading"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.201",
+      "hostname": "BETHANYCHUCHU"
+    },
+    "destination": {
+      "ip_address": "52.123.129.14",
+      "domain": "BETHANYCHUCHU"
+    }
+  },
+  "endpoint_indicators": {
+    "user": "SYSTEM",
+    "hostname": "BETHANYCHUCHU",
+    "operating_system": "windows",
+    "processes": {
+      "command_line": [
+        "OneDrive.exe /background",
+        "cmd.exe /c \"\"C:\\Program Files\\VMware\\VMware Tools\\suspend-vm-default.bat\"\"",
+        "svchost.exe -k LocalServiceAndNoImpersonation -p",
+        "dashost.exe {5b1e40d1-5367-46d2-977e4aed200c65e3}",
+        "--type=gpu-process --noerrdialogs --user-data-dir=\"C:\\Users\\Bethany Chu\\AppData\\Local\\Packages\\Microsoft.Windows.Search_cw5n1h2txyewy\\LocalState\\EBWebView\" --webview-exe-name=SearchApp.exe --webview-exe-version=10.0.19041.5915 --embedded-browser-webview=1",
+        "svchost.exe -k netsvcs -p",
+        "cmd.exe /c \"\"C:\\Program Files\\VMware\\VMware Tools\\resume-vm-default.bat\"\"",
+        "SearchApp.exe -ServerName:CortanaUI.AppX8z9r6jm96hw4bsbneegw0kyxx296wr9t.mca",
+        "svchost.exe -k DcomLaunch -p",
+        "backgroundTaskHost.exe -ServerName:ShellFeedsUI.AppXnj65k2d1a1rnztt2t2nng5ctmk3e76pn.mca",
+        "svchost.exe -k LocalSystemNetworkRestricted -p",
+        "vmtoolsd.exe",
+        "powershell.exe \"E:\\WinDefender_Update_2025.ps1\"",
+        "taskhostw.exe LocalUserSyncDataAvailable",
+        "backgroundTaskHost.exe -ServerName:Global.DesktopSpotlight.AppXz2j21w56bgxkgsjhtn7zkjsepq96erz2.mca",
+        "AUDIODG.EXE 0x40c",
+        "svchost.exe -k LocalServiceNetworkRestricted -p",
+        "NWEAgent.exe /runasservice",
+        "RuntimeBroker.exe -Embedding",
+        "PhoneExperienceHost.exe -ComServer:Background -Embedding",
+        "smartscreen.exe -Embedding",
+        "Sandy.exe -server http://192.168.10.205:8888 -group red",
+        "backgroundTaskHost.exe -ServerName:CortanaUI.AppX3bn25b6f886wmg6twh46972vprk9tnbf.mca",
+        "powershell.exe -ExecutionPolicy Bypass -C Clear-History;Clear",
+        "svchost.exe -k NetworkService -p",
+        "SearchIndexer.exe /Embedding",
+        "TiWorker.exe -Embedding",
+        "svchost.exe -k utcsvc -p",
+        "MpDefenderCoreService.exe",
+        "OneDriveStandaloneUpdater.exe /reporting",
+        "msedgewebview2.exe --type=utility --utility-sub-type=network.mojom.NetworkService --lang=en-US --service-sandbox-type=none --noerrdialogs --user-data-dir=\"C:\\Users\\Bethany Chu\\AppData\\Local\\Packages\\Microsoft.Windows.Search_cw5n1h2txyewy\\LocalState\\EBWebVi",
+        "AUDIODG.EXE 0x40c 0x4ac"
+      ]
+    },
+    "files": {
+      "filename": [
+        "services.exe",
+        "winlogon.exe",
+        "vm3dservice.exe",
+        "dasHost.exe",
+        "[FLOATING_CODE_3D874CEBB9B9BB87A8EFC35CFC192105]"
+      ],
+      "hashes": [
+        "4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428",
+        "b0e868fbd016fb982366ec7e462594431a80146fa4be3c44c5af8662c9d8a2fd",
+        "04253d6072b4cdd6cc205b192be055cb",
+        "9af901fe53bc6b0a5ee97ab65e2709baf74f4ed407d3003f93f44425ac744c7d",
+        "9b6611203bfed37516e065d12687f9e0"
+      ]
+    }
+  },
+  "alerts": [
+    {
+      "alert_id": "alert_1",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.877000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_2",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.876000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_3",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.880000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_4",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.880000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_5",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.885000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_6",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.887000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_7",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.889000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_8",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.889000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_9",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.893000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_10",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.896000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_11",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.895000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_12",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.896000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_13",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.899000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_14",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.900000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_15",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.901000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_16",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.903000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_17",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.904000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_18",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.905000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_19",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.908000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_20",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.910000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_21",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.909000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_22",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.913000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_23",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.908000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_24",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.914000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_25",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.925000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_26",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.930000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_27",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.936000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_28",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.918000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_29",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.919000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_30",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.917000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_31",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.976000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_32",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.976000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_33",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.974000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_34",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.983000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_35",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.980000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_36",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.987000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_37",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.983000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_38",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.990000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_39",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.995000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_40",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.002000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_41",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.001000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_42",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.998000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_43",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.010000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_44",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:50.994000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_45",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.011000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_46",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.009000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_47",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.020000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_48",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.022000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_49",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.022000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_50",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.021000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_51",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.020000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_52",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.024000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_53",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.030000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_54",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.031000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_55",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.031000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_56",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.032000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_57",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.034000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_58",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.033000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_59",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.036000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_60",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.040000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_61",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.037000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_62",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.048000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_63",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.048000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_64",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.039000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_65",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.038000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_66",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.053000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_67",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.051000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_68",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.052000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_69",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.054000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_70",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.056000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_71",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.057000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_72",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.059000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_73",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.060000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_74",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.063000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_75",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.061000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_76",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.064000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_77",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.068000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_78",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.065000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_79",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.068000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_80",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.066000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_81",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.072000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_82",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.073000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_83",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.072000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_84",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.075000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_85",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.074000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_86",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.077000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_87",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.081000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_88",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.080000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_89",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.081000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_90",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.081000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_91",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.083000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_92",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.084000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_93",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.087000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_94",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.088000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_95",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.088000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_96",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.088000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_97",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.092000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_98",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.092000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_99",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.094000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_100",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.096000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_101",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.091000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_102",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.097000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_103",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.098000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_104",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.100000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_105",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.098000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_106",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.102000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_107",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.104000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_108",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.105000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_109",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.107000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_110",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.108000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_111",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.103000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_112",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.109000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_113",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.113000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_114",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.113000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_115",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.113000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_116",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.116000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_117",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.115000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_118",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.109000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_119",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.120000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_120",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.120000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_121",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.125000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_122",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.120000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_123",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.124000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_124",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.126000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_125",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.123000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_126",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.126000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_127",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.130000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_128",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.132000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_129",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.131000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_130",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.133000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_131",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.133000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_132",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.135000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_133",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.137000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_134",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.139000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_135",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.139000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_136",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.140000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_137",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.141000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_138",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.144000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_139",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.142000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_140",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.147000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_141",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.148000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_142",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.147000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_143",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.149000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_144",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.151000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_145",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.152000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_146",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.154000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_147",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.155000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_148",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.156000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_149",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.158000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_150",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.158000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_151",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.162000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_152",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.164000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_153",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.163000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_154",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.163000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_155",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.165000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_156",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.168000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_157",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.169000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_158",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.169000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_159",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.173000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_160",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.171000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_161",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.175000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_162",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.175000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_163",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.176000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_164",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.179000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_165",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.180000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_166",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.180000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_167",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.182000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_168",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.183000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_169",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.184000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_170",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.186000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_171",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.188000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_172",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.190000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_173",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.192000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_174",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.190000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_175",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.193000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_176",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.197000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_177",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.197000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_178",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.201000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_179",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.198000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_180",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.203000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_181",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.202000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_182",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.209000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_183",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.206000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_184",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.211000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_185",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.207000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_186",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.215000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_187",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.215000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_188",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.215000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_189",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.217000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_190",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.220000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_191",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.223000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_192",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.220000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_193",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.228000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_194",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.230000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_195",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.225000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_196",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.228000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_197",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.237000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_198",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.238000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_199",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.239000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_200",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.254000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_201",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.253000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_202",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.252000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_203",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.265000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_204",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.266000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_205",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.261000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_206",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.265000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_207",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.274000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_208",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.275000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_209",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.274000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_210",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.282000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_211",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.281000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_212",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.273000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_213",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.287000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_214",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.284000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_215",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.288000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_216",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.289000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_217",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.292000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_218",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.294000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_219",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.293000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_220",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.298000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_221",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.298000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_222",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.301000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_223",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.303000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_224",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.303000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_225",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.307000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_226",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.309000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_227",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.309000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_228",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.313000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_229",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.315000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_230",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.314000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_231",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.316000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_232",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.320000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_233",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.319000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_234",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.322000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_235",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.320000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_236",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.325000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_237",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.327000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_238",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.328000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_239",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.327000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_240",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.330000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_241",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.333000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_242",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.334000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_243",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.335000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_244",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.336000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_245",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.340000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_246",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.341000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_247",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.342000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_248",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.341000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_249",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.347000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_250",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.346000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_251",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.347000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_252",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.348000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_253",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.353000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_254",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.353000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_255",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.355000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_256",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.356000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_257",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.359000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_258",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.361000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_259",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.363000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_260",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.364000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_261",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.367000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_262",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.367000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_263",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.370000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_264",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.370000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_265",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.373000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_266",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.834000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_267",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.833000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_268",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.838000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_269",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.838000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_270",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.844000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_271",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.841000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_272",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.846000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_273",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.846000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_274",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.852000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_275",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.855000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_276",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.865000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_277",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.867000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_278",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.862000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_279",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.875000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_280",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.856000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_281",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.876000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_282",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.875000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_283",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.876000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_284",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.878000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_285",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.883000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_286",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.882000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_287",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.884000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_288",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.884000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_289",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.890000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_290",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.892000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_291",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.883000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_292",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.890000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_293",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.895000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_294",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.893000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_295",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.898000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_296",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.903000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_297",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.903000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_298",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.900000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_299",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.902000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_300",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.909000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_301",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.910000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_302",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.910000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_303",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.912000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_304",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.911000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_305",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.916000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_306",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.918000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_307",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.919000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_308",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.920000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_309",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.921000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_310",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.922000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_311",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.924000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_312",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.925000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_313",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.929000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_314",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.928000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_315",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.930000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_316",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.931000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_317",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.934000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_318",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.937000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_319",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.938000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_320",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.940000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_321",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.940000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_322",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.943000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_323",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.944000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_324",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.946000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_325",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.946000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_326",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.949000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_327",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.957000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_328",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.957000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_329",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.959000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_330",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.961000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_331",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.962000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_332",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.965000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_333",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.965000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_334",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.966000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_335",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.968000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_336",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.971000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_337",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.972000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_338",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.974000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_339",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.973000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_340",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.978000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_341",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.979000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_342",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.979000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_343",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.980000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_344",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.984000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_345",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.984000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_346",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.986000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_347",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.985000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_348",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.989000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_349",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.991000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_350",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.992000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_351",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.992000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_352",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.995000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_353",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.997000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_354",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.998000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_355",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:51.998000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_356",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.002000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_357",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.004000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_358",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.004000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_359",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.004000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_360",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.008000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_361",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.009000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_362",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.010000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_363",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.011000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_364",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.014000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_365",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.014000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_366",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.017000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_367",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.019000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_368",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.017000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_369",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.020000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_370",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.024000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_371",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.024000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_372",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.025000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_373",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.025000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_374",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.030000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_375",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.032000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_376",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.031000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_377",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.034000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_378",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.033000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_379",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.038000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_380",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.038000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_381",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.039000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_382",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.042000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_383",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.044000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_384",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.045000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_385",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.045000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_386",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.048000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_387",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.050000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_388",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.050000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_389",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.052000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_390",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.054000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_391",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.055000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_392",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.055000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_393",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.058000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_394",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.060000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_395",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.060000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_396",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.062000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_397",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.063000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_398",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.065000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_399",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.066000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_400",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.068000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_401",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.071000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_402",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.070000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_403",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.072000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_404",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.074000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_405",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.076000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_406",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.077000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_407",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.078000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_408",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.079000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_409",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.081000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_410",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:29:52.083000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_411",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.314000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_412",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.315000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_413",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.315000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_414",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.314000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_415",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.321000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_416",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.324000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_417",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.323000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_418",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.328000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_419",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.325000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_420",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.335000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_421",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.334000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_422",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.337000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_423",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.335000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_424",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.343000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_425",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.342000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_426",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.343000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    },
+    {
+      "alert_id": "alert_427",
+      "title": "Security Alert",
+      "timestamp": "2025-07-08T11:32:26.345000+00:00",
+      "severity": "Medium",
+      "user": "SYSTEM",
+      "hostname": "BETHANYCHUCHU",
+      "source_ip": "192.168.10.201",
+      "destination_ip": "52.123.129.14"
+    }
+  ],
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "possible_file_name": "['services.exe']",
+      "file_hash": "4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428",
+      "ip_indicators": [
+        "239.255.255.250"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": true,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "completed",
+        "indicator": "4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428",
+        "malicious": 0,
+        "suspicious": 0,
+        "harmless": 0,
+        "undetected": 69,
+        "reputation": 1,
+        "meaningful_name": "services.exe",
+        "first_submission_date": 1744825151,
+        "last_analysis_date": 1785227312
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "malicious": 1,
+          "suspicious": 0,
+          "harmless": 54,
+          "undetected": 36,
+          "reputation": -151
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "abuse_confidence_score": 0,
+          "total_reports": 1,
+          "usage_type": "Reserved",
+          "last_reported_at": "2026-05-28T01:50:05+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428",
+          "indicator_type": "file",
+          "pulse_count": 5,
+          "related_pulses": [
+            "C:\\Windows\\system32\\free",
+            "MODULE: ProcessCheck",
+            "THOR MODULE: ProcessCheck",
+            "Thor Lite - 07.27.25 - APT Detections [by Disable_Duck]",
+            "Thor Lite - 07.27.25 - APT Detections [un-enriched]"
+          ],
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped.",
+      "PowerShell activity was detected, but no decodable EncodedCommand content was available for IOC extraction."
+    ]
+  },
+  "enrichment_risk_score": 45,
+  "enrichment_risk_level": "Medium",
+  "enrichment_risk_reasons": [
+    "VirusTotal reported 1 malicious detection(s) for IP 239.255.255.250.",
+    "AlienVault OTX found 5 related pulse(s) for 4a912dc98c977788131aad0ae468d86792211ed225f80b2c344a3690b4437428."
+  ]
+}

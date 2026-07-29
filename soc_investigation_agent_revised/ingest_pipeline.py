@@ -134,8 +134,28 @@ def serialize_json_to_narrative(data: dict) -> str:
     incident_id = data.get("incident_id", "Unknown")
     lines.append(f"Incident {incident_id} details are as follows:")
     
+    alerts_list = data.get("alerts") or data.get("raw_alerts")
+    if isinstance(alerts_list, list) and alerts_list:
+        lines.append(f"Incident {incident_id} contains {len(alerts_list)} correlated alert(s):")
+        for idx, alt in enumerate(alerts_list, 1):
+            if isinstance(alt, dict):
+                aid = alt.get("alert_id") or alt.get("id") or f"A-{idx}"
+                atitle = alt.get("title") or alt.get("name") or "Security Event"
+                ats = alt.get("timestamp") or alt.get("created") or "Unknown Time"
+                asev = alt.get("severity") or "Medium"
+                auser = alt.get("user") or alt.get("userName") or "Unknown"
+                ahost = alt.get("hostname") or alt.get("hostSummary") or "Unknown"
+                asrc = alt.get("source_ip") or alt.get("sourceIp") or "Unknown"
+                adst = alt.get("destination_ip") or alt.get("destinationIp") or "Unknown"
+                adesc = alt.get("description") or alt.get("detail") or ""
+                lines.append(
+                    f"Alert #{idx} ({aid}) - '{atitle}' at [{ats}], Severity: {asev}, User: {auser}, Host: {ahost}, SrcIP: {asrc}, DstIP: {adst}. Detail: {adesc}".strip()
+                )
+    
     def recurse(d, parent_key=""):
         for k, v in sorted(d.items()):
+            if k in ("alerts", "raw_alerts"):
+                continue  # Explicitly handled as sub-alerts above
             full_key = f"{parent_key} {k}".strip().replace("_", " ")
             if isinstance(v, dict):
                 recurse(v, full_key)
@@ -190,8 +210,11 @@ def process_log_file(filepath: str) -> dict:
         "domains": ",".join(indicators["domains"])
     }
     
-    return {
+    res = {
         "id": incident_id,
         "document": document,
         "metadata": metadata
     }
+    if "alerts" in data:
+        res["alerts"] = data["alerts"]
+    return res

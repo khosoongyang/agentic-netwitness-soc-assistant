@@ -2069,6 +2069,35 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     cmds = _cmdlines()
     cmd_val = cmds[0] if len(cmds) == 1 else (cmds if len(cmds) > 1 else None)
 
+    # Extract all sub-alerts belonging to this incident if multiple exist
+    sub_alerts = []
+    raw_alerts_list = incident.get("alerts") or incident.get("events") or []
+    if isinstance(raw_alerts_list, list):
+        for idx, sub in enumerate(raw_alerts_list):
+            if isinstance(sub, dict):
+                sub_id = sub.get("id") or sub.get("alert_id") or f"alert_{idx+1}"
+                sub_title = sub.get("title") or sub.get("name") or sub.get("signature") or sub.get("type") or "Security Alert"
+                sub_ts = _to_iso_timestamp(sub.get("created") or sub.get("receivedTime") or sub.get("timestamp"))
+                sub_sev = sub.get("severity") or sub.get("priority") or "Medium"
+                sub_user = sub.get("userName") or sub.get("user") or user
+                sub_host = sub.get("hostSummary") or sub.get("hostname") or sub.get("host") or hostname
+                sub_src_ip = sub.get("sourceIp") or sub.get("src_ip") or src_ip
+                sub_dst_ip = sub.get("destinationIp") or sub.get("dst_ip") or dst_ip
+                sub_desc = sub.get("detail") or sub.get("description") or sub.get("summary") or ""
+                
+                sub_entry = {
+                    "alert_id": str(sub_id),
+                    "title": str(sub_title),
+                    "timestamp": sub_ts,
+                    "severity": str(sub_sev),
+                    "user": sub_user,
+                    "hostname": sub_host,
+                    "source_ip": sub_src_ip,
+                    "destination_ip": sub_dst_ip,
+                    "description": sub_desc,
+                }
+                sub_alerts.append(prune_empty(sub_entry))
+
     raw_alert = {
         "incident_id": payload.get("incident_id") or ticket.get("incident_id"),
         "classification": {
@@ -2119,6 +2148,7 @@ def build_investigation_alert(triage_result: dict, incident: dict,
             "recipient": _first(_mklist("email.dst", "recipient")),
             "subject": _first(_mklist("email.subject", "subject")),
         },
+        **({"alerts": sub_alerts} if sub_alerts else {}),
         **({"triage_deep_dive": supplement} if supplement else {}),
         **({
             "threat_intelligence_enrichment": threat_intel_result.get("threat_intelligence") or threat_intel_result.get("enriched_alert"),
@@ -2129,6 +2159,7 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     }
 
     return prune_empty(raw_alert)
+
 
 
 def handoff_to_investigation(triage_result: dict, incident: dict,

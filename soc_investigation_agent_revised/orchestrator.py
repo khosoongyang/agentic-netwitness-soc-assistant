@@ -314,9 +314,9 @@ def get_chain_p2():
             "1. Re-evaluate each step in the playbook using the updated timeline and populate the execution_trace.\n"
             "2. Complete the business_impact_checklist by answering the policy-based questions in Appendix C (e.g., critical_system, essential_service, data_sensitivity, operational_impact).\n"
             "3. Assign final severity and confidence based on the guidelines in Appendix A, B, and F, and provide their justifications.\n"
-            "4. For the 'incident_summary' (Technical Chronology Summary) field: Provide a clear, chronological step-by-step summary listing exactly what actions were taken in this incident (e.g., phishing email sent -> user clicked and executed attachment -> executable spawned process -> reverse shell created), including timestamps, recorded IOCs, and affected assets.\n"
+            "4. For the 'incident_summary' (Technical Chronology Summary) field: Provide a comprehensive, chronological step-by-step summary weaving together ALL correlated alerts and events in this incident in order of occurrence. Detail each stage of the attack chain across all alerts (e.g., initial alert -> secondary alert -> privilege escalation -> C2 communication), including timestamps, recorded IOCs, affected assets, and stage linkages.\n"
             "5. For the 'recommended_containment' field: Recommend containment actions adhering to Appendix G, H, and I. Ensure all recommended containment actions are highly specific and action-oriented. Do not write generic recommendations.\n"
-            "6. For the 'mitre_mappings' field: Evaluate the full event sequence holistically at the incident level and map the attack steps to precise MITRE ATT&CK TTPs in chronological order. Always resolve precise sub-techniques (e.g. T1566.002, T1569.002, T1021.002) and populate timeline_phase, observed_evidence, tactic, technique_name, and technique_id.\n"
+            "6. For the 'mitre_mappings' field: Evaluate the full multi-alert event sequence holistically at the incident level and map the attack steps across ALL alerts to precise MITRE ATT&CK TTPs in strict chronological order. Always resolve precise sub-techniques (e.g. T1566.002, T1569.002, T1021.002) and populate timeline_phase, observed_evidence, tactic, technique_name, and technique_id for each phase.\n"
             "Note: Your output must be structured to match the Pydantic schema."
         )
         prompt_p2 = ChatPromptTemplate.from_messages([
@@ -422,9 +422,9 @@ def generate_final_analysis(incident_id: str, playbook_name: str, timeline_str: 
         "Instructions:\n"
         "1. Complete the business_impact_checklist by answering the policy-based questions in Appendix C (e.g., critical_system, essential_service, data_sensitivity, operational_impact).\n"
         "2. Assign final severity and confidence based on the guidelines in Appendix A, B, and F, and provide their justifications.\n"
-        "3. For the 'incident_summary' (Technical Chronology Summary) field: Provide a clear, chronological step-by-step summary listing exactly what actions were taken in this incident (e.g., phishing email sent -> user clicked and executed attachment -> executable spawned process -> reverse shell created), including timestamps, recorded IOCs, and affected assets.\n"
+        "3. For the 'incident_summary' (Technical Chronology Summary) field: Provide a comprehensive, chronological step-by-step summary weaving together ALL correlated alerts and events in this incident in order of occurrence. Detail each stage of the attack chain across all alerts (e.g., initial alert -> secondary alert -> privilege escalation -> C2 communication), including timestamps, recorded IOCs, affected assets, and stage linkages.\n"
         "4. For the 'recommended_containment' field: Recommend containment actions adhering to Appendix G, H, and I. Ensure all recommended containment actions are highly specific and action-oriented.\n"
-        "5. For the 'mitre_mappings' field: Evaluate the full event sequence holistically at the incident level and map the attack steps to precise MITRE ATT&CK TTPs in chronological order. Always resolve precise sub-techniques (e.g. T1566.002, T1569.002, T1021.002) and populate timeline_phase, observed_evidence, tactic, technique_name, and technique_id.\n"
+        "5. For the 'mitre_mappings' field: Evaluate the full multi-alert event sequence holistically at the incident level and map the attack steps across ALL alerts to precise MITRE ATT&CK TTPs in strict chronological order. Always resolve precise sub-techniques (e.g. T1566.002, T1569.002, T1021.002) and populate timeline_phase, observed_evidence, tactic, technique_name, and technique_id for each phase.\n"
         "Note: Your output must be structured to match the Pydantic schema."
     )
     
@@ -506,11 +506,11 @@ def build_timeline_text(correlated_alerts: List[dict]) -> str:
     lines = []
     sorted_alerts = sorted(correlated_alerts, key=lambda x: x["metadata"]["timestamp_epoch"])
     
-    for alert in sorted_alerts:
+    for idx, alert in enumerate(sorted_alerts, 1):
         ts = alert["metadata"]["timestamp_str"]
         alert_id = alert["id"]
         doc = alert["document"]
-        lines.append(f"[{ts}] {alert_id}: {doc}")
+        lines.append(f"[{ts}] Alert Entry #{idx} ({alert_id}): {doc}")
         
     return "\n".join(lines)
 

@@ -90,10 +90,10 @@ def normalize_incident_input(incident_input: Any) -> Tuple[str, List[TimelineEve
     # Case 2: Dictionary input
     elif isinstance(incident_input, dict):
         incident_id = incident_input.get("id") or incident_input.get("incident_id") or "Incident-Unknown"
-        raw_alerts = incident_input.get("raw_alerts") or incident_input.get("timeline") or incident_input.get("events") or []
+        raw_alerts = incident_input.get("raw_alerts") or incident_input.get("timeline") or incident_input.get("events") or incident_input.get("alerts") or []
         for alert in raw_alerts:
             if isinstance(alert, dict):
-                doc = alert.get("document") or alert.get("summary") or alert.get("log_summary") or alert.get("raw_log") or json.dumps(alert)
+                doc = alert.get("document") or alert.get("summary") or alert.get("log_summary") or alert.get("description") or alert.get("title") or alert.get("raw_log") or json.dumps(alert)
                 meta = alert.get("metadata", {}) if isinstance(alert.get("metadata"), dict) else {}
                 source = meta.get("source_type") or alert.get("source") or alert.get("source_type") or "Default"
                 ts = parse_event_timestamp(alert)
@@ -107,6 +107,20 @@ def normalize_incident_input(incident_input: Any) -> Tuple[str, List[TimelineEve
                 ))
             elif isinstance(alert, TimelineEvent):
                 events.append(alert)
+
+        if not events:
+            doc = incident_input.get("document") or incident_input.get("summary") or incident_input.get("log_summary") or json.dumps(incident_input)
+            meta = incident_input.get("metadata", {}) if isinstance(incident_input.get("metadata"), dict) else {}
+            source = meta.get("source_type") or incident_input.get("source") or "Default"
+            ts = parse_event_timestamp(incident_input)
+            uh = parse_user_host(incident_input)
+            events.append(TimelineEvent(
+                timestamp=ts,
+                source=str(source),
+                user_or_host=uh,
+                log_summary=str(doc),
+                alert_context=incident_input
+            ))
 
     # Case 3: Direct List of TimelineEvent or dicts
     elif isinstance(incident_input, list):

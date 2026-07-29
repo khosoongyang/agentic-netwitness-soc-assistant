@@ -207,7 +207,25 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
     
     alert_type_lower = alert_type.lower()
     
-    if "phishing" in alert_type_lower or "spearphishing" in alert_type_lower:
+    # Check if multiple sub-alerts exist within raw_data or alert
+    sub_alerts = raw_data.get("alerts") or alert.get("alerts") or alert.get("raw_alerts") or []
+    if isinstance(sub_alerts, list) and len(sub_alerts) > 1:
+        for idx, sa in enumerate(sub_alerts, 1):
+            stitle = sa.get("title") or sa.get("name") or "Security Alert"
+            sts = sa.get("timestamp") or "Unknown Time"
+            shost = sa.get("hostname") or host
+            suser = sa.get("user") or user
+            sip = sa.get("source_ip") or ip
+            sdesc = sa.get("description") or ""
+            step_str = f"{idx}. [{sts}] Alert '{stitle}' detected on host '{shost}' ({sip}) for user '{suser}'."
+            if sdesc:
+                step_str += f" Details: {sdesc}"
+            summary_steps.append(step_str)
+            
+        recommended_actions.append(f"Isolate host '{host}' at IP {ip} immediately from the network to prevent lateral movement.")
+        recommended_actions.append(f"Review account credentials and activity for user '{user}'.")
+        recommended_actions.append(f"Conduct detailed forensic review of all {len(sub_alerts)} correlated alerts in this incident sequence.")
+    elif "phishing" in alert_type_lower or "spearphishing" in alert_type_lower:
         sender = email_art.get("sender", "Unknown Sender")
         recipient = email_art.get("recipient", "Unknown Recipient")
         filename = email_art.get("attachment", {}).get("filename", "attachment.exe")
@@ -275,7 +293,7 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         # Fallback / Generic
         summary_steps.append(f"1. An anomalous security event '{alert_type}' was detected on the network/endpoint.")
         summary_steps.append(f"2. The event involved host '{host}' ({ip}) and user '{user}'.")
-        summary_steps.append(f"3. No further correlated alerts were found in the active monitoring window, indicating a standalone event.")
+        summary_steps.append(f"3. Incident details processed for host '{host}' ({ip}).")
         
         recommended_actions.append(f"Isolate the affected host '{host}' at IP {ip} by disabling its network interface or blocking it at the switch.")
         recommended_actions.append(f"Monitor the host for anomalous baseline transitions.")
