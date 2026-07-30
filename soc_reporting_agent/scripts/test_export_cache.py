@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, backend, json, pathlib, reporting, shutil, sys, time.
+# =============================================================================
+# File: soc_reporting_agent/scripts/test_export_cache.py
+# Purpose: This module implements test and validation behaviour for test export cache.
+# Main functionality: write_json, seed_outputs, assert_true, main.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis test and validation component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, backend, json, pathlib, reporting, shutil, sys, time.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: write_json, seed_outputs, assert_true, main, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -19,10 +41,30 @@ RESULTS_PATH = TEST_ROOT / "test_results.json"
 TICKET_ID = "TKT-CACHE-0001"
 
 
+# =============================================================================
+# [FYP-SECTION] TEST SETUP, FIXTURES, AND ASSERTIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `write_json` — persists or updates write json state used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `path`, `payload`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_reporting_agent/adapters/run_reporting.py:_copy_report_artifacts, soc_reporting_agent/adapters/run_reporting.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `mkdir`, `write_text`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+
+# [FYP-FUNCTION] `seed_outputs` — implements the seed outputs operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `version`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_export_cache.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `mkdir`, `rmtree`, `upper`, `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def seed_outputs(version: str = "v1") -> dict:
     shutil.rmtree(TEST_ROOT, ignore_errors=True)
@@ -72,10 +114,26 @@ def seed_outputs(version: str = "v1") -> dict:
     return {"ticket_id": TICKET_ID, "title": "Export Cache Test", "parser_result": parser_result}
 
 
+# [FYP-FUNCTION] `assert_true` — implements the assert true operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `condition`, `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_decision_buttons_and_branches, soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_reporting_wrapper_backfill, soc_reporting_agent/scripts/test_export_cache.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `AssertionError`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
 def assert_true(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `assert_true`, `collect_ticket_export_status`, `dumps`, `exists`, `generate_agent_export`, `get`, `len`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def main() -> int:
     results = []

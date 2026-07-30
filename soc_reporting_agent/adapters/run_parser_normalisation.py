@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, adapters, json, os, pathlib, services, shutil, sys.
+# =============================================================================
+# File: soc_reporting_agent/adapters/run_parser_normalisation.py
+# Purpose: This module provides the command-line adapter for the parsing and normalisation stage.
+# Main functionality: progress, selected_ticket_id, load_raw_alert_context, mirror_ticket_parser_outputs, main.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis stage adapter component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, adapters, json, os, pathlib, services, shutil, sys.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: progress, selected_ticket_id, load_raw_alert_context, mirror_ticket_parser_outputs, main, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -17,10 +39,30 @@ from services.parser_context_guard import extract_alert_identity, validate_parse
 from services.parser_normaliser import run_parser_normalisation_for_dashboard
 
 
+# =============================================================================
+# [FYP-SECTION] STAGE ADAPTER EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `progress` — implements the progress operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `percent`, `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `print`, `sleep`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def progress(percent: int, message: str) -> None:
     print(f"[PROGRESS {percent}] {message}", flush=True)
     time.sleep(0.05)
 
+
+# [FYP-FUNCTION] `selected_ticket_id` — implements the selected ticket id operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `getenv`, `read_json`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def selected_ticket_id() -> str | None:
     env_ticket = os.getenv("SOC_TICKET_ID")
@@ -29,6 +71,14 @@ def selected_ticket_id() -> str | None:
     selected = read_json(RUNTIME_DIR / "selected_ticket.json", {}) or {}
     ticket_id = selected.get("ticket_id")
     return str(ticket_id).strip() if ticket_id else None
+
+# [FYP-FUNCTION] `load_raw_alert_context` — retrieves load raw alert context data for the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`, `now_iso`, `read_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def load_raw_alert_context(ticket_id: str | None = None) -> tuple[dict[str, Any], Path | None]:
     if ticket_id:
@@ -63,6 +113,14 @@ def load_raw_alert_context(ticket_id: str | None = None) -> tuple[dict[str, Any]
     }, None
 
 
+# [FYP-FUNCTION] `mirror_ticket_parser_outputs` — implements the mirror ticket parser outputs operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`, `ticket_parser_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `copytree`, `exists`, `resolve`, `rmtree`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def mirror_ticket_parser_outputs(ticket_id: str | None, ticket_parser_dir: Path) -> None:
     """Write compatibility files for existing downstream adapters.
 
@@ -79,6 +137,14 @@ def mirror_ticket_parser_outputs(ticket_id: str | None, ticket_parser_dir: Path)
         shutil.rmtree(legacy_dir)
     shutil.copytree(ticket_parser_dir, legacy_dir)
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered stage adapter operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `bool`, `dumps`, `extract_alert_identity`, `fromkeys`, `get`, `int`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def main() -> int:
     started_at = now_iso()

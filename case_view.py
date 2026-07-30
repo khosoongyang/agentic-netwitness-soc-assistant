@@ -1,4 +1,35 @@
 """
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, datetime, incident_map, json, re, soc_workflow, tactic_inference, triage_verdict.
+# =============================================================================
+# File: case_view.py
+# Purpose: single backend aggregator for the "My Workspace" case-details
+#   page AND the source of the Ask Aegis chatbot's cross-stage context.
+# Main functionalities:
+#   1. build_case_view(): one call that returns everything app.py needs to
+#      render Overview/Output/Timeline/MITRE ATT&CK/Entity Graph/Evidence/
+#      Activity for a case, replacing an earlier pattern where app.py
+#      computed each field independently inline (the source of several
+#      confirmed bugs — see the module docstring below).
+#   2. [FYP-EVALUATOR] build_aegis_context(): THE Ask Aegis chatbot context
+#      builder — cumulative, size-bounded, cross-stage. See its own
+#      [FYP-FUNCTION] docstring further down this file.
+# Inputs: incident_id/run_id, read via workflow_state_store (wss) and
+#   soc_workflow (sw) — this module is READ-ONLY, it never runs a stage.
+# Outputs: display-ready dicts, each non-trivial value wrapped in a
+#   provenance envelope ({"value", "source_stage", "source_field",
+#   "incident_id", "run_id", "updated_at", "evidence_status"}).
+# Workflow position: consumed by app.py's My Workspace case-detail rendering
+#   and by the Ask Aegis chat panel, AFTER stages have produced results —
+#   this module never triggers stage execution itself.
+# Called by [FYP-USED-BY]: app.py (`cv.build_case_view`, `cv.build_aegis_context`).
+# Calls [FYP-CALLS]: workflow_state_store, soc_workflow, incident_map,
+#   tactic_inference, triage_verdict.
+# Key evaluator search terms: build_aegis_context, build_case_view,
+#   [FYP-LLM], [FYP-RERUN]
+# =============================================================================
+
 case_view.py — single backend aggregator for the case-details page.
 
 app.py must render Overview/Output/Timeline/MITRE ATT&CK/Entity Graph/Evidence/
@@ -40,6 +71,18 @@ from triage_verdict import aggregate_verdict
 # Shared helpers
 # ══════════════════════════════════════════════════════════════════════════
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_provenance` — implements the provenance operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `value`, `source_stage`, `source_field`, `incident_id`, `run_id`, `updated_at`, `evidence_status`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_extract_agent_key_findings, case_view.py:build_overview; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _provenance(value: Any, *, source_stage: str, source_field: str,
                incident_id: str, run_id: str | None, updated_at: str | None = None,
                evidence_status: str = "persisted") -> dict:
@@ -47,6 +90,14 @@ def _provenance(value: Any, *, source_stage: str, source_field: str,
             "incident_id": str(incident_id), "run_id": run_id, "updated_at": updated_at,
             "evidence_status": evidence_status}
 
+
+# [FYP-FUNCTION] `_json_or_empty` — implements the json or empty operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `raw`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_collect_alert_titles, case_view.py:_confirmed_facts_block, case_view.py:_slim_incident_from_state; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`, `loads`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _json_or_empty(raw: Any) -> dict:
     if not raw:
@@ -58,10 +109,26 @@ def _json_or_empty(raw: Any) -> dict:
         return {}
 
 
+# [FYP-FUNCTION] `_slim_incident_from_state` — implements the slim incident from state operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:load_incident_for_case_view; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_json_or_empty`, `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _slim_incident_from_state(state: dict) -> dict:
     raw = _json_or_empty(state.get("raw_json"))
     return raw if isinstance(raw, dict) else {}
 
+
+# [FYP-FUNCTION] `load_incident_for_case_view` — retrieves load incident for case view data for the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_aegis_context, case_view.py:build_case_view; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_slim_incident_from_state`, `get`, `get_state`, `len`, `load_data_availability_for_run`, `load_raw_incident_for_run`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def load_incident_for_case_view(incident_id: str, run_id: str) -> tuple[dict, dict, str]:
     """Returns (incident, data_availability, source). Tries the run-scoped
@@ -99,6 +166,14 @@ def load_incident_for_case_view(incident_id: str, run_id: str) -> tuple[dict, di
 _UNIQUE_IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 
 
+# [FYP-FUNCTION] `_unique_ips` — implements the unique ips operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `alert_meta`, `*fields`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_overview; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `match`, `split`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _unique_ips(alert_meta: dict, *fields: str) -> list[str]:
     """Splits comma-joined artifacts (e.g. "1.2.3.4,5.6.7.8" counted as ONE
     list item by the old app.py code) and validates each candidate as a
@@ -118,8 +193,30 @@ def _unique_ips(alert_meta: dict, *fields: str) -> list[str]:
 # Overview
 # ══════════════════════════════════════════════════════════════════════════
 
+# [FYP-FUNCTION] `_extract_agent_key_findings` — transforms extract agent key findings input into the stable representation required by downstream SOC analysis support processing.
+# [FYP-INPUT] Parameters: `inv_result`, `triage_result`, `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_overview; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_provenance`, `append`, `get`, `isinstance`, `len`, `lower`, `match`, `splitlines`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _extract_agent_key_findings(inv_result: dict | None, triage_result: dict | None,
                                 incident_id: str, run_id: str) -> list[dict]:
+    """Agent-narrated findings (as opposed to build_overview()'s own
+    deterministic-signal findings, appended separately by its caller).
+
+    Strict waterfall, each tier only consulted if the previous produced
+    nothing: Investigation's structured key_findings list -> Investigation's
+    one-line summary -> bullets regex-extracted from narrative_report's own
+    "Key Finding(s)"/"Executive Summary" markdown section -> (only if
+    Investigation gave NOTHING at all) Triage's key_findings/ticket.summary
+    as a pre-investigation fallback. Investigation findings are never mixed
+    with Triage findings in the same call — an approved Investigation
+    result is treated as having superseded Triage's read of the incident,
+    not as a peer source to merge with. Each returned item carries its own
+    _provenance() envelope naming the exact source stage/field it was
+    read from, e.g. investigation_result_json.narrative_report."""
     findings: list[dict] = []
     if inv_result and isinstance(inv_result, dict):
         raw_kf = inv_result.get("key_findings")
@@ -202,7 +299,24 @@ def _extract_agent_key_findings(inv_result: dict | None, triage_result: dict | N
     return findings
 
 
+# [FYP-FUNCTION] `_collect_alert_titles` — implements the collect alert titles operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_overview; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_json_or_empty`, `append`, `get`, `isinstance`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _collect_alert_titles(incident: dict, state: dict) -> list[str]:
+    """Dedupes (order-preserving) alert titles across every stage that
+    might name the underlying alert(s), in a fixed priority order: raw
+    incident alertMeta.AlertTitles -> incident.alerts[].title/name/
+    signature_id/type -> Parsing's alert_titles (or its single
+    processed_alert.alert_name) -> Triage's ticket.title -> Investigation's
+    alert_titles -> (only if still empty) the bare incident title/name.
+    Feeds build_overview()'s deterministic keyword-icon key findings
+    (below) — NOT the same list as _extract_agent_key_findings()'s
+    agent-narrated findings."""
     titles: list[str] = []
     am = incident.get("alertMeta") or {}
     if am.get("AlertTitles"):
@@ -246,6 +360,42 @@ def _collect_alert_titles(incident: dict, state: dict) -> list[str]:
 
 
 def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -> dict:
+    """
+    [FYP-FUNCTION] Case Overview tab data — key findings + provenance-
+    wrapped case_context fields (severity/classification/verdict/host/
+    user/status/IOC count).
+
+    [FYP-USED-BY]: internal only — build_case_view() (My Workspace
+    Overview tab) and build_aegis_context() (flattened via
+    _flatten_case_summary() into Ask Aegis's case_summary). Not called
+    directly by app.py.
+
+    [FYP-CALLS] triage_verdict.aggregate_verdict() — this is the fix for
+    the bug class named in the module docstring: the OLD app.py called
+    aggregate_verdict() with only the raw incident, never passing it the
+    persisted triage/threat-intel/investigation/ioc_correlation results it
+    needs to produce anything beyond a bare NetWitness-severity guess. Here
+    those four result blobs are loaded and passed through explicitly,
+    gated on each stage's own status (Threat Intel only once "Complete"/
+    "Complete with Warnings"; Investigation only once "Awaiting Approval"/
+    "Approved" — i.e. NOT "Approved" alone, since Overview must reflect an
+    unapproved-but-produced Investigation result the same way the
+    Investigation tab itself does, or the two tabs would visibly disagree).
+
+    key_findings assembly order: collected alert titles (keyword-iconed,
+    via _collect_alert_titles()) -> agent-narrated findings (via
+    _extract_agent_key_findings()) -> deterministic verdict signals
+    (aggregate_verdict()'s own per-signal rationale, sorted by severity
+    level, zero/absent/errored signals skipped). host/user are populated
+    ONLY from structured alertMeta/ticket fields — deliberately never
+    scraped from investigation narrative prose or AlertTitles free text,
+    since a name mentioned in either is not a confirmed User/Host.
+
+    netwitness_severity and triage_classification are kept as two
+    separately labeled fields (never collapsed into one "Base Severity")
+    because they can legitimately disagree — NetWitness's own risk
+    scoring is not the same claim as the Triage Agent's classification.
+    """
     am = incident.get("alertMeta") or {}
     triage_result = _json_or_empty(state.get("triage_result_json"))
     ti_status = state.get("threat_intel_status")
@@ -397,6 +547,14 @@ _MITRE_HEADER_ALIASES = {
 }
 
 
+# [FYP-FUNCTION] `_split_table_row` — implements the split table row operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_parse_mitre_markdown_table; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `endswith`, `replace`, `split`, `startswith`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _split_table_row(line: str) -> list[str]:
     """Splits a markdown table row on unescaped pipes, unescaping \\| within
     cells, tolerating leading/trailing pipes and surrounding whitespace."""
@@ -409,6 +567,14 @@ def _split_table_row(line: str) -> list[str]:
     cells = re.split(r"(?<!\\)\|", line)
     return [c.replace("\\|", "|").strip() for c in cells]
 
+
+# [FYP-FUNCTION] `_parse_mitre_markdown_table` — transforms parse mitre markdown table input into the stable representation required by downstream SOC analysis support processing.
+# [FYP-INPUT] Parameters: `narrative_report`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_mitre, tests/test_investigation_stage.py:test_mitre_markdown_parser_extracts_rows, tests/test_investigation_stage.py:test_mitre_markdown_parser_handles_escaped_pipes; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_split_table_row`, `append`, `enumerate`, `items`, `len`, `lower`, `match`, `set`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _parse_mitre_markdown_table(narrative_report: str) -> tuple[list[dict], list[str]]:
     """Returns (mappings, warnings). Locates the table by its HEADER ROW
@@ -476,6 +642,40 @@ def _parse_mitre_markdown_table(narrative_report: str) -> tuple[list[dict], list
 
 
 def build_mitre(state: dict, incident: dict, incident_id: str, run_id: str) -> dict:
+    """
+    [FYP-FUNCTION] MITRE ATT&CK tab data — three origin-tagged tiers,
+    additive not exclusive-or on tiers 1 vs 3 (both can contribute), never
+    fabricating a confidence score the underlying source doesn't actually
+    have.
+
+    [FYP-USED-BY]: internal only — build_case_view() (MITRE ATT&CK tab)
+    and build_aegis_context() (mitre list, tactic/technique_id/
+    technique_name/origin only — evidence/timeline_phase dropped for the
+    chat context's size budget). Not called directly by app.py.
+
+    Tier 1 — netwitness_detection_mapping: NetWitness's own
+    AlertTactics/AlertTechniques arrays, paired by index. Real detection
+    data, but "detection" != "analyst-confirmed", hence the distinct
+    origin label rather than a generic "confirmed" — see the module's
+    honesty-in-labeling rule.
+
+    Tier 2 — deterministic_keyword_inference (tactic_inference.infer_
+    tactics()): fired ONLY when Tier 1 produced nothing, since this module
+    never overrides real NetWitness data with a keyword guess. Only the
+    inferrer's primary (index-0) technique gets technique_name populated —
+    reusing that one name across every other technique in a multi-hit
+    result would mislabel them (see inline comment at the loop).
+
+    Tier 3 — investigation_agent_suggestion: parsed from Investigation's
+    narrative_report markdown table via _parse_mitre_markdown_table(),
+    gated on investigation_status in ("Awaiting Approval", "Approved") —
+    same not-Approved-alone gating as build_overview(), for the same
+    tab-consistency reason. Always additive to whatever Tier 1/2 already
+    produced (investigation_result_json has no structured mitre_mappings
+    field — the agent's FinalIncidentAnalysis is only ever rendered to
+    markdown, never serialized to JSON, so markdown parsing is the only
+    way to surface it here).
+    """
     am = incident.get("alertMeta") or {}
     mappings: list[dict] = []
     warnings: list[str] = []
@@ -536,6 +736,14 @@ def build_mitre(state: dict, incident: dict, incident_id: str, run_id: str) -> d
 # Timeline / Entity Graph / Evidence
 # ══════════════════════════════════════════════════════════════════════════
 
+# [FYP-FUNCTION] `_availability_warning` — implements the availability warning operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `data_availability`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_entity_graph, case_view.py:build_evidence, case_view.py:build_timeline; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _availability_warning(data_availability: dict) -> str | None:
     if data_availability.get("alerts_complete"):
         return None
@@ -546,6 +754,14 @@ def _availability_warning(data_availability: dict) -> str | None:
         return "Full event-level data was unavailable for this workflow run."
     return "Full event-level data was unavailable for this workflow run."
 
+
+# [FYP-FUNCTION] `_format_timestamp` — constructs format timestamp output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `ts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_timeline; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `float`, `fromtimestamp`, `str`, `strftime`, `strip`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _format_timestamp(ts: Any) -> str | None:
     if ts is None:
@@ -567,6 +783,28 @@ def _format_timestamp(ts: Any) -> str | None:
 
 def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                    data_availability: dict) -> list[dict]:
+    """
+    [FYP-FUNCTION] Timeline tab data — merges three independently-sourced
+    event streams into one chronologically sorted, deduped list, each item
+    tagged with event_type in {security, workflow, info, warning}.
+
+    [FYP-USED-BY]: internal only — build_case_view() (Timeline tab). Not
+    called by build_aegis_context() (Ask Aegis has no timeline section;
+    see the module's [FYP-CALLS] note on why it reuses only build_overview/
+    build_mitre/build_evidence) and not called directly by app.py.
+
+    [FYP-CALLS] incident_map.build_incident_map() for the security-event
+    stream (imap["timeline"]). Adds: (1) an explicit "no events" info item
+    when the alert fetch itself succeeded but genuinely found nothing, vs.
+    (2) an availability warning item when the fetch didn't succeed/wasn't
+    attempted — these two states must never be conflated (see
+    _availability_warning() and the module's "never silently claim
+    completeness" rule); (3) workflow stage-completion timestamps read
+    straight off `state`'s *_updated_at columns; (4) analyst approval
+    decisions via workflow_state_store.get_approval_history(). Final
+    sort/dedupe key is (timestamp, event) — None timestamps sort first,
+    which is fine since they're only info/warning banners.
+    """
     imap = build_incident_map(incident)
     items: list[dict] = []
     availability_note = _availability_warning(data_availability)
@@ -627,6 +865,28 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
 
 
 def build_entity_graph(incident: dict, data_availability: dict) -> dict:
+    """
+    [FYP-FUNCTION] Entity Graph tab data — nodes/edges/stats from
+    incident_map.build_incident_map(), with one honesty relabel applied on
+    top: an edge whose ONLY evidence is "alertMeta co-occurrence" (e.g.
+    every SourceIp paired with every DestinationIp in the same alert
+    record) is relation "connected_to" from incident_map's own naming, but
+    that is not an observed network connection — merely two values that
+    appeared in the same alert. Relabeled here to "possibly_related" with
+    evidence_status="co_occurrence_only" so the graph UI doesn't imply a
+    confirmed link that was never actually observed. Every other edge is
+    tagged evidence_status "observed" (has real evidence) or "unlabeled"
+    (none recorded) instead.
+
+    [FYP-USED-BY]: internal only — build_case_view() (Entity Graph tab).
+    app.py renders the returned nodes/edges via st.graphviz_chart(),
+    importing incident_map.to_dot directly (as `_cv_to_dot`) rather than
+    through this module's own `incident_map_to_dot` re-export at the top
+    of this file — that re-export is currently unused, left available for
+    a caller that wants the DOT conversion without importing incident_map
+    separately. Not part of build_aegis_context()'s context (chat has no
+    graph rendering) and no other function here calls build_entity_graph().
+    """
     imap = build_incident_map(incident)
     edges = []
     for e in imap.get("edges", []):
@@ -649,6 +909,37 @@ def build_entity_graph(incident: dict, data_availability: dict) -> dict:
 
 def build_evidence(state: dict, incident: dict, incident_id: str, run_id: str,
                    data_availability: dict) -> list[dict]:
+    """
+    [FYP-FUNCTION] Evidence tab data — a flat, uniformly-shaped list
+    ({evidence_id, evidence_type, source, timestamp, summary,
+    raw_reference, related_entities, supported_findings, evidence_status,
+    provenance}) unioning five independent evidence classes, each present
+    only if its stage actually produced something:
+
+    1. raw alerts (up to 20, evidence_type="alert"), or — if none —
+       a single "warning" item explaining why (never both).
+    2. Threat Intel enrichment (gated: threat_intel_status in ("Complete",
+       "Complete with Warnings")) — one summary item plus one item per
+       note. IOCs are read straight from the persisted threat_intel_
+       result_json; this function does NOT call ioc_correlation.
+       correlate_iocs() itself (see the module docstring's "READ-ONLY,
+       never triggers a live corpus scan" guarantee).
+    3. IOC correlation results (up to 20, evidence_type=
+       "internal_correlation") — the ONE-TIME persisted snapshot from
+       ioc_correlation_result_json, explicitly labeled with its own
+       ioc_correlation_updated_at as "persisted snapshot (...)" so it
+       reads as a point-in-time result, not a live lookup.
+    4. Investigation's own narrative summary (evidence_type=
+       "agent_inference"), gated the same not-Approved-alone way as
+       build_overview()/build_mitre() (Awaiting Approval or Approved).
+    5. Analyst approval decisions, via workflow_state_store.
+       get_approval_history() (evidence_type="analyst_decision").
+
+    [FYP-USED-BY]: build_case_view() (Evidence tab, full list) AND
+    build_aegis_context() (evidence_highlights, capped to _MAX_LIST_ITEMS
+    and reduced to evidence_type/source/summary only). Not called directly
+    by app.py.
+    """
     items: list[dict] = []
     availability_note = _availability_warning(data_availability)
 
@@ -741,6 +1032,14 @@ def build_evidence(state: dict, incident: dict, incident_id: str, run_id: str,
     return items
 
 
+# [FYP-FUNCTION] `build_activity` — constructs build activity output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, case_view.py:build_case_view; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `get_activity`, `get_approval_history`, `sort`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_activity(incident_id: str, run_id: str | None) -> list[dict]:
     """Unions the workflow_activity ledger (atomic with each state
     transition — see workflow_state_store._insert_activity_row) with the
@@ -784,12 +1083,36 @@ _MAX_TOTAL_SIZE = 200_000
 _LOCAL_PATH_RE = re.compile(r"([A-Za-z]:\\[^\"'\s]+|/[\w./-]{6,})")
 
 
+# [FYP-FUNCTION] `_redact_local_paths` — implements the redact local paths operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `s`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_sanitize_for_display; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `sub`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _redact_local_paths(s: str) -> str:
+    # [FYP-FUNCTION] `_shorten` — implements the shorten operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `m`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `group`, `replace`, `rsplit`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _shorten(m: re.Match) -> str:
         p = m.group(1)
         return p.replace("\\", "/").rsplit("/", 1)[-1]
     return _LOCAL_PATH_RE.sub(_shorten, s)
 
+
+# [FYP-FUNCTION] `_sanitize_for_display` — implements the sanitize for display operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `value`, `_seen`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_sanitize_for_display, case_view.py:sanitize_investigation_result_for_display, tests/test_investigation_stage.py:test_sanitize_handles_circular_reference_safely; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_redact_local_paths`, `_sanitize_for_display`, `id`, `isinstance`, `items`, `len`, `search`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _sanitize_for_display(value: Any, _seen: set | None = None) -> Any:
     """Recursive, cycle-safe. Dict keys matching _SECRET_KEY_RE are
@@ -827,7 +1150,15 @@ def _sanitize_for_display(value: Any, _seen: set | None = None) -> Any:
 
 
 def sanitize_investigation_result_for_display(result: dict) -> dict:
-    """The raw stored result (investigation_result_json) is never rendered
+    """
+    [FYP-FUNCTION] [FYP-USED-BY]: app.py (`cv.sanitize_investigation_
+    result_for_display`), called directly on the raw investigation_result
+    dict just before an on-screen st.json() dump — NOT part of
+    build_output()'s own return value (see build_output()'s docstring:
+    that function deliberately returns the unsanitized result and leaves
+    sanitization to the caller).
+
+    The raw stored result (investigation_result_json) is never rendered
     directly — only this sanitized copy is. Allowlist-first: recognized
     safe top-level fields pass through (sanitized); anything else is
     bucketed into 'additional_output' (still sanitized, still shown — not
@@ -859,6 +1190,14 @@ def sanitize_investigation_result_for_display(result: dict) -> dict:
     return sanitized
 
 
+# [FYP-FUNCTION] `_reporting_trusted_path` — implements the reporting trusted path operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `raw_path`, `attempt_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_load_candidate_manifest_preview; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `is_absolute`, `is_file`, `resolve`, `startswith`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _reporting_trusted_path(raw_path: str, *, attempt_dir) -> "Path | None":
     """Read-only twin of reporting_approval._resolve_trusted_path — this
     module never validates for approval purposes, only for safe preview
@@ -881,6 +1220,14 @@ def _reporting_trusted_path(raw_path: str, *, attempt_dir) -> "Path | None":
     except Exception:
         return None
 
+
+# [FYP-FUNCTION] `_load_candidate_manifest_preview` — retrieves load candidate manifest preview data for the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `reporting_stage_attempt`, `candidate_manifest_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_reporting; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_reporting_trusted_path`, `append`, `get`, `hexdigest`, `loads`, `read_bytes`, `read_text`, `reporting_attempt_dir`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _load_candidate_manifest_preview(incident_id: str, run_id: str, reporting_stage_attempt: int,
                                      candidate_manifest_path: str) -> dict[str, Any]:
@@ -938,7 +1285,17 @@ def _load_candidate_manifest_preview(incident_id: str, run_id: str, reporting_st
 
 
 def build_reporting(state: dict, incident_id: str, run_id: str) -> dict:
-    """Reporting review model for the Reporting stage tab. Two distinct
+    """
+    [FYP-FUNCTION] [FYP-USED-BY]: app.py — called both as part of
+    build_case_view() (Reporting tab, full 5-tab case view) and
+    STANDALONE as `cv.build_reporting(...)` (confirmed via grep, ~line
+    5722) when app.py only needs the reporting-review model without
+    recomputing the other four tabs — e.g. a lighter-weight refresh after
+    an export/approval action on the Reporting tab alone. NOT used by
+    build_aegis_context() (it uses _summarize_reporting_for_chat() instead,
+    to skip this function's file I/O and SHA-256 verification).
+
+    Reporting review model for the Reporting stage tab. Two distinct
     read paths, because reporting_result_json is CLEARED by rerun_stage()
     on every new attempt (see workflow_state_store.rerun_stage()):
 
@@ -1020,7 +1377,13 @@ def build_reporting(state: dict, incident_id: str, run_id: str) -> dict:
 
 
 def reporting_blocks_to_render_ops(blocks: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
-    """Pure mapping from structured report blocks (see
+    """
+    [FYP-FUNCTION] [FYP-USED-BY]: app.py, `cv.reporting_blocks_to_render_
+    ops(...)` (confirmed via grep, ~line 901) — feeds a loop that dispatches
+    each returned op to ui_components.queue_table() (op="table") or the
+    equivalent st.* call for heading/bullet_list/page_break/markdown.
+
+    Pure mapping from structured report blocks (see
     soc_reporting_agent/reporting/structured_report.py) to a small,
     UI-framework-agnostic instruction list — kept separate from the actual
     st.* calls in app.py so it's independently unit-testable: a
@@ -1056,6 +1419,26 @@ def reporting_blocks_to_render_ops(blocks: list[dict[str, Any]] | Any) -> list[d
 
 
 def build_output(state: dict) -> dict:
+    """
+    [FYP-FUNCTION] Output tab data — the Investigation Agent's raw,
+    UNCHANGED, complete result (investigation_result_json), plus a
+    display_sections list naming which of summary/severity/indicators/
+    narrative_report/feedback_loop/missing_evidence are actually populated
+    (so app.py can skip rendering empty sections instead of showing blank
+    headers).
+
+    [FYP-USED-BY]: internal only — build_case_view() (Output tab). Note
+    the raw investigation_result IS returned here, deliberately unsanitized
+    — app.py must pass it through sanitize_investigation_result_for_
+    display() (below) before ever putting it on screen; build_output()
+    itself does not sanitize, since some internal callers may need the
+    unredacted value. build_aegis_context() does NOT call this function at
+    all (it uses _summarize_investigation_for_chat() instead, to avoid
+    forwarding the full unbounded result into a size-capped chat prompt).
+    warnings surfaces feedback_loop.gaps specifically (not the whole
+    feedback_loop dict) since that is the one field meant to read as
+    caveats to an analyst.
+    """
     inv_status = state.get("investigation_status") or "Pending"
     raw_result = _json_or_empty(state.get("investigation_result_json"))
     display_sections = []
@@ -1103,7 +1486,10 @@ _NAME_TO_KEY = {name: key for name, key in _STAGE_COLUMNS}
 
 
 def _stage_status_summary(state: dict) -> list[dict]:
-    """Independent, deliberately-simplified 5-stage classifier for chat
+    """
+    [FYP-FUNCTION]
+
+    Independent, deliberately-simplified 5-stage classifier for chat
     grounding: done | awaiting_approval | failed | in_progress |
     not_started.
 
@@ -1149,6 +1535,14 @@ def _stage_status_summary(state: dict) -> list[dict]:
     return out
 
 
+# [FYP-FUNCTION] `_approval_label` — implements the approval label operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `status_state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_confirmed_facts_block; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _approval_label(status_state: str) -> str:
     return {
         "done": "confirmed",
@@ -1159,9 +1553,25 @@ def _approval_label(status_state: str) -> str:
     }.get(status_state, "not available yet")
 
 
+# [FYP-FUNCTION] `_cap_list` — implements the cap list operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `items`, `n`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_confirmed_facts_block, case_view.py:_flatten_case_summary, case_view.py:_summarize_investigation_for_chat; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _cap_list(items: list, n: int = _MAX_LIST_ITEMS) -> list:
     return list(items or [])[:n]
 
+
+# [FYP-FUNCTION] `_cap_text` — implements the cap text operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `value`, `n`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:_confirmed_facts_block, case_view.py:_summarize_investigation_for_chat, case_view.py:_summarize_reporting_for_chat; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `len`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _cap_text(value: Any, n: int = _MAX_NARRATIVE_EXCERPT) -> str | None:
     """Caps any free-text field before it enters the chat context. Several
@@ -1179,7 +1589,12 @@ def _cap_text(value: Any, n: int = _MAX_NARRATIVE_EXCERPT) -> str | None:
 
 
 def _summarize_investigation_for_chat(state: dict) -> dict | None:
-    """Reads investigation_result_json directly off `state` — bypasses
+    """
+    [FYP-FUNCTION] [FYP-USED-BY]: _confirmed_facts_block() only, itself
+    called only from build_aegis_context() — this is chat-context-specific,
+    never used by build_case_view()/build_output().
+
+    Reads investigation_result_json directly off `state` — bypasses
     build_output()'s full-size sanitized forward (fine at one-page-render
     frequency, oversized for a chat prompt). Extracts only the fields a
     chat answer actually needs, with every free-text field capped via
@@ -1202,7 +1617,12 @@ def _summarize_investigation_for_chat(state: dict) -> dict | None:
 
 
 def _summarize_reporting_for_chat(state: dict) -> dict | None:
-    """Reads reporting_result_json directly off `state` — bypasses
+    """
+    [FYP-FUNCTION] [FYP-USED-BY]: _confirmed_facts_block() only, itself
+    called only from build_aegis_context() — chat-context-specific, never
+    used by build_case_view()/build_reporting().
+
+    Reads reporting_result_json directly off `state` — bypasses
     build_reporting()'s file I/O + SHA-256 manifest verification, which
     exists for on-screen report preview, not chat grounding."""
     raw = _json_or_empty(state.get("reporting_result_json"))
@@ -1216,7 +1636,10 @@ def _summarize_reporting_for_chat(state: dict) -> dict | None:
 
 
 def _confirmed_facts_block(state: dict, stages: list[dict]) -> dict:
-    """Per-stage dict: internal key -> {"label": ..., ...fields}. 'label'
+    """
+    [FYP-FUNCTION] [FYP-USED-BY]: build_aegis_context() only.
+
+    Per-stage dict: internal key -> {"label": ..., ...fields}. 'label'
     names which of confirmed / pending-approval / failed / not-available
     this stage's content is. Investigation and Reporting use their OWN
     Approved/Awaiting Approval/other status (not the coarser 5-way
@@ -1298,6 +1721,14 @@ def _confirmed_facts_block(state: dict, stages: list[dict]) -> dict:
     return facts
 
 
+# [FYP-FUNCTION] `_flatten_case_summary` — implements the flatten case summary operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `case_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_aegis_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_cap_list`, `get`, `isinstance`, `items`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _flatten_case_summary(case_context: dict) -> dict:
     """Strips build_overview()'s per-field provenance envelope (source_
     stage/source_field/incident_id/run_id/updated_at/evidence_status) down
@@ -1319,7 +1750,20 @@ def _flatten_case_summary(case_context: dict) -> dict:
 
 def build_aegis_context(incident_id: str, run_id: str | None = None,
                         stage_states: list[dict] | None = None) -> dict:
-    """Cumulative, size-bounded, cross-stage context for Ask Aegis.
+    """
+    [FYP-FUNCTION] Aegis Chatbot Context Construction
+    [FYP-LLM] [FYP-ENTRY-POINT] [FYP-EVALUATOR] [FYP-RERUN]
+
+    THE Ask Aegis chatbot context builder — do NOT confuse this with
+    skills_sidecar.py's build_skills_context(), which is a different
+    function used only in soc_workflow.handoff_to_reporting() to enrich the
+    Investigation->Reporting handoff, NOT the chatbot.
+
+    [FYP-USED-BY]: app.py's chat_respond() (confirmed via grep, called at
+    app.py lines ~6660 and ~7575 as `cv.build_aegis_context(...)`, then
+    passed into chat_respond() as `case_context`).
+
+    Cumulative, size-bounded, cross-stage context for Ask Aegis.
 
     stage_states: an optional precomputed 5-stage list in the shape
     app.py's _case_stage_states() returns ([{"name", "state", ...
@@ -1433,6 +1877,14 @@ def build_aegis_context(incident_id: str, run_id: str | None = None,
     # populated Triage/Threat-Intel confirmed_facts block), confirmed_facts
     # — not the capped lists trimmed first — is usually the largest
     # contributor, so trimming only converges if it's shrunk too.
+    # [FYP-FUNCTION] `_context_size` — implements the context size operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include case_view.py:build_aegis_context; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `dumps`, `len`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
     def _context_size() -> int:
         try:
             return len(json.dumps(context, default=str))
@@ -1466,7 +1918,26 @@ def build_aegis_context(incident_id: str, run_id: str | None = None,
 # ══════════════════════════════════════════════════════════════════════════
 
 def build_case_view(incident_id: str, run_id: str | None = None) -> dict:
-    """Loads ONLY persisted, run-matched data. run_id=None resolves to the
+    """
+    [FYP-FUNCTION] [FYP-ENTRY-POINT] Top-level aggregator for the My
+    Workspace case-details page — ONE call that assembles all 5 case-view
+    tabs (Overview/Output/Reporting/Timeline/MITRE/Entity Graph/Evidence/
+    Activity) plus data_availability/incident_source/warnings, replacing
+    the old app.py pattern of computing each independently inline (see
+    the module docstring's bug-class note).
+
+    [FYP-USED-BY]: app.py, `cv.build_case_view(...)` (confirmed via grep,
+    ~line 5902) — the sole call site for the full case-detail render.
+
+    [FYP-CALLS] (in order): load_incident_for_case_view() once, then
+    build_overview(), build_mitre(), build_output(), build_reporting(),
+    build_timeline(), build_entity_graph(), build_evidence(),
+    build_activity() — each a pure function over the SAME already-loaded
+    `state`/`incident`/`data_availability`, so this function does exactly
+    one state fetch and one incident load for the whole page, not one per
+    tab.
+
+    Loads ONLY persisted, run-matched data. run_id=None resolves to the
     incident's current run. Never triggers a live corpus scan, never runs
     a workflow stage, never claims a lease."""
     state = wss.get_state(incident_id)

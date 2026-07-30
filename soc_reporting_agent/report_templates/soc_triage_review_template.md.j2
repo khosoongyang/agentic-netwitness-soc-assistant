@@ -1,3 +1,12 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/soc_triage_review_template.md.j2
+   Purpose: Renders the analyst-facing review of triage conclusions and confidence.
+   Main functionality: Presents classification, severity, evidence, and triage limitations.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: soc_triage_review text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting review, after Triage and before final report approval.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: soc_triage_review, SOC Triage Review, [FYP-APPROVAL]. #}
 # SOC Triage Review
 
 | Field | Value |

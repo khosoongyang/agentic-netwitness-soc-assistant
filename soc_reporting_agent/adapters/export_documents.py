@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, config, json, os, pathlib, reporting, sys.
+# =============================================================================
+# File: soc_reporting_agent/adapters/export_documents.py
+# Purpose: This module exports reporting results into analyst-downloadable document artifacts.
+# Main functionality: main.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis stage adapter component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, config, json, os, pathlib, reporting, sys.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: main, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """Headless DOCX/PDF export adapter.
 
 Confirms all report sections and exports the combined incident report as
@@ -22,6 +44,18 @@ if str(PROJECT_ROOT_BOOTSTRAP) not in sys.path:
 from config import settings
 from reporting import editable_reports as er
 
+
+# =============================================================================
+# [FYP-SECTION] STAGE ADAPTER EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered stage adapter operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `candidate_manifest_path`, `confirm_report`, `dumps`, `export_docx`, `export_pdf`, `export_section_docx`, `export_section_pdf`, `finalize_candidate_manifest`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def main() -> int:
     incident_id = sys.argv[1] if len(sys.argv) > 1 else None

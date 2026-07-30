@@ -1,3 +1,28 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# [FYP-SECTION] EXECUTABLE / BEHAVIOURAL CONFIGURATION
+# =============================================================================
+# File: soc_investigation_agent_revised/playbooks/phishing.yaml
+# Purpose: This file defines the phishing investigation playbook and required evidence steps.
+# Main functionality: Supplies runtime, dependency, security, workflow, or
+#   playbook values consumed by the application/framework named below.
+# Inputs: Maintainer-controlled configuration values; no live secret values
+#   are documented or introduced by this overview.
+# Outputs: Configuration read by the framework, installer, CI job, or Aegis
+#   component; it does not independently execute a workflow stage.
+# Workflow position: Supporting configuration for investigation.
+# Important dependencies: The consuming application/framework and the exact
+#   keys or steps declared in this file.
+# Error and fallback behaviour: Invalid values fail in the consuming parser,
+#   installer, workflow, or framework; fallback behaviour belongs to that caller.
+# Key evaluator search terms: phishing.yaml, [FYP-CONFIG], [FYP-FILE].
+# =============================================================================
+# [FYP-CONFIG] Purpose: investigation playbook steps for phishing incidents
+# (identify sender/receiver details, check for malicious URL/attachment,
+# analyze process tree, determine containment steps). Read by
+# policy_engine.py (documented separately); also loaded via yaml.safe_load
+# in soc_investigation_agent_revised/main.py and orchestrator.py, which
+# auto-select this file for alert types matching phishing/email keywords.
 name: Phishing Playbook
 version: 1.1
 

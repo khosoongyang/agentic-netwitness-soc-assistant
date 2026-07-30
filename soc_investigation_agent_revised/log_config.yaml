@@ -1,3 +1,28 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# [FYP-SECTION] EXECUTABLE / BEHAVIOURAL CONFIGURATION
+# =============================================================================
+# File: soc_investigation_agent_revised/log_config.yaml
+# Purpose: This file maps investigation log-source fields into canonical entity and timestamp names.
+# Main functionality: Supplies runtime, dependency, security, workflow, or
+#   playbook values consumed by the application/framework named below.
+# Inputs: Maintainer-controlled configuration values; no live secret values
+#   are documented or introduced by this overview.
+# Outputs: Configuration read by the framework, installer, CI job, or Aegis
+#   component; it does not independently execute a workflow stage.
+# Workflow position: Supporting configuration for investigation.
+# Important dependencies: The consuming application/framework and the exact
+#   keys or steps declared in this file.
+# Error and fallback behaviour: Invalid values fail in the consuming parser,
+#   installer, workflow, or framework; fallback behaviour belongs to that caller.
+# Key evaluator search terms: log_config.yaml, [FYP-CONFIG], [FYP-FILE].
+# =============================================================================
+# [FYP-CONFIG] Purpose: field-mapping rules for the investigation agent's log
+# ingestion — maps each detected source type (Authentication, LogIndicators,
+# Network, Endpoint) to the JSON paths used to extract username, hostname,
+# and timestamp from raw alert data.
+# Verified via Grep: loaded by soc_investigation_agent_revised/ingest_pipeline.py
+# (CONFIG_PATH = .../log_config.yaml, parsed with yaml.safe_load at line ~12).
 source_detection:
   - key: "authentication_details"
     source_type: "Authentication"

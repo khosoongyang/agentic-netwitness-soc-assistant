@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, dataclasses, enum, os.
+# =============================================================================
+# File: mitigation_mapping.py
+# Purpose: This module maps findings and MITRE techniques to containment and mitigation guidance.
+# Main functionality: ControlType, ControlLayer, ImplementationStatus, Effectiveness, SecurityControl, Threat.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, dataclasses, enum, os.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: ControlType, ControlLayer, ImplementationStatus, Effectiveness, SecurityControl, Threat, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 mitigation_mapping.py — threat → security-control coverage mapping.
 
@@ -35,11 +57,27 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-CLASS] `ControlType` — owns ControlType state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class ControlType(Enum):
     PREVENTIVE = "preventive"
     DETECTIVE = "detective"
     CORRECTIVE = "corrective"
 
+
+# [FYP-CLASS] `ControlLayer` — owns ControlLayer state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 class ControlLayer(Enum):
     NETWORK = "network"
@@ -50,12 +88,24 @@ class ControlLayer(Enum):
     PHYSICAL = "physical"
 
 
+# [FYP-CLASS] `ImplementationStatus` — owns ImplementationStatus state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class ImplementationStatus(Enum):
     NOT_IMPLEMENTED = "not_implemented"
     PARTIAL = "partial"
     IMPLEMENTED = "implemented"
     VERIFIED = "verified"
 
+
+# [FYP-CLASS] `Effectiveness` — owns Effectiveness state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 class Effectiveness(Enum):
     NONE = 0
@@ -66,6 +116,12 @@ class Effectiveness(Enum):
 
 
 # ── skill model (ported verbatim; formulas unchanged) ────────────────────────
+
+# [FYP-CLASS] `SecurityControl` — owns SecurityControl state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: coverage_score.
+# [FYP-USED-BY] Static constructor/type references include mitigation_mapping.py:_c.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 @dataclass
 class SecurityControl:
@@ -82,6 +138,14 @@ class SecurityControl:
     technologies: list = field(default_factory=list)
     compliance_refs: list = field(default_factory=list)
 
+    # [FYP-FUNCTION] `coverage_score` — implements the coverage score operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include mitigation_mapping.py:calculate_coverage; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: no nested function/service calls.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def coverage_score(self) -> float:
         status_multiplier = {
             ImplementationStatus.NOT_IMPLEMENTED: 0.0,
@@ -91,6 +155,12 @@ class SecurityControl:
         }
         return self.effectiveness.value * status_multiplier[self.status]
 
+
+# [FYP-CLASS] `Threat` — owns Threat state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include mitigation_mapping.py:build_mitigation_coverage.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 @dataclass
 class Threat:
@@ -103,12 +173,26 @@ class Threat:
     risk_score: float
 
 
+# [FYP-CLASS] `MitigationMapping` — owns MitigationMapping state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: calculate_coverage, has_defense_in_depth, has_control_diversity.
+# [FYP-USED-BY] Static constructor/type references include mitigation_mapping.py:build_mitigation_coverage.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 @dataclass
 class MitigationMapping:
     threat: Threat
     controls: list
     residual_risk: str = "Unknown"
     notes: str = ""
+
+    # [FYP-FUNCTION] `calculate_coverage` — implements the calculate coverage operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include mitigation_mapping.py:build_mitigation_coverage; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `coverage_score`, `len`, `sum`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def calculate_coverage(self) -> float:
         if not self.controls:
@@ -122,9 +206,25 @@ class MitigationMapping:
         # use achievable (recommendation framing) — honest label in output
         return (achievable / max_possible) * 100 if max_possible else 0.0
 
+    # [FYP-FUNCTION] `has_defense_in_depth` — evaluates has defense in depth conditions so invalid or unsafe SOC analysis support processing is stopped early.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include mitigation_mapping.py:build_mitigation_coverage; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `len`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def has_defense_in_depth(self) -> bool:
         layers = {c.layer for c in self.controls}
         return len(layers) >= 2
+
+    # [FYP-FUNCTION] `has_control_diversity` — evaluates has control diversity conditions so invalid or unsafe SOC analysis support processing is stopped early.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include mitigation_mapping.py:build_mitigation_coverage; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `len`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def has_control_diversity(self) -> bool:
         types = {c.control_type for c in self.controls}
@@ -163,9 +263,23 @@ _STRIDE_NAMES = {
 
 # ── control library (skill's standard controls + endpoint/network extensions) ─
 
+# [FYP-FUNCTION] `_c` — implements the c operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `*a`, `**k`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include mitigation_mapping.py:ControlLibrary; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `SecurityControl`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _c(*a, **k):
     return SecurityControl(*a, **k)
 
+
+# [FYP-CLASS] `ControlLibrary` — owns ControlLibrary state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: get_controls_for_threat.
+# [FYP-USED-BY] Static constructor/type references include mitigation_mapping.py:build_mitigation_coverage.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 class ControlLibrary:
     STANDARD_CONTROLS = {
@@ -278,6 +392,14 @@ class ControlLibrary:
                      compliance_refs=["NIST 800-61", "SOC2 CC7.3"]),
     }
 
+    # [FYP-FUNCTION] `get_controls_for_threat` — retrieves get controls for threat data for the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `category`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include mitigation_mapping.py:build_mitigation_coverage; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `values`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def get_controls_for_threat(self, category: str) -> list:
         return [c for c in self.STANDARD_CONTROLS.values()
                 if category in c.mitigates_threats]
@@ -285,6 +407,14 @@ class ControlLibrary:
 
 _IMPACT_RISK = {"Critical": 9.0, "High": 7.0, "Medium": 5.0, "Low": 3.0}
 
+
+# [FYP-FUNCTION] `build_mitigation_coverage` — constructs build mitigation coverage output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `threat_intel`, `asset`, `max_controls_per_threat`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `ControlLibrary`, `MitigationMapping`, `Threat`, `add`, `append`, `bool`, `calculate_coverage`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_mitigation_coverage(incident: dict, triage_result: dict | None = None,
                               threat_intel: dict | None = None,
@@ -383,6 +513,14 @@ def build_mitigation_coverage(incident: dict, triage_result: dict | None = None,
         "roadmap": roadmap[:8],
     }
 
+
+# [FYP-FUNCTION] `format_mitigation` — constructs format mitigation output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `cov`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `append`, `get`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_mitigation(cov: dict) -> str:
     """Plain-text block for the investigation alert / LLM prompt / UI."""

@@ -1,3 +1,8 @@
+# [FYP-FILE] NOTE: This is a superseded/duplicate pre-merge copy of the equivalent
+# file in soc_reporting_agent/services/parser_normaliser.py. The canonical,
+# actively-used implementation is soc_reporting_agent/services/parser_normaliser.py
+# (documented separately). This copy is not imported anywhere else in the
+# repository and is retained here only as a historical snapshot.
 """
 SOC NetWitness Parser
 ======================

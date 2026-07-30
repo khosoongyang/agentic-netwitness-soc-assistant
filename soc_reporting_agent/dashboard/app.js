@@ -1,3 +1,44 @@
+/**
+ * [FYP-FILE] Aegis SOC Dashboard - client-side application (plain JS, no framework/bundler).
+ * Single-file SPA: owns routing (location.hash), all HTML rendering (template-string based),
+ * and every call to the Flask backend (see the `api()` helper below and the [FYP-API] tags
+ * on each call site). This file is independent from the main Streamlit UI used elsewhere
+ * in the project - it talks to the same backend but renders its own DOM.
+ * File: soc_reporting_agent/dashboard/app.js
+ * Inputs: DOM events, URL hash state, analyst form values, and JSON/blob responses from backend/app.py.
+ * Outputs: Rendered dashboard DOM, HTTP requests, downloaded report artifacts, and client-side state changes.
+ * Workflow position: Browser presentation and interaction layer over the ticket-scoped SOC workflow.
+ * Important dependencies: dashboard/index.html, dashboard/style.css, browser fetch/DOM APIs, backend/app.py.
+ * Error and fallback behaviour: api() normalises JSON failures; binary-download and rendering helpers
+ * surface toasts/modals or client-side fallback exports where their documented branches permit.
+ * Key evaluator search terms: api, refresh, action, runNext, decision, askAegis, downloadReportingReport.
+ *
+ * High-level structure (see [FYP-SECTION] banners further down for exact boundaries):
+ *   1. Global `state` + navigation config
+ *   2. DOM / formatting helpers ($ , esc, badge, modal helpers)
+ *   3. `api()` fetch wrapper + `refresh()` data loading
+ *   4. Dashboard / ticket table rendering
+ *   5. Workflow status + agent run-guard bookkeeping (optimistic "run just started" UI state)
+ *   6. Ticket side panel, approve/reject/more-evidence actions
+ *   7. Agent Workspace (per-agent execution panel, live activity log, Ask Aegis panel)
+ *   8. Timeline, reports, alerts pages
+ *   9. Central `action()` dispatcher + `document` click/submit/keydown delegation + app bootstrap
+ *  10. Agent summary / reasoning panel renderers (several successive "override" sections that
+ *      redefine the same function name later in the file - see [FYP-EVALUATOR] notes near
+ *      each `==================== ... OVERRIDE ====================` banner)
+ *  11. Word/PDF/DOCX export generation (client-side PDF/DOCX byte building + backend export calls)
+ *  12. SOC structured report review/edit workspace
+ *
+ * [FYP-EVALUATOR] Several functions (e.g. renderAgentLiveActivityLog, renderSelectedAgentOutputPanel,
+ * buildLiveLogEntries, tryDownloadBackendReportArtifact, downloadReportingReport,
+ * downloadAgentSummaryJson/Word/Pdf, summaryDocumentHtml, reportDocumentHtml, buildStyledPdfBlob,
+ * normaliseThinkingEntriesForRunState) are declared more than once in this file. Per normal JS
+ * `function` hoisting/redeclaration rules, the LAST declaration in file order is the one that
+ * actually runs - earlier declarations are dead code kept for history/diff readability. This is
+ * intentional (iterative feature layering), not a bug; the effective implementation for each of
+ * those names is always the one nearest the bottom of the file.
+ */
+
 const state = {
   route: "dashboard",
   params: {},
@@ -56,6 +97,10 @@ const navGroups = [
   ] },
 ];
 
+// [FYP-SECTION] DOM / string helper shortcuts used throughout every render function below.
+// $()/$$() are the only DOM query helpers in the file (no framework); esc() is the sole HTML
+// escaping function - [FYP-EVALUATOR] every template string that interpolates ticket/alert data
+// must route through esc() to avoid injecting raw HTML from backend-controlled fields.
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c]));
@@ -238,6 +283,14 @@ function readRoute() {
   state.params = Object.fromEntries(new URLSearchParams(query || ""));
 }
 
+// [FYP-SECTION] Backend API layer. Every network call in this dashboard funnels through this
+// single `api()` wrapper (a handful of raw fetch() calls exist separately for binary/blob
+// downloads - each is tagged [FYP-API] individually where it appears).
+// [FYP-API] Generic JSON fetch wrapper: `path` is the exact backend route (see each call site's
+// [FYP-API] tag for the literal URL/route used). Always uses cache: "no-store" so the dashboard
+// never serves a stale cached response for ticket/agent state. Normalises backend error shapes
+// (error_code/status/message) into a consistent { success, status, display_error, http_status }
+// contract that callers use for toast()/openModal() error display.
 async function api(path, opts = {}) {
   const res = await fetch(path, { cache: "no-store", ...opts });
   let data = {};
@@ -258,6 +311,8 @@ function errorText(res, fallback = "Action failed") {
   return res.status || res.message || fallback;
 }
 
+// [FYP-UI] Transient status toast shown after most API calls (success/failure feedback).
+// Auto-dismisses after 3.6s; relies on the #toast element existing in index.html.
 function toast(message, type = "blue") {
   const el = $("#toast");
   if (!el) return console.warn(message);
@@ -267,6 +322,8 @@ function toast(message, type = "blue") {
   window.__toastTimer = setTimeout(() => el.classList.remove("show"), 3600);
 }
 
+// [FYP-UI] Generic modal opener - injects raw `body` HTML into #modal-body. Callers are
+// responsible for esc()-ing any interpolated data before it reaches here.
 function openModal(title, sub, body) {
   $("#modal-title").textContent = title;
   $("#modal-sub").textContent = sub || "";
@@ -287,6 +344,9 @@ function optionListForTickets(currentId = "") {
   return Array.from(ids).map(id => `<option value="${esc(id)}" ${id === currentId ? "selected" : ""}>${esc(id)}</option>`).join("");
 }
 
+// [FYP-UI] Builds a confirm/cancel form modal (used by move/split/merge/correlation actions).
+// `onSubmit` is stashed on window.__modalSubmitHandler and invoked by the delegated "submit"
+// listener registered near the bottom of this file (see [FYP-UI] on document submit listener).
 function openActionModal({ title, sub = "", summary = "", fields = [], confirmText = "Confirm", danger = false, onSubmit }) {
   const fieldHtml = fields.map(field => {
     const value = field.value ?? "";
@@ -320,6 +380,8 @@ function formPayload(form) {
   return data;
 }
 
+// [FYP-SECTION] Small presentational helpers: status/severity badges and icon buttons shared
+// by nearly every panel renderer in this file.
 function badge(value, type, attrs = "") {
   const n = norm(value);
   const cls = type || (n.includes("critical") || n.includes("reject") || n.includes("failed") ? "red" :
@@ -343,6 +405,10 @@ function iconButton(icon, label, action, attrs = "") {
   return `<button class="soc-btn ghost" data-action="${esc(action)}" ${attrs} title="${esc(label)}"><i class="ti ${icon}"></i><span>${esc(label)}</span></button>`;
 }
 
+// [FYP-SECTION] Sidebar navigation + top header rendering.
+// [FYP-UI] Renders the left nav from `navGroups`. When the current route is "my-tickets" and a
+// ticket is selected, injects nested sub-route buttons (overview/agents/alerts/timeline/reports)
+// so the analyst can move between Agent Workspace tabs for the active case.
 function renderNav() {
   $("#nav").innerHTML = navGroups.map(group => {
     const itemsHtml = group.items.map(item => {
@@ -376,6 +442,8 @@ function renderNav() {
   }).join("");
 }
 
+// [FYP-UI] Renders the top header bar (page title/breadcrumb) and the NetWitness connection
+// status pill in the status strip, driven by state.integrations / state.lastNetWitnessSync.
 function header() {
   if (isAgentWorkspaceRoute()) {
     $("#header-left").innerHTML = `<div class="page-kicker breadcrumb">My Tickets <i class="ti ti-chevron-right"></i> Agent Workspace</div><div class="page-heading">Agent Workspace</div>`;
@@ -409,12 +477,19 @@ function header() {
   }
 }
 
+// [FYP-SECTION] Central data refresh. This is the main polling/reload entry point - called after
+// nearly every mutating action (approve, run agent, assign, etc.) and on route changes. It does
+// NOT run on a timer for the whole dashboard (see the comment near startupLoad further down:
+// re-rendering #content on a timer would interrupt in-progress edits/searches/scroll position).
 async function refresh() {
   try {
     const selected = state.selectedTicket?.ticket_id || "";
     const ticketRoute = isTicketRoute();
     const dashboardParams = new URLSearchParams({ analyst: state.currentUser });
     if (selected) dashboardParams.set("ticket_id", selected);
+    // [FYP-API] GET /api/dashboard?analyst=<user>&ticket_id=<id> - primary payload: summary
+    // metrics, tickets (when not on a ticket-list route), selected ticket detail, active runs,
+    // and integration status. Nearly everything on the dashboard originates from this call.
     const dash = await api(`/api/dashboard?${dashboardParams.toString()}`);
     if (dash.success) {
       setApiError("");
@@ -425,6 +500,8 @@ async function refresh() {
       reconcileAgentRunGuards();
       state.integrations = dash.integrations || {};
       if (state.selectedTicket?.ticket_id) {
+        // [FYP-API] GET /api/tickets/{ticket_id}/exports/status - per-ticket Word/PDF export
+        // readiness (used to render "Ready"/"Preparing"/"Failed" pills on download buttons).
         const exp = await api(`/api/tickets/${encodeURIComponent(state.selectedTicket.ticket_id)}/exports/status`);
         state.exportStatus = exp.success ? (exp.exports || {}) : {};
       } else {
@@ -437,6 +514,9 @@ async function refresh() {
       const routeDefaults = navGroups.flatMap(g => g.items).find(i => i.id === state.route)?.params || {};
       state.params = { ...routeDefaults, ...state.params };
       const params = new URLSearchParams(state.params).toString();
+      // [FYP-API] GET /api/tickets?<filters> - ticket list for All Tickets / My Tickets /
+      // Pending Approval / Closed Cases views. Query params come from the route's default
+      // params merged with state.params (search box, stage/severity/owner filters, etc.).
       const res = await api(`/api/tickets${params ? `?${params}` : ""}`);
       if (res.success) {
         setApiError("");
@@ -447,6 +527,8 @@ async function refresh() {
     }
     if (["netwitness-alerts", "search-alerts"].includes(state.route)) {
       const q = state.params.q ? `?q=${encodeURIComponent(state.params.q)}` : "";
+      // [FYP-API] GET /api/netwitness/alerts?q=<search> - raw NetWitness alert list for the
+      // Alerts / Search Alerts pages (separate from ticket-scoped related alerts).
       const res = await api(`/api/netwitness/alerts${q}`);
       if (res.success === false) setApiError(res.status || "Unable to load NetWitness alerts.");
       else state.alerts = res.items || [];
@@ -462,6 +544,12 @@ async function refresh() {
   }
 }
 
+// [FYP-SECTION] Dashboard / ticket table rendering. Pure render functions (metricCard,
+// workflowCard, operationalSummaryCards, ticketRows/ticketTable) build HTML strings from
+// `state.summary` / `state.tickets`; none of these touch the network directly - the data they
+// read is populated by refresh() above and consumed here on every render() pass.
+// [FYP-UI] metricCard/workflowCard buttons only set data-route/data-params; navigation is
+// handled by the delegated click listener near the bottom of the file which calls setRoute().
 function metricCard(key, label, value, trend, route, params, tone = "blue") {
   return `<button class="metric-card ${tone}" data-route="${route}" data-params='${esc(JSON.stringify(params || {}))}'>
     <div><span>${esc(label)}</span><strong>${esc(value ?? 0)}</strong><small>${esc(trend)}</small></div>
@@ -606,6 +694,14 @@ function ticketsPage() {
   return `<div class="${dashboardGridClass()}"><section class="main-column">${ticketTable(title)}${subContent}</section>${ticketPanel()}</div>`;
 }
 
+// [FYP-SECTION] Workflow status + agent run-guard bookkeeping. Two responsibilities live in
+// this block: (1) mapping raw backend agent/step labels to a small canonical set of
+// keys/statuses (canonicalAgentKey, workflowStatus, effectiveWorkflowStatus) so the UI renders
+// consistent badges/icons regardless of exact backend wording, and (2) the "run guard" system
+// (markAgentRunStarting / updateAgentRunGuardFromResponse / reconcileAgentRunGuards) - a
+// client-only optimistic-UI layer: the instant an analyst clicks Run/Re-run, a synthetic
+// "starting" run is stashed in state.agentRunGuards so the card flips to "running" immediately,
+// before the POST resolves or the next refresh() picks up the real run record from the backend.
 function workflowSteps(ticket) {
   const steps = ticket?.workflow_steps || [];
   return `<div class="workflow-list">${steps.map((s, i) => {
@@ -629,6 +725,11 @@ function workflowStatusLabel(step = {}) {
   return String(step.state || step.status || "Pending").replaceAll("_", " ");
 }
 
+// [FYP-EVALUATOR] String-matching heuristic: backend agent/step names are free-form
+// (e.g. "threat_intelligence", "investigation_approval") and are normalised here via
+// substring checks rather than an exact lookup table. Order matters - more specific checks
+// (e.g. "investigation_approval") must run before broader ones (e.g. "investigation") or a
+// step gets bucketed into the wrong canonical agent.
 function canonicalAgentKey(value = "") {
   const v = norm(value);
   if (!v) return "";
@@ -661,6 +762,10 @@ function runHasCompletionTimestamp(run = {}) {
   return Boolean(run.completed_at || run.finished_at || run.ended_at || run.end_time || run.completedAt || run.finishedAt);
 }
 
+// [FYP-EVALUATOR] runIsActive/runIsFailed/runIsCompleted classify a raw backend "run" object
+// into one of three buckets purely from string status values plus progress/timestamp
+// heuristics - there is no explicit "is_terminal" flag from the backend, so a run missing an
+// expected field can silently fall through every check to "pending" instead of one of these.
 function runIsActive(run) {
   if (!run || typeof run !== "object") return false;
   if (runIsFailed(run) || runIsCompleted(run)) return false;
@@ -741,6 +846,11 @@ function shouldMaskAgentOutput(ticket = state.selectedTicket, agentKey = state.s
   return Boolean(guard && !["completed", "success", "succeeded", "done"].includes(norm(guard.status)));
 }
 
+// [FYP-RERUN] Optimistic guard entry created the instant a Run/Re-run click fires (see
+// runAgent()/retryAgent() near the action() dispatcher below), before any network response
+// exists. `client_token` lets updateAgentRunGuardFromResponse() below verify a late-arriving
+// response still belongs to this click, since an analyst could click Run again before the
+// first POST resolves.
 function markAgentRunStarting(agentKey, ticketId, runType = "run") {
   const key = agentRunGuardKey(ticketId, agentKey);
   const clientToken = `${Date.now()}-${++state.agentRunGuardSequence}`;
@@ -800,6 +910,10 @@ function markAgentRunGuardFailed(agentKey, ticketId, clientToken, message) {
   return state.agentRunGuards[key];
 }
 
+// [FYP-UI] Called from render()/refresh() to fold real backend run records back onto the
+// optimistic guards above once they arrive, so the synthetic "starting" placeholder is
+// replaced by the actual run's progress/status, and the guard entry is deleted entirely once
+// the real run reports completed (see runIsCompleted() below).
 function reconcileAgentRunGuards() {
   Object.entries({ ...state.agentRunGuards }).forEach(([key, guard]) => {
     const actual = latestActualRunForAgent(guard.agent, guard.ticket_id);
@@ -991,6 +1105,12 @@ function hasInvestigationEvidenceGapDecision(ticket = state.selectedTicket) {
   return hasGaps && decisionPending && ["investigation_evidence_decision", "investigation_approval"].includes(stage);
 }
 
+// [FYP-STAGE-LOCK] Renders the "Continue to Reporting Agent" / "Go back to Triage" buttons
+// shown when hasInvestigationEvidenceGapDecision() is true. Both only set data-action; the
+// actual gate decision is sent by evidenceGapDecision() near the action() dispatcher (POST
+// /api/tickets/{id}/investigation/evidence-gap-decision) - clicking here does not itself run
+// any agent, it only records which branch of the workflow the analyst chose. The backend
+// unlocks the corresponding next stage; the analyst still triggers it via "Run Next Step".
 function evidenceGapDecisionButtons(ticket = state.selectedTicket, compact = false) {
   if (!ticket) return "";
   const cls = compact ? "compact" : "";
@@ -1011,6 +1131,10 @@ function evidenceGapDecisionCard(ticket = state.selectedTicket) {
   </div>`;
 }
 
+// [FYP-SECTION] Ticket side panel: header, workflow step list, and the top-level Approve /
+// Reject / More Evidence controls (see [FYP-APPROVAL] below). This is the right-hand
+// `<aside>` rendered on every ticket-scoped route via ticketPanel() dispatch from
+// dashboard()/ticketsPage().
 function ticketPanel() {
   const t = state.selectedTicket;
   if (isTicketPreviewCollapsed()) {
@@ -1023,6 +1147,13 @@ function ticketPanel() {
   }
   if (!t) return `<aside class="side-panel"><button class="ticket-panel-collapse" data-action="toggle-ticket-preview" title="Collapse ticket preview"><i class="ti ti-layout-sidebar-right-collapse"></i></button><div class="empty-state">Select a ticket to inspect workflow, alerts, approvals, and reports.</div></aside>`;
   const next = t.next_step || {};
+  // [FYP-APPROVAL] The Approve / Reject / More Evidence buttons below only render
+  // data-action="approve-ticket"|"reject-ticket"|"more-evidence" + data-ticket-id. The central
+  // action() dispatcher routes these to decision(ticketId, kind, gate) (see near the bottom of
+  // the file), which POSTs to /api/tickets/{id}/approve|reject|request-more-evidence. On
+  // success it only swaps state.selectedTicket for the backend's updated ticket and re-renders
+  // - it does NOT call runNext()/runAgent() itself, so approving a gate unlocks the next stage
+  // server-side but does not auto-run it; the analyst still has to click "Run Next Step".
   return `<aside class="side-panel">
     <button class="ticket-panel-collapse" data-action="toggle-ticket-preview" title="Collapse ticket preview"><i class="ti ti-layout-sidebar-right-collapse"></i></button>
     <div class="ticket-head">
@@ -1102,6 +1233,12 @@ function ticketPrimaryActions(ticket = state.selectedTicket) {
       <button class="soc-btn ghost" data-action="sync-netwitness" data-ticket-id="${esc(ticket.ticket_id)}"><i class="ti ti-cloud-download"></i> Pull Latest</button>`;
 }
 
+// [FYP-STAGE-LOCK] "Run Next Step" button (data-action="run-next"). Unlike Approve/Reject
+// above, this button - via runNext() near the action() dispatcher - actively asks the backend
+// to execute the next queued agent (POST /api/tickets/{id}/run-next-step) and, on success,
+// client-navigates into the Agent Workspace and starts live log polling. next.allowed === false
+// disables the button and surfaces the backend's blocking `reason` as a tooltip instead of a
+// clickable action.
 function nextStepAction(ticket, next = {}) {
   const label = next.label || "Run Next Step";
   const reason = next.reason || "Workflow gate is not ready.";
@@ -1250,6 +1387,12 @@ function prioritisedAgentActions(agent) {
   return actions;
 }
 
+// [FYP-UI] Shared button renderer for every per-agent action (Run, Retry/Re-run, Approve,
+// Reject, More Evidence, Continue to Reporting, Return to Triage, View Output). Enablement
+// mirrors (but doesn't replace) server-side gating: `action.enabled` comes from the backend's
+// agent_panel payload, and this function additionally disables the button client-side while an
+// approval POST or an agent run is in flight (approvalPending / executionPending below) so a
+// second click can't fire a duplicate request before the first one resolves.
 function actionButtonForAgent(action, agent = {}) {
   const reason = action.disabled_reason || agent.lock_reason || "Required ticket context is not ready.";
   const executionPending = ["run-agent", "rerun-agent"].includes(action.id) && runIsActive(currentAgentRun(agent));
@@ -1265,6 +1408,10 @@ function actionButtonForAgent(action, agent = {}) {
 }
 
 // ==================== AGENT WORKSPACE REDESIGN ====================
+// [FYP-SECTION] Agent Workspace (per-agent execution panel, live activity log, Ask Aegis
+// panel). Everything from here through the end of this "REDESIGN" block renders the dedicated
+// workspace shown at route my-tickets/agents (see isAgentWorkspaceRoute()); the Reporting agent
+// gets an extra branch that also mounts renderSocReportReviewWorkspace() below.
 
 function renderAgentWorkspace(ticket) {
   if (!ticket) {
@@ -1488,6 +1635,11 @@ function currentAgentRun(agent = {}) {
   return run || null;
 }
 
+// [FYP-UI] effectiveAgentStatus/displayAgentStatus/agentProgressPercent/agentStatusTone/
+// agentCurrentTask below all derive their answer from the same two inputs (the persisted
+// `agent` record from the ticket payload and the live `run`, if any) so every card/badge in
+// the workspace stays visually consistent even though the two data sources can disagree
+// momentarily (e.g. persisted status says "ready" while a guard-tracked run is still starting).
 function effectiveAgentStatus(agent = {}, run = null) {
   if (runIsActive(run)) return "running";
   const persisted = norm(agent.workflow_status || agent.status);
@@ -1563,6 +1715,11 @@ function agentCurrentTask(agent = {}, run = null) {
   return agent.required_input_status || "Waiting for ticket context.";
 }
 
+// [FYP-EVALUATOR] Fallback fine-grained "step" labels used purely for the visual step grid
+// (renderOperationalStepGrid) when the backend run record has no explicit `steps` array. These
+// are hand-authored per agent key and only approximate what the agent is actually doing -
+// activeStepIndexForProgress() below then guesses which of these fabricated steps is "active"
+// from a single progress percentage, so the step grid can be out of sync with real backend work.
 function defaultAgentStepLabels(agent = {}) {
   return {
     parsing: ["Loading raw alert", "Extracting metakeys", "Normalising SOC context", "Writing parser outputs", "Generating PDF"],
@@ -1704,6 +1861,11 @@ function renderParserSummaryCard(ticket = {}) {
   </div>`;
 }
 
+// [FYP-UI] Main "hero" execution card for the currently selected agent (progress dial, step
+// grid, current-task copy, and the collapsed action row). The "Pause Agent" button shown here
+// while a run is active is wired to data-action="pause-agent" -> pauseAgent() near the action()
+// dispatcher, which tries a few candidate backend routes and falls back to an explanatory modal
+// if none exist yet (see [FYP-API]/[FYP-EVALUATOR] notes on pauseAgent()).
 function renderSelectedAgentExecutionPanel(ticket) {
   const agents = arrayOf(ticket.agent_panel);
   const agent = agents.find(a => a.key === state.selectedAgentKey) || agents[0];
@@ -1764,6 +1926,9 @@ function renderSelectedAgentExecutionPanel(ticket) {
   </div>`;
 }
 
+// [FYP-UI] Compact pipeline strip (Parse -> Triage -> Threat Intel -> Investigation ->
+// Reporting -> Closure) shown alongside the execution panel; purely derived from
+// ticket.workflow_steps, no independent data fetch.
 function renderAgentHandoffRouting(ticket) {
   const isCollapsed = state.collapsedPanels["routing-panel"];
   const steps = arrayOf(ticket.workflow_steps);
@@ -1822,11 +1987,15 @@ function renderEmbeddedHumanGate(agent = {}) {
     <p>${esc(gate.summary || "Human validation is tracked inside this stage.")}</p>
   </div>`;
 }
+// [FYP-EVALUATOR] First of two `renderSelectedAgentOutputPanel` declarations in this file (the
+// second, effective one is further down near the export/download helpers - see the file header
+// note on redeclared functions). This copy is dead code kept for diff history; per `function`
+// hoisting rules the later declaration always wins at call time.
 function renderSelectedAgentOutputPanel(ticket) {
   const agents = arrayOf(ticket.agent_panel);
   const agent = agents.find(a => a.key === state.selectedAgentKey) || agents[0];
   if (!agent) return "";
-  
+
   const isCollapsed = state.collapsedPanels["output-panel"];
   const outputKey = { parsing: "parsing_result", triage: "triage_result", threat_intel: "threat_intel_result", investigation: "investigation_result", reporting: "reporting_result", triage_approval: "approval_result", investigation_approval: "investigation_approval_result", soc_review: "soc_review_result", approval: "approval_result" }[agent.key] || "triage_result";
   const output = ticket[outputKey] || {};

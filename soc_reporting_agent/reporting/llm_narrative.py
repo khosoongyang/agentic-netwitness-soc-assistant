@@ -1,5 +1,108 @@
 from __future__ import annotations
 
+# ==============================================================================
+# [FYP-FILE] soc_reporting_agent/reporting/llm_narrative.py
+# File: soc_reporting_agent/reporting/llm_narrative.py
+# Important dependencies: __future__, config, json, os, pathlib, re, reporting, typing.
+#
+# Purpose:
+#   Generates the free-text narrative sections of a SOC incident report
+#   (executive summary, technical analysis, business impact explanation,
+#   attack narrative, conclusion, analyst-friendly explanation, and the SOC
+#   analyst review checklist). All structured/factual fields (incident ID,
+#   severity, IOCs, timeline, MITRE mapping, approval/containment status,
+#   etc.) are computed elsewhere and are only ever READ here, never invented.
+#
+# Main functionalities:
+#   1. [FYP-FALLBACK] Deterministic, rule-based (string-template) narrative
+#      generation that always works even without any LLM — see
+#      deterministic_narrative().
+#   2. [FYP-LLM] Optional LLM-based narrative enhancement per section: prompt
+#      construction (build_section_prompt), multi-provider invocation
+#      (invoke_llm / invoke_llm_with_retries against OpenAI, Ollama, or a
+#      deterministic "mock" test provider), and response quality
+#      validation/repair (validate_llm_section_quality, repair_llm_section).
+#   3. Orchestration entry point enhance_narrative() that ties both paths
+#      together: try the LLM per section, validate/repair its output, retry
+#      once on quality failure, and fall back to the deterministic text (or
+#      a cached prior LLM result) whenever the LLM is disabled, unavailable,
+#      or produces output that fails hard-guardrail checks.
+#   4. On-disk caching of the last-accepted LLM narrative per incident, so a
+#      failed LLM call can still be served from a previously good result.
+#
+# Inputs:
+#   - `context: dict[str, Any]` — the report context dict built upstream by
+#     reporting/context_builder.py and reporting/export_context_enhancer.py.
+#     Expected keys include incident_id, alert_id, severity, confidence,
+#     classification, likely_scenario, affected_assets, affected_users,
+#     evidence, timeline, iocs, mitre_attack_mapping, evidence_gaps,
+#     approval, containment, impact_assessment, report_status,
+#     data_impact_summary, chain_of_custody_note, approval_summary,
+#     compact_evidence_register, and (for cache lookups) input_context_hash.
+#   - Environment/config values from config.settings (see "Calls" below):
+#     whether the LLM is enabled at all (USE_LLM), which provider/model to
+#     use, retry counts, timeouts, and cache toggles. API keys are read only
+#     by variable/env-var name (e.g. OPENAI_API_KEY) — never logged here.
+#
+# Outputs:
+#   - deterministic_narrative(context) -> dict[str, str] of the 7 narrative
+#     fields, always rule-based.
+#   - enhance_narrative(context) -> dict[str, Any] containing:
+#       "deterministic_narrative", "llm_enhanced_narrative" (LLM text where
+#       accepted, deterministic text elsewhere), "llm_used", "llm_provider",
+#       "llm_model", "llm_status", "llm_quality_status",
+#       "llm_quality_issues", "llm_section_results" (per-section outcome),
+#       "llm_attempt_count", "llm_cache_status".
+#     This dict is consumed by reporting/export_context_enhancer.py and
+#     merged into the report context under context["llm"] plus the
+#     individual narrative field keys.
+#   - Side effect: writes/reads a small per-incident JSON cache file under
+#     settings.LLM_CACHE_DIR (see _cache_file/_save_cached_narrative), keyed
+#     by incident_id and an input_context_hash so a stale cache is ignored.
+#
+# Workflow position:
+#   Runs inside the Reporting stage (the final SOC workflow stage), after
+#   Triage, Threat Intel, and Investigation have produced their JSON
+#   outputs. It is invoked once export_context_enhancer.py has assembled
+#   and factually corrected the report context, so the LLM (when used) only
+#   rewrites language — it never supplies new facts.
+#
+# Called by:
+#   - reporting/export_context_enhancer.py: apply_llm_narrative(context)
+#     calls enhance_narrative(context) directly and copies the resulting
+#     narrative fields into the shared export context (see that file's
+#     `from reporting.llm_narrative import enhance_narrative`, and its
+#     apply_llm_narrative() function, which is itself called from
+#     enhance_export_context() — the main context-building entry point used
+#     by every report/agent export).
+#   - soc_reporting_agent/tests/test_structured_report_tables.py imports
+#     from this module directly for unit testing.
+#   - No direct caller confidently identified beyond the above (this module
+#     is not imported by backend/app.py or template_document_exporter.py
+#     directly; they reach it indirectly through export_context_enhancer.py).
+#
+# Calls:
+#   - config.settings: USE_LLM, LLM_PROVIDER, LLM_MODEL, LLM_MOCK_MODE,
+#     LLM_MAX_RETRIES, LLM_CACHE_ENABLED, LLM_CACHE_DIR, LLM_TEMPERATURE,
+#     LLM_NUM_PREDICT, LLM_TIMEOUT_SECONDS, LLM_SEED, OPENAI_API_KEY,
+#     OPENAI_BASE_URL, OLLAMA_MODEL, OLLAMA_BASE_URL,
+#     configured_llm_providers(), selected_model_for_provider(),
+#     selected_llm_model().
+#   - reporting.compact_renderer.is_placeholder() — used to detect
+#     "Not Provided"/placeholder-style values in the deterministic path.
+#   - Third-party SDKs, imported lazily inside the invoke_* functions so a
+#     missing package only breaks the provider that needs it: `openai`
+#     (OpenAI Responses/Chat Completions API), `langchain_ollama` /
+#     `langchain_community.llms` (local Ollama models).
+#
+# Key evaluator search terms:
+#   [FYP-LLM] build_section_prompt (prompt construction), invoke_llm /
+#   invoke_llm_with_retries (LLM invocation), validate_llm_section_quality
+#   (response parsing/validation), repair_llm_section (auto-repair),
+#   deterministic_narrative (rule-based fallback text generator),
+#   enhance_narrative (main orchestration entry point).
+# ==============================================================================
+
 from typing import Any
 from pathlib import Path
 import json
@@ -8,6 +111,14 @@ import re
 
 from config import settings
 from reporting.compact_renderer import is_placeholder
+
+# [FYP-SECTION] Narrative field registry and text/quality constants
+# -----------------------------------------------------------------------------
+# These lists/dicts define which report fields are narrative text (as opposed
+# to structured facts), which of those fields the LLM is allowed to rewrite,
+# and the lexical rules used later by validate_llm_section_quality() to catch
+# bad LLM output (leaked prompt text, dumped raw fields, truncated sentences,
+# missing "not confirmed" uncertainty language, etc.).
 
 ALL_NARRATIVE_FIELDS = [
     "executive_summary",
@@ -108,6 +219,10 @@ UNCERTAINTY_TERMS = [
     "before closure",
 ]
 
+# [FYP-VALIDATION] Per-section word-count / content rules used by
+# validate_llm_section_quality() to decide whether LLM output for a given
+# narrative field is acceptable, needs a soft warning, or must hard-fail
+# (triggering a repair attempt, a retry, or the deterministic fallback).
 SECTION_RULES = {
     "executive_summary": {
         "min_words": 150,
@@ -164,24 +279,77 @@ SECTION_RULES = {
 
 
 
+# [FYP-SECTION] Provider/model selection and on-disk narrative cache
+# -----------------------------------------------------------------------------
+# [FYP-CONFIG] Thin wrappers over config.settings so the rest of this module
+# does not reference settings.* directly for the "currently selected"
+# provider/model.
+
+# [FYP-FUNCTION] Selected LLM Provider
+# Purpose: report which LLM provider (openai/ollama/mock) is configured.
+# Params: none. Source: config.settings.LLM_PROVIDER (env var
+#   REPORTING_LLM_PROVIDER).
+# Returns: provider name string.
+# Called by: enhance_narrative() (for result metadata / default values).
 def selected_provider() -> str:
     return settings.LLM_PROVIDER
 
 
+# [FYP-FUNCTION] Selected LLM Model
+# Purpose: report which model name is configured for the selected provider.
+# Params: none. Source: config.settings.selected_llm_model().
+# Returns: model name string.
+# Called by: enhance_narrative() (for result metadata / default values).
 def selected_model() -> str:
     return settings.selected_llm_model()
 
 
+# [FYP-FUNCTION] Cache Directory Resolver
+# Purpose: resolve the directory used for the per-incident LLM narrative
+#   cache, allowing a per-context override.
+# Params: context (optional) - may carry "llm_cache_dir" to override the
+#   default. Source: context dict / config.settings.LLM_CACHE_DIR.
+# Returns: Path to the cache directory.
+# Called by: _cache_file().
 def _cache_dir(context: dict[str, Any] | None = None) -> Path:
     if context and context.get("llm_cache_dir"):
         return Path(str(context["llm_cache_dir"]))
     return settings.LLM_CACHE_DIR
 
 
+# [FYP-DATABASE] Not a database — this is a flat-file JSON cache (one file
+# per incident) under settings.LLM_CACHE_DIR, keyed by incident_id.
+# [FYP-FUNCTION] Cache File Path Resolver
+# Purpose: build the path of the cached narrative JSON file for one incident.
+# Params: context - must contain "incident_id" (falls back to
+#   "UNKNOWN-INCIDENT"); path separators in the ID are sanitised.
+# Returns: Path such as <cache_dir>/<incident_id>_llm_report.json.
+# Called by: _load_cached_narrative(), _save_cached_narrative().
 def _cache_file(context: dict[str, Any]) -> Path:
     incident_id = str(context.get("incident_id") or "UNKNOWN-INCIDENT").replace("/", "_").replace("\\", "_")
     return _cache_dir(context) / f"{incident_id}_llm_report.json"
 
+
+# [FYP-FUNCTION] Cached Narrative Loader
+# Purpose: load a previously-accepted LLM narrative for this incident, used
+#   as a last-resort fallback when a fresh LLM call fails (see
+#   enhance_narrative()'s "any_fallback" branch).
+# Params: context - must contain "incident_id" and "input_context_hash";
+#   the cached entry is only reused if its stored hash matches, so a cache
+#   entry from stale/changed incident facts is rejected.
+# Returns: dict[str, str] of the 7 narrative fields, or None if disabled
+#   (settings.LLM_CACHE_ENABLED is false), missing, hash-mismatched, or
+#   malformed.
+# Error/fallback handling: any read/parse exception is swallowed and treated
+#   as "no usable cache" (return None) — caching must never raise.
+# Called by: enhance_narrative().
+# [FYP-FUNCTION] `_load_cached_narrative` — retrieves load cached narrative data for the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_cache_file`, `all`, `exists`, `get`, `isinstance`, `loads`, `read_text`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _load_cached_narrative(context: dict[str, Any]) -> dict[str, str] | None:
     if not settings.LLM_CACHE_ENABLED:
@@ -200,6 +368,28 @@ def _load_cached_narrative(context: dict[str, Any]) -> dict[str, str] | None:
         return None
     return None
 
+
+# [FYP-FUNCTION] Cached Narrative Saver
+# Purpose: persist the accepted LLM narrative (per incident) to the on-disk
+#   JSON cache so a later failed LLM call can still serve a previously good
+#   result (see enhance_narrative()'s "any_fallback" -> _load_cached_narrative
+#   path).
+# Params: context - must contain "incident_id"/"alert_id"/"input_context_hash";
+#   narrative - the accepted dict[str, str] of the 7 narrative fields;
+#   provider/model - which LLM produced the accepted narrative (recorded for
+#   traceability only).
+# Returns: None (side-effect only: writes <cache_dir>/<incident_id>_llm_report.json).
+# [FYP-ERROR] Any I/O or serialization exception is swallowed silently —
+#   caching is best-effort and must never break report generation.
+# Called by: enhance_narrative() after at least one section's LLM output is
+#   accepted.
+# [FYP-FUNCTION] `_save_cached_narrative` — persists or updates save cached narrative state used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `context`, `narrative`, `provider`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_cache_file`, `dumps`, `get`, `mkdir`, `write_text`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _save_cached_narrative(context: dict[str, Any], narrative: dict[str, str], provider: str, model: str) -> None:
     if not settings.LLM_CACHE_ENABLED:
@@ -221,6 +411,22 @@ def _save_cached_narrative(context: dict[str, Any], narrative: dict[str, str], p
         return
 
 
+# [FYP-SECTION] Deterministic narrative helpers
+# -----------------------------------------------------------------------------
+# Small string-building helpers used only by deterministic_narrative() below
+# to turn structured context fields (assets, users, evidence, timeline,
+# evidence gaps, MITRE mapping) into short, readable prose fragments. None of
+# these call the LLM; they are pure, rule-based string formatting over data
+# that was already computed upstream (context_builder.py /
+# export_context_enhancer.py), so no new facts are introduced here.
+
+# [FYP-FUNCTION] Sentence Joiner
+# Purpose: join a list of short text fragments into a single period-separated
+#   sentence, trimming stray punctuation and skipping empty entries.
+# Params: items - list of raw fragment strings.
+# Returns: joined "Frag1. Frag2." string, or the literal "Not Provided" if
+#   every fragment was empty.
+# Called by: _evidence_story(), _gap_story() (both feed deterministic_narrative()).
 def _clean_sentence_join(items: list[str]) -> str:
     cleaned = []
     for item in items:
@@ -234,6 +440,13 @@ def _clean_sentence_join(items: list[str]) -> str:
     return ". ".join(cleaned) + "."
 
 
+# [FYP-FUNCTION] Asset/User Scope Summariser
+# Purpose: render the affected assets and affected users lists (from context)
+#   as two comma-separated descriptive strings for use in narrative prose.
+# Params: context - reads "affected_assets" and "affected_users".
+# Returns: (asset_text, user_text) tuple; each falls back to a "no confirmed
+#   affected ..." phrase when the corresponding list is empty.
+# Called by: deterministic_narrative().
 def _asset_story(context: dict[str, Any]) -> tuple[str, str]:
     assets = context.get("affected_assets", [])
     users = context.get("affected_users", [])
@@ -249,6 +462,14 @@ def _asset_story(context: dict[str, Any]) -> tuple[str, str]:
     return asset_text, user_text
 
 
+# [FYP-FUNCTION] Evidence/Timeline/IOC Summariser
+# Purpose: render up to the first 5 evidence items and first 5 timeline
+#   events as sentence text, plus a comma-joined list of IOCs whose
+#   reputation is "malicious" or "suspicious".
+# Params: context - reads "evidence", "timeline", "iocs".
+# Returns: (evidence_story, timeline_story, malicious_iocs) tuple of strings,
+#   each with a "No ... provided" fallback when the source list is empty.
+# Called by: deterministic_narrative().
 def _evidence_story(context: dict[str, Any]) -> tuple[str, str, str]:
     evidence = context.get("evidence", [])
     timeline = context.get("timeline", [])
@@ -269,6 +490,12 @@ def _evidence_story(context: dict[str, Any]) -> tuple[str, str, str]:
     )
 
 
+# [FYP-FUNCTION] Evidence Gap Summariser
+# Purpose: render up to the first 6 evidence_gaps entries as a
+#   "Priority: gap description" sentence list.
+# Params: context - reads "evidence_gaps".
+# Returns: joined sentence string, or "No evidence gaps recorded." if empty.
+# Called by: deterministic_narrative().
 def _gap_story(context: dict[str, Any]) -> str:
     gaps = context.get("evidence_gaps", [])
     parts = []
@@ -277,6 +504,13 @@ def _gap_story(context: dict[str, Any]) -> str:
     return _clean_sentence_join(parts) if parts else "No evidence gaps recorded."
 
 
+# [FYP-FUNCTION] MITRE ATT&CK Summariser
+# Purpose: render up to the first 5 mitre_attack_mapping entries as
+#   "Tactic: TechniqueID TechniqueName" fragments.
+# Params: context - reads "mitre_attack_mapping".
+# Returns: semicolon-joined string, or "No MITRE ATT&CK mapping provided."
+#   if empty.
+# Called by: deterministic_narrative().
 def _mitre_story(context: dict[str, Any]) -> str:
     mappings = context.get("mitre_attack_mapping", [])
     parts = []
@@ -288,16 +522,30 @@ def _mitre_story(context: dict[str, Any]) -> str:
     return "; ".join(parts) if parts else "No MITRE ATT&CK mapping provided."
 
 
+# [FYP-FUNCTION] First Asset/User Getter
+# Purpose: return the primary (first) affected asset dict, or {} if none.
+# Called by: deterministic_narrative() (for host/business_function phrasing).
 def _first_asset(context: dict[str, Any]) -> dict[str, Any]:
     assets = context.get("affected_assets", []) or []
     return assets[0] if assets else {}
 
 
+# [FYP-FUNCTION] First Asset/User Getter (user variant)
+# Purpose: return the primary (first) affected user dict, or {} if none.
+# Called by: deterministic_narrative() (for user phrasing).
 def _first_user(context: dict[str, Any]) -> dict[str, Any]:
     users = context.get("affected_users", []) or []
     return users[0] if users else {}
 
 
+# [FYP-FUNCTION] Timeline Event Phraser
+# Purpose: lower-case and lightly reword a single timeline event/description
+#   string so it reads naturally mid-sentence (e.g. "Email delivered" ->
+#   "a suspicious email being delivered").
+# Params: event - raw event/description text.
+# Returns: reworded phrase string; "an event recorded in the timeline" if
+#   event is empty.
+# Called by: deterministic_narrative() (readable_events list comprehension).
 def _event_phrase(event: str) -> str:
     text = str(event or "").strip().rstrip(".")
     lower = text.lower()
@@ -307,6 +555,41 @@ def _event_phrase(event: str) -> str:
         return "endpoint telemetry showing suspicious PowerShell activity"
     return text[0].lower() + text[1:] if text else "an event recorded in the timeline"
 
+
+# [FYP-FALLBACK] [FYP-FUNCTION] Deterministic (Rule-Based) Narrative Generator
+# [FYP-EVALUATOR] This is THE rule-based/fallback narrative generator: it
+#   builds all 7 narrative fields purely from Python f-string templates over
+#   already-computed context values (severity, confidence, classification,
+#   assets/users, evidence, timeline, IOCs, MITRE mapping, approval,
+#   containment, impact, evidence gaps). It never calls an LLM and always
+#   succeeds (no external dependency, no network call), which is what makes
+#   it usable as the guaranteed fallback whenever the LLM path is disabled,
+#   errors out, or produces output that fails hard-guardrail validation.
+# Params: context - the full report context dict (see file header "Inputs").
+# Process:
+#   1. Pull scalar facts (severity/confidence/classification/scenario/
+#      approval/containment/impact/report_status) straight from context.
+#   2. Delegate list-shaped facts to the helper functions above
+#      (_asset_story, _evidence_story, _gap_story, _mitre_story,
+#      _first_asset/_first_user, _event_phrase) to build short prose
+#      fragments.
+#   3. Assemble each of the 7 narrative fields by interpolating those
+#      fragments into fixed sentence templates.
+# Returns: dict[str, str] with keys executive_summary, technical_analysis,
+#   business_impact_explanation, attack_narrative, conclusion,
+#   analyst_friendly_explanation, soc_analyst_review_checklist -- i.e. all of
+#   ALL_NARRATIVE_FIELDS.
+# Called by: enhance_narrative() (always computed first, as both the
+#   guaranteed-success base case and the "Deterministic factual reference"
+#   embedded into every LLM prompt via build_section_prompt()); also used
+#   directly wherever only the non-LLM narrative is needed.
+# [FYP-FUNCTION] `deterministic_narrative` — implements the deterministic narrative operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_asset_story`, `_event_phrase`, `_evidence_story`, `_first_asset`, `_first_user`, `_gap_story`, `_mitre_story`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def deterministic_narrative(context: dict[str, Any]) -> dict[str, str]:
     severity = context.get("severity", {}).get("label", "Not Provided")
@@ -407,6 +690,42 @@ def deterministic_narrative(context: dict[str, Any]) -> dict[str, str]:
     }
 
 
+# [FYP-SECTION] LLM prompt construction
+# -----------------------------------------------------------------------------
+# [FYP-LLM] Everything from here through build_section_prompt() forms the
+# prompt-construction path: _compact_context() selects/labels which upstream
+# context fields are shown to the model (a curated subset, not a raw dump),
+# _section_instruction() supplies the per-section word-count/paragraph rules,
+# and build_section_prompt() assembles the two into the final prompt string
+# that is sent to invoke_llm()/invoke_llm_with_retries().
+
+# [FYP-FUNCTION] Compact Context Builder
+# Purpose: reduce the full report context dict down to a smaller, labelled
+#   JSON-able structure (locked_facts / scenario / affected_scope /
+#   evidence_to_interpret / analyst_review_context) that is safe and useful
+#   to hand to the LLM: it separates facts the model must preserve exactly
+#   ("locked_facts") from evidence the model is allowed to interpret, and
+#   caps list fields (assets/users/IOCs/evidence/timeline/MITRE mapping/etc.)
+#   to a handful of entries each to keep the prompt short.
+# Params: context - the full report context dict.
+# Returns: dict[str, Any] later JSON-serialised into the prompt by
+#   build_section_prompt().
+# [FYP-INPUT] Reads incident_id, alert_id, case_title, severity, confidence,
+#   classification, approval/containment/report_generation_approval,
+#   likely_scenario/scenario_type, affected_assets/affected_users (first 4
+#   each), iocs/evidence/timeline/mitre_attack_mapping (first 8 each),
+#   threat_intelligence_summary, investigation status/limitations, evidence
+#   gaps, recommended_actions, impact_assessment, report_status, and several
+#   already-computed summary/note fields. No new facts are derived here.
+# Called by: build_section_prompt().
+# [FYP-FUNCTION] `_compact_context` — implements the compact context operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:build_section_prompt; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
     """Build compact, labelled, analyst-useful context for LLM rewriting.
 
@@ -466,6 +785,24 @@ def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# [FYP-FUNCTION] Per-Section Prompt Instruction Lookup
+# Purpose: return the fixed instruction text (paragraph count, word-count
+#   range, required "Not confirmed in the provided evidence:" sentence, and
+#   content guidance) for one narrative section.
+# Params: section - one of ALL_NARRATIVE_FIELDS; must be a valid key or this
+#   raises KeyError (all 7 fields are covered in the literal `instructions`
+#   dict below, matching SECTION_RULES).
+# Returns: instruction string, embedded into the prompt by
+#   build_section_prompt() under "Section requirement:".
+# Called by: build_section_prompt().
+# [FYP-FUNCTION] `_section_instruction` — implements the section instruction operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `section`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:build_section_prompt; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _section_instruction(section: str) -> str:
     instructions = {
         "executive_summary": (
@@ -518,6 +855,42 @@ def _section_instruction(section: str) -> str:
     return instructions[section]
 
 
+# [FYP-LLM] [FYP-FUNCTION] Section Prompt Builder (PROMPT CONSTRUCTION)
+# [FYP-EVALUATOR] This is where the LLM prompt is built. It is the single
+#   place in the reporting pipeline that turns upstream, already-computed
+#   incident facts into the natural-language prompt sent to the model.
+# Params:
+#   - section: which of the 7 narrative fields to write (drives
+#     _section_instruction() and is echoed back under "Section to write:" so
+#     _extract_section_from_prompt()/the mock provider can recover it).
+#   - context: the full report context dict (see file header "Inputs");
+#     only a filtered subset reaches the model via _compact_context().
+#   - deterministic: the dict[str, str] returned by deterministic_narrative()
+#     for the *same* context; deterministic[section] is embedded verbatim as
+#     the "Deterministic factual reference" so the model has a known-correct
+#     factual anchor to rewrite/expand rather than invent from scratch.
+# [FYP-PROCESS] Assembles a single prompt string containing: a fixed system
+#   role/persona preamble, a numbered list of hard rules (preserve locked
+#   facts exactly; never invent users/hosts/IOCs/malware/impact/timelines/
+#   techniques/evidence IDs/response actions; never leak prompt/guardrail
+#   text; separate confirmed vs unconfirmed; require the exact sentence
+#   "Not confirmed in the provided evidence:"; plain body text only, no
+#   headings/markdown/JSON), followed by the target section name, that
+#   section's _section_instruction() text, the JSON-dumped _compact_context()
+#   output, and finally deterministic[section] as the factual reference.
+# Returns: the complete prompt string, ready to pass to
+#   invoke_llm()/invoke_llm_with_retries().
+# Called by: enhance_narrative() (_enhance_one_section, per section) and
+#   build_validation_retry_prompt() (which appends extra retry instructions
+#   onto this same prompt text after a quality-validation failure).
+# [FYP-FUNCTION] `build_section_prompt` — constructs build section prompt output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `section`, `context`, `deterministic`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_compact_context`, `_section_instruction`, `dumps`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_section_prompt(section: str, context: dict[str, Any], deterministic: dict[str, str]) -> str:
     compact = json.dumps(_compact_context(context), indent=2, ensure_ascii=False)
     return (
@@ -547,6 +920,25 @@ def build_section_prompt(section: str, context: dict[str, Any], deterministic: d
         f"Deterministic factual reference:\n{deterministic.get(section, '')}\n"
     )
 
+# [FYP-SECTION] LLM invocation (multi-provider)
+# -----------------------------------------------------------------------------
+# [FYP-LLM] This block is where the model is actually invoked. `invoke_llm()`
+# dispatches by provider name to one of three private helpers
+# (_invoke_openai, _invoke_ollama, _invoke_mock); `invoke_llm_with_retries()`
+# wraps that dispatch with per-provider retry/fallback and is what
+# enhance_narrative() actually calls. `_normalise_llm_output()` is the first
+# step of RESPONSE PARSING: light cleanup of the raw text the provider
+# returns, run before the quality-validation checks further down the file.
+
+# [FYP-FUNCTION] LLM Output Normaliser (response parsing, step 1)
+# Purpose: strip common formatting noise from a raw LLM completion before it
+#   is validated/used: markdown code fences, leading "Here's ...:"/"Sure,"
+#   chatty preambles, and accidental markdown section headings.
+# Params: text - raw string returned by the provider SDK.
+# Returns: cleaned string (same content, noise removed); does not alter
+#   substantive wording.
+# Called by: enhance_narrative() (_enhance_one_section), immediately after
+#   invoke_llm_with_retries() returns, and again after any quality-retry call.
 def _normalise_llm_output(text: str) -> str:
     text = str(text or "").strip()
     text = text.replace("```markdown", "").replace("```", "").strip()
@@ -556,6 +948,27 @@ def _normalise_llm_output(text: str) -> str:
     text = re.sub(r"(?im)^#{1,6}\s*[A-Za-z _-]+\s*$", "", text).strip()
     return text
 
+
+# [FYP-LLM] [FYP-FUNCTION] Ollama Invoker
+# Purpose: call a locally-hosted Ollama model with the given prompt.
+# Params: prompt - full prompt string from build_section_prompt(); model -
+#   optional override, else settings.OLLAMA_MODEL.
+# Process: lazily imports langchain_ollama.OllamaLLM (falls back to the
+#   older langchain_community.llms.Ollama if the newer package is absent),
+#   configures temperature/num_predict/base_url from config.settings, and
+#   invokes it synchronously.
+# Returns: stripped string response.
+# [FYP-ERROR] Import or invocation errors propagate to the caller
+#   (invoke_llm -> invoke_llm_with_retries), which records them as issues and
+#   retries/falls back rather than handling them here.
+# Called by: invoke_llm() when provider == "ollama".
+# [FYP-FUNCTION] `_invoke_ollama` — implements the invoke ollama operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `prompt`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `OllamaLLM`, `getattr`, `invoke`, `str`, `strip`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _invoke_ollama(prompt: str, model: str | None = None) -> str:
     try:
@@ -575,11 +988,41 @@ def _invoke_ollama(prompt: str, model: str | None = None) -> str:
     return str(llm.invoke(prompt)).strip()
 
 
+# [FYP-FUNCTION] Temperature Support Check
+# Purpose: some newer OpenAI reasoning/frontier models (gpt-5*) reject an
+#   explicit "temperature" request parameter; this predicate lets the OpenAI
+#   invokers decide whether to include it.
+# Params: model_name - model identifier string.
+# Returns: True unless the (lower-cased) name starts with "gpt-5".
+# Called by: _invoke_openai_chat(), _invoke_openai().
 def supports_temperature(model_name: str) -> bool:
     model = (model_name or "").lower()
     # Some newer reasoning/frontier models reject temperature in the Responses API.
     return not model.startswith("gpt-5")
 
+
+# [FYP-LLM] [FYP-FUNCTION] OpenAI Chat-Completions Invoker
+# Purpose: call an OpenAI-compatible endpoint via the classic
+#   chat.completions API (used when the endpoint does not support the newer
+#   Responses API, or when REPORTING_OPENAI_API=chat forces this path — e.g.
+#   for routing to the Cisco-hosted gateway per _invoke_openai()).
+# Params: client - constructed openai.OpenAI client; selected - model name;
+#   prompt - full prompt string.
+# Process: builds messages=[{"role": "user", "content": prompt}] plus
+#   max_tokens/temperature(if supported)/seed(if configured); if the call
+#   fails and the failure mentions "seed", retries once with the seed
+#   parameter dropped (some gateways reject it) rather than failing outright.
+# Returns: stripped response.choices[0].message.content string.
+# Called by: _invoke_openai() (both as the forced-chat path and as an
+#   automatic fallback when the Responses API call errors with 401/404/
+#   "unauthorized"/"not found"/"unknown route").
+# [FYP-FUNCTION] `_invoke_openai_chat` — implements the invoke openai chat operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `client`, `selected`, `prompt`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_invoke_openai; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `create`, `getattr`, `lower`, `pop`, `str`, `strip`, `supports_temperature`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _invoke_openai_chat(client: Any, selected: str, prompt: str) -> str:
     """Classic chat-completions call. Used for OpenAI-compatible endpoints
@@ -604,6 +1047,41 @@ def _invoke_openai_chat(client: Any, selected: str, prompt: str) -> str:
             raise
     return str(response.choices[0].message.content or "").strip()
 
+
+# [FYP-LLM] [FYP-FUNCTION] OpenAI Responses-API Invoker (LLM INVOCATION)
+# [FYP-EVALUATOR] This is where the model is actually invoked for the
+#   default "openai" provider (the primary LLM call path).
+# Params: prompt - full prompt string from build_section_prompt(); model -
+#   optional override, else settings.LLM_MODEL.
+# [FYP-VALIDATION] Guard: raises RuntimeError immediately if
+#   settings.OPENAI_API_KEY is not set, or if the `openai` package is not
+#   installed (lazy import so other providers work without it installed).
+#   The API key VALUE is never read into a log/comment here — only the
+#   settings attribute name (OPENAI_API_KEY) is referenced.
+# Process:
+#   1. Builds an OpenAI client (api_key, timeout, optional base_url for
+#      proxied/self-hosted-compatible endpoints).
+#   2. If env var REPORTING_OPENAI_API=="chat", routes straight to
+#      _invoke_openai_chat() (used for the Cisco-hosted gateway routing).
+#   3. Otherwise calls client.responses.create(model, input=prompt,
+#      max_output_tokens, temperature if supported). On an "unsupported
+#      parameter"+"temperature" error, retries once without temperature. On
+#      401/404/"unauthorized"/"not found"/"unknown route" errors, falls back
+#      to _invoke_openai_chat() (endpoint lacks the Responses API). Any other
+#      exception propagates.
+# Returns: stripped response.output_text string.
+# [FYP-ERROR] Uncaught exceptions propagate to invoke_llm_with_retries(),
+#   which records them as issues, retries, and ultimately triggers the
+#   deterministic fallback in enhance_narrative() if every provider/attempt
+#   fails.
+# Called by: invoke_llm() when provider == "openai".
+# [FYP-FUNCTION] `_invoke_openai` — implements the invoke openai operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `prompt`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `OpenAI`, `RuntimeError`, `_invoke_openai_chat`, `any`, `create`, `getenv`, `lower`, `pop`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _invoke_openai(prompt: str, model: str | None = None) -> str:
     if not settings.OPENAI_API_KEY:
@@ -647,10 +1125,51 @@ def _invoke_openai(prompt: str, model: str | None = None) -> str:
     return str(response.output_text).strip()
 
 
+# [FYP-FUNCTION] Section Name Extractor
+# Purpose: recover which narrative section a prompt was built for, by
+#   regex-matching the "Section to write:\n<section>" line that
+#   build_section_prompt() always writes into the prompt.
+# Params: prompt - full prompt string.
+# Returns: section key string; defaults to "technical_analysis" if not found.
+# Called by: _invoke_mock() only, so the mock provider can return
+#   section-appropriate canned text (e.g. the checklist mock text) without
+#   needing the section passed in separately.
 def _extract_section_from_prompt(prompt: str) -> str:
     match = re.search(r"Section to write:\s*([a-zA-Z0-9_]+)", str(prompt or ""))
     return match.group(1) if match else "technical_analysis"
 
+
+# [FYP-FUNCTION] Mock LLM Provider (test-only)
+# Purpose: deterministic, canned-text stand-in for a real LLM, selected via
+#   settings.LLM_PROVIDER == "mock" (or as a configured fallback provider).
+#   Used by tests to exercise the enhance_narrative() quality-validation /
+#   retry / repair / fallback logic without any network dependency.
+# Params: prompt - full prompt string (parsed via _extract_section_from_prompt
+#   to know which section's canned text to return); model - accepted but
+#   unused.
+# [FYP-PROCESS] settings.LLM_MOCK_MODE selects which canned response to
+#   return, deliberately covering each validation failure mode exercised by
+#   validate_llm_section_quality()/repair_llm_section():
+#     "prompt_leak"          -> text containing PROMPT_LEAKAGE_PHRASES (hard fail)
+#     "truncated"             -> text ending mid-sentence (hard fail: incomplete_sentence)
+#     "missing_uncertainty"   -> well-formed text with no uncertainty phrase (soft warning)
+#     "short"                 -> far under min_words (hard fail: too short)
+#     "incomplete"            -> ends mid-word after a dangling word (hard fail)
+#     "checklist_short"       -> only 4 checklist items for the 8-item section
+#     "issue_sensitive_retry" -> fails on first call, succeeds once the retry
+#                                 prompt text ("Your previous response") is present
+#     (default / any other mode) -> realistic, validation-passing canned text,
+#     tailored per section (executive_summary, technical_analysis,
+#     business_impact_explanation, attack_narrative, conclusion, checklist).
+# Returns: canned string response (never raises).
+# Called by: invoke_llm() when provider == "mock".
+# [FYP-FUNCTION] `_invoke_mock` — implements the invoke mock operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `prompt`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_extract_section_from_prompt`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _invoke_mock(prompt: str, model: str | None = None) -> str:
     # Test-only provider used to validate pipeline behaviour without internet or local Ollama.
@@ -742,6 +1261,26 @@ def _invoke_mock(prompt: str, model: str | None = None) -> str:
     )
 
 
+# [FYP-LLM] [FYP-FUNCTION] LLM Provider Dispatcher
+# [FYP-EVALUATOR] Single-call entry point for "invoke the LLM": routes a
+#   built prompt to the concrete provider implementation.
+# Params: prompt - full prompt string; provider - "openai"/"ollama"/"mock",
+#   defaults to selected_provider() (i.e. settings.LLM_PROVIDER); model -
+#   defaults to settings.selected_model_for_provider(provider).
+# [FYP-DECISION] Provider routing: "openai" -> _invoke_openai(),
+#   "ollama" -> _invoke_ollama(), "mock" -> _invoke_mock(); anything else
+#   raises RuntimeError("Unsupported LLM provider: ...").
+# Returns: raw response string from the chosen provider (not yet normalised
+#   or validated).
+# Called by: invoke_llm_with_retries() (the only caller in normal operation).
+# [FYP-FUNCTION] `invoke_llm` — implements the invoke llm operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `prompt`, `provider`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `RuntimeError`, `_invoke_mock`, `_invoke_ollama`, `_invoke_openai`, `lower`, `selected_model_for_provider`, `selected_provider`, `strip`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
 def invoke_llm(prompt: str, provider: str | None = None, model: str | None = None) -> str:
     provider = (provider or selected_provider()).strip().lower()
     selected = model or settings.selected_model_for_provider(provider)
@@ -753,6 +1292,37 @@ def invoke_llm(prompt: str, provider: str | None = None, model: str | None = Non
         return _invoke_mock(prompt, selected)
     raise RuntimeError(f"Unsupported LLM provider: {provider}")
 
+
+# [FYP-LLM] [FYP-FUNCTION] LLM Invocation With Retries/Provider Fallback
+# [FYP-EVALUATOR] This is the retry/fallback wrapper around the actual model
+#   call (LLM INVOCATION path used by the reporting pipeline). It is what
+#   enhance_narrative() calls, never invoke_llm() directly.
+# Params: prompt - full prompt string; section - narrative field name, used
+#   only to label issue strings and to choose the retry-instruction wording
+#   (a distinct one for the checklist section vs. prose sections).
+# [FYP-PROCESS] For each provider in settings.configured_llm_providers()
+#   (in priority order — e.g. openai then a configured fallback), attempts
+#   up to settings.LLM_MAX_RETRIES calls to invoke_llm(). On success, returns
+#   immediately with (output, provider, model, issues-so-far, attempts-so-far).
+#   On each failure, appends a structured
+#   "<section>:provider=<p>:attempt=<n>:llm_error:<error>" issue string, and
+#   (except on the last attempt for that provider) appends a short "Retry
+#   instruction: ..." block onto the prompt asking the model to rewrite more
+#   carefully before trying again.
+# [FYP-FALLBACK] If every provider/attempt combination fails, raises
+#   RuntimeError with the last 6 issue strings joined together; the caller
+#   (enhance_narrative -> _enhance_one_section) catches this and falls back
+#   to deterministic_narrative()'s text for that section.
+# Returns: tuple (output, provider, model, issues, attempts).
+# Called by: enhance_narrative() (_enhance_one_section), for both the
+#   initial per-section call and the quality-validation retry call.
+# [FYP-FUNCTION] `invoke_llm_with_retries` — implements the invoke llm with retries operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `prompt`, `section`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `RuntimeError`, `append`, `configured_llm_providers`, `invoke_llm`, `join`, `max`, `range`, `selected_model_for_provider`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def invoke_llm_with_retries(prompt: str, *, section: str) -> tuple[str, str, str, list[str], int]:
     """Invoke the configured LLM with retries and optional provider fallback.
@@ -787,10 +1357,44 @@ def invoke_llm_with_retries(prompt: str, *, section: str) -> tuple[str, str, str
                     prompt = prompt + "\n\n" + retry_instruction
     raise RuntimeError("; ".join(issues[-6:]) or "LLM invocation failed")
 
+# [FYP-SECTION] LLM response quality validation, repair, and orchestration
+# [FYP-LLM] Everything from here to end of file forms the "response parsing"
+#   half of the LLM pipeline: after invoke_llm_with_retries() returns raw
+#   model text, validate_llm_section_quality() decides whether to accept it,
+#   repair_llm_section() attempts small deterministic fixes, and
+#   enhance_narrative() (bottom of file) is the top-level orchestrator that
+#   ties prompt-building, invocation, validation and repair together per
+#   narrative section and decides accept-vs-fallback.
+
+# [FYP-FUNCTION] Uncertainty-Language Detector
+# Returns True if `text` contains any of the configured UNCERTAINTY_TERMS
+# (case-insensitive substring match), e.g. "not confirmed", "unclear".
+# Called by: validate_llm_section_quality() (require_uncertainty rule),
+#   repair_llm_section() and _repair_checklist() (decide whether an
+#   uncertainty sentence still needs to be appended after repair).
 def _contains_uncertainty(text: str) -> bool:
     lower = str(text or "").lower()
     return any(term in lower for term in UNCERTAINTY_TERMS)
 
+
+# [FYP-FUNCTION] Business-Impact Overstatement Detector
+# Heuristic soft-warning check: flags text that calls the incident/impact
+# "critical" when none of context["affected_assets"] is actually marked
+# criticality == "critical" (guards against the LLM inflating severity
+# language beyond what the structured facts support). Explicitly excludes
+# "criticality"/"not critical" phrasing to avoid false positives.
+# Params: text - candidate LLM output for one section; context - report
+#   context dict (reads affected_assets only).
+# Returns: bool - True only when an unsupported "critical" claim is found.
+# Called by: validate_llm_section_quality() (adds
+#   "possible_business_impact_overstatement" soft warning).
+# [FYP-FUNCTION] `_detect_business_impact_overstatement` — implements the detect business impact overstatement operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `get`, `lower`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _detect_business_impact_overstatement(text: str, context: dict[str, Any] | None) -> bool:
     if not context:
@@ -807,9 +1411,39 @@ def _detect_business_impact_overstatement(text: str, context: dict[str, Any] | N
 
 
 
+# [FYP-FUNCTION] Checklist Item Counter
+# Counts lines that look like a numbered ("1.", "2)") or bulleted ("-", "*")
+# list item. Used to enforce the 6-10 item range for the SOC analyst review
+# checklist section (min_items/max_items rules in SECTION_RULES).
+# Called by: validate_llm_section_quality() (checklist section only),
+#   _repair_checklist() (to know how many synthetic items to append).
 def _numbered_checklist_count(text: str) -> int:
     return len(re.findall(r"(?m)^\s*(?:\d+[\).]|[-*])\s+\S+", str(text or "")))
 
+
+# [FYP-FUNCTION] Locked-Fact Contradiction Detector
+# [FYP-VALIDATION] Hard-guardrail check: scans LLM output for phrasing that
+#   contradicts the locked/structured facts already computed elsewhere in
+#   the pipeline (severity, confidence, classification) and must never be
+#   rewritten by the model. E.g. if context severity is "critical" but the
+#   text says "low severity"/"minor incident", or classification is "false
+#   positive" but the text claims "confirmed malicious compromise".
+# Params: text - candidate LLM output; context - report context dict (reads
+#   severity.label, confidence.label, classification).
+# Returns: list[str] of "locked_fact_contradiction:<field>" issue codes
+#   (severity/confidence/classification), de-duplicated, empty if none found.
+# Called by: validate_llm_section_quality() — appended to hard_fail_issues,
+#   which forces deterministic fallback for that section (these specific
+#   issue codes are also in the `non_retryable` set inside enhance_narrative,
+#   so a contradiction skips the extra validation-retry call and falls back
+#   immediately).
+# [FYP-FUNCTION] `_detect_locked_fact_contradictions` — implements the detect locked fact contradictions operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `append`, `fromkeys`, `get`, `list`, `lower`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _detect_locked_fact_contradictions(text: str, context: dict[str, Any] | None) -> list[str]:
     if not context:
@@ -844,6 +1478,27 @@ def _detect_locked_fact_contradictions(text: str, context: dict[str, Any] | None
     return list(dict.fromkeys(issues))
 
 
+# [FYP-FUNCTION] Unsupported-Fact-Creation Detector
+# [FYP-VALIDATION] Hard-guardrail check that the LLM has not invented
+#   evidence beyond what the context provides. Three independent checks:
+#   (1) any "EV-###" evidence ID cited in the text that is not present in
+#   context["evidence"]; (2) claims that containment/isolation "was executed"
+#   when containment.execution_status shows it was not; (3) claims of
+#   data exfiltration/exposure when context["data_impact_assessment"]
+#   contains no supporting terms (confirmed/exfiltrat/accessed/etc.).
+# Params: text - candidate LLM output; context - report context dict (reads
+#   evidence, containment.execution_status, data_impact_assessment).
+# Returns: list[str] of "unsupported_fact_creation:<kind>" issue codes
+#   (evidence_id/containment_execution/data_impact), de-duplicated.
+# Called by: validate_llm_section_quality() — appended to hard_fail_issues.
+# [FYP-FUNCTION] `_detect_unsupported_fact_creation` — implements the detect unsupported fact creation operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `append`, `dumps`, `findall`, `fromkeys`, `get`, `isinstance`, `list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _detect_unsupported_fact_creation(text: str, context: dict[str, Any] | None) -> list[str]:
     if not context:
         return []
@@ -871,6 +1526,42 @@ def _detect_unsupported_fact_creation(text: str, context: dict[str, Any] | None)
         issues.append("unsupported_fact_creation:data_impact")
     return list(dict.fromkeys(issues))
 
+
+# [FYP-LLM] [FYP-FUNCTION] LLM Section Quality Validator (RESPONSE PARSING/VALIDATION)
+# [FYP-EVALUATOR] This is where a raw LLM section response is validated
+#   before it is accepted into the report — the "response parsing" step of
+#   the LLM pipeline referenced in the module header.
+# [FYP-PROCESS] Runs a battery of independent checks against `text` (already
+#   normalised by _normalise_llm_output before this is called):
+#     - length vs. SECTION_RULES[section]'s min_words/max_words
+#     - PROMPT_LEAKAGE_PHRASES (model talking about the prompt/system itself)
+#     - "field dump" detection (>=2 lines starting with a raw field label
+#       such as "severity:" instead of prose)
+#     - incomplete-sentence / unbalanced-parentheses / trailing-punctuation
+#       truncation heuristics (BAD_ENDINGS)
+#     - required uncertainty language / required decision language, when the
+#       section's rules demand them
+#     - checklist-specific item-count and action-orientation checks
+#     - locked-fact contradictions (_detect_locked_fact_contradictions) and
+#       unsupported fact creation (_detect_unsupported_fact_creation)
+#     - business-impact overstatement (_detect_business_impact_overstatement)
+# [FYP-DECISION] Issues are split into hard_fail_issues (force a fallback to
+#   deterministic_narrative()'s text for that section) vs. soft_warnings
+#   (section is still accepted but flagged in the report metadata).
+# Params: section - narrative field name (keys into SECTION_RULES); text -
+#   raw/normalised LLM output for that section; context - report context
+#   dict, used by the locked-fact/unsupported-fact/overstatement checks.
+# Returns: dict with keys "accepted" (bool, True iff no hard_fail_issues),
+#   "hard_fail_issues", "soft_warnings", "issues" (hard+soft concatenated).
+# Called by: _enhance_one_section() inside enhance_narrative() — both for the
+#   initial LLM output and again for the validation-retry output.
+# [FYP-FUNCTION] `validate_llm_section_quality` — evaluates validate llm section quality conditions so invalid or unsafe report generation and export processing is stopped early.
+# [FYP-INPUT] Parameters: `section`, `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section, soc_reporting_agent/reporting/llm_narrative.py:assess_llm_section_quality, soc_reporting_agent/reporting/llm_narrative.py:repair_llm_section; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_contains_uncertainty`, `_detect_business_impact_overstatement`, `_detect_locked_fact_contradictions`, `_detect_unsupported_fact_creation`, `_numbered_checklist_count`, `any`, `append`, `count`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def validate_llm_section_quality(section: str, text: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
     rules = SECTION_RULES.get(section, {"min_words": 30, "max_words": 250, "require_uncertainty": False, "require_decision": False})
@@ -936,12 +1627,26 @@ def validate_llm_section_quality(section: str, text: str, context: dict[str, Any
     }
 
 
+# [FYP-FUNCTION] Legacy Quality-Check Wrapper
+# Thin backward-compatible shim around validate_llm_section_quality() that
+# collapses its dict result to the older (accepted, issues) tuple shape.
+# Params/Returns: same section/text as validate_llm_section_quality, but
+#   with context fixed to None (so locked-fact/unsupported-fact/
+#   overstatement checks, which need context, are always skipped here).
 def assess_llm_section_quality(section: str, text: str) -> tuple[bool, list[str]]:
     """Backward-compatible wrapper for older tests."""
     result = validate_llm_section_quality(section, text, None)
     return bool(result["accepted"]), list(result["issues"])
 
 
+# [FYP-FUNCTION] Issue-Code Normaliser
+# Maps a raw "llm_error:<exception text>" issue string to a coarser,
+# stable status code (llm_api_unsupported_parameter / llm_api_model_not_found
+# / llm_api_rate_limited / llm_api_error) by substring-matching common
+# provider error text; any other issue string passes through unchanged.
+# Called by: enhance_narrative()'s _enhance_one_section() exception handler,
+#   so the per-section result status is a small stable vocabulary rather than
+#   raw, provider-specific exception text.
 def _normalise_issue_for_status(issue: str) -> str:
     lower = issue.lower()
     if "unsupported parameter" in lower:
@@ -955,6 +1660,13 @@ def _normalise_issue_for_status(issue: str) -> str:
     return issue
 
 
+# [FYP-FUNCTION] Per-Section Result Shape Builder
+# Small factory for the standard llm_section_results[section] dict shape
+# (status/hard_fail_issues/soft_warnings/repair_actions/retry_attempted/
+# issues) used throughout enhance_narrative()'s per-section pipeline, so
+# every call site (not_used/deterministic_locked/llm_used/fallback_used/
+# etc.) produces a consistently-shaped record for the UI/report quality
+# section to read.
 def _section_result(status: str, hard: list[str] | None = None, soft: list[str] | None = None, repairs: list[str] | None = None, retry_attempted: bool = False) -> dict[str, Any]:
     hard_fail_issues = hard or []
     soft_warnings = soft or []
@@ -977,6 +1689,13 @@ REPAIRABLE_ISSUES = {
 }
 
 
+# [FYP-FUNCTION] [FYP-FALLBACK] Uncertainty-Disclaimer Sentence Builder
+# Produces the "Not confirmed in the provided evidence: ..." sentence
+# appended by _repair_checklist()/repair_llm_section() to a section that
+# failed the does_not_state_uncertainty check. Prefers naming the actual
+# evidence_gaps recorded on context (up to 4); falls back to a fixed list of
+# generic incident-response uncertainty categories when no gaps are present
+# on context, so a real repair sentence can always be produced.
 def _uncertainty_sentence(context: dict[str, Any] | None) -> str:
     gaps = []
     if context:
@@ -989,6 +1708,13 @@ def _uncertainty_sentence(context: dict[str, Any] | None) -> str:
     return "Not confirmed in the provided evidence: payload execution, lateral movement, credential access, data exposure, business disruption, and containment completion."
 
 
+# [FYP-FUNCTION] Truncation Repair: Trim To Last Complete Sentence
+# Finds the last sentence-ending punctuation mark (./!/? optionally followed
+# by a closing bracket/quote) and cuts the text there, discarding a trailing
+# partial sentence. Used by repair_llm_section() to fix
+# incomplete_sentence/possibly_truncated/unbalanced_parentheses_possible_
+# truncation hard-fail issues without a further LLM call. Returns the
+# original text unchanged if no sentence-ending punctuation is found.
 def _trim_to_last_complete_sentence(text: str) -> str:
     raw = str(text or "").strip()
     matches = list(re.finditer(r"[.!?][\)\]\"']?(?=\s|$)", raw))
@@ -998,9 +1724,32 @@ def _trim_to_last_complete_sentence(text: str) -> str:
     return raw[:end].strip()
 
 
+# [FYP-FUNCTION] Checklist Line Splitter
+# Splits raw checklist text into non-blank, whitespace-trimmed lines. Used
+# by _repair_checklist() as the starting point for counting/padding numbered
+# checklist items.
 def _split_checklist_lines(text: str) -> list[str]:
     return [line.strip() for line in str(text or "").splitlines() if line.strip()]
 
+
+# [FYP-FUNCTION] [FYP-LLM] SOC Analyst Review Checklist Repair
+# Deterministic, no-further-LLM-call repair for the soc_analyst_review_
+# checklist section: caps numbered items at the first 8 if the LLM produced
+# extras, pads with fixed, hardcoded review-action sentences (items 5-8, one
+# on evidence gaps, one on log collection, one on containment/escalation
+# decision, one on recording the final analyst decision) if fewer than 8
+# numbered items were produced, and appends an uncertainty clause to the
+# last item if the checklist doesn't already state uncertainty anywhere.
+# Called by repair_llm_section() only for the checklist section; every other
+# section goes through the sentence-trim/uncertainty-sentence repair path
+# instead. Returns (repaired_text, list of repair action codes applied).
+# [FYP-FUNCTION] `_repair_checklist` — implements the repair checklist operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:repair_llm_section; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_contains_uncertainty`, `_numbered_checklist_count`, `_split_checklist_lines`, `append`, `fromkeys`, `join`, `len`, `list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _repair_checklist(text: str, context: dict[str, Any] | None) -> tuple[str, list[str]]:
     lines = _split_checklist_lines(text)
@@ -1034,6 +1783,28 @@ def _repair_checklist(text: str, context: dict[str, Any] | None) -> tuple[str, l
     return "\n".join(lines), list(dict.fromkeys(repairs))
 
 
+# [FYP-FUNCTION] [FYP-LLM] Deterministic LLM-Output Repair Dispatcher
+# (RESPONSE PARSING / POST-PROCESSING, no further LLM call). Given a
+# section's raw LLM output and its validate_llm_section_quality() result,
+# applies the cheapest fix available before falling back to a costlier
+# validation retry (build_validation_retry_prompt()) or the deterministic
+# narrative: the checklist section goes through _repair_checklist();
+# every other section gets _trim_to_last_complete_sentence() for
+# truncation-shaped hard failures and an appended _uncertainty_sentence()
+# for a does_not_state_uncertainty soft warning. If any repair was applied,
+# the repaired text is RE-validated via validate_llm_section_quality() so
+# callers see an up-to-date accepted/issues verdict; if no repair fired,
+# returns the original (text, quality, []) unchanged. Called by
+# enhance_narrative()'s per-section pipeline immediately after each LLM
+# response is normalised and validated.
+# [FYP-FUNCTION] `repair_llm_section` — implements the repair llm section operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `section`, `text`, `quality`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_contains_uncertainty`, `_repair_checklist`, `_trim_to_last_complete_sentence`, `_uncertainty_sentence`, `append`, `extend`, `fromkeys`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def repair_llm_section(section: str, text: str, quality: dict[str, Any], context: dict[str, Any] | None = None) -> tuple[str, dict[str, Any], list[str]]:
     repaired = str(text or "").strip()
     repairs: list[str] = []
@@ -1060,6 +1831,28 @@ def repair_llm_section(section: str, text: str, quality: dict[str, Any], context
     return text, quality, []
 
 
+# [FYP-LLM] [FYP-FUNCTION] Validation-Retry Prompt Builder (PROMPT
+# CONSTRUCTION). Appends a targeted "Retry instruction:" block onto the
+# ORIGINAL section prompt (build_section_prompt()'s output) rather than
+# building a new prompt from scratch, so the retry call still carries every
+# locked fact/guardrail instruction from the first attempt. The extra
+# instructions are chosen by matching `issues` against a fixed set of known
+# issue codes (does_not_state_uncertainty, section_slightly_short/
+# empty_or_too_short_section, possibly_truncated/incomplete_sentence/
+# unbalanced_parentheses_possible_truncation, checklist_slightly_short/
+# checklist_too_few_action_items, possible_business_impact_overstatement) --
+# only the instructions relevant to the issues actually seen are added.
+# Called by enhance_narrative()'s per-section pipeline (via invoke_llm_
+# with_retries()) whenever a section's first attempt has hard-fail issues
+# (or, unless REPORTING_QUALITY_RETRY=hard_only, soft warnings too).
+# [FYP-FUNCTION] `build_validation_retry_prompt` — constructs build validation retry prompt output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `original_prompt`, `section`, `issues`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `join`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_validation_retry_prompt(original_prompt: str, section: str, issues: list[str]) -> str:
     issue_set = set(issues)
     instructions: list[str] = [
@@ -1080,6 +1873,39 @@ def build_validation_retry_prompt(original_prompt: str, section: str, issues: li
         instructions.append("Clearly separate confirmed impact from potential impact. Do not claim confirmed disruption, data loss, customer impact, or outage unless it is explicitly present in the incident facts.")
     return original_prompt + "\n\nRetry instruction:\n" + "\n".join(f"- {item}" for item in instructions)
 
+
+# [FYP-FUNCTION] [FYP-LLM] [FYP-ENTRY-POINT] [FYP-FALLBACK] [FYP-EVALUATOR]
+# The Single Public Entry Point Of This Module. Builds the deterministic
+# (rule-based, no LLM) narrative first via deterministic_narrative() -- this
+# is ALWAYS computed and is both the guaranteed fallback and the "locked
+# facts" every LLM prompt is built from. If settings.USE_LLM is false,
+# returns immediately with the deterministic narrative and every section
+# marked "not_used" -- no LLM call is attempted at all. Otherwise, for each
+# section in LLM_ENHANCEABLE_FIELDS (a subset of ALL_NARRATIVE_FIELDS --
+# some narrative fields are always deterministic/"locked"), runs the nested
+# _enhance_one_section() helper below (prompt build -> invoke_llm_with_
+# retries() -> normalise -> validate -> repair -> optional validation
+# retry), then aggregates the outcomes IN FIXED CANONICAL SECTION ORDER
+# (ALL_NARRATIVE_FIELDS) regardless of what order the (possibly concurrent,
+# see REPORTING_LLM_PARALLEL) section calls actually completed in, so the
+# result is deterministic and reproducible run-to-run. Falls back to a
+# previously cached accepted narrative (_load_cached_narrative()) if this
+# run has at least one failed section but zero successes; otherwise caches
+# the newly-accepted narrative (_save_cached_narrative()) whenever at least
+# one section succeeded. Returns a dict with deterministic_narrative,
+# llm_enhanced_narrative (the ACCEPTED narrative -- deterministic text for
+# any section that fell back), llm_used/llm_provider/llm_model/llm_status/
+# llm_quality_status/llm_quality_issues/llm_section_results/
+# llm_attempt_count/llm_cache_status. [FYP-USED-BY]
+# export_context_enhancer.apply_llm_narrative(), which is the only caller in
+# this codebase (verified via repo-wide grep for "enhance_narrative").
+# [FYP-FUNCTION] `enhance_narrative` — implements the enhance narrative operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:apply_llm_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ThreadPoolExecutor`, `_enhance_one_section`, `_load_cached_narrative`, `_save_cached_narrative`, `_section_result`, `copy`, `deterministic_narrative`, `extend`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def enhance_narrative(context: dict[str, Any]) -> dict[str, Any]:
     deterministic = deterministic_narrative(context)
@@ -1117,10 +1943,23 @@ def enhance_narrative(context: dict[str, Any]) -> dict[str, Any]:
     total_attempts = 0
 
     def _enhance_one_section(section: str) -> dict[str, Any]:
-        """Self-contained per-section enhancement — same logic as the original
+        """[FYP-FUNCTION] [FYP-LLM] Self-contained per-section enhancement — same logic as the original
         inline loop body, but writing into an outcome dict so sections can run
         concurrently. Aggregation happens afterwards in fixed section order,
-        keeping the overall result deterministic."""
+        keeping the overall result deterministic. Per-section flow: build
+        prompt (build_section_prompt) -> LLM call with provider fallback/
+        retries (invoke_llm_with_retries) -> normalise raw output
+        (_normalise_llm_output) -> quality-validate (validate_llm_section_
+        quality) -> cheap deterministic repair (repair_llm_section) -> if
+        issues remain and are retryable, one targeted validation retry
+        (build_validation_retry_prompt + another invoke_llm_with_retries
+        call), keeping the retry's output only if it strictly improves on
+        the first attempt's hard/soft issue counts. On any exception, the
+        section falls back to the deterministic narrative with a normalised
+        llm_error status code (_normalise_issue_for_status). Called by:
+        enhance_narrative(), once per section in LLM_ENHANCEABLE_FIELDS,
+        either sequentially or via a ThreadPoolExecutor depending on
+        REPORTING_LLM_PARALLEL."""
         oc: dict[str, Any] = {
             "section": section, "output": None, "section_result": None,
             "issues": [], "attempts": 0, "had_retry_calls": False,

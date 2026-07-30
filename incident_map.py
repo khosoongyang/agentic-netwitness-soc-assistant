@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, ipaddress, re, typing.
+# =============================================================================
+# File: incident_map.py
+# Purpose: This module builds the analyst-facing incident relationship and evidence map.
+# Main functionality: _is_private_ip, _classify_value, _Graph, _walk_alert, build_incident_map, _dot_escape.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, ipaddress, re, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _is_private_ip, _classify_value, _Graph, _walk_alert, build_incident_map, _dot_escape, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 incident_map.py — Stage 1 of the autonomous incident-mapping upgrade.
 
@@ -51,12 +73,32 @@ _KEY_TYPE_RULES: list[tuple[tuple[str, ...], str]] = [
 ]
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_is_private_ip` — evaluates is private ip conditions so invalid or unsafe SOC analysis support processing is stopped early.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include alert_triage.py:_extract_iocs, incident_map.py:_walk_alert, incident_map.py:build_incident_map; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ip_address`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _is_private_ip(value: str) -> bool:
     try:
         return ipaddress.ip_address(value).is_private
     except ValueError:
         return False
 
+
+# [FYP-FUNCTION] `_classify_value` — implements the classify value operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `value`, `key_hint`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include incident_map.py:build_incident_map; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `isalpha`, `lower`, `match`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _classify_value(value: str, key_hint: str = "") -> str:
     """Best-effort node type for a raw string, using the meta key when known."""
@@ -77,12 +119,34 @@ def _classify_value(value: str, key_hint: str = "") -> str:
 # ── graph assembly ────────────────────────────────────────────────────────────
 
 
+# [FYP-CLASS] `_Graph` — owns Graph state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: __init__, node, edge.
+# [FYP-USED-BY] Static constructor/type references include incident_map.py:build_incident_map.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class _Graph:
     """Dedup-on-insert node/edge accumulator."""
+
+    # [FYP-FUNCTION] `__init__` — implements the init operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: no nested function/service calls.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def __init__(self) -> None:
         self.nodes: dict[str, dict] = {}
         self.edges: dict[tuple, dict] = {}
+
+    # [FYP-FUNCTION] `node` — implements the node operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `ntype`, `value`, `**props`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include incident_map.py:_walk_alert, incident_map.py:build_incident_map; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `items`, `update`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def node(self, ntype: str, value: str, **props: Any) -> str:
         nid = f"{ntype}:{value}"
@@ -90,6 +154,14 @@ class _Graph:
             self.nodes[nid] = {"id": nid, "type": ntype, "label": value, "props": {}}
         self.nodes[nid]["props"].update({k: v for k, v in props.items() if v not in (None, "", [])})
         return nid
+
+    # [FYP-FUNCTION] `edge` — implements the edge operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `src`, `dst`, `relation`, `evidence`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include incident_map.py:_walk_alert, incident_map.py:build_incident_map; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def edge(self, src: str, dst: str, relation: str, evidence: str) -> None:
         key = (src, dst, relation)
@@ -103,6 +175,14 @@ class _Graph:
                 "evidence": [evidence], "count": 1,
             }
 
+
+# [FYP-FUNCTION] `_walk_alert` — implements the walk alert operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `g`, `inc_node`, `alert`, `timeline`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include incident_map.py:build_incident_map; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_private_ip`, `append`, `edge`, `get`, `isinstance`, `items`, `node`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _walk_alert(g: _Graph, inc_node: str, alert: dict, timeline: list[dict]) -> None:
     """Extract entities/edges from one raw alert (Respond API shape)."""
@@ -169,6 +249,14 @@ def _walk_alert(g: _Graph, inc_node: str, alert: dict, timeline: list[dict]) -> 
         if dom and side_nodes["source"]:
             g.edge(side_nodes["source"], g.node("domain", str(dom)), "queried", ev_tag)
 
+
+# [FYP-FUNCTION] `build_incident_map` — constructs build incident map output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `alerts`, `max_alerts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_entity_graph, case_view.py:build_timeline; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_Graph`, `_classify_value`, `_is_private_ip`, `_walk_alert`, `append`, `edge`, `get`, `group`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_incident_map(incident: dict, alerts: list | None = None,
                        max_alerts: int = 200) -> dict:
@@ -284,9 +372,25 @@ _DOT_STYLE = {
 }
 
 
+# [FYP-FUNCTION] `_dot_escape` — implements the dot escape operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `s`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:_lines, diamond_model.py:to_dot, incident_map.py:emit_node; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `replace`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _dot_escape(s: str) -> str:
     return s.replace("\\", "\\\\").replace('"', '\\"')
 
+
+# [FYP-FUNCTION] `to_dot` — implements the to dot operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `imap`, `max_fanout`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_dot_escape`, `append`, `emit_node`, `get`, `items`, `join`, `len`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def to_dot(imap: dict, max_fanout: int = 20) -> str:
     """DOT source for st.graphviz_chart. High-fanout node groups (e.g. one
@@ -308,6 +412,14 @@ def to_dot(imap: dict, max_fanout: int = 20) -> str:
     ]
     used: set[str] = set()
     agg_i = 0
+
+    # [FYP-FUNCTION] `emit_node` — implements the emit node operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `nid`, `label`, `ntype`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include incident_map.py:to_dot; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_dot_escape`, `add`, `append`, `get`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def emit_node(nid: str, label: str | None = None, ntype: str | None = None) -> None:
         if nid in used:
@@ -351,6 +463,14 @@ def to_dot(imap: dict, max_fanout: int = 20) -> str:
     return "\n".join(lines)
 
 
+# [FYP-FUNCTION] `map_caption` — transforms map caption input into the stable representation required by downstream SOC analysis support processing.
+# [FYP-INPUT] Parameters: `imap`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `append`, `get`, `items`, `join`, `sorted`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def map_caption(imap: dict) -> str:
     """One-line honest summary for UI captions."""
     s = imap["stats"]
@@ -362,6 +482,14 @@ def map_caption(imap: dict) -> str:
         f" · basis: {s['evidence_basis']}"
     )
 
+
+# [FYP-FUNCTION] `summarize_map` — implements the summarize map operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `imap`, `max_lines`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `append`, `get`, `join`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def summarize_map(imap: dict, max_lines: int = 40) -> str:
     """Plain-text rendering of the graph for agent prompts (Stage 3 hook)."""

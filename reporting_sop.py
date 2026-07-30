@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, datetime, os, typing.
+# =============================================================================
+# File: reporting_sop.py
+# Purpose: This module applies reporting standard-operating-procedure checks to generated content.
+# Main functionality: _disabled, _safe, _s, _as_list, _identity, _classification.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis reporting component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, datetime, os, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _disabled, _safe, _s, _as_list, _identity, _classification, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 reporting_sop.py — deterministic Incident-Response SOP / runbook generator.
 
@@ -50,9 +72,29 @@ _SCENARIO_PLAYBOOK: list[tuple[tuple[str, ...], str, str]] = [
 ]
 
 
+# =============================================================================
+# [FYP-SECTION] REPORTING EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_disabled` — implements the disabled operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:build_compliance_evidence, final_verdict.py:build_final_verdict, reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `bool`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _disabled() -> bool:
     return bool(os.environ.get("NW_DISABLE_REPORTING_SOP"))
 
+
+# [FYP-FUNCTION] `_safe` — implements the safe operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `fn`, `*a`, `**k`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:_asset, reporting_sop.py:_iocs, reporting_sop.py:_mitigation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `fn`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _safe(fn, *a, **k) -> Any:
     try:
@@ -61,9 +103,25 @@ def _safe(fn, *a, **k) -> Any:
         return None
 
 
+# [FYP-FUNCTION] `_s` — implements the s operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `v`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_detection_summary, compliance_evidence.py:_first; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _s(v: Any) -> str:
     return str(v if v is not None else "").strip()
 
+
+# [FYP-FUNCTION] `_as_list` — implements the as list operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `v`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_detection_summary, final_verdict.py:_build; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _as_list(v: Any) -> list:
     if v in (None, "", [], {}):
@@ -72,6 +130,14 @@ def _as_list(v: Any) -> list:
 
 
 # ── source extraction (all reused from existing deterministic skills) ────────
+
+# [FYP-FUNCTION] `_identity` — implements the identity operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_list`, `_s`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _identity(incident: dict) -> dict:
     am = incident.get("alertMeta") or {}
@@ -82,12 +148,28 @@ def _identity(incident: dict) -> dict:
             "dst_ips": _as_list(am.get("DestinationIp"))}
 
 
+# [FYP-FUNCTION] `_classification` — implements the classification operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:_asset, reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_s`, `capitalize`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _classification(incident: dict, triage_result: dict | None) -> str:
     t = triage_result or {}
     return (_s((t.get("ticket") or {}).get("classification"))
             or _s((t.get("metakeys_payload") or {}).get("classification"))
             or _s(incident.get("severity")) or "Unknown").capitalize()
 
+
+# [FYP-FUNCTION] `_mitre` — implements the mitre operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:build_diamond, osquery_investigation.py:build_investigation_pack, reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_s`, `get`, `infer_tactics`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _mitre(incident: dict, triage_result: dict | None) -> tuple[str, str]:
     t = triage_result or {}
@@ -110,6 +192,14 @@ def _mitre(incident: dict, triage_result: dict | None) -> tuple[str, str]:
     return tac, tech
 
 
+# [FYP-FUNCTION] `_pick_playbook` — implements the pick playbook operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `investigation_result`, `tactic`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_list`, `_s`, `any`, `get`, `join`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _pick_playbook(incident: dict, triage_result: dict | None,
                    investigation_result: dict | None, tactic: str) -> tuple[str, str]:
     hay = " ".join(_s(x).lower() for x in (
@@ -125,6 +215,14 @@ def _pick_playbook(incident: dict, triage_result: dict | None,
     return "generic_incident_response_playbook.md", "Generic IR"
 
 
+# [FYP-FUNCTION] `_asset` — implements the asset operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop, soc_reporting_agent/reporting/export_context_enhancer.py:derive_affected_assets; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_classification`, `_safe`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _asset(incident: dict, triage_result: dict | None) -> dict | None:
     try:
         from asset_criticality import assess_incident
@@ -133,6 +231,14 @@ def _asset(incident: dict, triage_result: dict | None) -> dict | None:
     cls = _classification(incident, triage_result)
     return _safe(assess_incident, incident, cls)
 
+
+# [FYP-FUNCTION] `_mitigation` — implements the mitigation operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `ti_result`, `asset`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _mitigation(incident: dict, triage_result: dict | None,
                 ti_result: dict | None, asset: dict | None) -> dict | None:
@@ -143,6 +249,14 @@ def _mitigation(incident: dict, triage_result: dict | None,
     m = _safe(build_mitigation_coverage, incident, triage_result, ti_result, asset)
     return m if isinstance(m, dict) and m.get("available") else None
 
+
+# [FYP-FUNCTION] `_iocs` — implements the iocs operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _iocs(incident: dict, triage_result: dict | None) -> list[dict]:
     try:
@@ -158,12 +272,28 @@ def _iocs(incident: dict, triage_result: dict | None) -> list[dict]:
 
 # ── step builders ─────────────────────────────────────────────────────────────
 
+# [FYP-FUNCTION] `_step` — implements the step operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `n`, `phase`, `action`, `owner`, `decision`, `verification`, `on_failure`, `evidence`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:_build_procedure; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _step(n: int, phase: str, action: str, owner: str, decision: str = "",
           verification: str = "", on_failure: str = "", evidence: str = "") -> dict:
     return {"n": n, "phase": phase, "action": action, "owner": owner,
             "decision": decision, "verification": verification,
             "on_failure": on_failure, "evidence": evidence}
 
+
+# [FYP-FUNCTION] `_build_procedure` — constructs build procedure output for the next reporting consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `ident`, `asset`, `mitigation`, `iocs`, `investigation_result`, `approval_required`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_list`, `_s`, `_step`, `append`, `enumerate`, `get`, `index`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _build_procedure(ident: dict, cls: str, asset: dict | None,
                      mitigation: dict | None, iocs: list[dict],
@@ -285,6 +415,14 @@ def _build_procedure(ident: dict, cls: str, asset: dict | None,
     return steps
 
 
+# [FYP-FUNCTION] `_roles` — implements the roles operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `asset`, `approval_required`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _roles(asset: dict | None, approval_required: bool) -> list[dict]:
     rank = (asset or {}).get("highest_rank", 0)
     roles = [
@@ -304,6 +442,14 @@ def _roles(asset: dict | None, approval_required: bool) -> list[dict]:
 
 
 # ── public API ───────────────────────────────────────────────────────────────
+
+# [FYP-FUNCTION] `build_incident_sop` — constructs build incident sop output for the next reporting consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `investigation_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_sop, reporting_sop.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_asset`, `_build_procedure`, `_classification`, `_disabled`, `_identity`, `_iocs`, `_mitigation`, `_mitre`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_incident_sop(incident: dict, triage_result: dict | None = None,
                        investigation_result: dict | None = None,
@@ -385,6 +531,14 @@ _REQUIRED_SECTIONS = ("purpose", "scope", "roles", "prerequisites",
                       "procedure", "references", "version_history")
 
 
+# [FYP-FUNCTION] `validate_sop` — evaluates validate sop conditions so invalid or unsafe reporting processing is stopped early.
+# [FYP-INPUT] Parameters: `sop`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_s`, `append`, `get`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def validate_sop(sop: dict) -> dict:
     """The skill's validation half: RFC-2119-style completeness check. MUST =
     required section/field absent; SHOULD = recommended detail missing."""
@@ -410,6 +564,14 @@ def validate_sop(sop: dict) -> dict:
     return {"valid": not must, "must_fix": must, "should_fix": should,
             "checks": len(_REQUIRED_SECTIONS) + 1 + len(sop.get("procedure") or [])}
 
+
+# [FYP-FUNCTION] `format_sop` — constructs format sop output for the next reporting consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `sop`, `compact`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:<module>, skills_sidecar.py:_build_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `join`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_sop(sop: dict, compact: bool = False) -> str:
     """Render the SOP as a markdown document. compact=True trims the per-step

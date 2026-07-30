@@ -1,3 +1,35 @@
+# ==============================================================================
+# [FYP-FILE] compliance_evidence.py
+# File: compliance_evidence.py
+# Workflow position: Aegis SOC analysis support.
+# Important dependencies: __future__, os, typing.
+# Key evaluator search terms: _disabled, _s, _first, _as_list, _triage_bits, _detection_summary, [FYP-FUNCTION].
+# ------------------------------------------------------------------------------
+# Purpose: Deterministic mapping of one finalized incident's response onto SOC 2
+#   Trust Services Criteria controls (mainly CC7 System Operations, plus CC2/CC4
+#   and conditional A1/C1/P TSCs when the incident actually implicates them).
+#   Produces analyst-facing audit EVIDENCE folded into the written report — not
+#   a formal SOC 2 attestation.
+# Main functionalities:
+#   - build_compliance_evidence(): [FYP-FUNCTION] [FYP-PROCESS] main entry
+#     point — evaluates each control against the incident/triage/investigation
+#     dicts and returns MET/PARTIAL/NOT_MET status + evidence text per control.
+#   - _build(): [FYP-FUNCTION] the actual control-by-control evaluation logic
+#     (CC7.2 detect, CC7.3 evaluate, CC7.4 respond, CC7.5 recover, CC2.2, CC4.1,
+#     plus conditional A1.2/C1.1/P4.2).
+#   - format_compliance_evidence(): [FYP-FUNCTION] markdown table for the
+#     report appendix.
+# Inputs: incident (dict), triage_result / investigation_result / ti_result
+#   (all optional dicts from earlier pipeline stages).
+# Outputs: build_compliance_evidence() -> {available, controls, criteria_touched,
+#   stats, meta}; never raises (caller-safe by construction).
+# Called by [FYP-USED-BY]: skills_sidecar.py only (`_collect_compliance` /
+#   report-handoff enrichment, confirmed via grep at import + call + dict
+#   assembly sites) — feeds the compliance-evidence block into the generated
+#   report.
+# Calls [FYP-CALLS]: stdlib only (os, typing) — no I/O, no network, no DB.
+# Kill switch: NW_DISABLE_COMPLIANCE_EVIDENCE env var (checked in _disabled()).
+# ==============================================================================
 """
 compliance_evidence.py — map an incident's response to SOC 2 controls (deterministic).
 
@@ -35,16 +67,19 @@ from typing import Any
 
 
 def _disabled() -> bool:
+    """[FYP-FUNCTION] Kill-switch check for NW_DISABLE_COMPLIANCE_EVIDENCE."""
     return bool(os.environ.get("NW_DISABLE_COMPLIANCE_EVIDENCE"))
 
 
-# ── small safe accessors ──────────────────────────────────────────────────────
+# [FYP-SECTION] small safe accessors ──────────────────────────────────────────
 
 def _s(v: Any) -> str:
+    """[FYP-FUNCTION] Safe str-and-strip; None/falsy -> ''."""
     return str(v or "").strip()
 
 
 def _first(*vals: Any, default: str = "") -> str:
+    """[FYP-FUNCTION] First non-empty stringified value among `vals`."""
     for v in vals:
         s = _s(v)
         if s:
@@ -53,12 +88,17 @@ def _first(*vals: Any, default: str = "") -> str:
 
 
 def _as_list(v: Any) -> list:
+    """[FYP-FUNCTION] Normalise a scalar-or-list field into a list (empty
+    values -> [])."""
     if v in (None, "", [], {}):
         return []
     return v if isinstance(v, list) else [v]
 
 
 def _triage_bits(triage_result: dict | None) -> dict:
+    """[FYP-FUNCTION] Pull classification/MITRE tactic-technique/category/unc
+    out of a triage_result dict (ticket + metakeys_payload), defaulting to
+    empty strings when absent."""
     t = triage_result or {}
     mk = t.get("metakeys_payload") or {}
     tk = t.get("ticket") or {}
@@ -73,6 +113,9 @@ def _triage_bits(triage_result: dict | None) -> dict:
 
 
 def _detection_summary(incident: dict) -> str:
+    """[FYP-FUNCTION] One-line description of how the incident was detected
+    (alert titles, attached alerts, or the incident title), for CC7.2
+    evidence text. Empty string when nothing usable is present."""
     meta = incident.get("alertMeta") or {}
     titles = _as_list(meta.get("AlertTitles"))
     if titles:
@@ -84,13 +127,15 @@ def _detection_summary(incident: dict) -> str:
     return ""
 
 
-# ── control catalog + evaluators ──────────────────────────────────────────────
+# [FYP-SECTION] control catalog + evaluators ──────────────────────────────────
 # Each evaluator returns (status, evidence). status ∈ MET | PARTIAL | NOT_MET.
 
 _STATUS_ORDER = {"MET": 2, "PARTIAL": 1, "NOT_MET": 0}
 
 
 def _ctrl(cid, tsc, family, name, status, evidence) -> dict:
+    """[FYP-FUNCTION] Build one control-result dict (id/TSC/family/name/
+    status/evidence) — the row shape used throughout this module."""
     return {"id": cid, "tsc": tsc, "family": family, "name": name,
             "status": status, "evidence": evidence}
 
@@ -99,7 +144,8 @@ def build_compliance_evidence(incident: dict,
                               triage_result: dict | None = None,
                               investigation_result: dict | None = None,
                               ti_result: dict | None = None) -> dict:
-    """Map this incident's response onto SOC 2 controls. Returns
+    """[FYP-FUNCTION] [FYP-PROCESS] Map this incident's response onto SOC 2
+    controls — module entry point. Returns
     {"available": bool, "controls": [...], "stats": {...}, ...}; never raises."""
     if _disabled():
         return {"available": False, "reason": "disabled via NW_DISABLE_COMPLIANCE_EVIDENCE"}
@@ -108,6 +154,14 @@ def build_compliance_evidence(incident: dict,
     except Exception as exc:  # deterministic, but never take the report down
         return {"available": False, "reason": f"error: {type(exc).__name__}"}
 
+
+# [FYP-FUNCTION] `_build` — implements the build operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `investigation_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:build_compliance_evidence, final_verdict.py:build_final_verdict; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_list`, `_ctrl`, `_detection_summary`, `_first`, `_rec_text`, `_s`, `_triage_bits`, `any`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _build(incident: dict, triage_result, investigation_result, ti_result) -> dict:
     tri = _triage_bits(triage_result)
@@ -268,6 +322,14 @@ def _build(incident: dict, triage_result, investigation_result, ti_result) -> di
     }
 
 
+# [FYP-FUNCTION] `_rec_text` — implements the rec text operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `action`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_s`, `get`, `isinstance`, `join`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _rec_text(action: Any) -> str:
     if isinstance(action, dict):
         return " ".join(_s(action.get(k)) for k in
@@ -279,6 +341,14 @@ def _rec_text(action: Any) -> str:
 
 _ICON = {"MET": "", "PARTIAL": "", "NOT_MET": ""}
 
+
+# [FYP-FUNCTION] `format_compliance_evidence` — constructs format compliance evidence output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `evidence`, `compact`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:<module>, skills_sidecar.py:_build_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_s`, `append`, `get`, `join`, `replace`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_compliance_evidence(evidence: dict | None, compact: bool = False) -> str:
     """Markdown block for the written report. `compact` trims the intro."""

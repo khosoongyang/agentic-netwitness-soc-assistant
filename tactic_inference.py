@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, os, typing.
+# =============================================================================
+# File: tactic_inference.py
+# Purpose: This module infers MITRE ATT&CK tactics from incident evidence using deterministic mappings.
+# Main functionality: _as_str_list, _has_native_mitre, _keyword_scan, infer_tactics, augment_incident.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, os, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _as_str_list, _has_native_mitre, _keyword_scan, infer_tactics, augment_incident, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 tactic_inference.py — deterministic pre-triage MITRE tactic/technique inference.
 
@@ -51,6 +73,18 @@ _KEYWORD_MITRE: list[tuple[tuple[str, ...], str, str, str]] = [
 ]
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_as_str_list` — implements the as str list operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tactic_inference.py:_has_native_mitre, tactic_inference.py:augment_incident, tactic_inference.py:infer_tactics; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `isinstance`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _as_str_list(value: Any) -> list[str]:
     if value in (None, "", [], {}):
         return []
@@ -66,11 +100,27 @@ def _as_str_list(value: Any) -> list[str]:
     return out
 
 
+# [FYP-FUNCTION] `_has_native_mitre` — evaluates has native mitre conditions so invalid or unsafe SOC analysis support processing is stopped early.
+# [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tactic_inference.py:infer_tactics; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_str_list`, `bool`, `get`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _has_native_mitre(incident: dict) -> bool:
     return bool(_as_str_list(incident.get("tactics"))
                 or _as_str_list(incident.get("techniques"))
                 or str(incident.get("mitre_tactic") or "").strip())
 
+
+# [FYP-FUNCTION] `_keyword_scan` — implements the keyword scan operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `texts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tactic_inference.py:infer_tactics; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `append`, `join`, `lower`, `next`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _keyword_scan(texts: list[str]) -> tuple[list[tuple[str, str, str]], list[str]]:
     """All keyword-table hits across the texts, table-ordered + deduped.
@@ -85,6 +135,14 @@ def _keyword_scan(texts: list[str]) -> tuple[list[tuple[str, str, str]], list[st
             evidence.append(f"'{matched.strip()}'")
     return hits, evidence
 
+
+# [FYP-FUNCTION] `infer_tactics` — implements the infer tactics operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include case_view.py:build_mitre, eval_harness.py:_c_tactic, final_verdict.py:_mitre_confirmation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_str_list`, `_has_native_mitre`, `_keyword_scan`, `fromkeys`, `get`, `list`, `str`, `title`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def infer_tactics(incident: dict) -> dict:
     """Deterministic MITRE inference from the incident's own evidence.
@@ -150,6 +208,14 @@ def infer_tactics(incident: dict) -> dict:
             "reason": "no inferable attack signal pre-triage (generic title, "
                       "no distilled alert behaviours — run triage or Refresh Data)"}
 
+
+# [FYP-FUNCTION] `augment_incident` — implements the augment incident operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `inference`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_as_str_list`, `dict`, `get`, `infer_tactics`, `list`, `str`, `strip`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def augment_incident(incident: dict, inference: dict | None = None
                      ) -> tuple[dict, str | None]:

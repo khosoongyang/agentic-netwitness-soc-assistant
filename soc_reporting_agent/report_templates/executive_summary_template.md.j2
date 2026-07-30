@@ -1,3 +1,12 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/executive_summary_template.md.j2
+   Purpose: Renders the concise management-facing executive-summary section.
+   Main functionality: Converts verified reporting context fields into Jinja2 Markdown.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: executive_summary text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting generation, before analyst review and export.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: executive_summary, Executive Summary, [FYP-EXPORT]. #}
 # Executive Summary
 
 ## 1. Executive Snapshot

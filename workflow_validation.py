@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, datetime.
+# =============================================================================
+# File: workflow_validation.py
+# Purpose: This module validates cross-stage workflow state, required outputs, and transition readiness.
+# Main functionality: ParsingValidationError, validate_parsing_result, mandatory_triage_approval, build_thinking_process.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis workflow orchestration and state component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, datetime.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: ParsingValidationError, validate_parsing_result, mandatory_triage_approval, build_thinking_process, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 workflow_validation.py — Parsing->Triage handoff validation and mandatory
 approval-gate policy for soc_workflow.run_until_triage_approval().
@@ -11,9 +33,27 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 
+# =============================================================================
+# [FYP-SECTION] WORKFLOW ORCHESTRATION AND STATE EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-CLASS] `ParsingValidationError` — owns ParsingValidationError state or behaviour for the workflow orchestration and state component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include workflow_validation.py:validate_parsing_result.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class ParsingValidationError(Exception):
     """Raised when Stage 0 (Parsing) output is unsafe to hand off to Triage."""
 
+
+# [FYP-FUNCTION] `validate_parsing_result` — evaluates validate parsing result conditions so invalid or unsafe workflow orchestration and state processing is stopped early.
+# [FYP-INPUT] Parameters: `incident_id`, `parsing_result`, `skip`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_until_triage_approval; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ParsingValidationError`, `get`, `isinstance`, `isoformat`, `now`, `str`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def validate_parsing_result(*, incident_id: str, parsing_result: dict,
                             skip: bool = False) -> dict:
@@ -74,6 +114,14 @@ MANDATORY_APPROVAL_POLICY = (
 )
 
 
+# [FYP-FUNCTION] `mandatory_triage_approval` — implements the mandatory triage approval operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_until_triage_approval; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isoformat`, `now`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def mandatory_triage_approval(*, incident_id: str, triage_result: dict) -> dict:
     """Always requires SOC analyst approval after Triage. For Aegis, the
     stage after approval is now Threat Intelligence Enrichment (which
@@ -91,6 +139,14 @@ def mandatory_triage_approval(*, incident_id: str, triage_result: dict) -> dict:
         "gated_at": datetime.now(timezone.utc).isoformat(),
     }
 
+
+# [FYP-FUNCTION] `build_thinking_process` — constructs build thinking process output for the next workflow orchestration and state consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `inc_id`, `parsing_result`, `validation`, `triage_result`, `gate`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_until_triage_approval; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `next`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_thinking_process(*, incident: dict, inc_id: str, parsing_result: dict,
                            validation: dict, triage_result: dict,

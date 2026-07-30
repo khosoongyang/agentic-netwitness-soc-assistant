@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, ipaddress, os, re, typing.
+# =============================================================================
+# File: diamond_model.py
+# Purpose: This module maps incident evidence into Diamond Model adversary, capability, infrastructure, and victim facets.
+# Main functionality: _is_public_ip, _focus_host, _extract, _infer_mitre_from_titles, _mitre, _asset_tier.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, ipaddress, os, re, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _is_public_ip, _focus_host, _extract, _infer_mitre_from_titles, _mitre, _asset_tier, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 diamond_model.py — Diamond Model of Intrusion Analysis for one incident
 (investigation-agent skill, standalone).
@@ -67,6 +89,18 @@ _TACTIC_TO_KILLCHAIN = {
 }
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_is_public_ip` — evaluates is public ip conditions so invalid or unsafe SOC analysis support processing is stopped early.
+# [FYP-INPUT] Parameters: `v`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:_select_indicators, diamond_model.py:_extract, ioc_correlation.py:_extract_iocs; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ip_address`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _is_public_ip(v: str) -> bool:
     try:
         a = ipaddress.ip_address(v)
@@ -75,6 +109,14 @@ def _is_public_ip(v: str) -> bool:
     except ValueError:
         return False
 
+
+# [FYP-FUNCTION] `_focus_host` — implements the focus host operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:build_diamond; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `get`, `group`, `isinstance`, `items`, `lower`, `match`, `search`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _focus_host(incident: dict, triage_result: dict | None) -> str | None:
     mkv = ((triage_result or {}).get("metakeys_payload") or {}).get("metakey_values") or {}
@@ -92,6 +134,14 @@ def _focus_host(incident: dict, triage_result: dict | None) -> str | None:
             return e
     return None
 
+
+# [FYP-FUNCTION] `_extract` — implements the extract operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:build_diamond; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_public_ip`, `append`, `dedup`, `get`, `isinstance`, `items`, `lower`, `match`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _extract(incident: dict, triage_result: dict | None) -> dict:
     mkv = ((triage_result or {}).get("metakeys_payload") or {}).get("metakey_values") or {}
@@ -120,6 +170,14 @@ def _extract(incident: dict, triage_result: dict | None) -> dict:
     users = [str(u).strip() for u in ((am.get("User") or []) + (am.get("AdUser") or []))
              if str(u).strip()]
 
+    # [FYP-FUNCTION] `dedup` — implements the dedup operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `seq`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include detection_rules.py:_select_indicators, diamond_model.py:_extract, osquery_investigation.py:_extract_iocs; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `fromkeys`, `list`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def dedup(seq):
         return list(dict.fromkeys(seq))
 
@@ -145,6 +203,14 @@ _TITLE_TO_MITRE: list[tuple[tuple[str, ...], str, str, str]] = [
 ]
 
 
+# [FYP-FUNCTION] `_infer_mitre_from_titles` — implements the infer mitre from titles operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `titles`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:build_diamond; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `join`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _infer_mitre_from_titles(titles: list) -> tuple[str, str, str]:
     """First keyword hit across the alert titles → (technique, name, tactic)."""
     joined = " ".join(titles).lower()
@@ -153,6 +219,14 @@ def _infer_mitre_from_titles(titles: list) -> tuple[str, str, str]:
             return tid, name, tactic
     return "", "", ""
 
+
+# [FYP-FUNCTION] `_mitre` — implements the mitre operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:build_diamond, osquery_investigation.py:build_investigation_pack, reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _mitre(incident: dict, triage_result: dict | None) -> dict:
     mk = (triage_result or {}).get("metakeys_payload") or {}
@@ -169,6 +243,14 @@ def _mitre(incident: dict, triage_result: dict | None) -> dict:
     return {"technique": tech, "tactic": tactic}
 
 
+# [FYP-FUNCTION] `_asset_tier` — implements the asset tier operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:build_diamond; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `assess_incident`, `get`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _asset_tier(incident: dict, triage_result: dict | None) -> str:
     try:
         from asset_criticality import assess_incident
@@ -177,6 +259,14 @@ def _asset_tier(incident: dict, triage_result: dict | None) -> str:
     except Exception:
         return "unclassified"
 
+
+# [FYP-FUNCTION] `build_diamond` — constructs build diamond output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `ti_result`, `enrich_pivots`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_diamond, final_verdict.py:_diamond_signal; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_asset_tier`, `_extract`, `_focus_host`, `_infer_mitre_from_titles`, `_mitre`, `append`, `correlate_iocs`, `get`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def build_diamond(incident: dict, triage_result: dict | None = None,
                   ti_result: dict | None = None,
@@ -292,9 +382,25 @@ def build_diamond(incident: dict, triage_result: dict | None = None,
     }
 
 
+# [FYP-FUNCTION] `_dot_escape` — implements the dot escape operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `s`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:_lines, diamond_model.py:to_dot, incident_map.py:emit_node; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `replace`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _dot_escape(s: str) -> str:
     return str(s).replace("\\", "\\\\").replace('"', '\\"')
 
+
+# [FYP-FUNCTION] `to_dot` — implements the to dot operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `d`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_dot_escape`, `_lines`, `get`, `join`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def to_dot(d: dict) -> str:
     """Graphviz diamond: Adversary (top) · Capability (left) · Infrastructure
@@ -302,6 +408,14 @@ def to_dot(d: dict) -> str:
     if not d.get("available"):
         return 'digraph G { label="Diamond Model unavailable"; }'
     vic, inf, cap, adv = d["victim"], d["infrastructure"], d["capability"], d["adversary"]
+
+    # [FYP-FUNCTION] `_lines` — implements the lines operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `items`, `cap_n`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include diamond_model.py:to_dot, soc_reporting_agent/backend/app.py:build_agent_analyst_text; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_dot_escape`, `append`, `join`, `len`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _lines(items, cap_n=3):
         vals = [it["value"] for it in items[:cap_n]]
@@ -334,6 +448,14 @@ def to_dot(d: dict) -> str:
         "}"
     )
 
+
+# [FYP-FUNCTION] `format_diamond` — constructs format diamond output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `d`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `append`, `get`, `join`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_diamond(d: dict) -> str:
     if not d.get("available"):

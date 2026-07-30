@@ -1,3 +1,78 @@
+# ==============================================================================
+# [FYP-FILE] File: soc_reporting_agent/backend/orchestration_service.py
+# Important dependencies: __future__, backend, datetime, typing.
+#
+# Purpose:
+#   Rule-based "Orchestration Agent" for the SOC Reporting subsystem. Given a
+#   persisted ticket record, it decides the single next safe workflow action
+#   (which agent stage should run next, or which human approval gate is
+#   blocking progress) without executing any agent itself. This subsystem's
+#   orchestration is deliberately conservative: agents only ever produce
+#   evidence, analysts approve gates, and this module decides the next step.
+#
+# Main functionalities:
+#   - build_orchestration_decision(ticket): the CURRENT, canonical decision
+#     engine. Walks stage_workflow.STAGES in order and returns the first
+#     stage that is not yet completed/approved, using stage_workflow as the
+#     single source of truth for stage completion/lock/approval state.
+#   - can_run_agent(ticket, agent): thin re-export of stage_workflow.can_run,
+#     kept here so callers that already import orchestration_service do not
+#     need a second import for a simple "can this stage run" check.
+#   - Investigation usability / evidence-gap predicates
+#     (is_investigation_usable_for_reporting, investigation_reporting_mode,
+#     has_investigation_evidence_gap, evidence_gap_decision,
+#     evidence_gap_decision_pending) that decide whether a limited
+#     investigation result may still be carried into Reporting.
+#   - _legacy_build_orchestration_decision / _legacy_can_run_agent: an older,
+#     hand-rolled rule engine that inspects each *_result dict directly
+#     instead of going through stage_workflow. Retained in the file for
+#     reference/history only -- see "Legacy" section banner below for why it
+#     is not treated as dead code to delete.
+#
+# Inputs:
+#   - ticket: dict[str, Any] -- a persisted SOC ticket/casework record
+#     containing per-stage result payloads (parsing_result, triage_result,
+#     threat_intel_result, investigation_result, reporting_result,
+#     soc_review_result, approval_result, investigation_approval_result),
+#     correlation_recommendations, current_stage, and status.
+#
+# Outputs:
+#   - dict built by _decision(): status, agent/next_agent, next_label/label,
+#     allowed, can_continue, workflow_decision, current_stage, ticket_id,
+#     requires_human_approval, approval_gate, reason, required_inputs,
+#     missing_inputs, risk_notes, validation_status, created_at.
+#     This is the "orchestration decision" object surfaced to the dashboard
+#     as next_step / orchestration_decision_result.
+#
+# Workflow position:
+#   Runs on demand, after any stage completes or any analyst approval is
+#   recorded -- it is not itself a pipeline stage. It sits above
+#   stage_workflow.py (which owns the low-level per-stage status/lock state)
+#   and is consumed by the Flask dashboard backend and by
+#   ticket_workflow.next_agent() to answer "what should happen next for this
+#   ticket".
+#
+# Called by:
+#   - soc_reporting_agent/backend/app.py
+#     (`from backend.orchestration_service import build_orchestration_decision`,
+#     used in the `POST /api/tickets/<ticket_id>/run-next-step` route to
+#     decide and then kick off the next agent run).
+#   - soc_reporting_agent/backend/ticket_workflow.py
+#     (`next_agent()` performs a deferred/local import of
+#     build_orchestration_decision to avoid a circular import with this
+#     module at package load time).
+#
+# Calls:
+#   - soc_reporting_agent/backend/stage_workflow.py
+#     (STAGES, status, can_run, has_run, workflow_complete, status_message)
+#     -- the canonical stage-completion/lock/approval state machine.
+#
+# Key evaluator search terms:
+#   orchestration entry point, build_orchestration_decision, next step,
+#   workflow decision, stage lock, approval gate, evidence gap,
+#   run-next-step, can_run_agent.
+# ==============================================================================
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -6,21 +81,36 @@ from typing import Any
 from backend import stage_workflow
 
 
+# [FYP-SECTION] Decision vocabulary -----------------------------------------
+# These sets normalise the many different status/decision strings that
+# individual agents may write into their *_result payloads down to a small,
+# well-known vocabulary the orchestration logic can branch on safely.
 COMPLETED_STATUSES = {
     "completed", "completed_limited", "completed_with_warnings", "completed_with_evidence_gaps",
     "generated_with_warnings", "success", "passed", "ready",
 }
+# [FYP-DECISION] Investigation statuses that are "usable" for Reporting even
+# though they represent a limited/partial result (evidence gaps, missing
+# telemetry, etc.) rather than a full clean pass.
 USABLE_LIMITED_INVESTIGATION_STATUSES = {
     "completed", "completed_limited", "completed_with_warnings", "completed_with_evidence_gaps",
     "needs_more_data", "waiting_for_telemetry", "insufficient_telemetry", "needs_analyst_review",
     "partial", "partial_success",
 }
+# [FYP-DECISION] [FYP-FALLBACK] Investigation statuses that must always block
+# Reporting -- these represent true execution/context failures, not evidence
+# gaps, so there is no safe fallback content to report on.
 BLOCKING_INVESTIGATION_STATUSES = {
     "failed", "crashed", "invalid_output", "not_started", "missing_required_context",
     "execution_error", "timed_out", "timeout", "error",
 }
+# [FYP-APPROVAL] Decision values recorded by an analyst (or auto-approval
+# short-circuits) that count as "approved" for a given gate.
 APPROVED_DECISIONS = {"approved", "approve", "completed", "continue_to_reporting"}
 
+# [FYP-UI] Human-readable labels for each agent, used for activity-log
+# messages and any UI surface that still keys off agent name rather than
+# stage_workflow.STAGES[*]["label"].
 AGENT_LABELS = {
     "parsing": "Parsing & Normalisation",
     "triage": "Triage Agent",
@@ -31,6 +121,9 @@ AGENT_LABELS = {
 }
 
 
+# [FYP-CONFIG] Maps agent name -> the stage_workflow.STAGES "key" for that
+# agent, used to fill in current_stage when a decision does not explicitly
+# set one.
 _STAGE_BY_AGENT = {
     "parsing": "parsing_normalisation",
     "triage": "triage",
@@ -41,30 +134,54 @@ _STAGE_BY_AGENT = {
 
 
 def now_iso() -> str:
+    """[FYP-FUNCTION] Current UTC timestamp, ISO-8601. Used to stamp decision objects."""
     return datetime.now(timezone.utc).isoformat()
 
 
 def norm(value: Any) -> str:
+    """[FYP-FUNCTION] Normalise any value to a lowercase, underscore-separated string.
+
+    Used throughout this module to make status/decision string comparisons
+    resilient to case and spacing differences between what agents write
+    ("Needs More Data") and what this module compares against
+    ("needs_more_data").
+    """
     return str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
 
 
 def _result(ticket: dict[str, Any], key: str) -> dict[str, Any]:
+    """[FYP-FUNCTION] Safely read a nested result dict off a ticket (never raises, never returns non-dict)."""
     value = ticket.get(key) or {}
     return value if isinstance(value, dict) else {}
 
 
 def _has_result(result: dict[str, Any]) -> bool:
+    """[FYP-FUNCTION] True when a stage result dict exists and is non-empty."""
     return bool(result and isinstance(result, dict))
 
 
 def _first(*values: Any, default: Any = None) -> Any:
+    """[FYP-FUNCTION] Return the first "meaningful" value (not None/""/[]/{}) among values, else default."""
     for value in values:
         if value not in (None, "", [], {}):
             return value
     return default
 
 
+# [FYP-SECTION] Investigation usability & evidence-gap helpers --------------
+# These helpers decide whether a (possibly limited) Investigation result can
+# still be carried into Reporting, and whether the analyst needs to make an
+# explicit "continue with limitations vs. return to Triage" decision first.
+
 def _has_usable_investigation_content(result: dict[str, Any]) -> bool:
+    """[FYP-FUNCTION] Check whether an investigation_result carries any reportable content.
+
+    Params: result -- investigation_result dict (source: ticket["investigation_result"]).
+    Returns: True if any summary/classification field OR any evidence-list
+    field (findings, missing_evidence, iocs, ...) is populated.
+    Used by: is_investigation_usable_for_reporting (below) as the fallback
+    check once status alone is not conclusive.
+    """
     if not _has_result(result):
         return False
     for key in ("summary", "investigation_summary", "classification", "likely_scenario", "recommended_next_action"):
@@ -77,6 +194,17 @@ def _has_usable_investigation_content(result: dict[str, Any]) -> bool:
 
 
 def is_investigation_usable_for_reporting(result: dict[str, Any]) -> bool:
+    """[FYP-FUNCTION] [FYP-DECISION] Decide whether Reporting may run on this Investigation result.
+
+    Params: result -- investigation_result dict.
+    Returns: bool. True unless the status is a true execution/context
+    failure (BLOCKING_INVESTIGATION_STATUSES) or the result has no usable
+    content at all. A "limited" investigation (missing telemetry, partial
+    evidence, etc.) is still usable -- Reporting documents the gap instead of
+    being blocked outright.
+    Called by: build_orchestration_decision / _legacy_build_orchestration_decision
+    (this file), backend/ticket_workflow.py, backend/reporting_context_resolver.py.
+    """
     if not _has_result(result):
         return False
     status = norm(result.get("status") or result.get("report_status") or result.get("workflow_decision"))
@@ -88,6 +216,7 @@ def is_investigation_usable_for_reporting(result: dict[str, Any]) -> bool:
 
 
 def investigation_reporting_mode(result: dict[str, Any]) -> str:
+    """[FYP-FUNCTION] [FYP-DECISION] Return "with_limitations" or "standard" reporting mode for an investigation result."""
     status = norm(result.get("status") or result.get("report_status"))
     if status in {
         "completed_limited", "completed_with_warnings", "completed_with_evidence_gaps", "needs_more_data",
@@ -98,6 +227,7 @@ def investigation_reporting_mode(result: dict[str, Any]) -> str:
 
 
 def has_investigation_evidence_gap(result: dict[str, Any]) -> bool:
+    """[FYP-FUNCTION] [FYP-DECISION] True when Investigation flagged missing evidence/telemetry that needs an analyst decision."""
     if not _has_result(result):
         return False
     status = norm(result.get("status") or result.get("report_status") or result.get("workflow_decision"))
@@ -110,11 +240,13 @@ def has_investigation_evidence_gap(result: dict[str, Any]) -> bool:
 
 
 def evidence_gap_decision(ticket: dict[str, Any]) -> str:
+    """[FYP-FUNCTION] Read the analyst's recorded evidence-gap decision ("continue_to_reporting" / "return_to_triage")."""
     approval = _result(ticket, "investigation_approval_result")
     return norm(approval.get("evidence_gap_decision") or approval.get("decision"))
 
 
 def evidence_gap_decision_pending(ticket: dict[str, Any]) -> bool:
+    """[FYP-FUNCTION] [FYP-APPROVAL] True when Investigation has an evidence gap and the analyst has not yet chosen how to proceed."""
     inv = _result(ticket, "investigation_result")
     if not has_investigation_evidence_gap(inv):
         return False
@@ -123,6 +255,12 @@ def evidence_gap_decision_pending(ticket: dict[str, Any]) -> bool:
 
 
 def approval_complete(ticket: dict[str, Any], gate: str) -> bool:
+    """[FYP-FUNCTION] [FYP-APPROVAL] Check whether a named approval gate ("triage_approval", "investigation_approval", ...) is satisfied.
+
+    Params: ticket -- ticket dict; gate -- gate name (normalised internally).
+    Returns: True if the relevant approval_result/investigation_approval_result
+    dict carries a decision/approval_status/status in APPROVED_DECISIONS.
+    """
     gate_norm = norm(gate)
     if gate_norm in {"triage_approval", "approval", "analyst_approval"}:
         data = _result(ticket, "approval_result")
@@ -134,13 +272,22 @@ def approval_complete(ticket: dict[str, Any], gate: str) -> bool:
     return decision in APPROVED_DECISIONS
 
 
+# [FYP-SECTION] Triage context helpers ---------------------------------------
+
 def _triage_has_core_context(triage: dict[str, Any]) -> bool:
+    """[FYP-FUNCTION] True when Triage produced both a severity/classification AND a confidence value."""
     severity = _first(triage.get("severity"), triage.get("classification"), triage.get("priority"))
     confidence = _first(triage.get("confidence"), triage.get("confidence_level"))
     return severity not in (None, "", [], {}) and confidence not in (None, "", [], {})
 
 
 def _triage_requires_approval(triage: dict[str, Any]) -> bool:
+    """[FYP-FUNCTION] [FYP-DECISION] [FYP-APPROVAL] Decide whether this Triage result must be gated behind SOC approval.
+
+    Honours an explicit approval_required flag (bool or truthy string) from
+    the Triage output when present; otherwise falls back to a risk heuristic:
+    Critical/High severity or risk_score >= 70 requires approval.
+    """
     explicit = triage.get("approval_required")
     if isinstance(explicit, bool):
         return explicit
@@ -150,9 +297,13 @@ def _triage_requires_approval(triage: dict[str, Any]) -> bool:
     try:
         risk_score = float(triage.get("risk_score") or 0)
     except Exception:
+        # [FYP-FALLBACK] Non-numeric/missing risk_score falls back to 0 rather
+        # than raising, so a malformed Triage payload cannot crash decisioning.
         risk_score = 0
     return severity in {"Critical", "High"} or risk_score >= 70
 
+
+# [FYP-SECTION] Decision object builder --------------------------------------
 
 def _decision(
     ticket: dict[str, Any],
@@ -170,6 +321,18 @@ def _decision(
     risk_notes: list[str] | None = None,
     validation_status: str = "passed",
 ) -> dict[str, Any]:
+    """[FYP-FUNCTION] Build the single canonical "orchestration decision" dict.
+
+    Params: ticket plus keyword-only fields describing the decision (see
+    module header "Outputs" for the full field list and their meaning).
+    Returns: dict consumed by the dashboard as next_step /
+    orchestration_decision_result. Every branch of
+    build_orchestration_decision / _legacy_build_orchestration_decision
+    funnels through this single builder so the output shape stays
+    consistent, including the derived can_continue flag and the
+    validation_status auto-downgrade to "blocked" when missing_inputs is set.
+    Called by: build_orchestration_decision, _legacy_build_orchestration_decision.
+    """
     next_agent = norm(next_agent) or None
     decision = {
         "status": "completed",
@@ -194,7 +357,10 @@ def _decision(
     return decision
 
 
+# [FYP-SECTION] Correlation / incident-grouping helpers ----------------------
+
 def pending_correlation_recommendations(ticket: dict[str, Any]) -> list[dict[str, Any]]:
+    """[FYP-FUNCTION] Return correlation_recommendations entries still awaiting analyst review ("pending" status)."""
     items = ticket.get("correlation_recommendations") or []
     if not isinstance(items, list):
         return []
@@ -202,15 +368,39 @@ def pending_correlation_recommendations(ticket: dict[str, Any]) -> list[dict[str
 
 
 def _correlation_has_result(ticket: dict[str, Any]) -> bool:
+    """[FYP-FUNCTION] True when a correlation_result has been written with a non-empty status. (Unused by the active decision path; retained for the legacy engine below.)"""
     result = _result(ticket, "correlation_result")
     return bool(result and result.get("status") not in {"", None})
 
+
+# [FYP-SECTION] Legacy rule-based decision engine (reference only) ----------
+# The two functions below (_legacy_build_orchestration_decision,
+# _legacy_can_run_agent) are the ORIGINAL orchestration rule engine. They
+# inspect each *_result dict directly rather than delegating to
+# stage_workflow.py's canonical per-stage state machine.
+#
+# [FYP-USED-BY] No direct caller confidently identified: a repo-wide search
+# found no import or call site for either function outside this file. The
+# active decision path is build_orchestration_decision() further below,
+# which is driven by stage_workflow.STAGES. These are kept only as
+# documented reference/history of the pre-stage_workflow rule set and are
+# NOT part of the live request path.
 
 def _legacy_build_orchestration_decision(ticket: dict[str, Any]) -> dict[str, Any]:
     """Return the next workflow decision for one SOC ticket.
 
     The Orchestration Agent is deliberately rule-based. Agents provide evidence,
     analysts approve gates, and this service decides only the safe next step.
+
+    [FYP-FUNCTION] Legacy (superseded) orchestration rule engine.
+    Params: ticket -- ticket dict (same shape as build_orchestration_decision).
+    Returns: decision dict via _decision(), branching directly over each
+    *_result field instead of stage_workflow state.
+    Called by: not called anywhere in this repository (see section note above).
+    Calls: _decision, _has_result, pending_correlation_recommendations,
+    _triage_has_core_context, _triage_requires_approval, approval_complete,
+    is_investigation_usable_for_reporting, investigation_reporting_mode,
+    evidence_gap_decision_pending.
     """
     ticket = ticket or {}
     stage = norm(ticket.get("current_stage"))
@@ -443,6 +633,13 @@ def _legacy_build_orchestration_decision(ticket: dict[str, Any]) -> dict[str, An
 
 
 def _legacy_can_run_agent(ticket: dict[str, Any], agent: str) -> tuple[bool, str]:
+    """[FYP-FUNCTION] Legacy (superseded) per-agent eligibility check, mirroring _legacy_build_orchestration_decision's rules.
+
+    Params: ticket -- ticket dict; agent -- agent name to check.
+    Returns: (allowed: bool, reason: str).
+    Called by: not called anywhere in this repository (see section note above);
+    superseded by stage_workflow.can_run / can_run_agent() below.
+    """
     agent_norm = norm(agent)
     if agent_norm == "correlation":
         return True, "Correlation can run to recommend alert grouping."
@@ -499,8 +696,40 @@ def _legacy_can_run_agent(ticket: dict[str, Any], agent: str) -> tuple[bool, str
     return False, "Unknown agent."
 
 
+# [FYP-SECTION] Canonical stage_workflow-driven decision engine (ACTIVE) -----
+# This is the live decision path used by the dashboard. Unlike the legacy
+# engine above, it does not re-derive stage completion/approval logic itself;
+# it delegates entirely to stage_workflow.py (STAGES order, status(), and
+# can_run()) so there is exactly one source of truth for stage lock/approval
+# state shared between the orchestration decision, the agent panel, and the
+# workflow-steps UI.
+
 def build_orchestration_decision(ticket: dict[str, Any]) -> dict[str, Any]:
-    """Return the next allowed action from the canonical persisted stage state."""
+    """[FYP-FUNCTION] [FYP-ENTRY-POINT] [FYP-EVALUATOR] Return the next allowed action from the canonical persisted stage state.
+
+    Params: ticket -- persisted ticket dict (source: CASEWORK.get_ticket() in
+    backend/app.py, i.e. Postgres-backed casework storage).
+    Returns: decision dict via _decision() -- see module header "Outputs".
+    Side effects: none (pure function over the ticket dict); the caller is
+    responsible for persisting the decision if desired.
+    Called by:
+      - backend/app.py, route `POST /api/tickets/<ticket_id>/run-next-step`
+        (THE orchestration entry point exercised by the dashboard's
+        "Run Next Step" action).
+      - backend/ticket_workflow.py `next_agent()` (deferred import).
+    Calls: stage_workflow.workflow_complete, stage_workflow.STAGES,
+    stage_workflow.status, stage_workflow.can_run, stage_workflow.has_run,
+    stage_workflow.status_message, _decision.
+    Decision logic:
+      1. If every stage is complete/approved -> "workflow_completed".
+      2. Otherwise, walk STAGES in fixed pipeline order. For the first stage
+         not yet completed/approved:
+         - "pending_approval" -> block and report the approval gate.
+         - can_run() True -> allow running (labelled "Re-run" if has_run()
+           is already True, i.e. this is a rerun after an upstream change).
+         - otherwise -> blocked, using stage_workflow.status_message() (or
+           the can_run() reason as a fallback) to explain why it is locked.
+    """
     ticket = ticket or {}
     if stage_workflow.workflow_complete(ticket):
         return _decision(
@@ -568,4 +797,14 @@ def build_orchestration_decision(ticket: dict[str, Any]) -> dict[str, Any]:
 
 
 def can_run_agent(ticket: dict[str, Any], agent: str) -> tuple[bool, str]:
+    """[FYP-FUNCTION] [FYP-EVALUATOR] [FYP-STAGE-LOCK] Public "can this stage run right now" check.
+
+    Params: ticket -- ticket dict; agent -- stage/agent identifier.
+    Returns: (allowed, reason) tuple, delegated straight to
+    stage_workflow.can_run so this module and stage_workflow never disagree
+    about stage eligibility.
+    Called by: backend/app.py (agent-run eligibility checks alongside the
+    AGENT_ADAPTERS dispatch table).
+    Calls: stage_workflow.can_run.
+    """
     return stage_workflow.can_run(ticket, agent)

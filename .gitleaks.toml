@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# [FYP-SECTION] EXECUTABLE / BEHAVIOURAL CONFIGURATION
+# =============================================================================
+# File: .gitleaks.toml
+# Purpose: This file configures repository secret-detection rules and allowlists.
+# Main functionality: Supplies runtime, dependency, security, workflow, or
+#   playbook values consumed by the application/framework named below.
+# Inputs: Maintainer-controlled configuration values; no live secret values
+#   are documented or introduced by this overview.
+# Outputs: Configuration read by the framework, installer, CI job, or Aegis
+#   component; it does not independently execute a workflow stage.
+# Workflow position: Supporting configuration for SOC analysis support.
+# Important dependencies: The consuming application/framework and the exact
+#   keys or steps declared in this file.
+# Error and fallback behaviour: Invalid values fail in the consuming parser,
+#   installer, workflow, or framework; fallback behaviour belongs to that caller.
+# Key evaluator search terms: .gitleaks.toml, [FYP-CONFIG], [FYP-FILE].
+# =============================================================================
+# [FYP-CONFIG] Purpose: Gitleaks ruleset + allowlist controlling the secrets scan.
+# Verified via Grep: consumed by .github/workflows/secrets-scan.yml, which sets
+# GITLEAKS_CONFIG: .gitleaks.toml for the gitleaks/gitleaks-action@v2 step.
 # ─────────────────────────────────────────────────────────────────────────────
 # Gitleaks config for the SOC platform repo (used by .github/workflows/secrets-scan.yml)
 #

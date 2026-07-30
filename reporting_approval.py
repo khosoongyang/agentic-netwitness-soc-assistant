@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, hashlib, json, pathlib, soc_workflow, typing, workflow_state_store.
+# =============================================================================
+# File: reporting_approval.py
+# Purpose: This module validates and records human approval decisions for reporting outputs.
+# Main functionality: ReportValidationError, _resolve_trusted_path, _canonical_manifest_bytes, _verify_candidate_manifest, approve_reporting_candidate, resolve_approved_report_file.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis reporting component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, hashlib, json, pathlib, soc_workflow, typing, workflow_state_store.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: ReportValidationError, _resolve_trusted_path, _canonical_manifest_bytes, _verify_candidate_manifest, approve_reporting_candidate, resolve_approved_report_file, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 reporting_approval.py — the ONLY caller of
 workflow_state_store.commit_reporting_approval(), and the sole place that
@@ -27,6 +49,16 @@ import workflow_state_store as wss
 from soc_workflow import _TRUSTED_OUTPUT_ROOT, reporting_attempt_dir
 
 
+# =============================================================================
+# [FYP-SECTION] REPORTING EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-CLASS] `ReportValidationError` — owns ReportValidationError state or behaviour for the reporting component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include reporting_approval.py:_resolve_trusted_path, reporting_approval.py:_verify_candidate_manifest, reporting_approval.py:approve_reporting_candidate.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class ReportValidationError(RuntimeError):
     """Raised by approve_reporting_candidate() when the candidate set
     cannot be approved — identity mismatch, a file hash that no longer
@@ -34,6 +66,14 @@ class ReportValidationError(RuntimeError):
     "error". Carries a specific, analyst-facing reason; never a generic
     "something is wrong"."""
 
+
+# [FYP-FUNCTION] `_resolve_trusted_path` — implements the resolve trusted path operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `raw_path`, `attempt_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_approval.py:_verify_candidate_manifest, reporting_approval.py:build_export_all_zip, reporting_approval.py:resolve_approved_report_file; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `ReportValidationError`, `is_absolute`, `is_file`, `resolve`, `startswith`, `str`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def _resolve_trusted_path(raw_path: str, *, attempt_dir: Path) -> Path:
     """Every path referenced by a candidate manifest is validated before
@@ -55,10 +95,26 @@ def _resolve_trusted_path(raw_path: str, *, attempt_dir: Path) -> Path:
     return resolved
 
 
+# [FYP-FUNCTION] `_canonical_manifest_bytes` — implements the canonical manifest bytes operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `manifest_without_hash`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_approval.py:_verify_candidate_manifest, soc_reporting_agent/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `encode`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _canonical_manifest_bytes(manifest_without_hash: dict[str, Any]) -> bytes:
     return json.dumps(manifest_without_hash, sort_keys=True, separators=(",", ":"),
                       ensure_ascii=False).encode("utf-8")
 
+
+# [FYP-FUNCTION] `_verify_candidate_manifest` — implements the verify candidate manifest operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `candidate_manifest_path`, `incident_id`, `run_id`, `expected_reporting_attempt`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_approval.py:approve_reporting_candidate, reporting_approval.py:build_export_all_zip; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ReportValidationError`, `_canonical_manifest_bytes`, `_resolve_trusted_path`, `get`, `hexdigest`, `items`, `join`, `loads`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _verify_candidate_manifest(candidate_manifest_path: str, *, incident_id: str,
                                run_id: str, expected_reporting_attempt: int) -> dict[str, Any]:
@@ -120,6 +176,14 @@ def _verify_candidate_manifest(candidate_manifest_path: str, *, incident_id: str
 
     return manifest
 
+
+# [FYP-FUNCTION] `approve_reporting_candidate` — applies the human-in-the-loop approve reporting candidate decision and returns or persists the resulting workflow state.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `analyst`, `comments`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, tests/test_reporting_stage.py:test_approve_reporting_candidate_end_to_end, tests/test_reporting_stage.py:test_approve_reporting_candidate_fails_on_identity_mismatch; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ReportValidationError`, `_verify_candidate_manifest`, `commit_reporting_approval`, `get`, `get_state`, `int`, `len`, `loads`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def approve_reporting_candidate(incident_id: str, run_id: str, *, analyst: str,
                                 comments: str = "") -> dict[str, Any]:
@@ -207,6 +271,14 @@ DISPLAY_TITLES = {
 }
 
 
+# [FYP-FUNCTION] `resolve_approved_report_file` — implements the resolve approved report file operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `report_type`, `file_type`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_resolve_trusted_path`, `get`, `get_latest_approved_reporting_set`, `hexdigest`, `loads`, `next`, `read_bytes`, `read_text`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def resolve_approved_report_file(incident_id: str, run_id: str, report_type: str,
                                  file_type: str) -> tuple[bytes, str] | None:
     """Resolves and hash-verifies ONE file (docx or pdf) from the most
@@ -243,6 +315,14 @@ def resolve_approved_report_file(incident_id: str, run_id: str, report_type: str
     except Exception:
         return None
 
+
+# [FYP-FUNCTION] `build_export_all_zip` — constructs build export all zip output for the next reporting consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `BytesIO`, `ReportValidationError`, `ZipFile`, `_resolve_trusted_path`, `_verify_candidate_manifest`, `append`, `dumps`, `get`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def build_export_all_zip(incident_id: str, run_id: str) -> dict[str, Any]:
     """Builds the Export All ZIP in-process, purely from the approved

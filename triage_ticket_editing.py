@@ -1,3 +1,60 @@
+# ==============================================================================
+# [FYP-FILE] triage_ticket_editing.py
+# Important dependencies: __future__, datetime, hashlib, json, pathlib, report_editing, reporting, soc_workflow.
+# Key evaluator search terms: _txt, _joined, _threat_intel_blocks, build_ticket_blocks, _content_signature, ticket_row_state, [FYP-FUNCTION].
+# ------------------------------------------------------------------------------
+# File: triage_ticket_editing.py (repo root)
+# Purpose: Analyst "Open & Edit / Export Word / Export PDF" layer for the
+#   TRIAGE stage's ticket (the triage-side twin of report_editing.py). Pure
+#   data-transform / export plumbing — NO severity, confidence, risk or
+#   verdict calculation happens in this file; every rating field it renders
+#   (classification, risk_rating dimensions, MITRE tactic/technique) is read
+#   verbatim from an already-persisted triage ticket dict produced upstream
+#   by soc_triage_agent.TriageAgent.triage() (see soc_triage_agent.py).
+# Main functionalities:
+#   - build_ticket_blocks() / _threat_intel_blocks(): reproduce
+#     soc_triage_agent.format_ticket_display()'s section order/wording as
+#     structured "blocks" (the same block schema report_editing.py /
+#     reporting.editable_reports use), plus a Threat Intelligence
+#     Enrichment section sourced from the persisted threat_intel_result_json.
+#   - ticket_row_state(): merges the AI-generated ticket with any saved
+#     analyst edit into the single dict the header actions + editor UI read
+#     (Not generated / Draft ready / Approved / Edited / Outdated).
+#   - save_report_edit() / discard_report_edit(): persist/revert an
+#     analyst's manual edits to the ticket text.
+#   - export_report(): renders the current (edited-or-generated) ticket
+#     content to a .docx or .pdf file via soc_reporting_agent's stateless
+#     block renderers, so a ticket and a report look like one document
+#     family.
+# Inputs: ticket (dict, from a persisted triage_result["ticket"]),
+#   threat_intel (dict, from a persisted threat_intel_result_json) — never
+#   re-runs triage or enrichment itself, purely renders/edits/exports
+#   already-computed results.
+# Outputs: build_ticket_blocks() -> list[block dict]; ticket_row_state() ->
+#   {status, blocks, has_edits, is_stale, ...}; export_report() -> (bytes,
+#   filename).
+# Workflow position: Triage stage, downstream of TriageAgent.triage() and
+#   (optionally) the Threat Intelligence Enrichment stage — analyst-facing
+#   editing/export layer, not part of the triage decision pipeline itself.
+# Called by [FYP-USED-BY]: app.py (`import triage_ticket_editing`; the case
+#   page's Triage stage header actions call ticket_row_state(),
+#   save_report_edit(), discard_report_edit() and export_report() via the
+#   shared block editor — confirmed via grep around app.py's "Open & Edit"
+#   ticket UI).
+# Calls [FYP-CALLS]: workflow_state_store (wss — report_edits table
+#   read/write, activity log), report_editing.STATUS_TONES (re-exported
+#   status-pill vocabulary, shared with the Reports tab),
+#   reporting.editable_reports.render_blocks_to_docx/render_blocks_to_pdf
+#   (soc_reporting_agent's stateless document renderers — the only two
+#   things this module calls from the Reporting agent's package),
+#   soc_workflow._artifact_dir (run-scoped export directory).
+# Key evaluator search terms [FYP-EVALUATOR]: none — this file has no
+#   severity/confidence/verdict logic to search for; see alert_triage.py
+#   (Severity Calculation/Risk Scoring), soc_triage_agent.py (the LLM calls
+#   that actually produce the ticket's classification/risk rating), and
+#   triage_verdict.py/final_verdict.py (the deterministic capstone verdicts)
+#   for that.
+# ==============================================================================
 """
 triage_ticket_editing.py — analyst "Open & Edit / Export Word / Export PDF"
 layer for the TRIAGE stage's ticket, mirroring report_editing.py.
@@ -54,9 +111,16 @@ TICKET_DESCRIPTION = (
 _DASH = "—"
 
 
+# =============================================================================
+# [FYP-SECTION] TRIAGE EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+
 def _txt(value: Any) -> str:
-    """Plain-text cell/paragraph value. The docx/pdf block renderers write
-    text verbatim (no markdown pass), so nothing here may carry ** or `."""
+    """[FYP-FUNCTION] Plain-text cell/paragraph value. The docx/pdf block
+    renderers write text verbatim (no markdown pass), so nothing here may
+    carry ** or `. None or a blank string both render as the em-dash
+    placeholder (_DASH) rather than an empty cell."""
     if value is None:
         return _DASH
     text = str(value).strip()
@@ -64,6 +128,10 @@ def _txt(value: Any) -> str:
 
 
 def _joined(values: Any) -> str:
+    """[FYP-FUNCTION] Comma-joins a list field (or passes through a bare
+    string) for a single-cell display; empty/blank entries are dropped and
+    an all-empty result falls back to _DASH, same placeholder convention as
+    _txt()."""
     if not values:
         return _DASH
     if isinstance(values, str):
@@ -74,6 +142,14 @@ def _joined(values: Any) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 # Ticket → blocks (same section order/wording as format_ticket_display)
 # ══════════════════════════════════════════════════════════════════════════
+
+# [FYP-FUNCTION] `_threat_intel_blocks` — implements the threat intel blocks operation used by the surrounding triage workflow.
+# [FYP-INPUT] Parameters: `ti`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include triage_ticket_editing.py:build_ticket_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_joined`, `_txt`, `append`, `get`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _threat_intel_blocks(ti: dict[str, Any]) -> list[dict[str, Any]]:
     """The enrichment section, sourced from the SAME persisted
@@ -190,6 +266,14 @@ def _threat_intel_blocks(ti: dict[str, Any]) -> list[dict[str, Any]]:
     return blocks
 
 
+# [FYP-FUNCTION] `build_ticket_blocks` — constructs build ticket blocks output for the next triage consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `ticket`, `threat_intel`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include triage_ticket_editing.py:ticket_row_state; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_joined`, `_threat_intel_blocks`, `_txt`, `get`, `str`, `strip`, `upper`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_ticket_blocks(ticket: dict[str, Any],
                         threat_intel: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Structured-block twin of soc_triage_agent.format_ticket_display() —
@@ -234,6 +318,14 @@ def build_ticket_blocks(ticket: dict[str, Any],
     return blocks
 
 
+# [FYP-FUNCTION] `_content_signature` — implements the content signature operation used by the surrounding triage workflow.
+# [FYP-INPUT] Parameters: `blocks`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include triage_ticket_editing.py:ticket_row_state; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `encode`, `hexdigest`, `sha256`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _content_signature(blocks: list[dict[str, Any]]) -> str:
     """Stands in for the Reporting side's report_set_id: a hash of the
     AI-generated ticket content, so a re-triage or a fresh enrichment run
@@ -246,6 +338,14 @@ def _content_signature(blocks: list[dict[str, Any]]) -> str:
 # ══════════════════════════════════════════════════════════════════════════
 # Row state / edit persistence (drop-in shaped like report_editing.py)
 # ══════════════════════════════════════════════════════════════════════════
+
+# [FYP-FUNCTION] `ticket_row_state` — implements the ticket row state operation used by the surrounding triage workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `ticket`, `threat_intel`, `triage_status`, `triage_updated_at`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_content_signature`, `bool`, `build_ticket_blocks`, `get`, `get_report_edit`, `loads`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def ticket_row_state(incident_id: str, run_id: str, *, ticket: dict[str, Any],
                      threat_intel: dict[str, Any] | None,
@@ -303,6 +403,14 @@ def ticket_row_state(incident_id: str, run_id: str, *, ticket: dict[str, Any],
     }
 
 
+# [FYP-FUNCTION] `save_report_edit` — persists or updates save report edit state used by the surrounding triage workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `report_type`, `blocks`, `analyst`, `original_blocks`, `source_report_set_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_render_report_editor; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `record_activity`, `upsert_report_edit`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def save_report_edit(incident_id: str, run_id: str, report_type: str,
                      blocks: list[dict[str, Any]], analyst: str,
                      *, original_blocks: list[dict[str, Any]],
@@ -320,6 +428,14 @@ def save_report_edit(incident_id: str, run_id: str, report_type: str,
     return row
 
 
+# [FYP-FUNCTION] `discard_report_edit` — implements the discard report edit operation used by the surrounding triage workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `report_type`, `analyst`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_report_editor, app.py:_render_reports_workspace; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `discard_report_edit`, `record_activity`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def discard_report_edit(incident_id: str, run_id: str, report_type: str,
                         analyst: str) -> None:
     """"Replace with latest AI version" — drops the saved edit so the ticket
@@ -330,12 +446,28 @@ def discard_report_edit(incident_id: str, run_id: str, report_type: str,
         metadata={"report_type": report_type})
 
 
+# [FYP-FUNCTION] `_ticket_export_dir` — implements the ticket export dir operation used by the surrounding triage workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include triage_ticket_editing.py:export_report; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_run_artifact_dir`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _ticket_export_dir(incident_id: str, run_id: str) -> Path:
     """A triage-owned leaf under the same run-scoped artifact root the rest
     of the workflow writes to — deliberately outside the reporting/ subtree
     so it can never collide with a hash-pinned candidate export set."""
     return _run_artifact_dir(incident_id, run_id) / "triage" / "ticket_exports"
 
+
+# [FYP-FUNCTION] `export_report` — constructs export report output for the next triage consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `report_type`, `file_type`, `row_state`, `reporting_stage_attempt`, `analyst`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_cached_report_export_bytes; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `FileNotFoundError`, `ValueError`, `_ticket_export_dir`, `get`, `mkdir`, `now`, `read_bytes`, `record_activity`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def export_report(incident_id: str, run_id: str, report_type: str, file_type: str,
                   *, row_state: dict[str, Any], reporting_stage_attempt: int = 1,

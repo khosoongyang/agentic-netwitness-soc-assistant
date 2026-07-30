@@ -1,3 +1,26 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# [FYP-SECTION] EXECUTABLE / BEHAVIOURAL CONFIGURATION
+# =============================================================================
+# File: soc_reporting_agent/requirements.txt
+# Purpose: This file declares the Python dependencies installed for this application component.
+# Main functionality: Supplies runtime, dependency, security, workflow, or
+#   playbook values consumed by the application/framework named below.
+# Inputs: Maintainer-controlled configuration values; no live secret values
+#   are documented or introduced by this overview.
+# Outputs: Configuration read by the framework, installer, CI job, or Aegis
+#   component; it does not independently execute a workflow stage.
+# Workflow position: Supporting configuration for SOC analysis support.
+# Important dependencies: The consuming application/framework and the exact
+#   keys or steps declared in this file.
+# Error and fallback behaviour: Invalid values fail in the consuming parser,
+#   installer, workflow, or framework; fallback behaviour belongs to that caller.
+# Key evaluator search terms: requirements.txt, [FYP-CONFIG], [FYP-FILE].
+# =============================================================================
+# [FYP-CONFIG] Purpose: pinned Python dependencies for the standalone
+# soc_reporting_agent Flask service (parsing/normalisation, RAG context,
+# report generation/export). Consumed by `pip install -r requirements.txt`
+# when running soc_reporting_agent independently of the root app.
 flask>=3.0.0
 python-dotenv>=1.0.0
 requests>=2.31.0

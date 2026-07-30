@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, case_view, hashlib, json, pathlib, pytest, reporting_approval, soc_workflow.
+# =============================================================================
+# File: tests/test_reporting_stage.py
+# Purpose: This module implements test and validation behaviour for test reporting stage.
+# Main functionality: _isolated_db, _isolated_artifact_root, _run_awaiting_reporting_approval, _write_minimal_docx, _write_minimal_pdf, _build_candidate_set.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis test and validation component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, case_view, hashlib, json, pathlib, pytest, reporting_approval, soc_workflow.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _isolated_db, _isolated_artifact_root, _run_awaiting_reporting_approval, _write_minimal_docx, _write_minimal_pdf, _build_candidate_set, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import hashlib
@@ -12,11 +34,31 @@ import reporting_approval as ra
 import case_view as cv
 
 
+# =============================================================================
+# [FYP-SECTION] TEST SETUP, FIXTURES, AND ASSERTIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_isolated_db` — implements the isolated db operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `tmp_path`, `monkeypatch`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `db_init`, `setattr`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 @pytest.fixture(autouse=True)
 def _isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(wss, "DB_FILE", tmp_path / "reporting.db")
     wss.db_init()
 
+
+# [FYP-FUNCTION] `_isolated_artifact_root` — implements the isolated artifact root operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `tmp_path`, `monkeypatch`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `setattr`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 @pytest.fixture(autouse=True)
 def _isolated_artifact_root(tmp_path, monkeypatch):
@@ -28,6 +70,14 @@ def _isolated_artifact_root(tmp_path, monkeypatch):
     monkeypatch.setattr(ra, "_TRUSTED_OUTPUT_ROOT", trusted_root)
     return trusted_root
 
+
+# [FYP-FUNCTION] `_run_awaiting_reporting_approval` — orchestrates the run awaiting reporting approval entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tests/test_reporting_stage.py:test_approve_reporting_candidate_end_to_end, tests/test_reporting_stage.py:test_approve_reporting_candidate_fails_on_identity_mismatch, tests/test_reporting_stage.py:test_approve_reporting_candidate_fails_when_docx_tampered_after_generation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_guarded_update`, `start_run`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _run_awaiting_reporting_approval(incident_id: str = "INC-1") -> str:
     run_id = wss.start_run(incident_id)
@@ -42,6 +92,14 @@ def _run_awaiting_reporting_approval(incident_id: str = "INC-1") -> str:
     return run_id
 
 
+# [FYP-FUNCTION] `_write_minimal_docx` — persists or updates write minimal docx state used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include tests/test_reporting_stage.py:_build_candidate_set; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Document`, `add_paragraph`, `mkdir`, `save`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _write_minimal_docx(path: Path) -> None:
     from docx import Document
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -49,6 +107,14 @@ def _write_minimal_docx(path: Path) -> None:
     doc.add_paragraph("Test report content.")
     doc.save(str(path))
 
+
+# [FYP-FUNCTION] `_write_minimal_pdf` — persists or updates write minimal pdf state used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include tests/test_reporting_stage.py:_build_candidate_set; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Paragraph`, `SimpleDocTemplate`, `build`, `getSampleStyleSheet`, `mkdir`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _write_minimal_pdf(path: Path) -> None:
     from reportlab.lib.pagesizes import A4
@@ -63,6 +129,14 @@ def _write_minimal_pdf(path: Path) -> None:
 _ALL_CORE_REPORT_TYPES = ("executive_summary", "technical_findings",
                          "soc_analyst_review", "final_incident_report")
 
+
+# [FYP-FUNCTION] `_build_candidate_set` — constructs build candidate set output for the next test and validation consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `attempt`, `trusted_root`, `report_types`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tests/test_reporting_stage.py:test_approve_reporting_candidate_end_to_end, tests/test_reporting_stage.py:test_approve_reporting_candidate_fails_on_identity_mismatch, tests/test_reporting_stage.py:test_approve_reporting_candidate_fails_when_docx_tampered_after_generation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `_write_minimal_docx`, `_write_minimal_pdf`, `candidate_manifest_path`, `confirmed_dir`, `dumps`, `exports_dir`, `finalize_candidate_manifest`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _build_candidate_set(incident_id: str, run_id: str, attempt: int, trusted_root: Path,
                          *, report_types=_ALL_CORE_REPORT_TYPES) -> tuple[Path, dict]:
@@ -111,6 +185,14 @@ def _build_candidate_set(incident_id: str, run_id: str, attempt: int, trusted_ro
     return er.candidate_manifest_path(output_dir, incident_id), candidate
 
 
+# [FYP-FUNCTION] `_approve_via_state` — applies the human-in-the-loop approve via state decision and returns or persists the resulting workflow state.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `attempt`, `candidate_manifest_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include tests/test_reporting_stage.py:test_approve_reporting_candidate_end_to_end, tests/test_reporting_stage.py:test_approve_reporting_candidate_fails_on_identity_mismatch, tests/test_reporting_stage.py:test_approve_reporting_candidate_fails_when_docx_tampered_after_generation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_guarded_update`, `dumps`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _approve_via_state(incident_id: str, run_id: str, attempt: int,
                        candidate_manifest_path: Path) -> None:
     """Stamps reporting_result_json the way run_reporting_stage() would,
@@ -126,6 +208,14 @@ def _approve_via_state(incident_id: str, run_id: str, attempt: int,
         "approval_stage": "reporting",
     })
 
+
+# [FYP-FUNCTION] `test_run_scoped_handoff_includes_threat_intel_in_reporting_inputs` — verifies run scoped handoff includes threat intel in reporting inputs behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: `tmp_path`, `monkeypatch`, `_isolated_artifact_root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `Path`, `dumps`, `handoff_to_reporting`, `loads`, `mkdir`, `read_text`, `reporting_attempt_dir`, `setattr`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_run_scoped_handoff_includes_threat_intel_in_reporting_inputs(
         tmp_path, monkeypatch, _isolated_artifact_root):
@@ -177,6 +267,14 @@ def test_run_scoped_handoff_includes_threat_intel_in_reporting_inputs(
 # workflow_state_store.py — durable approval binding
 # ══════════════════════════════════════════════════════════════════════
 
+# [FYP-FUNCTION] `test_commit_reporting_approval_is_only_approve_reporting_workflow_status_setter` — verifies commit reporting approval is only approve reporting workflow status setter behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_run_awaiting_reporting_approval`, `commit_reporting_approval`, `get_state`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_commit_reporting_approval_is_only_approve_reporting_workflow_status_setter():
     run_id = _run_awaiting_reporting_approval()
     state = wss.get_state("INC-1")
@@ -189,6 +287,14 @@ def test_commit_reporting_approval_is_only_approve_reporting_workflow_status_set
     assert state["reporting_status"] == "Approved"
     assert state["workflow_status"] == "Complete"
 
+
+# [FYP-FUNCTION] `test_commit_reporting_approval_fails_when_reporting_result_json_changed` — verifies commit reporting approval fails when reporting result json changed behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_guarded_update`, `_run_awaiting_reporting_approval`, `commit_reporting_approval`, `dumps`, `get_state`, `raises`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_commit_reporting_approval_fails_when_reporting_result_json_changed():
     run_id = _run_awaiting_reporting_approval()
@@ -204,6 +310,14 @@ def test_commit_reporting_approval_fails_when_reporting_result_json_changed():
             metadata={}, approved_by="analyst")
 
 
+# [FYP-FUNCTION] `test_commit_reporting_approval_fails_when_attempt_changed` — verifies commit reporting approval fails when attempt changed behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_run_awaiting_reporting_approval`, `commit_reporting_approval`, `get_state`, `raises`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_commit_reporting_approval_fails_when_attempt_changed():
     run_id = _run_awaiting_reporting_approval()
     state = wss.get_state("INC-1")
@@ -213,6 +327,14 @@ def test_commit_reporting_approval_fails_when_attempt_changed():
             expected_reporting_result_json=state["reporting_result_json"],
             metadata={}, approved_by="analyst")
 
+
+# [FYP-FUNCTION] `test_get_approved_reporting_sets_reads_durable_metadata_survives_rerun_clear` — verifies get approved reporting sets reads durable metadata survives rerun clear behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_run_awaiting_reporting_approval`, `commit_reporting_approval`, `get_latest_approved_reporting_set`, `get_state`, `rerun_stage`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_get_approved_reporting_sets_reads_durable_metadata_survives_rerun_clear():
     run_id = _run_awaiting_reporting_approval()
@@ -237,6 +359,14 @@ def test_get_approved_reporting_sets_reads_durable_metadata_survives_rerun_clear
     assert latest["candidate_manifest_sha256"] == "abc"
 
 
+# [FYP-FUNCTION] `test_rejected_reporting_attempt_can_be_rerun` — verifies rejected reporting attempt can be rerun behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_run_awaiting_reporting_approval`, `get_state`, `reject_reporting`, `rerun_stage`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_rejected_reporting_attempt_can_be_rerun():
     run_id = _run_awaiting_reporting_approval()
     wss.reject_reporting("INC-1", run_id, rejected_by="analyst", reason="needs fixes")
@@ -246,6 +376,14 @@ def test_rejected_reporting_attempt_can_be_rerun():
     assert state["reporting_status"] == "Processing"
     assert state["reporting_attempt"] == 2
 
+
+# [FYP-FUNCTION] `test_complete_stage_expected_stage_attempt_rejects_stale_worker` — verifies complete stage expected stage attempt rejects stale worker behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_guarded_update`, `claim_stage`, `complete_stage`, `start_run`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_complete_stage_expected_stage_attempt_rejects_stale_worker():
     run_id = wss.start_run("INC-1")
@@ -267,12 +405,28 @@ def test_complete_stage_expected_stage_attempt_rejects_stale_worker():
 # reporting_approval.py — layering + validation
 # ══════════════════════════════════════════════════════════════════════
 
+# [FYP-FUNCTION] `test_workflow_state_store_has_no_report_specific_validation_imports` — verifies workflow state store has no report specific validation imports behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `getsource`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_workflow_state_store_has_no_report_specific_validation_imports():
     import inspect
     src = inspect.getsource(wss)
     for banned in ("import docx", "import pypdf", "from docx", "hashlib.sha256(Path"):
         assert banned not in src, f"workflow_state_store.py must not import/do report validation: {banned}"
 
+
+# [FYP-FUNCTION] `test_approve_reporting_candidate_end_to_end` — verifies approve reporting candidate end to end behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: `tmp_path`, `_isolated_artifact_root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_approve_via_state`, `_build_candidate_set`, `_run_awaiting_reporting_approval`, `approve_reporting_candidate`, `get_latest_approved_reporting_set`, `get_state`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_approve_reporting_candidate_end_to_end(tmp_path, _isolated_artifact_root):
     run_id = _run_awaiting_reporting_approval()
@@ -290,6 +444,14 @@ def test_approve_reporting_candidate_end_to_end(tmp_path, _isolated_artifact_roo
     assert latest["report_set_id"] == candidate["report_set_id"]
 
 
+# [FYP-FUNCTION] `test_approve_reporting_candidate_fails_when_docx_tampered_after_generation` — verifies approve reporting candidate fails when docx tampered after generation behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: `tmp_path`, `_isolated_artifact_root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_approve_via_state`, `_build_candidate_set`, `_run_awaiting_reporting_approval`, `approve_reporting_candidate`, `get_state`, `raises`, `read_bytes`, `reporting_attempt_dir`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_approve_reporting_candidate_fails_when_docx_tampered_after_generation(
         tmp_path, _isolated_artifact_root):
     run_id = _run_awaiting_reporting_approval()
@@ -306,6 +468,14 @@ def test_approve_reporting_candidate_fails_when_docx_tampered_after_generation(
     assert wss.get_state("INC-1")["reporting_status"] == "Awaiting Approval"
 
 
+# [FYP-FUNCTION] `test_approve_reporting_candidate_fails_on_identity_mismatch` — verifies approve reporting candidate fails on identity mismatch behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: `tmp_path`, `_isolated_artifact_root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_approve_via_state`, `_build_candidate_set`, `_guarded_update`, `_run_awaiting_reporting_approval`, `approve_reporting_candidate`, `raises`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_approve_reporting_candidate_fails_on_identity_mismatch(tmp_path, _isolated_artifact_root):
     run_id = _run_awaiting_reporting_approval()
     manifest_path, _ = _build_candidate_set("INC-1", run_id, 1, _isolated_artifact_root)
@@ -319,6 +489,14 @@ def test_approve_reporting_candidate_fails_on_identity_mismatch(tmp_path, _isola
 # ══════════════════════════════════════════════════════════════════════
 # editable_reports.finalize_candidate_manifest — immutability
 # ══════════════════════════════════════════════════════════════════════
+
+# [FYP-FUNCTION] `test_finalize_candidate_manifest_refuses_to_overwrite_differing_content` — verifies finalize candidate manifest refuses to overwrite differing content behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: `_isolated_artifact_root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `Path`, `_build_candidate_set`, `finalize_candidate_manifest`, `insert`, `raises`, `read_bytes`, `reporting_attempt_dir`, `resolve`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_finalize_candidate_manifest_refuses_to_overwrite_differing_content(
         _isolated_artifact_root):
@@ -340,6 +518,14 @@ def test_finalize_candidate_manifest_refuses_to_overwrite_differing_content(
         er.finalize_candidate_manifest(output_dir, "INC-2", "run-a", 1)
 
 
+# [FYP-FUNCTION] `test_finalize_candidate_manifest_idempotent_on_identical_repeat_call` — verifies finalize candidate manifest idempotent on identical repeat call behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: `_isolated_artifact_root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `Path`, `_build_candidate_set`, `finalize_candidate_manifest`, `insert`, `reporting_attempt_dir`, `resolve`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_finalize_candidate_manifest_idempotent_on_identical_repeat_call(_isolated_artifact_root):
     manifest_path, candidate = _build_candidate_set("INC-3", "run-a", 1, _isolated_artifact_root)
 
@@ -354,6 +540,14 @@ def test_finalize_candidate_manifest_idempotent_on_identical_repeat_call(_isolat
     repeat = er.finalize_candidate_manifest(output_dir, "INC-3", "run-a", 1)
     assert repeat["report_set_id"] == candidate["report_set_id"]
 
+
+# [FYP-FUNCTION] `test_final_incident_report_export_populates_section_exports` — verifies final incident report export populates section exports behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: `_isolated_artifact_root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `Path`, `_write`, `build_report_manifest`, `confirm_report`, `drafts_dir`, `export_docx`, `insert`, `load_manifest`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_final_incident_report_export_populates_section_exports(_isolated_artifact_root):
     """Final Incident Report's DOCX/PDF export must be mirrored into

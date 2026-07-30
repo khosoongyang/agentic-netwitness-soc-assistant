@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: argparse, asyncio, collections, correlation_engine, dotenv, ingest_pipeline, json, mitre_mapper.
+# =============================================================================
+# File: soc_investigation_agent_revised/main.py
+# Purpose: This module runs the standalone investigation-agent command-line workflow and file-queue entry points.
+# Main functionality: start_background_sync, stop_background_sync, get_or_create_incident_folder, find_file_by_incident_id, write_markdown_report, select_playbook_automatically.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis investigation component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: argparse, asyncio, collections, correlation_engine, dotenv, ingest_pipeline, json, mitre_mapper.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: start_background_sync, stop_background_sync, get_or_create_incident_folder, find_file_by_incident_id, write_markdown_report, select_playbook_automatically, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 import os
 import sys
 import shutil
@@ -34,14 +56,42 @@ PLAYBOOKS_FOLDER = "playbooks/"
 os.makedirs(UNREAD_ALERTS_FOLDER, exist_ok=True)
 os.makedirs(INCIDENT_REPORTS_FOLDER, exist_ok=True)
 
+# =============================================================================
+# [FYP-SECTION] INVESTIGATION EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `start_background_sync` — orchestrates the start background sync entry point and its ordered investigation operations.
+# [FYP-INPUT] Parameters: `base_folder`, `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `RealtimeSyncService`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def start_background_sync(base_folder: str, db_path: str) -> tuple[RealtimeSyncService, threading.Thread, asyncio.AbstractEventLoop]:
     # Redundant background sync disabled to prevent database contention and cut down latency.
     # The pipeline already performs synchronous dual-write updates itself.
     service = RealtimeSyncService(base_folder=base_folder, db_path=db_path)
     return service, None, None
 
+# [FYP-FUNCTION] `stop_background_sync` — implements the stop background sync operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `service`, `thread`, `loop`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def stop_background_sync(service: RealtimeSyncService, thread: threading.Thread, loop: asyncio.AbstractEventLoop):
     pass
+
+# [FYP-FUNCTION] `get_or_create_incident_folder` — retrieves get or create incident folder data for the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `int`, `isdigit`, `join`, `listdir`, `makedirs`, `max`, `split`, `startswith`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def get_or_create_incident_folder() -> tuple[str, str]:
     """Retrieves or creates the next incremented Incident directory."""
@@ -56,6 +106,14 @@ def get_or_create_incident_folder() -> tuple[str, str]:
     os.makedirs(path, exist_ok=True)
     return path, next_id
 
+# [FYP-FUNCTION] `find_file_by_incident_id` — implements the find file by incident id operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `endswith`, `join`, `listdir`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def find_file_by_incident_id(incident_id: str) -> str:
     """Finds the raw alert JSON file in the unread queue by incident ID."""
     files = [f for f in os.listdir(UNREAD_ALERTS_FOLDER) if f.endswith('.json')]
@@ -63,6 +121,14 @@ def find_file_by_incident_id(incident_id: str) -> str:
         if incident_id.lower() in f.lower():
             return os.path.join(UNREAD_ALERTS_FOLDER, f)
     return None
+
+# [FYP-FUNCTION] `write_markdown_report` — persists or updates write markdown report state used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `dest_folder`, `incident_num_id`, `report`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `getattr`, `gmtime`, `join`, `log_success`, `open`, `strftime`, `write`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def write_markdown_report(dest_folder: str, incident_num_id: str, report: orchestrator.FinalIncidentAnalysis):
     """Writes a beautifully formatted markdown incident report to the target folder."""
@@ -116,6 +182,14 @@ def write_markdown_report(dest_folder: str, incident_num_id: str, report: orches
             
     orchestrator.log_success(f"Case report stored securely inside: {report_path}")
 
+# [FYP-FUNCTION] `select_playbook_automatically` — implements the select playbook automatically operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `seed_file_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_playbook, soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `exists`, `get`, `join`, `load`, `log_info`, `log_warning`, `lower`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def select_playbook_automatically(seed_file_path: str) -> str:
     """Automatically selects the best playbook based on the seed alert's classification.
 
@@ -147,6 +221,14 @@ def select_playbook_automatically(seed_file_path: str) -> str:
         orchestrator.log_warning(f"Error auto-detecting playbook: {e}. Defaulting to endpoint playbook.")
         return os.path.join(PLAYBOOKS_FOLDER, "privilegeEscalation.yaml")
 
+# [FYP-FUNCTION] `extract_indicators_locally` — transforms extract indicators locally input into the stable representation required by downstream investigation processing.
+# [FYP-INPUT] Parameters: `doc`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_incident_report; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `endswith`, `extend`, `findall`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def extract_indicators_locally(doc: str) -> List[str]:
     import re
     indicators = []
@@ -157,6 +239,14 @@ def extract_indicators_locally(doc: str) -> List[str]:
         if d not in indicators and not d.endswith(('.exe', '.dll', '.sys', '.txt', '.log')):
             indicators.append(d)
     return indicators
+
+# [FYP-FUNCTION] `generate_local_standalone_report` — constructs generate local standalone report output for the next investigation consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `alert`, `playbook_path`, `inst_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_incident_report; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `FinalIncidentAnalysis`, `MilestoneExecution`, `any`, `append`, `enumerate`, `exists`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: str):
     import yaml
@@ -377,6 +467,14 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         "suggested_pivots": []
     }
 
+# [FYP-FUNCTION] `main_async` — implements the main async operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ArgumentParser`, `CorrelationEngine`, `Incident`, `IncidentMetadata`, `_extract_indicators`, `add`, `add_argument`, `append`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 async def main_async():
     parser = argparse.ArgumentParser(description="Advanced Hybrid SOC Incident Response Pipeline")
     parser.add_argument("--playbook", help="Path to playbook YAML file (omitted for auto-selection)")
@@ -552,6 +650,14 @@ async def main_async():
     if modified_incidents:
         orchestrator.log_info(f"Running parallel report generation and enrichment for {len(modified_incidents)} incidents...")
         
+        # [FYP-FUNCTION] `generate_incident_report` — constructs generate incident report output for the next investigation consumer or analyst-facing view.
+        # [FYP-INPUT] Parameters: `inst_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+        # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+        # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+        # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+        # [FYP-CALLS] Calls: `add`, `analyze_alert_group_p1`, `append`, `compile_final_report`, `extend`, `extract_indicators_locally`, `generate_local_standalone_report`, `get`.
+        # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
         async def generate_incident_report(inst_id):
             incident = engine.active_incidents.get(inst_id)
             if not incident:
@@ -681,6 +787,14 @@ async def main_async():
     # Stop background realtime sync daemon
     stop_background_sync(sync_service, sync_thread, sync_loop)
     orchestrator.log_info("SOC Incident Response Pipeline shut down successfully.")
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered investigation operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `main_async`, `run`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def main():
     asyncio.run(main_async())

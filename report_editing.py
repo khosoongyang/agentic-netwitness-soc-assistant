@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, datetime, json, pathlib, reporting, reporting_approval, soc_workflow, sys.
+# =============================================================================
+# File: report_editing.py
+# Purpose: This module manages editable report drafts and analyst-supplied report changes.
+# Main functionality: _analyst_edits_dir, report_row_state, save_report_edit, discard_report_edit, export_report, reporting_data_json.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis reporting component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, datetime, json, pathlib, reporting, reporting_approval, soc_workflow, sys.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _analyst_edits_dir, report_row_state, save_report_edit, discard_report_edit, export_report, reporting_data_json, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 report_editing.py — analyst "Open & Edit" layer for the Reports tab.
 
@@ -66,6 +88,18 @@ STATUS_TONES = {
 }
 
 
+# =============================================================================
+# [FYP-SECTION] REPORTING EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_analyst_edits_dir` — implements the analyst edits dir operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `reporting_stage_attempt`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include report_editing.py:export_report; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `incident_report_dir`, `reporting_attempt_dir`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _analyst_edits_dir(incident_id: str, run_id: str, reporting_stage_attempt: int) -> Path:
     """A folder that sits BESIDE (never inside) the hash-pinned exports/
     folder that reporting_approval.py re-verifies before every download —
@@ -75,6 +109,14 @@ def _analyst_edits_dir(incident_id: str, run_id: str, reporting_stage_attempt: i
     attempt_dir = reporting_attempt_dir(incident_id, run_id, reporting_stage_attempt)
     return incident_report_dir(attempt_dir, incident_id) / "analyst_edits"
 
+
+# [FYP-FUNCTION] `report_row_state` — implements the report row state operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `report_type`, `current_attempt`, `reporting_status`, `reporting_updated_at`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_render_reports_workspace; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `bool`, `get`, `get_report_edit`, `loads`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def report_row_state(incident_id: str, run_id: str, report_type: str, *,
                      current_attempt: dict[str, Any], reporting_status: str,
@@ -137,6 +179,14 @@ def report_row_state(incident_id: str, run_id: str, report_type: str, *,
     }
 
 
+# [FYP-FUNCTION] `save_report_edit` — persists or updates save report edit state used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `report_type`, `blocks`, `analyst`, `original_blocks`, `source_report_set_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_render_report_editor; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `record_activity`, `upsert_report_edit`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def save_report_edit(incident_id: str, run_id: str, report_type: str,
                      blocks: list[dict[str, Any]], analyst: str,
                      *, original_blocks: list[dict[str, Any]],
@@ -155,6 +205,14 @@ def save_report_edit(incident_id: str, run_id: str, report_type: str,
     return row
 
 
+# [FYP-FUNCTION] `discard_report_edit` — implements the discard report edit operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `report_type`, `analyst`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_report_editor, app.py:_render_reports_workspace; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `discard_report_edit`, `record_activity`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def discard_report_edit(incident_id: str, run_id: str, report_type: str, analyst: str) -> None:
     """"Replace with latest AI version" — drops the saved edit so the row
     reverts to showing the current AI-generated original."""
@@ -163,6 +221,14 @@ def discard_report_edit(incident_id: str, run_id: str, report_type: str, analyst
         incident_id, run_id, "reporting", "report_edit_discarded", actor=analyst,
         metadata={"report_type": report_type})
 
+
+# [FYP-FUNCTION] `export_report` — constructs export report output for the next reporting consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident_id`, `run_id`, `report_type`, `file_type`, `row_state`, `reporting_stage_attempt`, `analyst`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_cached_report_export_bytes; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `FileNotFoundError`, `ValueError`, `_analyst_edits_dir`, `mkdir`, `now`, `read_bytes`, `record_activity`, `render_blocks_to_docx`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def export_report(incident_id: str, run_id: str, report_type: str, file_type: str,
                   *, row_state: dict[str, Any], reporting_stage_attempt: int,
@@ -197,6 +263,14 @@ def export_report(incident_id: str, run_id: str, report_type: str, file_type: st
                   "filename": filename})
     return data, filename
 
+
+# [FYP-FUNCTION] `reporting_data_json` — implements the reporting data json operation used by the surrounding reporting workflow.
+# [FYP-INPUT] Parameters: `state`, `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_render_reports_workspace; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `encode`, `get`, `isoformat`, `loads`, `now`, `strftime`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def reporting_data_json(state: dict[str, Any], incident_id: str) -> tuple[bytes, str]:
     """"Reporting Data / Download JSON" — re-serializes the same

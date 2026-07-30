@@ -1,3 +1,107 @@
+"""
+# =============================================================================
+# [FYP-FILE] APIRetrieval.py
+# Important dependencies: __future__, base64, dotenv, json, os, requests, sys.
+# -----------------------------------------------------------------------------
+# File: APIRetrieval.py (repo root)
+#
+# Purpose:
+#   Retrieves incident + alert telemetry from the RSA NetWitness Respond
+#   REST API (a self-hosted SIEM/SOAR product — the org's own NetWitness
+#   deployment, not a public/cloud service), with an on-disk export JSON
+#   fallback for offline/repeatable runs. This is the module that talks to
+#   NetWitness directly; nw_alerts.py (separate file) then parses/distills
+#   whatever alerts this module returns.
+#
+# Main functionalities:
+#   1. [FYP-API] Authentication — authenticate_netwitness() POSTs
+#      username/password (optionally base64-decoded via
+#      _maybe_b64_decode(), see NW_PASSWORD note below) to
+#      /rest/api/auth/userpass to obtain a NetWitness accessToken, cached
+#      into the NW_TOKEN/NETWITNESS_TOKEN env vars. get_auth_token() /
+#      refresh_token() are the orchestrating entry points every fetch_*
+#      function goes through rather than calling authenticate_netwitness()
+#      directly.
+#   2. [FYP-ERROR][FYP-FALLBACK] Expired-token detection + single-retry
+#      auto-reauth — _is_expired_token_response() inspects a failed
+#      response's status (500/401/403/400) and body text/JSON `errors[]`
+#      for NetWitness's "Expired Token" signature. Every fetch_* function
+#      that takes `auto_refresh` checks this on failure, calls
+#      refresh_token() once, and retries the SAME request with the fresh
+#      token — always with auto_refresh=False on the retry, so a second
+#      failure is NOT retried again (bounds the reauth loop to one retry).
+#   3. [FYP-API] Incident + alert retrieval — four distinct NetWitness
+#      Respond endpoints, used for overlapping purposes (summary vs.
+#      comprehensive raw export; single-shot vs. paginated):
+#        - fetch_incident_details(): GET /rest/api/incidents/{id}
+#        - fetch_incident_via_fetch_api(): GET /rest/api/incident/fetch
+#        - fetch_alerts_via_fetch_api(): GET /rest/api/alert/fetch
+#        - fetch_all_alerts_and_endpoint_events(): paginated GET
+#          /rest/api/incidents/{id}/alerts
+#      tried in a fallback chain by get_comprehensive_incident_payload().
+#   4. [FYP-PROCESS] Telemetry synthesis — process_respond_api_telemetry()
+#      is a pure transform (no network/DB) that flattens an incident + its
+#      alerts' nested event/originalAlert structures into one structured
+#      report: hosts/users/IPs, process-execution telemetry (launch args,
+#      directories, filenames, hashes, behavioural IOCs), and MITRE
+#      ATT&CK technique strings.
+#   5. [FYP-PROCESS][FYP-FALLBACK] Orchestration —
+#      get_comprehensive_incident_payload() tries on-disk export JSON
+#      files first (offline / repeatable-demo path — no live NW call at
+#      all if a matching file exists), then falls back to the live FETCH
+#      API chain only if the disk lookup misses AND a host+token are
+#      resolvable. main() is the CLI entry point; it additionally accepts
+#      an export .json path directly on argv, bypassing the network path
+#      entirely for demo/offline use.
+#
+# Inputs:
+#   Environment (via python-dotenv): NW_HOST / NETWITNESS_HOST (default
+#   "https://192.168.20.11" — an internal/lab NetWitness appliance
+#   address, not a public host), NW_USERNAME / NETWITNESS_USERNAME,
+#   NW_PASSWORD / NETWITNESS_PASSWORD (may be saved base64-encoded by
+#   app.py to preserve special characters — decoded via
+#   _maybe_b64_decode() before use; never logged), NW_TOKEN /
+#   NETWITNESS_TOKEN (cached session token). Also: incident_id / host /
+#   token function args, and on-disk incident_<id>*.json export files.
+#
+# Outputs:
+#   dict/list payloads mirroring NetWitness's own response shapes
+#   (incident dict, alerts list), a structured telemetry dict from
+#   process_respond_api_telemetry(), and — from main() only — an on-disk
+#   incident_<id>_respond_api_export.json snapshot.
+#
+# Workflow position:
+#   Dual-purpose: (a) a standalone CLI ingestion utility (`python
+#   APIRetrieval.py <INC-ID|export.json>`), and (b) a live-fetch
+#   enrichment fallback invoked mid-pipeline — soc_workflow.py's
+#   enrich_incident_with_apiretrieval_fetch() dynamically imports this
+#   module and calls get_comprehensive_incident_payload() to backfill an
+#   already-ingested incident with comprehensive raw alerts, which
+#   nw_alerts._merge_alert_digest() then folds into alertMeta.
+#
+# Called by [FYP-USED-BY]:
+#   soc_workflow.py — `import APIRetrieval` (dynamic, inside the function)
+#   + `APIRetrieval.get_comprehensive_incident_payload(inc_id, host=host,
+#   token=token)` in enrich_incident_with_apiretrieval_fetch()
+#   (soc_workflow.py, ~line 3483-3489). tests/test_apiretrieval.py
+#   exercises every public/underscored function directly with mocked
+#   requests calls. Verified via grep — no other in-repo caller found.
+#
+# Calls [FYP-CALLS]:
+#   requests — HTTP GET/POST to the NetWitness Respond REST API. Every
+#   call passes verify=False (SSL verification disabled module-wide via
+#   requests.packages.urllib3.disable_warnings() below) — consistent with
+#   targeting an internal appliance with a self-signed certificate;
+#   documented here, not altered by these doc-only edits. python-dotenv
+#   (load_dotenv) loads the NW_*/NETWITNESS_* variables from a local .env
+#   file. stdlib: os, sys, json, base64.
+#
+# Key evaluator search terms:
+#   authenticate_netwitness, get_auth_token, _is_expired_token_response,
+#   fetch_alerts_via_fetch_api, get_comprehensive_incident_payload,
+#   NetWitness-Token, [FYP-API].
+# =============================================================================
+"""
 from __future__ import annotations
 
 import os
@@ -13,8 +117,26 @@ requests.packages.urllib3.disable_warnings()
 load_dotenv()
 
 
+# =============================================================================
+# [FYP-SECTION] THREAT INTELLIGENCE AND NETWITNESS INTEGRATION EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+
 def _maybe_b64_decode(value: str) -> str:
-    """Decode password if it was saved base64-encoded by app.py to preserve special characters."""
+    """[FYP-FUNCTION] Password decode helper (NOT authentication itself).
+
+    Decode password if it was saved base64-encoded by app.py to preserve special
+    characters. Strips surrounding whitespace/quotes first, then attempts a
+    strict (validate=True) base64 decode; if that fails OR the decoded bytes
+    aren't printable text, the original (already-stripped) value is returned
+    unchanged — so a genuinely plain-text password that happens to look
+    base64-shaped is never mis-decoded into garbage.
+    [FYP-VALIDATION] base64.b64decode(..., validate=True) + str.isprintable()
+    is the guard that distinguishes "was base64" from "just looks like it".
+    Never logs or echoes the password value itself.
+    [FYP-CALLS] base64 (stdlib) only — no I/O.
+    [FYP-USED-BY] get_auth_token() (this file), applied to NW_PASSWORD /
+    NETWITNESS_PASSWORD before it's handed to authenticate_netwitness()."""
     val = value.strip().strip("'\"").strip()
     if not val:
         return ""
@@ -25,8 +147,34 @@ def _maybe_b64_decode(value: str) -> str:
         return val
 
 
+# [FYP-FUNCTION] `authenticate_netwitness` — implements the authenticate netwitness operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `host`, `username`, `password`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:get_auth_token, tests/test_apiretrieval.py:test_authenticate_netwitness_failure, tests/test_apiretrieval.py:test_authenticate_netwitness_success; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `RuntimeError`, `get`, `json`, `post`, `print`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
 def authenticate_netwitness(host: str, username: str, password: str) -> str:
-    """Authenticate via NetWitness Respond API (/rest/api/auth/userpass) to obtain an accessToken."""
+    """[FYP-API] NetWitness Respond — POST /rest/api/auth/userpass
+    (username/password auth; no API-key env var — credentials come from
+    NW_USERNAME/NW_PASSWORD via the caller, see get_auth_token()).
+
+    Authenticate via NetWitness Respond API (/rest/api/auth/userpass) to obtain an accessToken.
+    On HTTP 200, extracts accessToken (or access_token) from the JSON body,
+    stores it into BOTH the NW_TOKEN and NETWITNESS_TOKEN env vars (the two
+    aliases this module and its callers accept interchangeably) and returns
+    it. Never echoes username/password in log output — only the login URL
+    and username are printed, never the password.
+    [FYP-ERROR] Non-200 response, or a 200 with no token field, both raise
+    RuntimeError (with up to 200 chars of the response body for
+    diagnosis) — this function does NOT swallow auth failures; callers
+    (get_auth_token()) are the ones that catch and degrade to None.
+    [FYP-CALLS] requests.post (verify=False, timeout=15s) — the one and
+    only credential-bearing HTTP call in this module.
+    [FYP-USED-BY] get_auth_token() (this file), which wraps this in a
+    try/except so a login failure degrades to a logged warning + None
+    rather than propagating."""
     login_url = f"{host}/rest/api/auth/userpass"
     headers = {
         "Content-Type": "application/x-www-form-urlencoded; charset=ISO-8859-1",
@@ -51,7 +199,30 @@ def authenticate_netwitness(host: str, username: str, password: str) -> str:
 
 
 def _is_expired_token_response(response: requests.Response | None) -> bool:
-    """Check if API response indicates an expired or invalid token."""
+    """[FYP-FUNCTION] [FYP-ERROR] Expired-token signature detector — the
+    trigger condition for every fetch_*() function's single-retry
+    auto-reauth path.
+
+    Check if API response indicates an expired or invalid token. A None
+    response (e.g. the request itself raised) is treated as "not an
+    expired token" (returns False) so callers fall through to their
+    generic failure handling rather than looping on reauth for an
+    unrelated network error. Only inspects status codes NetWitness
+    actually uses for auth failure (500/401/403/400 — note 500 is
+    included because this NW deployment has been observed returning a
+    generic 500 for an expired token rather than 401); within those,
+    checks the raw response text for "expired token"/"token expired"/
+    "expired_token" (case-insensitive), then — if the body parses as
+    JSON — also checks each entry of an `errors` list for "expired" or
+    "token" in its message field. Any JSON-parse failure is swallowed
+    (falls through to return False) since a non-JSON body on one of those
+    status codes just isn't the expired-token case this function detects.
+    [FYP-CALLS] none — pure string/JSON inspection of an already-received
+    response object; makes no HTTP calls itself.
+    [FYP-USED-BY] fetch_incident_details(), fetch_incident_via_fetch_api(),
+    fetch_alerts_via_fetch_api(), fetch_all_alerts_and_endpoint_events()
+    (this file) — each calls this on a non-200 response before deciding
+    whether to refresh_token() and retry once."""
     if response is None:
         return False
     if response.status_code in (500, 401, 403, 400):
@@ -71,6 +242,14 @@ def _is_expired_token_response(response: requests.Response | None) -> bool:
             pass
     return False
 
+
+# [FYP-FUNCTION] `get_auth_token` — retrieves get auth token data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `host`, `token`, `force_refresh`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:get_comprehensive_incident_payload, APIRetrieval.py:main, APIRetrieval.py:refresh_token; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_maybe_b64_decode`, `authenticate_netwitness`, `getenv`, `load_dotenv`, `print`, `rstrip`, `strip`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def get_auth_token(host: str | None = None, token: str | None = None, force_refresh: bool = False) -> str | None:
     """Get an active NetWitness session token.
@@ -105,10 +284,26 @@ def get_auth_token(host: str | None = None, token: str | None = None, force_refr
         return None
 
 
+# [FYP-FUNCTION] `refresh_token` — implements the refresh token operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `host`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:fetch_alerts_via_fetch_api, APIRetrieval.py:fetch_all_alerts_and_endpoint_events, APIRetrieval.py:fetch_incident_details; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get_auth_token`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def refresh_token(host: str | None = None) -> str | None:
     """Re-authenticate using NW_USERNAME / NW_PASSWORD from environment to acquire a fresh token."""
     return get_auth_token(host=host, force_refresh=True)
 
+
+# [FYP-FUNCTION] `fetch_incident_details` — retrieves fetch incident details data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `host`, `headers`, `incident_id`, `auto_refresh`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:fetch_incident_details, APIRetrieval.py:get_comprehensive_incident_payload, APIRetrieval.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_expired_token_response`, `dict`, `fetch_incident_details`, `get`, `json`, `print`, `refresh_token`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def fetch_incident_details(host: str, headers: dict, incident_id: str, auto_refresh: bool = True) -> dict:
     """Fetch Incident details from NetWitness Respond API (/rest/api/incidents/{incident_id})."""
@@ -129,6 +324,14 @@ def fetch_incident_details(host: str, headers: dict, incident_id: str, auto_refr
     print(f"Warning: Incident metadata call returned HTTP {res.status_code}")
     return {}
 
+
+# [FYP-FUNCTION] `fetch_incident_via_fetch_api` — retrieves fetch incident via fetch api data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `host`, `token`, `incident_id`, `auto_refresh`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:fetch_incident_via_fetch_api, APIRetrieval.py:get_comprehensive_incident_payload, APIRetrieval.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_expired_token_response`, `dumps`, `fetch_incident_via_fetch_api`, `get`, `isinstance`, `json`, `len`, `print`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def fetch_incident_via_fetch_api(host: str, token: str, incident_id: str, auto_refresh: bool = True) -> dict:
     """Fetch Incident details using NetWitness FETCH API (/rest/api/incident/fetch) as in nw_respond_inc-alert_call-comprehensive.sh."""
@@ -157,6 +360,14 @@ def fetch_incident_via_fetch_api(host: str, token: str, incident_id: str, auto_r
     print(f"Warning: FETCH incident API returned HTTP {res.status_code}: {res.text[:150]}")
     return {}
 
+
+# [FYP-FUNCTION] `fetch_alerts_via_fetch_api` — retrieves fetch alerts via fetch api data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `host`, `token`, `incident_id`, `count`, `auto_refresh`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:fetch_alerts_via_fetch_api, APIRetrieval.py:get_comprehensive_incident_payload, APIRetrieval.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_expired_token_response`, `dumps`, `fetch_alerts_via_fetch_api`, `get`, `isinstance`, `json`, `len`, `print`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def fetch_alerts_via_fetch_api(host: str, token: str, incident_id: str, count: int = 1000, auto_refresh: bool = True) -> list:
     """Fetch full raw originalAlert items using NetWitness FETCH API (/rest/api/alert/fetch) as in nw_respond_inc-alert_call-comprehensive.sh."""
@@ -189,6 +400,14 @@ def fetch_alerts_via_fetch_api(host: str, token: str, incident_id: str, count: i
     print(f"Warning: FETCH alert API returned HTTP {res.status_code}: {res.text[:150]}")
     return []
 
+
+# [FYP-FUNCTION] `fetch_all_alerts_and_endpoint_events` — retrieves fetch all alerts and endpoint events data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `host`, `headers`, `incident_id`, `auto_refresh`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:get_comprehensive_incident_payload, APIRetrieval.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_expired_token_response`, `dict`, `extend`, `get`, `json`, `len`, `print`, `refresh_token`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def fetch_all_alerts_and_endpoint_events(host: str, headers: dict, incident_id: str, auto_refresh: bool = True) -> tuple[list, dict]:
     """Paginate through ALL pages of /rest/api/incidents/{incident_id}/alerts to extract 100% of alerts and events."""
@@ -244,6 +463,14 @@ def fetch_all_alerts_and_endpoint_events(host: str, headers: dict, incident_id: 
     return all_alerts, pagination_info
 
 
+
+# [FYP-FUNCTION] `process_respond_api_telemetry` — implements the process respond api telemetry operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `incident`, `alerts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add`, `append`, `get`, `isinstance`, `len`, `list`, `set`, `sorted`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def process_respond_api_telemetry(incident: dict, alerts: list) -> dict:
     """Synthesize incident, alert, process events, and endpoint telemetry into a structured Respond report."""
@@ -423,6 +650,14 @@ def process_respond_api_telemetry(incident: dict, alerts: list) -> dict:
     }
 
 
+# [FYP-FUNCTION] `get_comprehensive_incident_payload` — retrieves get comprehensive incident payload data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `host`, `token`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:enrich_incident_with_apiretrieval_fetch, tests/test_apiretrieval.py:test_get_comprehensive_incident_payload_disk_file, tests/test_apiretrieval.py:test_get_comprehensive_incident_payload_live_fetch; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `fetch_alerts_via_fetch_api`, `fetch_all_alerts_and_endpoint_events`, `fetch_incident_details`, `fetch_incident_via_fetch_api`, `get_auth_token`, `getenv`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def get_comprehensive_incident_payload(incident_id: str, host: str | None = None, token: str | None = None) -> dict:
     """Retrieve comprehensive incident + raw alerts telemetry payload.
     Checks disk for matching JSON exports first (e.g. incident_<id>_respond_api_export.json).
@@ -478,6 +713,14 @@ def get_comprehensive_incident_payload(incident_id: str, host: str | None = None
 
     return {}
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered threat intelligence and NetWitness integration operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dump`, `dumps`, `endswith`, `exists`, `exit`, `fetch_alerts_via_fetch_api`, `fetch_all_alerts_and_endpoint_events`, `fetch_incident_details`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def main():
     target_arg = sys.argv[1].strip() if len(sys.argv) > 1 else "INC-52825"

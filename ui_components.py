@@ -1,4 +1,98 @@
 """
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, html, math, typing, urllib.
+# Key evaluator search terms: _e, sev_class, page_title, pill, hero, stat_row, [FYP-FUNCTION].
+# =============================================================================
+# File:
+#   ui_components.py
+#
+# Purpose:
+#   Shared "Aegis" design-system component library for the Streamlit SOC
+#   dashboard — pure Python functions that each return a raw HTML string
+#   (plus one shared <style> block) to be rendered via
+#   `st.markdown(html, unsafe_allow_html=True)`. Ported from the team's
+#   "Aegis" dashboard mockup (agentic-netwitness-soc-assistant-feature-
+#   dashboard-ui-mockup) so the Streamlit app's look matches that reference
+#   design instead of default Streamlit widgets. Colours reference the app's
+#   existing `:root` CSS vars (--blue/--amber/--red/--text/--sub/…) defined
+#   in app.py's base theme, so these components inherit whatever theme is
+#   active rather than hard-coding a second palette.
+#
+# Main functionalities [FYP-UI]:
+#   1. COMPONENT_CSS: one <style> block (all `.ag-*` classes) injected ONCE
+#      per page load — see app.py's `_ui.COMPONENT_CSS` usage.
+#   2. Builder functions, one per visual pattern — pills/severity badges
+#      (pill/sev_class), page headers (page_title), the circular SOC-pipeline
+#      diagram (circular_pipeline/stepper), case header banners
+#      (case_header/case_header_left/case_header_right), key-findings rows
+#      (key_findings), the Overview context grid (context_grid), generic
+#      panel wrappers (panel_open/panel_close), the "My Queue" table
+#      (queue_table), the sidebar workspace identity card (workspace_card),
+#      SOC attention/stat metric rows (attention_row/stat_row), the AI
+#      summary card incl. fallback-text detection (ai_summary/
+#      detect_fallback), the MITRE ATT&CK kill-chain strip (mitre_strip) and
+#      the evidence-backed MITRE mapping workspace (mitre_mapping_workspace),
+#      the agent-completion ring (agent_ring), the Reports-tab file-row head
+#      (report_file_head), and a human-friendly timestamp formatter
+#      (humanize_timestamp).
+#   3. Some builders exist in the module but have NO confirmed caller
+#      anywhere in the repo today (verified via grep for `.<name>(` outside
+#      this file) — hero, stat_row, stepper, case_workflow,
+#      case_header_left, case_header_right, agent_ring, mitre_strip. They
+#      are kept as part of the ported component set (mockup parity /
+#      available-but-unused) rather than being dead code left over from a
+#      removed feature; do not assume any of them render anywhere in the
+#      live app today.
+#
+# Inputs:
+#   Plain dicts/tuples/strings/iterables assembled by the calling page
+#   (app.py) from case/incident/pipeline data — this module never reads
+#   session state, the DB, or any other module's data itself.
+#
+# Outputs:
+#   Escaped (via `_e`/`html.escape`) HTML strings, safe to pass straight to
+#   `st.markdown(..., unsafe_allow_html=True)`.
+#
+# Workflow position:
+#   A leaf UI-rendering layer with no Streamlit import and no knowledge of
+#   the SOC workflow — pure string builders that unit-test offline. Sits
+#   below app.py (and, per in-file comments only — see below, not an actual
+#   import — the general `pill()` tone vocabulary is referenced by
+#   report_editing.py's STATUS_TONES for visual consistency).
+#
+# Called by [FYP-USED-BY] (confirmed via grep for `import ui_components`):
+#   * app.py — the ONLY module that actually imports this file.
+#     - `import ui_components as _ui` (module-level, ~line 3368): 46 call
+#       sites across the dashboard using 17 distinct names — queue_table(7),
+#       detect_fallback(7), ai_summary(7), pill(6), humanize_timestamp(3),
+#       sev_class(2), report_file_head(2), panel_open(2), panel_close(2),
+#       page_title(2), mitre_mapping_workspace(1), key_findings(1),
+#       context_grid(1), circular_pipeline(1), case_header(1),
+#       attention_row(1), COMPONENT_CSS(1).
+#     - `import ui_components as _uisb` (guarded, local, Settings-page
+#       sidebar block, ~line 8542): renders the sidebar's
+#       `workspace_card(...)` identity card before the main `_ui` import has
+#       necessarily run for that render pass.
+#   * case_view.py and report_editing.py mention "ui_components.py" / its
+#     pill() tone vocabulary only in prose comments (e.g. report_editing.py's
+#     STATUS_TONES comment) — NEITHER file actually imports this module
+#     (confirmed: no `import ui_components` / `from ui_components` statement
+#     in either file). Do not describe them as callers.
+#
+# Calls [FYP-CALLS]:
+#   Standard library only (`html`, `math`, `urllib.parse.quote`, `datetime`
+#   inside humanize_timestamp) — this module imports nothing else from the
+#   repo, by design (keeps it a dependency-free, offline-testable leaf).
+#
+# Key evaluator search terms [FYP-EVALUATOR]:
+#   [FYP-UI], circular_pipeline (the SOC-pipeline ring diagram),
+#   mitre_mapping_workspace (origin-tagged MITRE cards — see its own
+#   docstring on why it never fabricates a confidence percentage),
+#   detect_fallback/ai_summary (the "Fallback logic" amber-tag mechanism),
+#   COMPONENT_CSS (the single injected stylesheet).
+# =============================================================================
+
 ui_components.py — Aegis design-system components for the Streamlit SOC dashboard.
 
 Reusable HTML component builders + their CSS, ported from the team's "Aegis"
@@ -292,16 +386,39 @@ _SEV = {"critical": "critical", "high": "high", "medium": "medium", "low": "low"
         "info": "info", "informational": "info"}
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+
 def _e(s: Any) -> str:
+    """[FYP-FUNCTION] HTML-escape a value for safe interpolation into the
+    markdown/HTML strings this module returns; every builder below routes
+    user/incident-derived text through this (never raw f-string interp)."""
     return _html.escape(str(s if s is not None else ""))
 
 
 def sev_class(sev: str) -> str:
+    """[FYP-FUNCTION] Normalize a free-text severity ("High", "critical", …)
+    to one of the `.ag-critical/.ag-high/.ag-medium/.ag-low/.ag-info` CSS
+    classes defined in COMPONENT_CSS; unrecognized/empty input falls back to
+    the neutral "wait" tone rather than guessing."""
     return _SEV.get(str(sev or "").strip().lower(), "wait")
 
 
-# ── builders ──────────────────────────────────────────────────────────────────
+# ── builders [FYP-UI] ──────────────────────────────────────────────────────
+# [FYP-FUNCTION] `page_title` — implements the page title operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `title`, `sub`, `eyebrow`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_overview_header; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `append`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def page_title(title: str, sub: str = "", eyebrow: str = "") -> str:
+    """[FYP-UI] Page header block: optional small-caps eyebrow label, the
+    main title, and an optional subtitle line. Used at the top of most
+    dashboard pages (app.py: 2 call sites)."""
     out = []
     if eyebrow:
         out.append(f'<div class="ag-eyebrow">{_e(eyebrow)}</div>')
@@ -311,13 +428,41 @@ def page_title(title: str, sub: str = "", eyebrow: str = "") -> str:
     return "".join(out)
 
 
+# [FYP-FUNCTION] `pill` — implements the pill operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `text`, `kind`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_case_table, app.py:_render_reports_workspace; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def pill(text: str, kind: str = "stage") -> str:
+    """[FYP-UI] Small rounded status/severity badge (e.g. "High", "Open").
+    `kind` selects the `.ag-<kind>` colour class from COMPONENT_CSS
+    (critical/high/medium/low/info/wait/open/stage-pill); see sev_class()
+    for mapping a raw severity string to one of these. The most-used single
+    builder in this module — app.py calls it 6 times directly, plus every
+    queue_table() {"pill": …} cell and case_header()/case_header_left()
+    severity/status badge routes through it."""
     k = {"stage": "stage-pill"}.get(kind, kind)
     return f'<span class="ag-pill ag-{_e(k)}">{_e(text)}</span>'
 
 
+# [FYP-FUNCTION] `hero` — implements the hero operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `eyebrow`, `title`, `why`, `cta`, `tone`, `icon`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_e`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def hero(eyebrow: str, title: str, why: str = "", cta: str = "",
          tone: str = "red", icon: str = "") -> str:
+    """[FYP-UI] "Next move" hero banner (mockup's headline call-to-action
+    card) — icon + eyebrow + title + rationale + optional CTA pill.
+    `tone="blue"` swaps the default red/urgent palette for the calmer
+    informational one. No confirmed caller in the current app.py (see the
+    file header's list of ported-but-unwired builders)."""
     blue = " blue" if tone == "blue" else ""
     cta_html = f'<div class="ag-cta">{_e(cta)}</div>' if cta else ""
     why_html = f'<p>{_e(why)}</p>' if why else ""
@@ -327,7 +472,19 @@ def hero(eyebrow: str, title: str, why: str = "", cta: str = "",
             f'<h4>{_e(title)}</h4>{why_html}</div>{cta_html}</div>')
 
 
+# [FYP-FUNCTION] `stat_row` — implements the stat row operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `cards`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_e`, `append`, `get`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def stat_row(cards: Iterable[dict]) -> str:
+    """[FYP-UI] Row of KPI stat cards (label/value/sub-caption, one of
+    red|amber|blue|green tones). `cards`: [{label,value,sub,tone}]. No
+    confirmed caller in the current app.py — app.py's analogous cross-page
+    metrics use attention_row() instead."""
     cells = []
     for c in cards:
         tone = _e(c.get("tone", "blue"))
@@ -338,11 +495,30 @@ def stat_row(cards: Iterable[dict]) -> str:
     return f'<div class="ag-stats">{"".join(cells)}</div>'
 
 
+# [FYP-FUNCTION] `circular_pipeline` — implements the circular pipeline operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `stages`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_render_circular_pipeline_section, ui_components.py:stepper; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `any`, `append`, `cos`, `enumerate`, `get`, `int`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def circular_pipeline(stages: Iterable[dict]) -> str:
-    """Renders a grand, sleek circular workflow progression diagram for the SOC pipeline.
+    """[FYP-UI] Renders a grand, sleek circular workflow progression diagram for the SOC pipeline.
     Stages flow clockwise from top (Triage) to top-left (Finalized).
     Progression segments light up in vibrant stage colors when active/completed,
     and remain unlit dark grey when uncompleted/pending.
+
+    Dual-mode renderer (app.py, 1 direct call site — plus every call routed
+    through the stepper() alias below):
+      * Cross-case Overview mode: stages carry only a "count" (cases
+        currently in that stage); the center badge shows the total case
+        count and "N Stages Active".
+      * Per-case "My Workspace" mode: any stage carrying an explicit
+        "state" ("done"|"current"|"queued") switches the whole renderer
+        into single-case-stepper mode — the center badge then shows that
+        case's current stage name instead of a count. See _case_stage_states
+        in app.py for how that per-stage `state` list is built.
     """
     stage_list = list(stages)
     if not stage_list:
@@ -553,16 +729,42 @@ def circular_pipeline(stages: Iterable[dict]) -> str:
     )
 
 
+# [FYP-FUNCTION] `stepper` — implements the stepper operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `stages`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `circular_pipeline`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def stepper(stages: Iterable[dict]) -> str:
+    """[FYP-UI] Thin backward-compatible alias for circular_pipeline() — kept
+    so older call sites/names referring to a "stepper" still resolve to the
+    one dual-mode (cross-case/per-case) renderer rather than a second
+    diverging implementation."""
     return circular_pipeline(stages)
 
+
+# [FYP-FUNCTION] `case_workflow` — implements the case workflow operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `stages`, `selected_stage`, `case_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_e`, `_url_quote`, `append`, `enumerate`, `get`, `join`, `len`, `list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def case_workflow(
     stages: Iterable[dict],
     selected_stage: str = "",
     case_id: str = "",
 ) -> str:
-    """Render a compact, linear workflow for a single incident."""
+    """[FYP-UI] Render a compact, linear workflow for a single incident.
+    Unlike circular_pipeline()'s per-case mode, this renders each stage as a
+    clickable `<a href="?case_stage=...">` step (query-param navigation,
+    `target="_self"`) with its own inline <style> block, rather than an SVG
+    ring. No confirmed caller in the current app.py (see the file header's
+    list of ported-but-unwired builders) — app.py's actual case-detail page
+    uses circular_pipeline()'s per-case mode instead."""
     stage_list = list(stages)
     if not stage_list:
         return ""
@@ -684,8 +886,21 @@ def case_workflow(
     )
 
 
+# [FYP-FUNCTION] `case_header_left` — implements the case header left operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `ticket`, `title`, `sev`, `status`, `subtitle`, `icon`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_e`, `pill`, `sev_class`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def case_header_left(ticket: str, title: str, sev: str = "", status: str = "",
                      subtitle: str = "", icon: str = "") -> str:
+    """[FYP-UI] Left-hand half of a two-column case header (icon + ticket ID
+    + severity/status pills + title + subtitle) — a split-layout companion
+    to the single-block case_header() below. No confirmed caller in the
+    current app.py; app.py's case pages use the combined case_header()
+    instead."""
     pills = ""
     if sev:
         pills += " " + pill(sev, sev_class(sev))
@@ -697,14 +912,39 @@ def case_header_left(ticket: str, title: str, sev: str = "", status: str = "",
             f'<h3>{_e(title)}</h3><div class="sub">{_e(subtitle)}</div></div></div>')
 
 
+# [FYP-FUNCTION] `case_header_right` — implements the case header right operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `metas`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_e`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def case_header_right(metas: Iterable[tuple] = ()) -> str:
+    """[FYP-UI] Right-hand half of a two-column case header — a row of small
+    label/value meta chips (e.g. Created/Assignee), meant to pair with
+    case_header_left(). No confirmed caller in the current app.py."""
     meta_html = "".join(
         f'<div class="ag-meta"><span>{_e(k)}</span><b>{_e(v)}</b></div>' for k, v in metas)
     return f'<div class="ag-metas">{meta_html}</div>' if meta_html else ""
 
 
+# [FYP-FUNCTION] `case_header` — implements the case header operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `ticket`, `title`, `sev`, `status`, `subtitle`, `metas`, `icon`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `join`, `pill`, `sev_class`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def case_header(ticket: str, title: str, sev: str = "", status: str = "",
                 subtitle: str = "", metas: Iterable[tuple] = (), icon: str = "") -> str:
+    """[FYP-UI] Single-block case header banner (icon, ticket ID + severity/
+    status pills, title, subtitle, and a right-aligned meta-chip row) — the
+    combined equivalent of case_header_left() + case_header_right() in one
+    call. The left accent border and icon colour both derive from
+    sev_class(sev). app.py's case-detail page's confirmed caller (1 call
+    site)."""
     pills = ""
     if sev:
         pills += " " + pill(sev, sev_class(sev))
@@ -719,7 +959,18 @@ def case_header(ticket: str, title: str, sev: str = "", status: str = "",
             f'<h3>{_e(title)}</h3><div class="sub">{_e(subtitle)}</div></div>{metas_wrap}</div>')
 
 
+# [FYP-FUNCTION] `key_findings` — implements the key findings operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `findings`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `append`, `get`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def key_findings(findings: Iterable[dict]) -> str:
+    """[FYP-UI] Stacked list of "key finding" rows (icon + title + short
+    description + optional right-aligned confidence figure). `findings`:
+    [{icon,title,desc,confidence}]. app.py's confirmed caller (1 call site)."""
     rows = []
     for f in findings:
         conf = f.get("confidence")
@@ -731,8 +982,18 @@ def key_findings(findings: Iterable[dict]) -> str:
     return "".join(rows)
 
 
+# [FYP-FUNCTION] `context_grid` — implements the context grid operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `items`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `append`, `join`, `len`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def context_grid(items: Iterable[tuple]) -> str:
-    """items: [(label, value)], [(label, value, tone)], or
+    """[FYP-UI] 2-column key/value grid (Overview panel's context facts —
+    hostnames, IPs, users, verdicts, etc). app.py's confirmed caller (1 call
+    site). items: [(label, value)], [(label, value, tone)], or
     [(label, value, tone, help)] tone ∈ crit|warn|ok. `help`, when given,
     renders as a hover title on the label so jargon (e.g. "Unified verdict",
     "IOC IPs") gets a plain-English definition instead of just an acronym."""
@@ -747,19 +1008,51 @@ def context_grid(items: Iterable[tuple]) -> str:
     return f'<div class="ag-ctx">{"".join(cells)}</div>'
 
 
+# [FYP-FUNCTION] `panel_open` — implements the panel open operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `heading`, `sub`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def panel_open(heading: str, sub: str = "") -> str:
+    """[FYP-UI] Opens a generic bordered panel wrapper div (heading + optional
+    subtitle); the caller renders its own body content (often further
+    Streamlit widgets, not just markdown) and must close with panel_close().
+    Deliberately split open/close rather than one all-in-one builder so
+    arbitrary Streamlit content can sit inside the panel. app.py's confirmed
+    caller (2 open/close pairs)."""
     s = f'<div class="s">{_e(sub)}</div>' if sub else ""
     return f'<div class="ag-panel"><div class="h">{_e(heading)}</div>{s}'
 
 
+# [FYP-FUNCTION] `panel_close` — implements the panel close operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def panel_close() -> str:
+    """[FYP-UI] Closes the div opened by panel_open() — see its docstring."""
     return "</div>"
 
 
+# [FYP-FUNCTION] `queue_table` — implements the queue table operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `headers`, `rows`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_reporting_ops_readonly; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `append`, `get`, `isinstance`, `join`, `pill`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def queue_table(headers: Iterable[str], rows: Iterable[Iterable]) -> str:
-    """Aegis 'My Queue' table. Each cell is a plain value (escaped), or a dict:
-    {"pill": text, "kind": "high|stage|…"} renders a pill;
-    {"mono": text} renders in the mono id style."""
+    """[FYP-UI] Aegis 'My Queue' table. Each cell is a plain value (escaped), or a dict:
+    {"pill": text, "kind": "high|stage|…"} renders a pill (via pill());
+    {"mono": text} renders in the mono id style. app.py's most-used table
+    builder (7 confirmed call sites — queues/lists across the dashboard)."""
     head = "".join(f"<th>{_e(h)}</th>" for h in headers)
     body = []
     for row in rows:
@@ -777,17 +1070,39 @@ def queue_table(headers: Iterable[str], rows: Iterable[Iterable]) -> str:
             f'<tbody>{"".join(body)}</tbody></table></div>')
 
 
+# [FYP-FUNCTION] `workspace_card` — implements the workspace card operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `title`, `sub`, `icon`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def workspace_card(title: str, sub: str = "", icon: str = "") -> str:
-    """Sidebar workspace identity card (mockup .workspace)."""
+    """[FYP-UI] Sidebar workspace identity card (mockup .workspace). Rendered
+    on the Settings page's sidebar via the guarded, locally-aliased
+    `import ui_components as _uisb` (see this file's [FYP-FILE] header) with
+    the analyst's display name in `sub` — the confirmed caller."""
     sub_html = f"<small>{_e(sub)}</small>" if sub else ""
     icon_html = f'<div class="wi">{_e(icon)}</div>' if icon else ""
     return (f'<div class="ag-workspace">{icon_html}'
             f'<div><b>{_e(title)}</b>{sub_html}</div></div>')
 
 
+# [FYP-FUNCTION] `attention_row` — implements the attention row operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `cards`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `append`, `get`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def attention_row(cards: Iterable[dict]) -> str:
-    """SOC 'attention' metrics (mockup operations page). cards: [{label,value,sub,tone}]
-    tone ∈ blue|red|amber|green."""
+    """[FYP-UI] SOC 'attention' metrics (mockup operations page). cards: [{label,value,sub,tone}]
+    tone ∈ blue|red|amber|green. Visually similar to stat_row() but with a
+    decorative radial-glow corner (`.ag-am::after` in COMPONENT_CSS); this
+    is the one app.py actually calls (1 confirmed call site), stat_row() is
+    not."""
     cells = []
     for c in cards:
         tone = _e(c.get("tone", "blue"))
@@ -807,16 +1122,32 @@ _FALLBACK_MARKERS = (
 
 
 def detect_fallback(text: Any) -> bool:
-    """True when an agent narrative is actually an error/fallback rather than a
-    real AI summary — drives the amber 'Fallback logic' tag."""
+    """[FYP-UI] [FYP-FUNCTION] True when an agent narrative is actually an
+    error/fallback rather than a real AI summary — drives the amber
+    'Fallback logic' tag rendered by ai_summary() below. Pure substring
+    match against _FALLBACK_MARKERS (case-insensitive); this is a UI-layer
+    heuristic over already-produced text, it does not itself know why an
+    LLM call failed. app.py's confirmed caller (7 call sites, one per
+    AI-narrative surface in the dashboard)."""
     t = str(text or "").lower()
     return any(m in t for m in _FALLBACK_MARKERS)
 
 
+# [FYP-FUNCTION] `ai_summary` — implements the ai summary operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `body`, `fallback`, `title`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def ai_summary(body: str, fallback: bool = False,
                title: str = "AI-Generated Summary") -> str:
-    """Case-workspace AI summary card (mockup .ai-summary-card) with an optional
-    amber 'Fallback logic' tag when the summary is error-fallback text."""
+    """[FYP-UI] Case-workspace AI summary card (mockup .ai-summary-card) with an optional
+    amber 'Fallback logic' tag when the summary is error-fallback text.
+    Callers normally pass `fallback=detect_fallback(body)` so the tag stays
+    in sync with the text actually displayed. app.py's confirmed caller (7
+    call sites)."""
     tag = ('<span class="tag" title="The AI analysis failed to run, so this '
            'text is an automatic fallback message — not a real summary. '
            'Treat it as unreliable and re-run the analysis.">'
@@ -853,10 +1184,22 @@ _ATTACK_TACTIC_DEFS = {
 }
 
 
+# [FYP-FUNCTION] `mitre_strip` — implements the mitre strip operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `active_tactic`, `technique`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_e`, `append`, `bool`, `enumerate`, `get`, `join`, `lower`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def mitre_strip(active_tactic: str = "", technique: str = "") -> str:
-    """Horizontal MITRE ATT&CK kill-chain strip with the incident's tactic
+    """[FYP-UI] Horizontal MITRE ATT&CK kill-chain strip with the incident's tactic
     highlighted (mockup .mitre-tactics). active_tactic matched case-insensitively.
-    Each tactic carries a plain-English hover title (see _ATTACK_TACTIC_DEFS)."""
+    Each tactic carries a plain-English hover title (see _ATTACK_TACTIC_DEFS).
+    No confirmed caller in the current app.py — the case-detail MITRE view
+    uses the fuller mitre_mapping_workspace() below instead, which surfaces
+    per-mapping evidence/origin rather than just highlighting one tactic in
+    the fixed 14-tactic strip."""
     act = str(active_tactic or "").strip().lower()
     parts = []
     for i, tac in enumerate(_ATTACK_TACTICS, start=1):
@@ -883,14 +1226,32 @@ _MITRE_ORIGIN_LABELS = {
 }
 
 
+# [FYP-FUNCTION] `mitre_mapping_workspace` — implements the mitre mapping workspace operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `mappings`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`, `append`, `enumerate`, `get`, `isinstance`, `items`, `join`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def mitre_mapping_workspace(mappings: Iterable[dict]) -> str:
-    """Render MITRE mappings as reviewable technique cards, each tagged with
+    """[FYP-UI] Render MITRE mappings as reviewable technique cards, each tagged with
     its ORIGIN (how it was produced) instead of a fabricated confidence
     percentage — no field in any of the three source tiers (NetWitness
     native data, deterministic keyword inference, or the Investigation
     Agent's own markdown table) carries a real numeric confidence, so none
     is invented here. An LLM/agent suggestion is never displayed
-    indistinguishably from a confirmed mapping."""
+    indistinguishably from a confirmed mapping.
+
+    [FYP-DECISION] The `_MITRE_ORIGIN_LABELS` map above never resolves to
+    "Analyst confirmed" today — no action anywhere in this pass lets an
+    analyst confirm a mapping, so that entry is a reserved-but-unused label
+    (see the comment on `_MITRE_ORIGIN_LABELS`), not a claim about existing
+    functionality. `mappings` is the raw list this app assembles (each
+    origin string is a key into `_MITRE_ORIGIN_LABELS`; unrecognized origins
+    fall back to a title-cased "Unlabeled origin" tone rather than being
+    dropped). app.py's confirmed caller (1 call site, the case-detail page's
+    MITRE tab)."""
     clean = []
     for raw in mappings or []:
         if not isinstance(raw, dict):
@@ -956,9 +1317,19 @@ def mitre_mapping_workspace(mappings: Iterable[dict]) -> str:
         f'{"".join(cards)}</div>')
 
 
+# [FYP-FUNCTION] `agent_ring` — implements the agent ring operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `pct`, `label`, `sub`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_e`, `float`, `int`, `max`, `min`, `round`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def agent_ring(pct: Any, label: str = "", sub: str = "") -> str:
-    """Conic-gradient completion ring (mockup .agent-ring). pct 0-100; ring turns
-    amber when < 100 (in progress), green at 100 (complete)."""
+    """[FYP-UI] Conic-gradient completion ring (mockup .agent-ring). pct 0-100; ring turns
+    amber when < 100 (in progress), green at 100 (complete). No confirmed
+    caller in the current app.py (see the file header's list of
+    ported-but-unwired builders)."""
     try:
         p = max(0, min(100, int(round(float(pct)))))
     except (TypeError, ValueError):
@@ -972,20 +1343,32 @@ def agent_ring(pct: Any, label: str = "", sub: str = "") -> str:
             f'<b>{p}%</b></div>{side}</div>')
 
 
+# [FYP-FUNCTION] `report_file_head` — implements the report file head operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `icon`, `color`, `title`, `description`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_render_reports_workspace; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_e`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def report_file_head(icon: str, color: str, title: str, description: str) -> str:
-    """Reports tab 'Generated Files' row head — colored icon square + title +
+    """[FYP-UI] Reports tab 'Generated Files' row head — colored icon square + title +
     description, matching the reference design's document rows. `color` is
-    one of blue|green|purple|gold|slate (see .ag-rf-icon.* in COMPONENT_CSS)."""
+    one of blue|green|purple|gold|slate (see .ag-rf-icon.* in COMPONENT_CSS).
+    app.py's confirmed caller (2 call sites)."""
     return (f'<div class="ag-rf-head"><div class="ag-rf-icon {_e(color)}">{_e(icon)}</div>'
             f'<div><p class="ag-rf-title">{_e(title)}</p>'
             f'<p class="ag-rf-desc">{_e(description)}</p></div></div>')
 
 
 def humanize_timestamp(iso_str: str | None) -> str:
-    """"Generated today at 5:52 PM" / "Edited yesterday at 3:20 PM" style
+    """[FYP-UI] [FYP-FUNCTION] "Generated today at 5:52 PM" / "Edited yesterday at 3:20 PM" style
     display string for the Reports tab's Last Saved column. `iso_str` is a
     plain ISO-8601 UTC timestamp (as produced throughout this app);
-    falls back to the raw string (or "—") when it can't be parsed."""
+    falls back to the raw string (or "—") when it can't be parsed. Converts
+    to the local ("astimezone()") timezone before formatting, so "today"/
+    "yesterday" reflect the viewer's clock, not UTC. app.py's confirmed
+    caller (3 call sites)."""
     if not iso_str:
         return "—"
     try:

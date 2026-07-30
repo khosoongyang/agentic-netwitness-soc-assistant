@@ -19,6 +19,90 @@ per-provider results under `threat_intelligence`. There is no per-IOC verdict,
 confidence, or caching system — each stage run performs its own fresh lookups.
 """
 
+# =============================================================================
+# [FYP-FILE] threat_intel.py
+# Important dependencies: csv, datetime, dotenv, json, os, pathlib, re, requests.
+# -----------------------------------------------------------------------------
+# File: threat_intel.py (repo root)
+#
+# Purpose:
+#   Implements the "Threat Intelligence Enrichment" workflow stage — stage 3
+#   of 5 in the Aegis pipeline (Parsing & Normalisation -> Triage -> Threat
+#   Intelligence Enrichment -> Investigation -> Reporting). Looks up IOCs
+#   pulled off an already-triaged alert against external reputation
+#   providers and produces a single case-level risk verdict.
+#
+# Main functionalities:
+#   - [FYP-PROCESS] IOC Extraction — extract_iocs() pulls file hash, public
+#     IPs, external domains, URL-derived hostnames and decoded PowerShell
+#     IOCs off the alert.
+#   - [FYP-VALIDATION] IOC validation / private-IP filtering — is_available(),
+#     is_ip_address(), is_private_ip(), is_external_domain() decide which
+#     extracted values are even worth sending to an external provider
+#     (RFC1918/loopback IPs and bare AD hostnames are filtered out).
+#   - [FYP-API] External TI provider lookups — VirusTotal (file hash / IP /
+#     domain reputation via VT_API_KEY), AbuseIPDB (IP abuse-confidence via
+#     ABUSEIPDB_API_KEY), AlienVault OTX (pulse/threat-community lookups via
+#     OTX_API_KEY). Every provider is optional and every call degrades to a
+#     "skipped"/"error" status instead of raising.
+#   - [FYP-PROCESS][FYP-DECISION] Case-level enrichment risk scoring —
+#     calculate_enrichment_risk() turns the raw provider results into a
+#     single enrichment_risk_score/level/reasons verdict.
+#   - [FYP-USED-BY soc_workflow.py] Dashboard integration adapter —
+#     flatten_alert_for_enrichment(), _build_flat_alert(),
+#     run_threat_intel_for_dashboard() reshape the richer parser/triage
+#     output into the simple alert dict this module was originally written
+#     against, and write the dashboard-facing result envelope.
+#
+# Inputs:
+#   - Standalone CLI mode: outputs/processed_alert_test_iocs.json (a
+#     processed/triaged alert dict).
+#   - Dashboard/workflow mode: an in-memory alert dict built from the raw
+#     NetWitness incident (alertMeta), Parsing's normalised_alert output and
+#     Triage's triage_result, assembled by soc_workflow.run_threat_intel()
+#     via _build_flat_alert().
+#   - Environment variables (via python-dotenv): VT_API_KEY,
+#     ABUSEIPDB_API_KEY, OTX_API_KEY — each optional; a missing key means
+#     that provider is skipped, never a fabricated result.
+#
+# Outputs:
+#   - Standalone CLI mode: outputs/enriched_alert.json, outputs/enriched_alert.csv.
+#   - Dashboard/workflow mode: <output_dir>/enriched_alert.json and
+#     <output_dir>/threat_intel_result.json — the same dict this module
+#     returns to its caller, so the on-disk copy and the in-memory result
+#     never diverge.
+#   - Fields of note: enrichment_risk_score (int), enrichment_risk_level
+#     ("Low"/"Medium"/"High"), enrichment_risk_reasons (list[str]),
+#     threat_intelligence (per-provider raw results), warnings (missing-key
+#     / provider-error strings only — never informational notes).
+#
+# Workflow position:
+#   Stage 3 of 5 — Threat Intelligence Enrichment. Runs after Triage has
+#   produced a triage_result and before Investigation. The dashboard result's
+#   recommended_next_action states SOC analyst approval is required before
+#   the Investigation stage can run.
+#
+# Called by:
+#   - soc_workflow.py: run_threat_intel() dynamically imports this module,
+#     calls _build_flat_alert() then run_threat_intel_for_dashboard().
+#   - Standalone: `python threat_intel.py` runs main() directly.
+#   - No direct caller confidently identified for the module-level
+#     enrich_alert()/extract_iocs() functions outside this file and its own
+#     main()/run_threat_intel_for_dashboard() — soc_workflow.py only calls
+#     the dashboard-facing entry points listed above.
+#
+# Calls:
+#   - requests: HTTP GET to VirusTotal, AbuseIPDB and AlienVault OTX REST APIs.
+#   - python-dotenv (load_dotenv): loads VT_API_KEY / ABUSEIPDB_API_KEY /
+#     OTX_API_KEY from a local .env file into the environment.
+#   - stdlib: json, csv, os, re, pathlib, datetime, urllib.parse.
+#
+# Key evaluator search terms:
+#   IOC extraction, IOC validation, private IP filtering, VirusTotal,
+#   AbuseIPDB, AlienVault OTX, threat intelligence enrichment, enrichment
+#   risk score, external reputation lookup.
+# =============================================================================
+
 import csv
 import json
 import os
@@ -38,10 +122,26 @@ CSV_OUTPUT_FILE = "outputs/enriched_alert.csv"
 load_dotenv()
 
 
+# [FYP-FUNCTION] `load_processed_alert` — retrieves load processed alert data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `load`, `open`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def load_processed_alert() -> Dict[str, Any]:
     with open(INPUT_FILE, "r", encoding="utf-8") as file:
         return json.load(file)
 
+
+# [FYP-FUNCTION] `save_json` — persists or updates save json state used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dump`, `makedirs`, `open`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def save_json(data: Dict[str, Any]) -> None:
     os.makedirs("outputs", exist_ok=True)
@@ -49,6 +149,14 @@ def save_json(data: Dict[str, Any]) -> None:
     with open(JSON_OUTPUT_FILE, "w", encoding="utf-8") as file:
         json.dump(data, file, indent=4)
 
+
+# [FYP-FUNCTION] `flatten_value` — implements the flatten value operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:save_csv; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `isinstance`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def flatten_value(value: Any) -> str:
     if isinstance(value, dict) or isinstance(value, list):
@@ -59,6 +167,14 @@ def flatten_value(value: Any) -> str:
 
     return str(value)
 
+
+# [FYP-FUNCTION] `save_csv` — persists or updates save csv state used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `DictWriter`, `flatten_value`, `items`, `keys`, `makedirs`, `open`, `writeheader`, `writerow`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def save_csv(data: Dict[str, Any]) -> None:
     os.makedirs("outputs", exist_ok=True)
@@ -74,7 +190,32 @@ def save_csv(data: Dict[str, Any]) -> None:
         writer.writerow(flattened_data)
 
 
+# -----------------------------------------------------------------------------
+# [FYP-SECTION] IOC validation / private-IP filtering
+# -----------------------------------------------------------------------------
+# [FYP-VALIDATION] The four helpers below gate which extracted values are even
+# worth sending to an external TI provider: is_available() filters out empty/
+# placeholder strings, is_ip_address()/is_private_ip() filter out malformed
+# and RFC1918/loopback IPs (so internal addresses are never sent to
+# VirusTotal/AbuseIPDB/OTX), and is_external_domain() filters out bare AD/
+# internal hostnames that have no dot. extract_iocs() below calls all four
+# before an indicator is added to any *_indicators list.
+# [FYP-EVALUATOR] IOC validation / private-IP filtering lives here.
+# -----------------------------------------------------------------------------
+
+
+# [FYP-FUNCTION] `is_available` — evaluates is available conditions so invalid or unsafe threat intelligence and NetWitness integration processing is stopped early.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:_build_flat_alert, threat_intel.py:_first_am, threat_intel.py:_flatten_ioc_list; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `lower`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def is_available(value: Optional[str]) -> bool:
+    """[FYP-VALIDATION] True if `value` is a real, non-placeholder string —
+    False for None, blank/whitespace-only strings, and common "no data"
+    sentinels ("unknown", "n/a", "none", "null")."""
     if value is None:
         return False
 
@@ -89,7 +230,18 @@ def is_available(value: Optional[str]) -> bool:
     return True
 
 
+# [FYP-FUNCTION] `is_ip_address` — evaluates is ip address conditions so invalid or unsafe threat intelligence and NetWitness integration processing is stopped early.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:_flatten_ioc_list, threat_intel.py:extract_iocs, threat_intel.py:is_private_ip; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `int`, `match`, `split`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def is_ip_address(value: str) -> bool:
+    """[FYP-VALIDATION] True if `value` is a syntactically valid dotted-quad
+    IPv4 address (each octet 0-255). Used to decide whether a string pulled
+    off the alert should be treated as an IP indicator at all."""
     pattern = r"^(?:\d{1,3}\.){3}\d{1,3}$"
 
     if not re.match(pattern, value):
@@ -104,7 +256,20 @@ def is_ip_address(value: str) -> bool:
     return True
 
 
+# [FYP-FUNCTION] `is_private_ip` — evaluates is private ip conditions so invalid or unsafe threat intelligence and NetWitness integration processing is stopped early.
+# [FYP-INPUT] Parameters: `ip_address`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:extract_iocs; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `int`, `is_ip_address`, `split`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def is_private_ip(ip_address: str) -> bool:
+    """[FYP-VALIDATION] Private-IP filter — True for RFC1918 ranges
+    (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and loopback (127.0.0.0/8).
+    extract_iocs() only queries VirusTotal/AbuseIPDB/OTX for source/
+    destination IPs where this returns False, so internal addresses are
+    never sent to an external provider."""
     if not is_ip_address(ip_address):
         return False
 
@@ -127,7 +292,17 @@ def is_private_ip(ip_address: str) -> bool:
     return False
 
 
+# [FYP-FUNCTION] `is_external_domain` — evaluates is external domain conditions so invalid or unsafe threat intelligence and NetWitness integration processing is stopped early.
+# [FYP-INPUT] Parameters: `domain`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:extract_iocs; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `is_available`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def is_external_domain(domain: str) -> bool:
+    """[FYP-VALIDATION] True if `domain` looks like a real external domain
+    rather than a bare internal/AD hostname (which has no dot)."""
     if not is_available(domain):
         return False
 
@@ -138,7 +313,24 @@ def is_external_domain(domain: str) -> bool:
     return True
 
 
+# -----------------------------------------------------------------------------
+# [FYP-SECTION] IOC extraction
+# -----------------------------------------------------------------------------
 def extract_iocs(alert: Dict[str, Any]) -> Dict[str, Any]:
+    """[FYP-FUNCTION] [FYP-PROCESS] IOC Extraction — pulls the raw indicators
+    this stage will look up externally off an already-triaged/normalised
+    alert dict: possible_file_name, a file hash (file_hash/sha256/sha1/md5/
+    entity_file_hash, first match wins), public source/destination IPs
+    (private IPs dropped via is_private_ip()), an external event domain, the
+    hostname derived from a URL indicator, the raw URL itself, and any
+    IOCs already recovered from decoded PowerShell (powershell_analysis).
+    [FYP-VALIDATION] Every candidate is passed through is_available()/
+    is_ip_address()/is_private_ip()/is_external_domain() before being kept,
+    so malformed values and internal-only addresses/hostnames never reach
+    query_virustotal_*/query_abuseipdb/query_otx_indicator().
+    [FYP-USED-BY] enrich_alert() (this file) and run_threat_intel_for_dashboard()
+    (via its iocs_preview call) are the two callers.
+    [FYP-EVALUATOR] IOC extraction happens here."""
     source_ip = alert.get("source_ip")
     destination_ip = alert.get("destination_ip")
     event_domain = alert.get("event_domain")
@@ -188,7 +380,29 @@ def extract_iocs(alert: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+# -----------------------------------------------------------------------------
+# [FYP-SECTION] External threat-intelligence API calls
+# -----------------------------------------------------------------------------
+# [FYP-API] Three optional providers, each keyed by its own environment
+# variable (VT_API_KEY / ABUSEIPDB_API_KEY / OTX_API_KEY). A missing key
+# short-circuits to {"status": "skipped", ...} before any HTTP call is made;
+# a request exception is caught and returned as {"status": "error", ...} —
+# neither path raises, so one provider being down/unconfigured never stops
+# the others or the stage. [FYP-ERROR] status_code != 200 and
+# requests.RequestException are the two failure paths handled per call.
+# [FYP-FUNCTION] `query_virustotal_file_hash` — retrieves query virustotal file hash data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `file_hash`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tests/test_threat_intel_workflow.py:test_virustotal_file_hash_lookup_returns_reputation, threat_intel.py:enrich_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `getenv`, `json`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def query_virustotal_file_hash(file_hash: str) -> Dict[str, Any]:
+    """[FYP-API] VirusTotal — GET /api/v3/files/{hash} (VT_API_KEY). Returns
+    the file's last_analysis_stats (malicious/suspicious/harmless/undetected
+    counts) plus reputation and first-seen metadata. 404 is reported as
+    "not_found" (not an error — VT simply has no record of the hash)."""
     vt_api_key = os.getenv("VT_API_KEY")
     if not vt_api_key:
         return {
@@ -245,7 +459,18 @@ def query_virustotal_file_hash(file_hash: str) -> Dict[str, Any]:
         }
 
 
+# [FYP-FUNCTION] `query_virustotal_ip` — retrieves query virustotal ip data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `ip_address`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tests/test_threat_intel_workflow.py:test_api_keys_read_at_call_time_not_import_time, tests/test_threat_intel_workflow.py:test_missing_api_key_returns_skipped_not_crash, tests/test_threat_intel_workflow.py:test_virustotal_ip_lookup_returns_reputation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `getenv`, `json`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def query_virustotal_ip(ip_address: str) -> Dict[str, Any]:
+    """[FYP-API] VirusTotal — GET /api/v3/ip_addresses/{ip} (VT_API_KEY).
+    Called only for IPs that survived is_private_ip() filtering. Returns
+    last_analysis_stats plus reputation/country/AS-owner metadata."""
     vt_api_key = os.getenv("VT_API_KEY")
     if not vt_api_key:
         return {
@@ -294,7 +519,19 @@ def query_virustotal_ip(ip_address: str) -> Dict[str, Any]:
         }
 
 
+# [FYP-FUNCTION] `query_virustotal_domain` — retrieves query virustotal domain data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `domain`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tests/test_threat_intel_workflow.py:test_virustotal_domain_lookup_returns_reputation, threat_intel.py:enrich_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `getenv`, `json`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def query_virustotal_domain(domain: str) -> Dict[str, Any]:
+    """[FYP-API] VirusTotal — GET /api/v3/domains/{domain} (VT_API_KEY).
+    Called only for domains that passed is_external_domain(). Same
+    skipped/error/completed status contract as the file-hash and IP
+    variants above."""
     vt_api_key = os.getenv("VT_API_KEY")
     if not vt_api_key:
         return {
@@ -343,7 +580,19 @@ def query_virustotal_domain(domain: str) -> Dict[str, Any]:
         }
 
 
+# [FYP-FUNCTION] `query_abuseipdb` — retrieves query abuseipdb data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `ip_address`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tests/test_threat_intel_workflow.py:test_abuseipdb_ip_lookup_returns_reputation, tests/test_threat_intel_workflow.py:test_missing_api_key_returns_skipped_not_crash, threat_intel.py:enrich_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `getenv`, `json`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def query_abuseipdb(ip_address: str) -> Dict[str, Any]:
+    """[FYP-API] AbuseIPDB — GET /api/v2/check (ABUSEIPDB_API_KEY, 90-day
+    lookback). Returns abuse_confidence_score/total_reports plus ISP/
+    country/usage-type context — a second, independent reputation signal
+    alongside VirusTotal's for the same IP."""
     abuseipdb_api_key = os.getenv("ABUSEIPDB_API_KEY")
     if not abuseipdb_api_key:
         return {
@@ -397,7 +646,20 @@ def query_abuseipdb(ip_address: str) -> Dict[str, Any]:
         }
 
 
+# [FYP-FUNCTION] `query_otx_indicator` — retrieves query otx indicator data for the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `indicator_type`, `indicator_value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tests/test_threat_intel_workflow.py:test_missing_api_key_returns_skipped_not_crash, tests/test_threat_intel_workflow.py:test_otx_domain_lookup_returns_pulse_data, tests/test_threat_intel_workflow.py:test_otx_file_hash_lookup_returns_pulse_data; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `getenv`, `json`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def query_otx_indicator(indicator_type: str, indicator_value: str) -> Dict[str, Any]:
+    """[FYP-API] AlienVault OTX — GET /api/v1/indicators/{type}/{value}/general
+    (OTX_API_KEY). indicator_type is "IPv4", "domain", or "file" depending
+    on caller. Returns pulse_count (how many threat-intel "pulses"/reports
+    reference this indicator) and up to 5 related_pulses — the third and
+    final TI provider this stage queries."""
     otx_api_key = os.getenv("OTX_API_KEY")
     if not otx_api_key:
         return {
@@ -450,6 +712,22 @@ def query_otx_indicator(indicator_type: str, indicator_value: str) -> Dict[str, 
 
 
 def calculate_enrichment_risk(threat_intel: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    [FYP-FUNCTION] Enrichment Risk Scoring
+    [FYP-PROCESS] [FYP-EVALUATOR]
+
+    Case-level risk score/level for the Threat Intelligence Enrichment
+    stage — deterministic, rule-based aggregation of the three providers'
+    results (no per-IOC verdict system; this rolls everything up into one
+    enrichment_risk_score/enrichment_risk_level/enrichment_risk_reasons for
+    the whole alert). Reads whichever of virustotal/abuseipdb/otx results
+    are present under threat_intel and accumulates risk_score + a
+    human-readable reasons list for each signal that fired (e.g. VT
+    malicious detections, AbuseIPDB confidence score, OTX pulse count).
+
+    [FYP-USED-BY]: enrich_alert() below, which packages this into the
+    stage's final result alongside the raw per-provider lookups.
+    """
     risk_score = 0
     reasons = []
 
@@ -551,6 +829,22 @@ def calculate_enrichment_risk(threat_intel: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def enrich_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    [FYP-FUNCTION] Threat Intelligence Enrichment (single-alert orchestration)
+    [FYP-PROCESS] [FYP-ENTRY-POINT] [FYP-EVALUATOR]
+
+    Orchestrates one alert through the whole enrichment pipeline: [FYP-CALLS]
+    extract_iocs() -> the three provider queries (query_virustotal_*,
+    query_abuseipdb, query_otx_indicator) for whichever IOCs were extracted
+    -> calculate_enrichment_risk() to roll everything into a single score/
+    level/reasons. Each provider call is independent and never raises (see
+    the [FYP-ERROR]/[FYP-FALLBACK] note above query_virustotal_file_hash),
+    so a missing API key or a down provider degrades that one signal to
+    "skipped"/"error" without blocking the others or this function.
+
+    [FYP-USED-BY]: run_threat_intel_for_dashboard() below wraps this for the
+    dashboard/workflow entry point; main() (CLI) also calls it directly.
+    """
     iocs = extract_iocs(alert)
 
     file_name = iocs.get("possible_file_name")
@@ -648,6 +942,14 @@ def enrich_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
     return enriched_alert
 
 
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered threat intelligence and NetWitness integration operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `enrich_alert`, `load_processed_alert`, `print`, `save_csv`, `save_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def main() -> None:
     processed_alert = load_processed_alert()
     enriched_alert = enrich_alert(processed_alert)
@@ -668,12 +970,28 @@ if __name__ == "__main__":
 # Dashboard / workflow integration helpers
 # ---------------------------------------------------------------------------
 
+# [FYP-FUNCTION] `_first_non_empty` — implements the first non empty operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `default`, `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/common.py:normalise_incident, threat_intel.py:_flatten_ioc_list, threat_intel.py:flatten_alert_for_enrichment; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _first_non_empty(*values: Any, default: Any = None) -> Any:
     for value in values:
         if value not in (None, "", [], {}):
             return value
     return default
 
+
+# [FYP-FUNCTION] `_as_list` — implements the as list operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_detection_summary, final_verdict.py:_build; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`, `list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _as_list(value: Any) -> List[Any]:
     if value in (None, ""):
@@ -684,6 +1002,14 @@ def _as_list(value: Any) -> List[Any]:
         return list(value)
     return [value]
 
+
+# [FYP-FUNCTION] `_flatten_ioc_list` — implements the flatten ioc list operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:flatten_alert_for_enrichment; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_list`, `_first_non_empty`, `append`, `fromkeys`, `get`, `is_available`, `is_ip_address`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _flatten_ioc_list(alert: Dict[str, Any]) -> Dict[str, List[str]]:
     hashes: List[str] = []
@@ -715,6 +1041,14 @@ def _flatten_ioc_list(alert: Dict[str, Any]) -> Dict[str, List[str]]:
         "file_names": list(dict.fromkeys(names)),
     }
 
+
+# [FYP-FUNCTION] `flatten_alert_for_enrichment` — implements the flatten alert for enrichment operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include tests/test_threat_intel_workflow.py:test_powershell_iocs_preserved_through_flatten, threat_intel.py:run_threat_intel_for_dashboard; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_list`, `_first_non_empty`, `_flatten_ioc_list`, `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def flatten_alert_for_enrichment(alert: Dict[str, Any]) -> Dict[str, Any]:
     """Adapt rich parser output into the simple alert shape expected here."""
@@ -768,6 +1102,14 @@ def flatten_alert_for_enrichment(alert: Dict[str, Any]) -> Dict[str, Any]:
     return flat
 
 
+# [FYP-FUNCTION] `_build_flat_alert` — constructs build flat alert output for the next threat intelligence and NetWitness integration consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `normalised_alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_threat_intel; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_first_am`, `dict`, `get`, `is_available`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _build_flat_alert(incident: Optional[Dict[str, Any]], triage_result: Optional[Dict[str, Any]],
                        normalised_alert: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Merge Parsing's processed_alert (already flat and already carrying the
@@ -780,6 +1122,14 @@ def _build_flat_alert(incident: Optional[Dict[str, Any]], triage_result: Optiona
     scanned; nothing here changes if it's absent."""
     base = dict(normalised_alert or {})
     am = (incident or {}).get("alertMeta") or {}
+
+    # [FYP-FUNCTION] `_first_am` — implements the first am operation used by the surrounding threat intelligence and NetWitness integration workflow.
+    # [FYP-INPUT] Parameters: `*fields`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include threat_intel.py:_build_flat_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_as_list`, `get`, `is_available`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _first_am(*fields: str) -> Any:
         for field in fields:
@@ -801,6 +1151,14 @@ def _build_flat_alert(incident: Optional[Dict[str, Any]], triage_result: Optiona
     return base
 
 
+# [FYP-FUNCTION] `_iter_provider_results` — implements the iter provider results operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `threat_intel`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Yields values to its iterator consumer; any state/file/database effects are visible in the body.
+# [FYP-USED-BY] Static symbol references include threat_intel.py:run_threat_intel_for_dashboard; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _iter_provider_results(threat_intel: Dict[str, Any]):
     """Yield (provider_label, result_dict) for every per-indicator lookup
     result the engine produced, regardless of whether the provider stores it
@@ -820,7 +1178,16 @@ def _iter_provider_results(threat_intel: Dict[str, Any]):
 
 
 def run_threat_intel_for_dashboard(alert: Dict[str, Any], output_dir: str | Path = "outputs/threat_intel") -> Dict[str, Any]:
-    """Run external IOC enrichment and return dashboard-facing artefacts.
+    """
+    [FYP-FUNCTION] Threat Intelligence Enrichment — Dashboard/Workflow Entry Point
+    [FYP-ENTRY-POINT] [FYP-EVALUATOR] [FYP-OUTPUT]
+
+    Run external IOC enrichment and return dashboard-facing artefacts.
+
+    [FYP-USED-BY]: soc_workflow.run_threat_intel() (repo root) is the
+    confirmed caller — it builds a flat alert via threat_intel._build_flat_alert()
+    then calls this function, re-keying the result onto the workflow's
+    stage-result envelope without further mutation.
 
     Computes the case-level `warnings` list (applicable-provider missing-key
     skips and genuine provider errors — never informational notes) and the

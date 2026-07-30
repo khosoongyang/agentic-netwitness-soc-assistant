@@ -1,3 +1,28 @@
+"""
+[FYP-FILE] reporting/output_writer.py (174 lines)
+# File: soc_reporting_agent/reporting/output_writer.py
+# Purpose: This module implements report generation and export behaviour for output writer.
+# Inputs: Receives function arguments, configured state, and persisted artifacts described below.
+# Outputs: Produces return values and documented state, file, database, export, or UI effects.
+# Workflow position: Aegis report generation and export.
+# Important dependencies: config, json, pathlib, reporting, typing.
+# Key evaluator search terms: write_json, _display_fields, build_reporting_result, write_outputs, try_store_postgres, [FYP-FUNCTION].
+[FYP-SECTION] Responsibility
+Final pipeline stage: assembles the persisted reporting_result.json record
+(build_reporting_result), writes it plus the full enriched context to disk
+(write_outputs), and optionally mirrors a summary row into PostgreSQL
+(try_store_postgres). Also owns the generic write_json() helper used by
+the CLI entry point for a second write-back after Postgres status is
+known.
+
+[FYP-USED-BY] agents/reporting_agent.py:main() (write_outputs,
+try_store_postgres, write_json); scripts/test_merged_report_context.py
+(write_outputs).
+[FYP-CALLS] reporting/status_display.py (get_status_metadata,
+calculate_llm_enhancement_score) to translate every technical status code
+in the context into analyst-facing display/explanation/workflow_impact
+text.
+"""
 from pathlib import Path
 import json
 from typing import Any
@@ -6,11 +31,20 @@ from reporting.status_display import get_status_metadata, calculate_llm_enhancem
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
+    """[FYP-FUNCTION] Write `data` as indented JSON to `path`, creating
+    parent directories as needed. Generic helper used both internally
+    (write_outputs) and by the CLI entry point to overwrite
+    reporting_result.json a second time once the Postgres store outcome is
+    known."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=4), encoding="utf-8")
 
 
 def _display_fields(prefix: str, category: str, technical_status: Any) -> dict[str, str]:
+    """[FYP-FUNCTION] Look up `category`/`technical_status` in
+    status_display.STATUS_DISPLAY_MAP and return it as three
+    `{prefix}_display` / `{prefix}_explanation` / `{prefix}_workflow_impact`
+    keys, ready to be merged into the result dict via dict.update()."""
     meta = get_status_metadata(category, technical_status)
     return {
         f"{prefix}_display": meta["display"],
@@ -20,6 +54,28 @@ def _display_fields(prefix: str, category: str, technical_status: Any) -> dict[s
 
 
 def build_reporting_result(context: dict[str, Any], generated_reports: dict[str, str]) -> dict[str, Any]:
+    """[FYP-FUNCTION] Assemble the persisted `reporting_result.json` schema
+    ("reporting-result-v1") from the full build_context() output plus the
+    rendered report file paths.
+
+    [FYP-INPUT] context: the dict returned by context_builder.build_context()
+    (as further enhanced by export_context_enhancer.enhance_export_context(),
+    called between build_context and render_reports in
+    agents/reporting_agent.py:main()); generated_reports: the dict of
+    output-file paths returned by report_renderer.render_reports().
+
+    [FYP-PROCESS] Pulls report/validation/rag/llm/cache/completeness status
+    codes out of context, computes the LLM enhancement score via
+    calculate_llm_enhancement_score(), and merges in human-facing
+    display/explanation/workflow_impact fields for each status category
+    via _display_fields(). Also carries forward several backwards-
+    compatible key aliases (report_quality_score/status/dict) kept for
+    older tests/scripts that read the pre-rename field names.
+    [FYP-VALIDATION] This is the summary record analysts/downstream code
+    read to decide whether a report is ready for review — every
+    *_status_display/_explanation/_workflow_impact triple originates here.
+    [FYP-USED-BY] write_outputs() (below).
+    """
     report_status = context["report_status"]
     validation_status = context["validation_status"]
     rag_status = context["rag_status"]
@@ -78,6 +134,29 @@ def build_reporting_result(context: dict[str, Any], generated_reports: dict[str,
 
 
 def write_outputs(context: dict[str, Any], generated_reports: dict[str, str], output_dir: Path | None = None) -> dict[str, Any]:
+    """[FYP-FUNCTION] [FYP-ENTRY-POINT] Persist the two disk artefacts of a
+    reporting run: `reporting_result.json` (the summary record built by
+    build_reporting_result()) and `enriched_reporting_context.json` (the
+    full, unabridged `context` dict) under
+    `{output_dir or settings.OUTPUT_DIR}/{incident_id}/`.
+
+    [FYP-INPUT] context: build_context() output as enhanced by
+    export_context_enhancer.enhance_export_context(); generated_reports:
+    output-file-path dict from report_renderer.render_reports();
+    output_dir: overrides settings.OUTPUT_DIR (used by the dev/test
+    harnesses to write into a scratch directory).
+
+    [FYP-PROCESS] Creates the incident output directory, builds the
+    reporting_result via build_reporting_result(), writes both JSON files
+    via write_json(), and returns the reporting_result dict so the caller
+    can mutate it further (e.g. agents/reporting_agent.py:main() adds
+    postgres_used/postgres display fields and re-writes
+    reporting_result.json a second time after try_store_postgres()).
+    [FYP-CALLS] build_reporting_result(), write_json() (both in this file).
+    [FYP-USED-BY] agents/reporting_agent.py:main() (second-to-last pipeline
+    step, right after report_renderer.render_reports()); dev/test harness
+    scripts/test_merged_report_context.py.
+    """
     root_output_dir = output_dir or settings.OUTPUT_DIR
     incident_output_dir = root_output_dir / context["incident_id"]
     incident_output_dir.mkdir(parents=True, exist_ok=True)
@@ -89,6 +168,34 @@ def write_outputs(context: dict[str, Any], generated_reports: dict[str, str], ou
 
 
 def try_store_postgres(reporting_result: dict[str, Any], context: dict[str, Any]) -> tuple[bool, str]:
+    """[FYP-FUNCTION] Best-effort mirror of a reporting_result summary row
+    into the `report_results` PostgreSQL table, gated by
+    settings.USE_POSTGRES.
+
+    [FYP-INPUT] reporting_result: the dict returned by write_outputs()/
+    build_reporting_result(); context: the full build_context() output
+    (accepted for signature symmetry with the caller but not read here —
+    only the already-flattened reporting_result fields are inserted).
+
+    [FYP-PROCESS] Returns (False, "postgres_disabled") immediately when
+    Postgres storage is disabled in settings. Otherwise lazily imports
+    psycopg2, opens a connection to settings.POSTGRES_DSN, inserts a single
+    row (incident_id, alert_id, report_status, validation_status,
+    report_generation_mode, llm_used, rag_used, and the full
+    reporting_result as a JSON blob), commits, and returns
+    (True, "postgres_store_success"). Any exception (missing driver,
+    connection failure, bad DSN, insert error) is caught and reported as
+    (False, f"postgres_store_failed: {error}") rather than raised — a
+    Postgres outage must never fail report generation, since the JSON
+    files written by write_outputs() are the source of truth.
+    [FYP-USED-BY] agents/reporting_agent.py:main(), immediately after
+    write_outputs(); its (postgres_used, postgres_status) result is folded
+    back into reporting_result and re-persisted via write_json().
+    [FYP-EVALUATOR] If Postgres mirroring appears to silently "not work"
+    during evaluation, check settings.USE_POSTGRES first — this function
+    treats disabled Postgres as a normal, non-error outcome rather than a
+    failure worth surfacing.
+    """
     if not settings.USE_POSTGRES:
         return False, "postgres_disabled"
 

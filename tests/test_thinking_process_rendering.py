@@ -1,9 +1,55 @@
+"""
+[FYP-FILE]
+# Important dependencies: __future__, soc_workflow.
+File: tests/test_thinking_process_rendering.py
+Purpose: Verifies soc_workflow.render_agent_thinking_plain() — the plain-
+    text "Thinking Process" panel shown per stage in app.py's My Workspace,
+    which explains what each agent did/is doing without dumping the raw
+    stage result or any hidden model chain-of-thought.
+Main functionalities: Calls render_agent_thinking_plain(stage, result,
+    workflow_state=..., activity=...) with representative per-stage result
+    dicts (Parsing/Triage/Threat Intelligence Enrichment/
+    Investigation/Reporting) and with workflow_state/activity timelines for
+    a completed vs. a currently-processing stage, then asserts the
+    rendered plain-text narrative contains the expected derived phrases
+    (indicator counts, risk level/score, MITRE mapping, playbook step
+    MET/NOT_MET status, timestamps, elapsed time, live heartbeat note) and
+    does not leak the raw result payload or agent-module implementation
+    detail language once a stage is complete.
+Inputs: Hand-built per-stage result dicts, and (for the last two tests)
+    workflow_state/activity dicts shaped like the durable rows
+    workflow_state_store.py persists. No database or LLM call is involved
+    — render_agent_thinking_plain() is pure string formatting.
+Outputs: Assertions (substring/equality) on the plain-text string returned
+    by render_agent_thinking_plain().
+Workflow position: Presentation layer over the same per-stage results
+    exercised functionally in tests/test_threat_intel_workflow.py,
+    tests/test_investigation_stage.py and tests/test_reporting_stage.py —
+    this file only checks how those results are narrated to the analyst,
+    not how they are produced.
+Called by: Executed by pytest, or by running
+    `python -m pytest tests/test_thinking_process_rendering.py`.
+Calls: soc_workflow.render_agent_thinking_plain().
+Key evaluator search terms: render_agent_thinking_plain, Thinking Process,
+    stage_started, stage_succeeded, worker_heartbeat_at, elapsed stage
+    time, MET, NOT_MET.
+[/FYP-FILE]
+"""
 from __future__ import annotations
 
 import soc_workflow as sw
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# [FYP-SECTION] render_agent_thinking_plain() — per-stage result-only
+# narration (no workflow_state/activity timeline supplied)
+# ══════════════════════════════════════════════════════════════════════════
+
 def test_parsing_thinking_prefers_persisted_parser_narrative():
+    """[FYP-FUNCTION] Validates render_agent_thinking_plain("Parsing", ...)
+    prefers an already-persisted ai_thinking narrative over reconstructing
+    one from the raw result fields, returning it verbatim.
+    """
     result = {
         "status": "completed",
         "selected_alert_id": "ALERT-7",
@@ -16,6 +62,12 @@ def test_parsing_thinking_prefers_persisted_parser_narrative():
 
 
 def test_triage_thinking_comes_from_trace():
+    """[FYP-FUNCTION] Validates render_agent_thinking_plain("Triage", ...)
+    reconstructs the narrative from the triage agent's step-by-step
+    `trace` list (IOC Checklist, Risk Rating, SOC Classification steps),
+    asserting the rendered text reports the matched indicator count, the
+    rated risk level, and the final classification.
+    """
     result = {
         "trace": [
             {
@@ -54,6 +106,11 @@ def test_triage_thinking_comes_from_trace():
 
 
 def test_threat_intel_thinking_uses_persisted_risk_and_next_action():
+    """[FYP-FUNCTION] Validates render_agent_thinking_plain("Threat
+    Intelligence Enrichment", ...) surfaces the persisted enrichment risk
+    level/score, the leading enrichment_risk_reasons entry, and the
+    recommended_next_action text in the rendered narrative.
+    """
     result = {
         "enrichment_risk_level": "High",
         "enrichment_risk_score": 82,
@@ -71,7 +128,15 @@ def test_threat_intel_thinking_uses_persisted_risk_and_next_action():
     assert "Continue to Investigation" in text
 
 
+# [FYP-EVALUATOR]
 def test_investigation_thinking_uses_sync_and_orchestrator_outputs():
+    """[FYP-FUNCTION] Validates render_agent_thinking_plain("Investigation",
+    ...) names the two collaborating investigation-agent modules
+    (sync_engine.py, orchestrator.py) and parses the Markdown "Playbook
+    Execution Trace" table out of narrative_report, asserting each step's
+    MET/NOT_MET status and the overall severity appear in the rendered
+    narrative.
+    """
     result = {
         "incident_id": "INC-42",
         "investigated_for": "INC-42",
@@ -100,6 +165,11 @@ def test_investigation_thinking_uses_sync_and_orchestrator_outputs():
 
 
 def test_reporting_thinking_uses_persisted_manifest_and_quality_checks():
+    """[FYP-FUNCTION] Validates render_agent_thinking_plain("Reporting",
+    ...) counts sections in report_manifest, and reports the
+    completeness/quality scores and the "analyst review and approval gate"
+    framing rather than a raw dump of the manifest.
+    """
     result = {
         "report_status_display": "Draft ready for analyst review",
         "report_completeness_score": 94,
@@ -122,7 +192,22 @@ def test_reporting_thinking_uses_persisted_manifest_and_quality_checks():
     assert "analyst review and approval gate" in text
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# [FYP-SECTION] render_agent_thinking_plain() — durable workflow_state /
+# activity timeline branch (My Workspace's live progress narrative)
+# ══════════════════════════════════════════════════════════════════════════
+
 def test_completed_stage_thinking_is_timestamped_progress_not_result_dump():
+    """[FYP-FUNCTION] Validates render_agent_thinking_plain() with
+    workflow_state + activity supplied for a stage that has already
+    finished: asserts the rendered text reports the
+    stage_started/stage_succeeded activity timestamps, the elapsed stage
+    time, and the "awaiting SOC analyst approval" current-stage phrase —
+    and, critically, does NOT leak the raw result's long free-text
+    "summary" field or agent-module implementation detail (orchestrator.py,
+    sync_engine.py) once the durable timeline is available, unlike the
+    result-only fallback branch exercised above.
+    """
     result = {
         "status": "completed",
         "summary": "Very long investigation finding that belongs in output.",
@@ -163,6 +248,13 @@ def test_completed_stage_thinking_is_timestamped_progress_not_result_dump():
 
 
 def test_processing_stage_thinking_shows_live_heartbeat_and_progress_note():
+    """[FYP-FUNCTION] Validates render_agent_thinking_plain() with
+    workflow_state for a stage that is still "Processing": asserts the
+    rendered text reports the stage-started timestamp, the current worker
+    heartbeat timestamp as a "processing" progress line, and the
+    worker_progress_note text (live status, not a finished-stage summary),
+    even though `activity` is empty and `result` is `{}`.
+    """
     workflow_state = {
         "investigation_status": "Processing",
         "worker_stage": "investigation",

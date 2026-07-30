@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, datetime, json, re, typing.
+# =============================================================================
+# File: soc_reporting_agent/services/alert_indexing_service.py
+# Purpose: This module indexes normalised alerts for retrieval and downstream case correlation.
+# Main functionality: _text, _lower, _unique, flatten_strings, parse_timestamp, extract_iocs.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis parsing and reporting service component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, datetime, json, re, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _text, _lower, _unique, flatten_strings, parse_timestamp, extract_iocs, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -6,13 +28,41 @@ from datetime import datetime, timezone
 from typing import Any
 
 
+# =============================================================================
+# [FYP-SECTION] PARSING AND REPORTING SERVICE EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_text` — implements the text operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:_lower, soc_reporting_agent/services/alert_indexing_service.py:_unique, soc_reporting_agent/services/alert_indexing_service.py:alert_features; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _text(value: Any) -> str:
     return str(value or "").strip()
 
 
+# [FYP-FUNCTION] `_lower` — implements the lower operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_text`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _lower(value: Any) -> str:
     return _text(value).lower()
 
+
+# [FYP-FUNCTION] `_unique` — implements the unique operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:extract_iocs; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_text`, `add`, `append`, `dumps`, `get`, `isinstance`, `lower`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _unique(values: list[Any]) -> list[str]:
     seen: set[str] = set()
@@ -35,6 +85,14 @@ def _unique(values: list[Any]) -> list[str]:
     return out
 
 
+# [FYP-FUNCTION] `flatten_strings` — implements the flatten strings operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `value`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:alert_narrative, soc_reporting_agent/services/alert_indexing_service.py:extract_iocs; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `walk`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def flatten_strings(value: Any, *, limit: int = 300) -> list[str]:
     """Flatten JSON-like telemetry into short strings for narrative search.
 
@@ -43,6 +101,14 @@ def flatten_strings(value: Any, *, limit: int = 300) -> list[str]:
     triaged_alerts/*.json files.
     """
     out: list[str] = []
+
+    # [FYP-FUNCTION] `walk` — implements the walk operation used by the surrounding parsing and reporting service workflow.
+    # [FYP-INPUT] Parameters: `obj`, `prefix`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:_flatten_values, soc_reporting_agent/reporting/export_context_enhancer.py:_threat_intel_index, soc_reporting_agent/reporting/export_context_enhancer.py:walk; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_text`, `append`, `enumerate`, `isinstance`, `items`, `len`, `str`, `walk`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def walk(obj: Any, prefix: str = "") -> None:
         if len(out) >= limit:
@@ -63,6 +129,14 @@ def flatten_strings(value: Any, *, limit: int = 300) -> list[str]:
     walk(value)
     return out[:limit]
 
+
+# [FYP-FUNCTION] `parse_timestamp` — transforms parse timestamp input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:alert_features; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_text`, `float`, `fromisoformat`, `fromtimestamp`, `isinstance`, `replace`, `strptime`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def parse_timestamp(value: Any) -> datetime | None:
     if value in (None, "", [], {}):
@@ -93,6 +167,14 @@ def parse_timestamp(value: Any) -> datetime | None:
     return None
 
 
+# [FYP-FUNCTION] `extract_iocs` — transforms extract iocs input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:alert_features, tests/test_threat_intel_workflow.py:test_external_domain_extracted, tests/test_threat_intel_workflow.py:test_internal_hostname_without_dot_ignored; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_unique`, `append`, `extend`, `findall`, `flatten_strings`, `get`, `isinstance`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def extract_iocs(alert: dict[str, Any]) -> list[str]:
     alert = alert or {}
     raw = alert.get("raw") if isinstance(alert.get("raw"), dict) else {}
@@ -115,6 +197,14 @@ def extract_iocs(alert: dict[str, Any]) -> list[str]:
     return _unique(candidates)[:80]
 
 
+# [FYP-FUNCTION] `pick_value` — implements the pick value operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `source`, `*keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:alert_features; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def pick_value(source: dict[str, Any], *keys: str) -> Any:
     raw = source.get("raw") if isinstance(source.get("raw"), dict) else {}
     for key in keys:
@@ -125,6 +215,14 @@ def pick_value(source: dict[str, Any], *keys: str) -> Any:
     return None
 
 
+# [FYP-FUNCTION] `_powershell_from_alert` — implements the powershell from alert operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:alert_features, soc_reporting_agent/services/alert_indexing_service.py:build_ticket_incident_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _powershell_from_alert(alert: dict[str, Any]) -> dict[str, Any]:
     raw = alert.get("raw") if isinstance(alert.get("raw"), dict) else {}
     normalised = alert.get("normalised_alert") if isinstance(alert.get("normalised_alert"), dict) else {}
@@ -133,6 +231,14 @@ def _powershell_from_alert(alert: dict[str, Any]) -> dict[str, Any]:
             return source.get("powershell_analysis") or {}
     return {}
 
+
+# [FYP-FUNCTION] `alert_features` — implements the alert features operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:alert_narrative, soc_reporting_agent/services/alert_indexing_service.py:build_ticket_incident_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_powershell_from_alert`, `_text`, `extract_iocs`, `get`, `int`, `isinstance`, `parse_timestamp`, `pick_value`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def alert_features(alert: dict[str, Any]) -> dict[str, Any]:
     alert = alert or {}
@@ -160,6 +266,14 @@ def alert_features(alert: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# [FYP-FUNCTION] `alert_narrative` — implements the alert narrative operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/alert_indexing_service.py:build_ticket_incident_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `alert_features`, `endswith`, `extend`, `flatten_strings`, `get`, `isinstance`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def alert_narrative(alert: dict[str, Any]) -> str:
     f = alert_features(alert)
     parts = [
@@ -183,6 +297,14 @@ def alert_narrative(alert: dict[str, Any]) -> str:
     parts.extend(flatten_strings(raw, limit=120))
     return "\n".join([p for p in parts if p and not p.endswith(" ")])
 
+
+# [FYP-FUNCTION] `build_ticket_incident_context` — constructs build ticket incident context output for the next parsing and reporting service consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `ticket`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_powershell_from_alert`, `alert_features`, `alert_narrative`, `append`, `get`, `isinstance`, `join`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_ticket_incident_context(ticket: dict[str, Any]) -> dict[str, Any]:
     alerts = ticket.get("related_alerts") or []

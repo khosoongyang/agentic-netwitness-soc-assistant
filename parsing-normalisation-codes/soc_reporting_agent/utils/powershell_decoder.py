@@ -1,3 +1,8 @@
+# [FYP-FILE] NOTE: This is a superseded/duplicate pre-merge copy of the equivalent
+# file in soc_reporting_agent/utils/powershell_decoder.py. The canonical,
+# actively-used implementation is soc_reporting_agent/utils/powershell_decoder.py
+# (documented separately). This copy is not imported anywhere else in the
+# repository and is retained here only as a historical snapshot.
 from __future__ import annotations
 
 import base64

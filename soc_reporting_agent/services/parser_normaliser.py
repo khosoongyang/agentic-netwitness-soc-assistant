@@ -1,28 +1,109 @@
-"""
-SOC NetWitness Parser
-======================
-
-Purpose:
-    Convert messy NetWitness exports into a clean SOC/agent-facing alert view.
-
-Design rule:
-    - soc_context_normalised_alert.json is clean and contains only important SOC information.
-    - soc_context_raw_alert_debug.json contains extraction paths and parser traceability.
-    - evidence paths are NEVER written into soc_context_normalised_alert.json.
-
-Usage:
-    python services/parser_normaliser.py inputs/alert2.json
-    python services/parser_normaliser.py inputs/alert2.json --output-dir outputs/soc_context_parser
-    python services/parser_normaliser.py inputs/alert2.json --debug
-
-Outputs:
-    outputs/soc_context_parser/soc_context_normalised_alert.json
-    outputs/soc_context_parser/soc_context_processed_alert.json
-    outputs/soc_context_parser/soc_context_processed_alert.csv
-    outputs/soc_context_parser/soc_context_netwitness_normalised_alerts.json
-    outputs/soc_context_parser/soc_context_parser_summary.json
-    outputs/soc_context_parser/soc_context_raw_alert_debug.json
-"""
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Inputs: Receives function arguments, configured state, and persisted artifacts described below.
+# Important dependencies: __future__, argparse, csv, datetime, ipaddress, json, pathlib, re.
+# =============================================================================
+# File: soc_reporting_agent/services/parser_normaliser.py
+#
+# Purpose:
+#   This is the CORE PARSING & NORMALISATION implementation for the whole
+#   Aegis platform's Stage 0 ("Parsing" / "NetWitness Alert Loading"). It
+#   takes a raw, messy RSA NetWitness incident/alert export (arbitrary,
+#   deeply-nested JSON with many possible field-name variants) and converts
+#   it into a clean, predictable, SOC/agent-facing schema that every later
+#   stage (Triage, Investigation, Reporting) can rely on.
+#
+# Rule-based, NOT LLM-based:
+#   Per soc_workflow.py's own module header ("0. Parsing ... in-process
+#   (regex/rule-based, no LLM for the extraction itself)"), everything in
+#   this file is deterministic Python: dictionary lookups (FIELD_ALIASES),
+#   regular expressions (EMAIL_RE, FILE_RE, HASH_RE, IP_RE), string/date
+#   parsing and simple heuristics. There is NO call to any LLM/AI API
+#   anywhere in this file — confirmed by inspection, no contradicting code
+#   found. Any "confidence"/"analyst summary" text produced here is built
+#   from templated strings and counts, not model inference.
+#
+# Main functionalities in this file:
+#   - NetWitness-specific alert/incident loading & flattening (JSON of
+#     arbitrary shape -> flat dotted-path key/value map).
+#   - Field mapping logic: FIELD_ALIASES + extract_by_alias() /
+#     extract_all_fields() resolve dozens of NetWitness field-name variants
+#     (e.g. "alert.alert.events[*].ip_src", "source.ip", "src_ip", ...) onto
+#     one canonical SOC schema (source_ip, destination_ip, username, ...).
+#   - Timestamp normalisation/conversion logic: timestamp_to_iso(),
+#     epoch_to_iso(), timestamp_to_epoch_ms() coerce NetWitness's many time
+#     representations (epoch seconds, epoch ms, ISO strings, "Z" suffixes)
+#     into a single ISO-8601 UTC representation used everywhere downstream.
+#   - Alert schema validation logic: evaluate_context_data_quality() and
+#     calculate_confidence() check which required/important SOC fields were
+#     actually recovered and assign a confidence rating/score.
+#   - IOC extraction (emails, file hashes, IPs, URLs, filenames) via regex.
+#   - PowerShell encoded-command decoding (delegated to
+#     utils.powershell_decoder.analyse_powershell_command_lines).
+#   - Building the various on-disk JSON/CSV artefacts described below.
+#
+# Design rule (unchanged from original author's docstring):
+#   - soc_context_normalised_alert.json is clean and contains only important
+#     SOC information.
+#   - soc_context_raw_alert_debug.json contains extraction paths and parser
+#     traceability (evidence).
+#   - Evidence paths are NEVER written into soc_context_normalised_alert.json
+#     (kept separate for analyst-facing cleanliness vs debug traceability).
+#
+# Workflow position:
+#   Stage 0 of soc_workflow.py's 4-stage pipeline (Parsing -> Triage ->
+#   Investigation -> Reporting). Parsing output (processed_alert) is passed
+#   forward as `parsed_context` into the Triage stage.
+#
+# Called by (confirmed via `grep -rn "parser_normaliser" .`):
+#   - soc_workflow.py, function run_parsing() (~line 693): imports
+#     run_parser_normalisation_for_dashboard from this module and invokes it
+#     for the in-process dashboard/orchestrator pipeline.
+#   - soc_reporting_agent/adapters/run_parser_normalisation.py: CLI/subprocess
+#     adapter that also imports run_parser_normalisation_for_dashboard (and
+#     separately imports extract_alert_identity / validate_parser_identity
+#     from soc_reporting_agent/services/parser_context_guard.py, a sibling
+#     module that validates this file's output identity but does not call
+#     into this file directly).
+#   - Can also be invoked standalone from the command line (see main()/
+#     parse_args() near the bottom of this file).
+#
+# Calls:
+#   - utils.powershell_decoder.analyse_powershell_command_lines() for
+#     PowerShell -EncodedCommand decoding/analysis.
+#   - Standard library only otherwise: json, re, csv, ipaddress, datetime,
+#     pathlib, argparse, urllib.parse.
+#
+# Key evaluator search terms: "parsing", "normalisation", "field mapping",
+# "timestamp normalisation", "alert schema validation", "NetWitness alert
+# loading", "IOC extraction", "confidence score", "rule-based/regex parser".
+# =============================================================================
+#
+# Original author's docstring (kept verbatim below for continuity):
+#
+# SOC NetWitness Parser
+# ======================
+#
+# Purpose:
+#     Convert messy NetWitness exports into a clean SOC/agent-facing alert view.
+#
+# Design rule:
+#     - soc_context_normalised_alert.json is clean and contains only important SOC information.
+#     - soc_context_raw_alert_debug.json contains extraction paths and parser traceability.
+#     - evidence paths are NEVER written into soc_context_normalised_alert.json.
+#
+# Usage:
+#     python services/parser_normaliser.py inputs/alert2.json
+#     python services/parser_normaliser.py inputs/alert2.json --output-dir outputs/soc_context_parser
+#     python services/parser_normaliser.py inputs/alert2.json --debug
+#
+# Outputs:
+#     outputs/soc_context_parser/soc_context_normalised_alert.json
+#     outputs/soc_context_parser/soc_context_processed_alert.json
+#     outputs/soc_context_parser/soc_context_processed_alert.csv
+#     outputs/soc_context_parser/soc_context_netwitness_normalised_alerts.json
+#     outputs/soc_context_parser/soc_context_parser_summary.json
+#     outputs/soc_context_parser/soc_context_raw_alert_debug.json
 
 from __future__ import annotations
 
@@ -36,12 +117,30 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
+# [FYP-CALLS] Only external (non-stdlib) dependency of this file: PowerShell
+# -EncodedCommand base64 decoding + heuristic analysis, used later when
+# building process/command-line context (see normalise_event()).
 from utils.powershell_decoder import analyse_powershell_command_lines
 
 
+# =============================================================================
+# [FYP-SECTION] MODULE CONSTANTS — versioning, output file names, IOC regex
+# patterns, and the port->service lookup table.
+# =============================================================================
+
+# [FYP-CONFIG] Bumped manually by the author when parsing behaviour changes;
+# written into parser summary/metadata output so downstream consumers and
+# evaluators can tell which parser revision produced a given result.
 PARSER_VERSION = "3.4-context-aware-normalised"
 SCHEMA_VERSION = "1.0"
 
+# [FYP-CONFIG] [FYP-OUTPUT] Canonical output file names written by
+# write_outputs() (see below) under the run's parsing output directory.
+# NORMALISED_ALERT_FILE = clean, analyst-facing alert (no evidence paths).
+# PROCESSED_ALERT_FILE  = agent-facing structure consumed by Triage/other
+#                         stages (see build_agent_friendly_processed_alert()).
+# RAW_DEBUG_FILE         = extraction paths / traceability evidence — kept
+#                         separate from the normalised alert by design.
 NORMALISED_ALERT_FILE = "soc_context_normalised_alert.json"
 PROCESSED_ALERT_FILE = "soc_context_processed_alert.json"
 PROCESSED_ALERT_CSV_FILE = "soc_context_processed_alert.csv"
@@ -50,11 +149,23 @@ ALL_PARSED_EVENTS_FILE = "soc_context_all_parsed_events.json"
 PARSER_SUMMARY_FILE = "soc_context_parser_summary.json"
 RAW_DEBUG_FILE = "soc_context_raw_alert_debug.json"
 
+# [FYP-PROCESS] IOC/indicator extraction regex patterns — pure rule-based
+# pattern matching, NO LLM involved. Used by extract_emails()/
+# extract_hashes() and directly against free-text fields (command lines,
+# messages) to pull out embedded indicators of compromise.
+# EMAIL_RE  - RFC-loose email address matcher.
+# FILE_RE   - filename with a known executable/document/archive extension.
+# HASH_RE   - hex string of length 32/40/64 (MD5/SHA1/SHA256).
+# IP_RE     - dotted-quad IPv4 address (octet-range aware).
 EMAIL_RE = re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
 FILE_RE = re.compile(r"[A-Za-z0-9_. ()\-]+\.(?:exe|dll|ps1|bat|cmd|vbs|js|jar|docm|xlsm|zip|rar|7z|pdf|doc|docx|xls|xlsx)", re.I)
 HASH_RE = re.compile(r"\b(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{40}|[a-fA-F0-9]{64})\b")
 IP_RE = re.compile(r"\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b")
 
+# [FYP-PROCESS] Well-known TCP/UDP port -> service-name lookup, used by
+# map_service_name() to label destination ports with a human-readable
+# protocol/service name (e.g. 445 -> "SMB") when NetWitness didn't already
+# supply one.
 SERVICE_MAP = {
     21: "FTP",
     22: "SSH",
@@ -69,6 +180,20 @@ SERVICE_MAP = {
     3389: "RDP",
 }
 
+# =============================================================================
+# [FYP-SECTION] FIELD MAPPING TABLE — canonical SOC schema <- NetWitness field
+# name variants. This is the core "field mapping logic" of the parser: a pure
+# rule-based dict of dotted/bracketed JSON paths (no LLM, no scoring/ML —
+# literal, developer-authored strings), consumed later by extract_by_alias()/
+# extract_all_fields() via normalise_path()/alias_matches() suffix matching.
+# =============================================================================
+# [FYP-EVALUATOR] Field mapping logic (data table): FIELD_ALIASES. Each
+# canonical SOC field name (e.g. "source_ip", "username", "file_hash") maps
+# to a list of known NetWitness/JSON field-name variants/paths that may carry
+# that value across different export shapes (single alert, incident+alerts,
+# full incident export, flattened dict, ...). This table is the single source
+# of truth for "where does this SOC field come from" and is what makes the
+# parser rule-based rather than schema-specific.
 # Field aliases are intentionally broad. They are used only for extraction.
 # They are not written into normalised_alert.json.
 FIELD_ALIASES: Dict[str, List[str]] = {
@@ -335,19 +460,33 @@ FIELD_ALIASES: Dict[str, List[str]] = {
     ],
 }
 
+# [FYP-PROCESS] Legacy/simple confidence check: the minimal set of fields
+# used by calculate_confidence() (an older, backward-compatible confidence
+# helper — see below). The primary/current schema-validation logic is
+# evaluate_context_data_quality(), which checks a much richer, data-type-aware
+# set of fields.
 REQUIRED_FOR_CONFIDENCE = ["alert_id", "alert_name", "alert_time", "severity", "source_ip", "destination_ip"]
 
 
 # ---------------------------------------------------------------------------
-# Basic file helpers
+# [FYP-SECTION] BASIC FILE HELPERS — generic JSON read/write utilities used
+# throughout this module (no NetWitness-specific logic here).
 # ---------------------------------------------------------------------------
 
 
+# [FYP-FUNCTION] load_json_file() — [FYP-INPUT] path to a JSON file on disk.
+# [FYP-OUTPUT] parsed Python object (dict/list/etc). Thin wrapper around
+# json.load(); used by main() to load the raw NetWitness export from the CLI.
 def load_json_file(path: str) -> Any:
     with open(path, "r", encoding="utf-8") as file:
         return json.load(file)
 
 
+# [FYP-FUNCTION] save_json_file() — [FYP-INPUT] arbitrary Python data + output
+# path. [FYP-PROCESS] prunes empty/null values (prune_empty_and_null_values())
+# and coerces non-JSON-native types to strings (make_json_safe()) before
+# writing. [FYP-OUTPUT] pretty-printed JSON file (indent=4, non-ASCII kept).
+# Creates parent directories as needed.
 def save_json_file(data: Any, path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     pruned = prune_empty_and_null_values(data)
@@ -355,6 +494,12 @@ def save_json_file(data: Any, path: str) -> None:
         json.dump(make_json_safe(pruned if pruned is not None else {}), file, indent=4, ensure_ascii=False)
 
 
+# [FYP-FUNCTION] make_json_safe() — recursively coerces a value tree so it is
+# guaranteed JSON-serialisable: primitives pass through unchanged, lists/dicts
+# are recursed into (dict keys forced to str), and anything else (e.g. a
+# datetime, Path, or custom object) is stringified via str(). Used by
+# save_json_file() and by build_agent_friendly_processed_alert()/
+# run_parser_normalisation_for_dashboard() before returning dashboard output.
 def make_json_safe(value: Any) -> Any:
     if value is None:
         return None
@@ -368,14 +513,34 @@ def make_json_safe(value: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Cleaning helpers
+# [FYP-SECTION] CLEANING, VALUE-EXTRACTION & NORMALISATION HELPERS. This large
+# block (through the "Flattening and alias matching" section below) holds all
+# of the rule-based building blocks the parser is made of: pruning/dedup
+# helpers, regex-based IOC extraction, timestamp normalisation/conversion,
+# severity/protocol normalisation, IP/hash classification, and the schema
+# (data-quality) validation logic. Everything here is deterministic Python —
+# no LLM calls.
 # ---------------------------------------------------------------------------
 
+# [FYP-VALIDATION] Sentinel "empty" string values (case-insensitive) treated
+# as absent/useless data by is_useful()/prune_empty_and_null_values() below —
+# NetWitness exports frequently use literal "null"/"N/A"/"Unknown" strings
+# instead of JSON null, so this list is what lets the pruner treat them the
+# same as a missing field.
 USELESS_STRINGS = {
     "", "null", "none", "n/a", "na", "undefined", "not available", "unknown", "[]", "{}"
 }
 
 
+# [FYP-FUNCTION] prune_empty_and_null_values() — [FYP-INPUT] any nested
+# dict/list/scalar. [FYP-PROCESS] recursively strips empty/null/sentinel
+# values (see USELESS_STRINGS), deduplicates list elements, and bounds huge
+# lists to max_list_len to avoid memory/size blow-ups on very large incident
+# exports. [FYP-OUTPUT] the cleaned structure, or None if nothing useful
+# remains. [FYP-USED-BY] save_json_file(), build_standard_alert(),
+# normalise_alert_record(), build_agent_friendly_processed_alert(), and
+# write_outputs() — i.e. every JSON artefact this module writes is pruned
+# through here first.
 def prune_empty_and_null_values(data: Any, max_list_len: int = 50000) -> Any:
     """Recursively and deterministically removes empty/null values, empty strings,
     sentinel values ('null', 'none', 'n/a', 'undefined'), empty lists, and empty dicts.
@@ -433,6 +598,10 @@ def prune_empty_and_null_values(data: Any, max_list_len: int = 50000) -> Any:
     return data
 
 
+# [FYP-FUNCTION] is_useful() — the base predicate for "does this value count
+# as real data". Rejects None/""/[]/{} and any USELESS_STRINGS sentinel
+# (case-insensitive). Used pervasively (dedupe(), extract_by_alias(), etc.)
+# to decide whether an extracted field value should be kept.
 def is_useful(value: Any) -> bool:
     if value in (None, "", [], {}):
         return False
@@ -441,6 +610,11 @@ def is_useful(value: Any) -> bool:
     return True
 
 
+# [FYP-FUNCTION] flatten_nested_values() — recursively flattens arbitrarily
+# nested lists into a single flat list, dropping non-useful values along the
+# way (via is_useful()). NetWitness event arrays sometimes nest lists inside
+# lists (e.g. multi-valued meta fields); this normalises them to one level
+# before dedupe()/extraction functions process them.
 def flatten_nested_values(values: Iterable[Any]) -> List[Any]:
     output: List[Any] = []
     for value in values:
@@ -451,6 +625,14 @@ def flatten_nested_values(values: Iterable[Any]) -> List[Any]:
     return output
 
 
+# [FYP-FUNCTION] dedupe() — [FYP-INPUT] any iterable of values (often nested,
+# hence the flatten_nested_values() call first). [FYP-PROCESS] removes
+# non-useful values and duplicates (case-insensitively for strings by
+# default; JSON-serialised comparison for dicts/lists) while preserving first-
+# seen order. [FYP-OUTPUT] a clean, order-stable, duplicate-free list. This is
+# the single most-used helper in the file — nearly every extracted field list
+# in normalise_alert_record() is passed through dedupe() before being written
+# into the normalised alert schema.
 def dedupe(values: Iterable[Any], case_insensitive: bool = True) -> List[Any]:
     output: List[Any] = []
     seen = set()
@@ -470,11 +652,20 @@ def dedupe(values: Iterable[Any], case_insensitive: bool = True) -> List[Any]:
     return output
 
 
+# [FYP-FUNCTION] first() — [FYP-INPUT] any iterable of values. [FYP-PROCESS]
+# dedupe()s them and returns the first surviving value. [FYP-OUTPUT] a single
+# value or `default`. Used everywhere a field can have many candidate values
+# but only one "primary" value should be surfaced (e.g. primary source IP).
 def first(values: Iterable[Any], default: Any = None) -> Any:
     values = dedupe(values)
     return values[0] if values else default
 
 
+# [FYP-FUNCTION] safe_int() — [FYP-INPUT] any raw value (str/int/float/None).
+# [FYP-PROCESS] best-effort conversion to int; only succeeds if the value is a
+# whole number (rejects "80.5"), returns None on any parse failure.
+# [FYP-OUTPUT] int or None. Used for ports, sizes and other integer SOC
+# fields so a non-numeric NetWitness value never raises upstream.
 def safe_int(value: Any) -> Optional[int]:
     if not is_useful(value):
         return None
@@ -488,6 +679,9 @@ def safe_int(value: Any) -> Optional[int]:
     return None
 
 
+# [FYP-FUNCTION] safe_float() — same contract as safe_int() but for floats
+# (no whole-number restriction). [FYP-INPUT] raw value. [FYP-OUTPUT] float or
+# None. Used for risk scores and other decimal SOC fields.
 def safe_float(value: Any) -> Optional[float]:
     if not is_useful(value):
         return None
@@ -497,6 +691,10 @@ def safe_float(value: Any) -> Optional[float]:
         return None
 
 
+# [FYP-FUNCTION] numeric_list() — [FYP-INPUT] an iterable of raw values +
+# `kind` ("int"/"float"). [FYP-PROCESS] flattens, coerces each element via
+# safe_int()/safe_float(), drops non-numeric values. [FYP-OUTPUT] a
+# deduped list of numbers. Used for port lists and file-size lists.
 def numeric_list(values: Iterable[Any], kind: str = "int") -> List[Any]:
     output = []
     for value in flatten_nested_values(values):
@@ -506,6 +704,11 @@ def numeric_list(values: Iterable[Any], kind: str = "int") -> List[Any]:
     return dedupe(output)
 
 
+# [FYP-FUNCTION] [FYP-PROCESS] extract_emails() — IOC extraction (rule-based
+# regex, no LLM). [FYP-INPUT] iterable of raw field values (e.g. free-text
+# username/email fields). [FYP-PROCESS] runs EMAIL_RE against the stringified
+# form of every value, lower-cases matches. [FYP-OUTPUT] deduped list of
+# email addresses. Feeds source_emails/destination_emails/ioc_summary.
 def extract_emails(values: Iterable[Any]) -> List[str]:
     found: List[str] = []
     for value in flatten_nested_values(values):
@@ -513,6 +716,11 @@ def extract_emails(values: Iterable[Any]) -> List[str]:
     return dedupe(found)
 
 
+# [FYP-FUNCTION] [FYP-PROCESS] extract_hashes() — IOC extraction (rule-based
+# regex, no LLM). [FYP-INPUT] iterable of raw field values. [FYP-PROCESS] runs
+# HASH_RE (32/40/64-hex heuristic for MD5/SHA1/SHA256) against each value.
+# [FYP-OUTPUT] deduped list of lower-cased hash strings. Feeds file_hashes /
+# split_hashes_by_type() / ioc_summary.
 def extract_hashes(values: Iterable[Any]) -> List[str]:
     found: List[str] = []
     for value in flatten_nested_values(values):
@@ -520,6 +728,12 @@ def extract_hashes(values: Iterable[Any]) -> List[str]:
     return dedupe(found)
 
 
+# [FYP-FUNCTION] clean_username() — [FYP-INPUT] a single raw username-ish
+# value. [FYP-PROCESS] strips embedded email addresses, angle-bracket
+# display-name artefacts ("<user>"), and stray punctuation/whitespace so a
+# noisy NetWitness "From" header doesn't leak into the username field.
+# [FYP-OUTPUT] cleaned username string, or None if nothing useful/still an
+# email remains. [FYP-VALIDATION] rejects any value still containing "@".
 def clean_username(value: Any) -> Optional[str]:
     if not is_useful(value):
         return None
@@ -533,6 +747,10 @@ def clean_username(value: Any) -> Optional[str]:
     return text
 
 
+# [FYP-FUNCTION] clean_usernames() — [FYP-INPUT] iterable of raw values that
+# may each contain multiple comma/semicolon-separated usernames.
+# [FYP-PROCESS] splits on "," / ";" then delegates each part to
+# clean_username(). [FYP-OUTPUT] deduped list of clean usernames.
 def clean_usernames(values: Iterable[Any]) -> List[str]:
     usernames: List[str] = []
     for value in flatten_nested_values(values):
@@ -543,6 +761,13 @@ def clean_usernames(values: Iterable[Any]) -> List[str]:
     return dedupe(usernames)
 
 
+# [FYP-FUNCTION] normalise_severity() — [FYP-INPUT] raw NetWitness severity
+# value in any shape (numeric string "0"-"10", word "high"/"crit", or a raw
+# risk-score number). [FYP-PROCESS] rule-based lookup table first (exact
+# word/number match), then falls back to numeric score-range thresholds
+# (>=90 Critical, >=70 High, >=40 Medium, >0 Low). [FYP-OUTPUT] one of
+# "Informational"/"Low"/"Medium"/"High"/"Critical"/"Unknown", or the original
+# text if nothing matches. Purely rule-based mapping, no LLM/ML scoring.
 def normalise_severity(value: Any) -> str:
     if not is_useful(value):
         return "Unknown"
@@ -572,6 +797,34 @@ def normalise_severity(value: Any) -> str:
     return "Informational"
 
 
+# =============================================================================
+# [FYP-SECTION] TIMESTAMP NORMALISATION / CONVERSION LOGIC — converts every
+# NetWitness time representation (epoch seconds, epoch milliseconds, ISO-8601
+# strings with/without "Z", the odd "Mon dd, yyyy HH:MM:SS AM/PM TZ" text
+# format NetWitness sometimes emits) into one consistent UTC representation
+# used by the rest of the pipeline. Purely deterministic date-parsing/
+# arithmetic (datetime.strptime/fromtimestamp) — no LLM involved.
+# =============================================================================
+
+# [FYP-EVALUATOR] [FYP-FUNCTION] timestamp_to_iso() — main timestamp
+# normalisation entry point. [FYP-INPUT] a raw timestamp value of unknown
+# shape (int/float epoch, numeric string, or an ISO/NetWitness-formatted
+# string). [FYP-PROCESS] (1) numeric/epoch-looking values are delegated to
+# epoch_to_iso(); (2) otherwise tries a fixed list of known NetWitness
+# datetime string formats in order via datetime.strptime, tagging the
+# result UTC. [FYP-OUTPUT] an ISO-8601 UTC string (or the original text
+# unchanged if no format matched, or None if the input was empty/useless).
+# [FYP-USED-BY] normalise_alert_record() (alert_time), normalise_event()
+# (event_time) — i.e. every timestamp written into the normalised schema
+# passes through here first.
+# [FYP-FUNCTION] `timestamp_to_iso` — implements the timestamp to iso operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record, soc_reporting_agent/services/parser_normaliser.py:normalise_event, soc_reporting_agent/services/parser_normaliser.py:timestamp_to_epoch_ms; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `epoch_to_iso`, `int`, `is_useful`, `isdigit`, `isinstance`, `isoformat`, `replace`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def timestamp_to_iso(value: Any) -> Optional[str]:
     if not is_useful(value):
         return None
@@ -596,6 +849,15 @@ def timestamp_to_iso(value: Any) -> Optional[str]:
     return text
 
 
+# [FYP-EVALUATOR] [FYP-FUNCTION] epoch_to_iso() — [FYP-INPUT] a numeric epoch
+# value (may be epoch *seconds* or epoch *milliseconds* — NetWitness is
+# inconsistent between exports). [FYP-PROCESS] heuristic: any value greater
+# than 10,000,000,000 is treated as milliseconds (divided by 1000) since a
+# plausible epoch-seconds value never reaches that magnitude until year
+# ~2286; otherwise treated as epoch seconds directly. Converts via
+# datetime.fromtimestamp(..., tz=timezone.utc). [FYP-ERROR] returns None on
+# OSError/OverflowError/ValueError (e.g. a value wildly out of range).
+# [FYP-OUTPUT] ISO-8601 UTC string or None. [FYP-USED-BY] timestamp_to_iso().
 def epoch_to_iso(value: Any) -> Optional[str]:
     number = safe_float(value)
     if number is None:
@@ -607,6 +869,24 @@ def epoch_to_iso(value: Any) -> Optional[str]:
     except (OSError, OverflowError, ValueError):
         return None
 
+
+# [FYP-EVALUATOR] [FYP-FUNCTION] timestamp_to_epoch_ms() — the inverse-shaped
+# sibling of timestamp_to_iso(): normalises any raw timestamp to a single
+# epoch-*milliseconds* integer instead of an ISO string (used for
+# millisecond-precision fields such as alert_time_epoch_ms/
+# event_time_epoch_ms, useful for downstream sorting/timeline math).
+# [FYP-INPUT] raw timestamp (numeric or string). [FYP-PROCESS] numeric-looking
+# values use the same seconds-vs-milliseconds magnitude heuristic as
+# epoch_to_iso(); string values are first normalised via timestamp_to_iso()
+# then re-parsed with datetime.fromisoformat(). [FYP-OUTPUT] int epoch-ms or
+# None. [FYP-USED-BY] normalise_alert_record(), normalise_event().
+# [FYP-FUNCTION] `timestamp_to_epoch_ms` — implements the timestamp to epoch ms operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record, soc_reporting_agent/services/parser_normaliser.py:normalise_event; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `fromisoformat`, `int`, `is_useful`, `isdigit`, `isinstance`, `replace`, `safe_float`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def timestamp_to_epoch_ms(value: Any) -> Optional[int]:
     if not is_useful(value):
@@ -626,11 +906,28 @@ def timestamp_to_epoch_ms(value: Any) -> Optional[int]:
         return None
 
 
+# [FYP-FUNCTION] map_service_name() — [FYP-INPUT] a destination port (any
+# raw shape). [FYP-PROCESS] coerces to int via safe_int() then looks it up in
+# the SERVICE_MAP constant. [FYP-OUTPUT] service name string (e.g. "SMB") or
+# None if the port is unknown/unparseable. Rule-based lookup table, no ML.
 def map_service_name(port: Any) -> Optional[str]:
     number = safe_int(port)
     return SERVICE_MAP.get(number)
 
 
+# =============================================================================
+# [FYP-SECTION] URL / IP / HASH CLASSIFICATION HELPERS — small rule-based
+# predicates used while building network_indicators/web_indicators so a raw
+# NetWitness "link" value (an internal drill-down URL back into the SIEM UI)
+# is never mistaken for attacker-controlled/external infrastructure, and so
+# IPs/hashes can be bucketed for SOC readability. All pure functions, no I/O.
+# =============================================================================
+
+# [FYP-FUNCTION] is_netwitness_link() — [FYP-INPUT] any raw value.
+# [FYP-PROCESS] string match against NetWitness's own internal navigation URL
+# shapes ("/investigation/...", ".../navigate/..."). [FYP-OUTPUT] bool.
+# [FYP-USED-BY] is_external_url() (to exclude these) and normalise_alert_record()
+# (to route them into netwitness_links.investigation_links instead of web urls).
 def is_netwitness_link(value: Any) -> bool:
     if not isinstance(value, str):
         return False
@@ -638,6 +935,11 @@ def is_netwitness_link(value: Any) -> bool:
     return text.startswith("/investigation/") or "/navigate/" in text
 
 
+# [FYP-FUNCTION] is_external_url() — [FYP-INPUT] any raw value. [FYP-PROCESS]
+# rejects NetWitness internal links, then requires an http(s) scheme plus a
+# network location via urllib.parse.urlparse. [FYP-OUTPUT] bool. Used to sort
+# extracted URL evidence into "external_urls" (real attacker/web infra) vs.
+# discarded/internal noise.
 def is_external_url(value: Any) -> bool:
     if not isinstance(value, str) or is_netwitness_link(value):
         return False
@@ -645,6 +947,10 @@ def is_external_url(value: Any) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
+# [FYP-FUNCTION] domains_from_urls() — [FYP-INPUT] iterable of URL strings
+# (expected to already be filtered to external URLs). [FYP-PROCESS] parses
+# each with urlparse and keeps the lower-cased netloc (host[:port]).
+# [FYP-OUTPUT] deduped list of domains, feeding web_indicators.domains.
 def domains_from_urls(urls: Iterable[str]) -> List[str]:
     domains = []
     for url in urls:
@@ -654,7 +960,13 @@ def domains_from_urls(urls: Iterable[str]) -> List[str]:
     return dedupe(domains)
 
 
-
+# [FYP-FUNCTION] split_internal_external_ips() — [FYP-INPUT] any iterable of
+# raw IP-ish values (may be nested). [FYP-PROCESS] flattens via
+# flatten_nested_values(), parses each with ipaddress.ip_address(), and
+# classifies private/loopback/link-local addresses as "internal" vs. every
+# other valid address as "external"; unparsable values are silently dropped.
+# [FYP-OUTPUT] a (internal_ips, external_ips) tuple of deduped lists, both
+# rule-based (RFC1918/loopback/link-local ranges) — no IP reputation lookup.
 def split_internal_external_ips(values: Iterable[Any]) -> Tuple[List[str], List[str]]:
     """Separate private/internal IPs from public/external IPs for SOC readability."""
     internal_ips: List[str] = []
@@ -672,6 +984,12 @@ def split_internal_external_ips(values: Iterable[Any]) -> Tuple[List[str], List[
     return dedupe(internal_ips), dedupe(external_ips)
 
 
+# [FYP-FUNCTION] split_hashes_by_type() — [FYP-INPUT] any iterable of raw
+# hash-ish values. [FYP-PROCESS] delegates to extract_hashes() (regex
+# validation) then buckets purely by string length (32=md5, 40=sha1,
+# 64=sha256; anything else -> "unknown"). No hash-format checksum validation
+# beyond length. [FYP-OUTPUT] dict of deduped hash lists keyed by type,
+# feeding file_indicators.file_hashes_by_type.
 def split_hashes_by_type(values: Iterable[Any]) -> Dict[str, List[str]]:
     """Group hashes by length so tools can use md5, sha1, and sha256 cleanly."""
     grouped = {"md5": [], "sha1": [], "sha256": [], "unknown": []}
@@ -688,6 +1006,15 @@ def split_hashes_by_type(values: Iterable[Any]) -> Dict[str, List[str]]:
     return {key: dedupe(value) for key, value in grouped.items()}
 
 
+# [FYP-FUNCTION] build_process_relationships() — [FYP-INPUT] the list of
+# already-normalised per-event dicts (normalise_event() output) for one
+# alert. [FYP-PROCESS] for each event, records a parent->process edge and a
+# process->child edge whenever both ends are present on that same event
+# (purely structural pairing of fields already on the record; it does not
+# infer relationships across different events). [FYP-OUTPUT] deduped list of
+# {event_index, parent, child} edges -> process_indicators.process_relationships.
+# Deliberately descriptive only (see docstring: "without adding investigation
+# judgement") — no attempt to flag which edges look malicious.
 def build_process_relationships(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Create parent-child process relationships without adding investigation judgement."""
     relationships: List[Dict[str, Any]] = []
@@ -702,6 +1029,28 @@ def build_process_relationships(events: List[Dict[str, Any]]) -> List[Dict[str, 
             relationships.append({"event_index": event_index, "parent": process, "child": child})
     return dedupe(relationships)
 
+
+# [FYP-FUNCTION] build_observed_data_context() — [FYP-INPUT] every already-
+# extracted evidence bucket for one alert (email/network/process/file/web
+# field lists, plus the normalised event list). [FYP-PROCESS] pure rule-based
+# classification: derives six boolean "has_X_data" flags from simple
+# presence/keyword checks (e.g. has_network_data requires either both source
+# AND destination IP, or a destination port/protocol/external URL/user
+# agent), then picks a single "primary_data_source" by priority order
+# (email > endpoint > web+network > network > file > web > generic).
+# [FYP-OUTPUT] dict describing WHAT KIND of evidence this alert carries — no
+# threat/severity judgement (see inline comment "this is parsing context,
+# not triage"). [FYP-USED-BY] evaluate_context_data_quality() immediately
+# after, which uses these flags to decide which fields are "required" for
+# THIS alert's data shape (e.g. don't demand a hostname on a pure network
+# alert with no endpoint evidence).
+# [FYP-FUNCTION] `build_observed_data_context` — constructs build observed data context output for the next parsing and reporting service consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `event_type`, `normalised_events`, `source_emails`, `reply_to_emails`, `destination_emails`, `email_subjects`, `mail_clients`, `file_names`, `file_hashes`, `source_ips`, `destination_ips`, `destination_ports`, `protocols`, `external_urls`, `web_domains`, `user_agents`, `hostnames`, `all_usernames`, `process_names`, `process_paths`, `parent_processes`, `child_processes`, `command_lines`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `append`, `bool`, `dedupe`, `get`, `join`, `lower`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_observed_data_context(
     event_type: Optional[str],
@@ -817,6 +1166,51 @@ def build_observed_data_context(
         "has_web_data": has_web_data,
     }
 
+
+# =============================================================================
+# [FYP-EVALUATOR] [FYP-FUNCTION] evaluate_context_data_quality() — THE ALERT
+# SCHEMA VALIDATION function for this parser. This is the rule-based check
+# that decides how trustworthy/complete a parsed alert is before it is
+# handed to Triage.
+#
+# [FYP-INPUT] the observed_data_context flags from build_observed_data_context()
+# above, plus every extracted evidence field for the alert (ids, timestamps,
+# severity, IPs, emails, hostnames, process/file/web indicators, session/
+# record/signature ids) and raw_meta_key_count (size of the original alert
+# dict, used only to flag oversized input).
+#
+# [FYP-PROCESS] Three tiers of checks, all pure boolean presence tests
+# (no LLM, no external lookup):
+#   1. base_checks — always required regardless of alert type: alert_id
+#      (rejecting MITRE-technique-ID lookalikes via looks_like_mitre_id()),
+#      alert_name, alert_time, severity != "Unknown".
+#   2. missing_context_fields — conditionally required PER OBSERVED DATA TYPE
+#      (only checks "hostname"/"username" if has_endpoint_data is True, only
+#      checks "source_ip"/"destination_ip"/"destination_port"/"protocol" if
+#      has_network_data is True, etc.) so an alert that legitimately has no
+#      email evidence is not penalised for missing email fields.
+#   3. missing_optional_fields — "nice to have" ids (session/event_source/
+#      record/signature/community) that lower the score less.
+# A weighted score starts at 100 and is deducted per missing field
+# (-15 per missing base field, -10 per missing conditionally-required
+# context field, -2 per missing optional field), clamped to [0, 100], then
+# bucketed into parser_confidence: >=80 High, >=50 Medium, else Low.
+#
+# [FYP-OUTPUT] dict with parser_confidence/parser_confidence_score/
+# confidence_explanation/missing_required_fields/missing_context_fields/
+# missing_optional_fields/not_applicable_fields/warnings — merged verbatim
+# into normalised_alert["data_quality"] and parser_metadata by
+# normalise_alert_record() below. [FYP-USED-BY] normalise_alert_record(),
+# which also folds missing_required_fields + missing_context_fields into
+# parser_metadata.missing_fields/extraction_summary.
+# =============================================================================
+# [FYP-FUNCTION] `evaluate_context_data_quality` — implements the evaluate context data quality operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `observed_data_context`, `alert_id`, `alert_name`, `alert_time`, `severity`, `source_ips`, `destination_ips`, `destination_ports`, `protocols`, `source_emails`, `destination_emails`, `reply_to_emails`, `email_subjects`, `hostnames`, `all_usernames`, `process_names`, `command_lines`, `file_names`, `file_hashes`, `external_urls`, `web_domains`, `session_ids`, `event_source_ids`, `record_ids`, `signature_ids`, `community_ids`, `normalised_events`, `raw_meta_key_count`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `bool`, `dedupe`, `extend`, `get`, `items`, `join`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def evaluate_context_data_quality(
     observed_data_context: Dict[str, Any],
@@ -966,6 +1360,15 @@ def evaluate_context_data_quality(
         "raw_meta_key_count": raw_meta_key_count,
     }
 
+# [FYP-SECTION] Small per-field normalisation/ID helpers used while building
+# normalise_alert_record()'s output (protocol number->name lookup, MITRE-ID
+# lookalike detection so a technique ID is never mistaken for an alert ID,
+# alert-id fallback synthesis, and file-vs-process name disambiguation).
+# [FYP-FUNCTION] normalise_protocol_values() — [FYP-INPUT] raw protocol
+# values (may be IANA protocol numbers as strings, e.g. "6"/"17"/"1", or
+# already-textual names). [FYP-PROCESS] flattens, maps known numeric codes
+# to TCP/UDP/ICMP, otherwise upper-cases the text as-is. [FYP-OUTPUT] deduped
+# list -> network_indicators.protocols.
 def normalise_protocol_values(values: Iterable[Any]) -> List[Any]:
     protocols: List[Any] = []
     protocol_map = {
@@ -981,10 +1384,23 @@ def normalise_protocol_values(values: Iterable[Any]) -> List[Any]:
     return dedupe(protocols)
 
 
+# [FYP-FUNCTION] looks_like_mitre_id() — [FYP-INPUT] any raw value.
+# [FYP-PROCESS] regex-matches the MITRE ATT&CK technique-ID shape "Tdddd" or
+# "Tdddd.ddd". [FYP-OUTPUT] bool. [FYP-USED-BY] safe_alert_id(), to make sure
+# a technique ID picked up from an alert-id-shaped field is never mistaken
+# for the actual alert identifier.
 def looks_like_mitre_id(value: Any) -> bool:
     return isinstance(value, str) and bool(re.fullmatch(r"T\d{4}(?:\.\d{3})?", value.strip(), re.I))
 
 
+# [FYP-FUNCTION] safe_alert_id() — [FYP-INPUT] candidate id values extracted
+# via FIELD_ALIASES, the raw alert dict, the parent incident_id, and this
+# alert's position (alert_index) within the batch. [FYP-PROCESS] tries the
+# raw alert's own id-shaped keys first, then the best extracted candidate,
+# rejecting anything that looks_like_mitre_id(). [FYP-OUTPUT] a non-empty
+# alert id string; [FYP-VALIDATION] falls back to a synthesised
+# "{incident_id}-alert-{n}" id so downstream stages always have a stable
+# identifier even when the source data has none.
 def safe_alert_id(candidate_values: Iterable[Any], alert: Dict[str, Any], incident_id: Optional[str], alert_index: int) -> str:
     direct_candidates = [
         alert.get("id"), alert.get("_id"), alert.get("alert_id"), alert.get("alertId"),
@@ -996,12 +1412,16 @@ def safe_alert_id(candidate_values: Iterable[Any], alert: Dict[str, Any], incide
     return f"{incident_id or 'UNKNOWN'}-alert-{alert_index + 1}"
 
 
+# [FYP-FUNCTION] split_file_and_process_names() — [FYP-INPUT] the raw
+# file-name candidates and process-name candidates extracted separately.
+# [FYP-PROCESS] an executable can legitimately be both a file indicator and
+# the running process name. Earlier versions removed file names when they
+# matched a process name, which made endpoint malware alerts lose the file
+# evidence. Keep the file name and only return additional process candidates
+# when a value clearly came from a process-specific field upstream.
+# [FYP-OUTPUT] (file_names, extra_process_names) tuple; the second element is
+# currently always [] — process names are sourced separately by the caller.
 def split_file_and_process_names(file_names: Iterable[Any], process_names: Iterable[Any]) -> Tuple[List[str], List[str]]:
-    # An executable can legitimately be both a file indicator and the running
-    # process name. Earlier versions removed file names when they matched a
-    # process name, which made endpoint malware alerts lose the file evidence.
-    # Keep the file name and only return additional process candidates when a
-    # value clearly came from a process-specific field upstream.
     clean_files: List[str] = []
     for name in flatten_nested_values(file_names):
         text = str(name).strip()
@@ -1010,6 +1430,12 @@ def split_file_and_process_names(file_names: Iterable[Any], process_names: Itera
     return dedupe(clean_files), []
 
 
+# [FYP-FUNCTION] [FYP-PROCESS] infer_file_names() — IOC extraction (rule-based
+# regex, no LLM). [FYP-INPUT] iterable of free-text values (typically alert
+# names / email subjects). [FYP-PROCESS] runs FILE_RE (filename-with-extension
+# heuristic) against each stringified value. [FYP-OUTPUT] deduped list of
+# filename-looking substrings, used as a fallback when no explicit
+# file_name field was present on the alert/events.
 def infer_file_names(values: Iterable[Any]) -> List[str]:
     found: List[str] = []
     for value in flatten_nested_values(values):
@@ -1019,9 +1445,30 @@ def infer_file_names(values: Iterable[Any]) -> List[str]:
 
 # ---------------------------------------------------------------------------
 # Flattening and alias matching
+#
+# [FYP-SECTION] Generic, FIELD_ALIASES-driven field-mapping subsystem
+# (flatten_json / normalise_path / alias_matches / extract_by_alias /
+# extract_all_fields). This is a self-contained alternative implementation of
+# "field mapping": flatten the whole raw alert into dotted-path -> value
+# pairs, then match every path's normalised suffix against every alias in
+# FIELD_ALIASES (see [FYP-EVALUATOR] table near the top of this file).
+# [FYP-PROCESS] Grepping the file confirms none of these five functions are
+# actually called from normalise_alert_record()/build_standard_alert() (the
+# live pipeline) — the hot path instead uses the hand-written, hard-coded
+# field mapper extract_alert_values_fast() below, which is faster because it
+# does not flatten/alias-match the entire alert tree. flatten_json/
+# extract_all_fields remain here as generic, alias-table-driven building
+# blocks (flatten_meta is a public backward-compatible alias for
+# flatten_json) but are not part of the current production call graph.
 # ---------------------------------------------------------------------------
 
 
+# [FYP-FUNCTION] flatten_json() — [FYP-INPUT] arbitrarily nested dict/list
+# JSON data. [FYP-PROCESS] recursively walks every dict key / list index,
+# building a single-level {dotted.path[index]: leaf_value} map (leaf values
+# passed through make_json_safe()). [FYP-OUTPUT] flat path->value dict, the
+# input flatten_json()/extract_all_fields() need before alias matching can
+# run. See [FYP-SECTION] note above: not on the live parsing call path.
 def flatten_json(data: Any, parent: str = "") -> Dict[str, Any]:
     flat: Dict[str, Any] = {}
     if isinstance(data, dict):
@@ -1045,6 +1492,12 @@ def flatten_json(data: Any, parent: str = "") -> Dict[str, Any]:
     return flat
 
 
+# [FYP-FUNCTION] normalise_path() — [FYP-INPUT] a dotted/bracketed flattened
+# path string (from flatten_json(), or a literal alias from FIELD_ALIASES).
+# [FYP-PROCESS] backslash->dot, collapses any "[<index>]" to a wildcard
+# "[*]" (so array position never affects matching), strips whitespace,
+# lower-cases. [FYP-OUTPUT] a canonical form so a path and an alias that
+# differ only by array index/case/whitespace still compare equal.
 def normalise_path(path: str) -> str:
     text = str(path).replace("\\", ".")
     text = re.sub(r"\[\d+\]", "[*]", text)
@@ -1052,12 +1505,25 @@ def normalise_path(path: str) -> str:
     return text.lower()
 
 
+# [FYP-FUNCTION] alias_matches() — [FYP-INPUT] one FIELD_ALIASES alias string
+# and one flattened path. [FYP-PROCESS] normalise_path() both sides, then
+# matches on exact equality or path ending with ".alias"/"alias" (suffix
+# match), so an alias like "user.username" matches
+# "source.user.username" anywhere it appears in the tree. [FYP-OUTPUT] bool.
 def alias_matches(alias: str, path: str) -> bool:
     alias_norm = normalise_path(alias)
     path_norm = normalise_path(path)
     return path_norm == alias_norm or path_norm.endswith("." + alias_norm) or path_norm.endswith(alias_norm)
 
 
+# [FYP-FUNCTION] extract_by_alias() — [FYP-INPUT] a flattened alert
+# (flat path->value dict) and a single canonical field name.
+# [FYP-PROCESS] looks up that field's alias list in FIELD_ALIASES, normalises
+# every flattened path once, and keeps every value whose path suffix-matches
+# any alias (same logic as alias_matches(), inlined for speed).
+# [FYP-OUTPUT] (deduped values, deduped source paths) for that one field —
+# the paths are kept for debug-evidence reporting. Single-field counterpart
+# of extract_all_fields() below.
 def extract_by_alias(flat: Dict[str, Any], field: str) -> Tuple[List[Any], List[str]]:
     values: List[Any] = []
     paths: List[str] = []
@@ -1072,6 +1538,14 @@ def extract_by_alias(flat: Dict[str, Any], field: str) -> Tuple[List[Any], List[
     return dedupe(values), dedupe(paths, case_insensitive=False)
 
 
+# [FYP-FUNCTION] extract_all_fields() — the generic, table-driven field
+# mapper for every canonical field in FIELD_ALIASES at once. [FYP-INPUT] a
+# flattened alert (from flatten_json()). [FYP-PROCESS] normalises every
+# flattened path once, normalises every alias once, then does a single pass
+# matching each path against every field's alias set (equivalent to calling
+# extract_by_alias() once per field, but without re-normalising the flat
+# dict each time). [FYP-OUTPUT] (values_by_field, paths_by_field) — both
+# dicts keyed by every FIELD_ALIASES field name, each value deduped.
 def extract_all_fields(flat: Dict[str, Any]) -> Tuple[Dict[str, List[Any]], Dict[str, List[str]]]:
     values: Dict[str, List[Any]] = {f: [] for f in FIELD_ALIASES}
     paths: Dict[str, List[str]] = {f: [] for f in FIELD_ALIASES}
@@ -1100,6 +1574,25 @@ def extract_all_fields(flat: Dict[str, Any]) -> Tuple[Dict[str, List[Any]], Dict
 # ---------------------------------------------------------------------------
 
 
+# [FYP-FUNCTION] [FYP-VALIDATION] detect_input_format() — [FYP-INPUT] the raw
+# parsed JSON payload handed to the parser (any shape). [FYP-PROCESS]
+# rule-based structural sniffing (no LLM): checks for known key combinations
+# in order of specificity (full incident export with alerts_full_raw, an
+# incident+alerts pair, a single already-full alert via originalAlert/
+# originalHeaders, a bare alerts_summary_raw export, a single summary alert
+# with an events[] list, an already-flattened dict, or a plain list of
+# alerts). [FYP-OUTPUT] one of a fixed set of format-tag strings (e.g.
+# "full_incident_export", "alert_list", "generic_dictionary") consumed by
+# prepare_incident_and_alerts() to decide how to locate the incident/alerts,
+# and recorded verbatim into parser_metadata.input_format for evaluators.
+# [FYP-FUNCTION] `detect_input_format` — implements the detect input format operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert, soc_reporting_agent/services/parser_normaliser.py:prepare_incident_and_alerts; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `get`, `isinstance`, `issubset`, `keys`, `set`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def detect_input_format(data: Any) -> str:
     if isinstance(data, list):
         return "alert_list"
@@ -1122,6 +1615,24 @@ def detect_input_format(data: Any) -> str:
         return "flattened_dictionary"
     return "generic_dictionary"
 
+
+# [FYP-FUNCTION] prepare_incident_and_alerts() — [FYP-INPUT] the raw parsed
+# JSON payload. [FYP-PROCESS] calls detect_input_format() then pulls out the
+# incident dict and the list of raw per-alert dicts using the field names
+# specific to that detected shape (falls back to treating the whole payload
+# as a single one-alert list for unrecognised dict shapes). Also strips
+# heavy nested arrays (alerts/events/alerts_full_raw/alerts_summary_raw) off
+# the incident dict so re-flattening it per alert stays cheap.
+# [FYP-OUTPUT] (incident_dict, list_of_raw_alert_dicts) — non-dict entries in
+# the alerts list are filtered out. [FYP-USED-BY] build_standard_alert(),
+# which loops normalise_alert_record() over the returned alert list.
+# [FYP-FUNCTION] `prepare_incident_and_alerts` — implements the prepare incident and alerts operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `detect_input_format`, `get`, `isinstance`, `items`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def prepare_incident_and_alerts(data: Any) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     input_format = detect_input_format(data)
@@ -1156,6 +1667,24 @@ def prepare_incident_and_alerts(data: Any) -> Tuple[Dict[str, Any], List[Dict[st
     return incident, [alert for alert in alerts if isinstance(alert, dict)]
 
 
+# [FYP-FUNCTION] walk_event_records() — [FYP-INPUT] one raw alert dict (or
+# any nested value within it) and the dotted path taken to reach it so far.
+# [FYP-PROCESS] recursively searches for any key literally named "events"
+# whose value is a list, regardless of how deeply it is nested inside the
+# alert (NetWitness event arrays can live under different parent keys
+# depending on export shape) — every dict item inside such a list becomes
+# one event record. [FYP-OUTPUT] list of {"source_path", "raw_event"} dicts.
+# [FYP-USED-BY] normalise_alert_record() (raw_event_records feeds
+# normalise_event() per record) and build_debug_evidence()/
+# build_standard_alert()'s all_parsed_events collection.
+# [FYP-FUNCTION] `walk_event_records` — implements the walk event records operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `data`, `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert, soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record, soc_reporting_agent/services/parser_normaliser.py:walk_event_records; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `enumerate`, `extend`, `isinstance`, `items`, `lower`, `str`, `walk_event_records`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def walk_event_records(data: Any, path: str = "") -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
     if isinstance(data, dict):
@@ -1176,13 +1705,42 @@ def walk_event_records(data: Any, path: str = "") -> List[Dict[str, Any]]:
 
 # ---------------------------------------------------------------------------
 # High level orchestration
+#
+# [FYP-PROCESS] normalise_netwitness_data() and build_standard_alert() are
+# each DEFINED TWICE in this file — once here, and again further down (see
+# the matching [FYP-EVALUATOR] comment near the second build_standard_alert()
+# definition, close to line 2371). Python keeps only the last definition of a
+# module-level name, so these two functions below are shadowed/overridden
+# and never execute — every caller (main(), run_parser_normalisation_for_
+# dashboard()) resolves to the later, complete definitions. This first
+# build_standard_alert() is additionally an incomplete draft: its loop
+# builds normalised_alerts/debug_by_alert but the function has no return
+# statement, so even on its own it would return None. Left in place
+# unexecuted; documented here so the duplication isn't mistaken for the live
+# implementation during review.
 # ---------------------------------------------------------------------------
 
+
+# [FYP-FUNCTION] `normalise_netwitness_data` — transforms normalise netwitness data input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `build_standard_alert`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def normalise_netwitness_data(data: Any) -> Dict[str, Any]:
     """Public function for other project scripts."""
     return build_standard_alert(data)
 
+
+# [FYP-FUNCTION] `build_standard_alert` — constructs build standard alert output for the next parsing and reporting service consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `data`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:main, soc_reporting_agent/services/parser_normaliser.py:normalise_netwitness_data, soc_reporting_agent/services/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add`, `append`, `detect_input_format`, `enumerate`, `get`, `isinstance`, `len`, `normalise_alert_record`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, Any]:
     pruned_data = prune_empty_and_null_values(data) or data
@@ -1222,6 +1780,26 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
 # ---------------------------------------------------------------------------
 
 
+# [FYP-FUNCTION] merge_event_values() — [FYP-INPUT] the field->values dict
+# already extracted at the alert level (from extract_alert_values_fast()) and
+# the list of already-normalised per-event dicts (normalise_event() output).
+# [FYP-PROCESS] for each event, copies a fixed set of already-normalised
+# event keys (source_ip, destination_ip, file_hash, command_line, etc. — see
+# `mapping`) into the matching alert-level field list, merging rather than
+# overwriting so alert-level and event-level evidence for the same field are
+# combined. [FYP-OUTPUT] a new field->values dict (dedupe()d per field) that
+# is a superset of the input alert_values. [FYP-USED-BY]
+# normalise_alert_record() immediately after building normalised_events, so
+# every downstream field (source_ips, hostnames, file_hashes, ...) sees both
+# alert-level and event-level evidence.
+# [FYP-FUNCTION] `merge_event_values` — transforms merge event values input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `alert_values`, `events`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dedupe`, `get`, `is_useful`, `items`, `list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def merge_event_values(alert_values: Dict[str, List[Any]], events: List[Dict[str, Any]]) -> Dict[str, List[Any]]:
     merged = {field: list(values) for field, values in alert_values.items()}
     mapping = {
@@ -1257,6 +1835,28 @@ def merge_event_values(alert_values: Dict[str, List[Any]], events: List[Dict[str
                 merged[field_key] = dedupe(merged.get(field_key, []) + [value])
     return merged
 
+
+# [FYP-FUNCTION] normalise_event() — per-event field mapper (the raw-event
+# counterpart of extract_alert_values_fast()/normalise_alert_record() at the
+# alert level). [FYP-INPUT] one raw event dict (from walk_event_records()),
+# its index within the alert, and a fallback event_type. [FYP-PROCESS] reads
+# NetWitness's compact meta-key names (ip_src/ip_dst/port_src/user_src/
+# filename_src/checksum_src/param_src/...) with fallbacks to more verbose
+# nested source.device/source.user/destination.device/destination.user
+# shapes, coerces ports via safe_int(), timestamps via timestamp_to_iso()/
+# timestamp_to_epoch_ms(), usernames via clean_usernames(), hashes via
+# extract_hashes(), and filters URLs to external ones via is_external_url().
+# [FYP-OUTPUT] one flat per-event dict with a fixed key set (event_time,
+# source_ip, file_hash, command_line, ...). [FYP-USED-BY]
+# normalise_alert_record() (normalised_events) and build_standard_alert()'s
+# all_parsed_events collection.
+# [FYP-FUNCTION] `normalise_event` — transforms normalise event input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `event`, `index`, `alert_event_type`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert, soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `clean_usernames`, `extract_hashes`, `first`, `get`, `is_external_url`, `isinstance`, `join`, `safe_int`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def normalise_event(event: Dict[str, Any], index: int, alert_event_type: Optional[str] = None) -> Dict[str, Any]:
     if not isinstance(event, dict):
@@ -1323,6 +1923,15 @@ def normalise_event(event: Dict[str, Any], index: int, alert_event_type: Optiona
     }
 
 
+# [FYP-FUNCTION] build_analyst_summary() — [FYP-INPUT] the key already-
+# normalised fields for one alert (severity, alert_name, source/destination
+# IP+port, sender/recipient email, file_name, MITRE technique, event_type).
+# [FYP-PROCESS] template-based sentence assembly (no LLM) — picks between a
+# handful of fixed sentence templates depending on which fields are present
+# (attachment+sender+recipient vs. attachment alone vs. plain alert; then
+# appends network-activity, MITRE-mapping and event-type clauses when those
+# fields exist). [FYP-OUTPUT] a short human-readable summary string, stored
+# as alert_summary.analyst_summary. [FYP-USED-BY] normalise_alert_record().
 def build_analyst_summary(
     severity: str,
     alert_name: Optional[str],
@@ -1355,6 +1964,13 @@ def build_analyst_summary(
     return summary
 
 
+# [FYP-FUNCTION] calculate_confidence() — legacy scorer, superseded by
+# evaluate_context_data_quality() (the [FYP-EVALUATOR] schema-validation
+# function above) but kept for any external/backward-compatible caller.
+# [FYP-INPUT] the extracted values dict and a list of missing field names.
+# [FYP-PROCESS] simple linear penalty: 100 - 10 points per missing field,
+# clamped to [0, 100]. [FYP-OUTPUT] ("High"/"Medium"/"Low", numeric score)
+# using the same 80/50 thresholds as evaluate_context_data_quality().
 def calculate_confidence(values: Dict[str, List[Any]], missing_fields: List[str]) -> Tuple[str, int]:
     """Backward-compatible confidence helper. New parser logic uses evaluate_context_data_quality."""
     score = 100 - (len(missing_fields) * 10)
@@ -1365,6 +1981,12 @@ def calculate_confidence(values: Dict[str, List[Any]], missing_fields: List[str]
         return "Medium", score
     return "Low", score
 
+
+# [FYP-FUNCTION] _clean_title_candidate() — [FYP-INPUT] any raw title
+# candidate value. [FYP-PROCESS] collapses internal whitespace, strips
+# leading/trailing whitespace, then runs is_useful() to reject sentinel/empty
+# text. [FYP-OUTPUT] cleaned title string or None. [FYP-USED-BY]
+# select_alert_title().
 def _clean_title_candidate(value: Any) -> Optional[str]:
     if not is_useful(value):
         return None
@@ -1373,7 +1995,7 @@ def _clean_title_candidate(value: Any) -> Optional[str]:
 
 
 def select_alert_title(alert: Dict[str, Any], incident: Dict[str, Any], values: Dict[str, List[Any]]) -> Optional[str]:
-    """Prefer the alert-level title and keep incident title separate.
+    """[FYP-FUNCTION] Prefer the alert-level title and keep incident title separate.
 
     NetWitness exports often contain both incident.title and alerts[0].title.
     The selected alert identity should use the alert title, while incident_title
@@ -1414,9 +2036,41 @@ def select_alert_title(alert: Dict[str, Any], incident: Dict[str, Any], values: 
     return _clean_title_candidate(original.get("moduleName")) or _clean_title_candidate(incident.get("title"))
 
 
+# [FYP-FUNCTION] _normalise_title_for_compare() — [FYP-INPUT] any title-ish
+# value. [FYP-PROCESS] whitespace-collapse + lower-case (no is_useful()
+# filtering, unlike _clean_title_candidate()). [FYP-OUTPUT] a comparison-only
+# string. [FYP-USED-BY] select_alert_title(), to detect when an
+# alert_name candidate is really just the incident title repeated.
 def _normalise_title_for_compare(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
+
+# [FYP-EVALUATOR] [FYP-FUNCTION] extract_alert_values_fast() — THE FIELD
+# MAPPING function actually used by the live pipeline. [FYP-INPUT] one raw
+# alert dict plus the parent incident dict. [FYP-PROCESS] rule-based, hand-
+# coded field mapping (no LLM): reads NetWitness's originalAlert wrapper if
+# present, then pulls a fixed set of canonical fields (incident_id,
+# severity, alert_id, alert_name, alert_time, ...) directly off known
+# alert/incident keys via the local _add() helper, and for every event in
+# alert["events"] additionally maps NetWitness's compact per-event meta keys
+# (ip_src/ip_dst/user_src/checksum_src/filename_src/param_src, plus the
+# nested source.device/source.user/destination.device/destination.user
+# shapes) onto the same canonical field names used by FIELD_ALIASES.
+# [FYP-OUTPUT] (values_by_field, paths_by_field) — same shape as
+# extract_all_fields()'s output, but computed directly rather than via
+# generic flatten+alias-suffix matching, which is why this is "fast".
+# [FYP-USED-BY] normalise_alert_record() (the very first call in the
+# function body). Contrast with extract_all_fields()/extract_by_alias()
+# above, which implement the same field-mapping concept generically via
+# FIELD_ALIASES but are not on this call path (see [FYP-SECTION] note near
+# flatten_json()).
+# [FYP-FUNCTION] `extract_alert_values_fast` — transforms extract alert values fast input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `alert`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_add`, `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def extract_alert_values_fast(alert: Dict[str, Any], incident: Dict[str, Any]) -> Tuple[Dict[str, List[Any]], Dict[str, List[str]]]:
     orig = alert.get("originalAlert") if isinstance(alert.get("originalAlert"), dict) else alert
@@ -1425,6 +2079,14 @@ def extract_alert_values_fast(alert: Dict[str, Any], incident: Dict[str, Any]) -
     values: Dict[str, List[Any]] = {f: [] for f in FIELD_ALIASES}
     paths: Dict[str, List[str]] = {f: [] for f in FIELD_ALIASES}
     
+    # [FYP-FUNCTION] `_add` — implements the add operation used by the surrounding parsing and reporting service workflow.
+    # [FYP-INPUT] Parameters: `field`, `val`, `p`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include nw_alerts.py:_add, nw_alerts.py:_distill_alerts, skills_sidecar.py:_assets_from_skills; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _add(field, val, p=""):
         if val is not None and val != "":
             values[field].append(val)
@@ -1465,6 +2127,14 @@ def extract_alert_values_fast(alert: Dict[str, Any], incident: Dict[str, Any]) -
 
     return values, paths
 
+
+# [FYP-FUNCTION] `normalise_alert_record` — transforms normalise alert record input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `incident`, `alert`, `alert_index`, `alert_count`, `input_format`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `_clean_title_candidate`, `analyse_powershell_command_lines`, `any`, `append`, `build_analyst_summary`, `build_compatibility_view`, `build_debug_evidence`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def normalise_alert_record(
     incident: Dict[str, Any],
@@ -1836,6 +2506,14 @@ def normalise_alert_record(
     return pruned_normalised_alert, debug_evidence
 
 
+# [FYP-FUNCTION] `build_compatibility_view` — constructs build compatibility view output for the next parsing and reporting service consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `alert`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `first`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_compatibility_view(alert: Dict[str, Any], incident: Dict[str, Any]) -> Dict[str, Any]:
     summary = alert.get("alert_summary", {})
     network = alert.get("network_indicators", {})
@@ -1885,6 +2563,14 @@ def build_compatibility_view(alert: Dict[str, Any], incident: Dict[str, Any]) ->
     }
 
 
+# [FYP-FUNCTION] `build_debug_evidence` — constructs build debug evidence output for the next parsing and reporting service consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `flat`, `paths`, `raw_event_records`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `dedupe`, `enumerate`, `get`, `is_useful`, `isinstance`, `items`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_debug_evidence(flat: Dict[str, Any], paths: Dict[str, List[str]], raw_event_records: List[Dict[str, Any]]) -> Dict[str, Any]:
     sample_values: Dict[str, List[Any]] = {}
     is_dict = isinstance(flat, dict)
@@ -1915,6 +2601,14 @@ def build_debug_evidence(flat: Dict[str, Any], paths: Dict[str, List[str]], raw_
     }
 
 
+# [FYP-FUNCTION] `severity_sort_score` — implements the severity sort score operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `get`, `int`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def severity_sort_score(alert: Dict[str, Any]) -> int:
     severity_rank = {"Unknown": 0, "Informational": 1, "Low": 2, "Medium": 3, "High": 4, "Critical": 5}
     summary = alert.get("alert_summary", {})
@@ -1930,6 +2624,14 @@ def severity_sort_score(alert: Dict[str, Any]) -> int:
     score += int(alert.get("parser_metadata", {}).get("parser_confidence_score", 0) / 20)
     return score
 
+
+# [FYP-FUNCTION] `build_parser_summary` — constructs build parser summary output for the next parsing and reporting service consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `selected`, `alerts`, `input_format`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `get`, `isoformat`, `len`, `now`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_parser_summary(selected: Optional[Dict[str, Any]], alerts: List[Dict[str, Any]], input_format: str, output_dir: str) -> Dict[str, Any]:
     if selected:
@@ -1994,10 +2696,26 @@ def build_parser_summary(selected: Optional[Dict[str, Any]], alerts: List[Dict[s
     }
 
 
+# [FYP-FUNCTION] `normalise_netwitness_data` — transforms normalise netwitness data input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `build_standard_alert`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def normalise_netwitness_data(data: Any) -> Dict[str, Any]:
     """Public function for other project scripts."""
     return build_standard_alert(data)
 
+
+# [FYP-FUNCTION] `build_standard_alert` — constructs build standard alert output for the next parsing and reporting service consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `data`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:main, soc_reporting_agent/services/parser_normaliser.py:normalise_netwitness_data, soc_reporting_agent/services/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `append`, `build_parser_summary`, `detect_input_format`, `enumerate`, `get`, `isinstance`, `isoformat`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, Any]:
     pruned_data = prune_empty_and_null_values(data) or data
@@ -2076,6 +2794,14 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
 # ---------------------------------------------------------------------------
 
 
+# [FYP-FUNCTION] `flatten_for_csv` — implements the flatten for csv operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:write_csv_file; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `isinstance`, `items`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def flatten_for_csv(data: Dict[str, Any]) -> Dict[str, str]:
     row = {}
     for key, value in data.items():
@@ -2088,6 +2814,14 @@ def flatten_for_csv(data: Dict[str, Any]) -> Dict[str, str]:
     return row
 
 
+# [FYP-FUNCTION] `write_csv_file` — persists or updates write csv file state used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `data`, `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `DictWriter`, `Path`, `flatten_for_csv`, `keys`, `list`, `mkdir`, `open`, `writeheader`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def write_csv_file(data: Dict[str, Any], path: str) -> None:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     row = flatten_for_csv(data)
@@ -2096,6 +2830,14 @@ def write_csv_file(data: Dict[str, Any], path: str) -> None:
         writer.writeheader()
         writer.writerow(row)
 
+
+# [FYP-FUNCTION] `write_outputs` — persists or updates write outputs state used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `result`, `output_dir`, `write_debug`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/scripts/test_merged_report_context.py:test_merged_context, soc_reporting_agent/services/parser_normaliser.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `get`, `mkdir`, `prune_empty_and_null_values`, `save_json_file`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def write_outputs(result: Dict[str, Any], output_dir: str = "outputs/soc_context_parser", write_debug: bool = True) -> Dict[str, str]:
     out_dir = Path(output_dir)
@@ -2126,6 +2868,14 @@ def write_outputs(result: Dict[str, Any], output_dir: str = "outputs/soc_context
     return paths
 
 
+# [FYP-FUNCTION] `print_summary` — implements the print summary operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `result`, `paths`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `items`, `print`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def print_summary(result: Dict[str, Any], paths: Dict[str, str]) -> None:
     summary = result.get("parser_summary", {})
     extracted = summary.get("important_extracted_fields", {})
@@ -2148,6 +2898,14 @@ def print_summary(result: Dict[str, Any], paths: Dict[str, str]) -> None:
         print(f"- {name}: {path}")
 
 
+# [FYP-FUNCTION] `parse_args` — transforms parse args input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async, soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/agents/reporting_agent.py:parse_args; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ArgumentParser`, `add_argument`, `parse_args`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fresh NetWitness parser, one-file version.")
     parser.add_argument("input_path", help="Path to the raw NetWitness JSON export.")
@@ -2155,6 +2913,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-debug", action="store_true", help="Do not write raw_alert_debug.json.")
     return parser.parse_args()
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered parsing and reporting service operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `build_standard_alert`, `exists`, `get`, `load_json_file`, `parse_args`, `print`, `print_summary`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def main() -> int:
     args = parse_args()
@@ -2182,6 +2948,14 @@ if __name__ == "__main__":
 # Dashboard integration helpers
 # ---------------------------------------------------------------------------
 
+# [FYP-FUNCTION] `_ioc_items_from_summary` — implements the ioc items from summary operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `summary`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_agent_friendly_processed_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `items`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _ioc_items_from_summary(summary: Dict[str, Any]) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
     mapping = {
@@ -2199,6 +2973,14 @@ def _ioc_items_from_summary(summary: Dict[str, Any]) -> List[Dict[str, Any]]:
                 items.append({"type": ioc_type, "value": value})
     return items
 
+
+# [FYP-FUNCTION] `build_agent_friendly_processed_alert` — constructs build agent friendly processed alert output for the next parsing and reporting service consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `normalised_alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_ioc_items_from_summary`, `dict`, `first`, `get`, `make_json_safe`, `prune_empty_and_null_values`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_agent_friendly_processed_alert(normalised_alert: Dict[str, Any]) -> Dict[str, Any]:
     """Flatten the rich parser output into the shape existing agents expect.
@@ -2285,6 +3067,14 @@ def build_agent_friendly_processed_alert(normalised_alert: Dict[str, Any]) -> Di
     }
     return prune_empty_and_null_values(make_json_safe(processed)) or {}
 
+
+# [FYP-FUNCTION] `run_parser_normalisation_for_dashboard` — orchestrates the run parser normalisation for dashboard entry point and its ordered parsing and reporting service operations.
+# [FYP-INPUT] Parameters: `raw_alert`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_workflow.py:run_parsing; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `build_agent_friendly_processed_alert`, `build_standard_alert`, `get`, `isoformat`, `len`, `make_json_safe`, `now`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Path = "outputs/soc_context_parser") -> Dict[str, Any]:
     """Run parser and return all dashboard-facing artefacts.

@@ -1,3 +1,42 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: asyncio, correlation_config, ingest_pipeline, json, math, os, sync_engine, time.
+# =============================================================================
+# File: soc_investigation_agent_revised/correlation_engine.py
+# Purpose: [FYP-PROCESS] THE evidence-correlation engine for the Investigation
+#   stage — decides whether an incoming alert belongs to an existing active
+#   incident (Tier 1: direct scoring against each active incident) or should
+#   be bridged with other unassigned alerts into a new incident (Tier 2).
+# Main functionalities:
+#   1. CorrelationEngine.__init__/load_active_incidents(): loads all
+#      non-resolved/closed incidents from incident_reports/*/incident_data.json
+#      into an in-memory cache on startup.
+#   2. [FYP-EVALUATOR] evaluate_tier1(): scores an alert against every active
+#      incident using a weighted blend of _calculate_relational_score()
+#      (shared IOCs), _calculate_mitre_score() (tactic-chain proximity via
+#      TACTIC_ORDER), and _calculate_temporal_score() (time proximity).
+#   3. evaluate_tier2()/_should_bridge_alerts(): when Tier 1 finds no strong
+#      match, checks whether the alert should be bridged with other
+#      currently-unassigned alerts to seed a brand-new incident.
+#   4. [FYP-EVALUATOR] correlate_alert(): the public entry point that runs
+#      Tier 1 then Tier 2 and returns the correlation decision.
+#   5. sync_create_incident()/sync_update_incident(): write-through
+#      (dual-write) to both the file repository and the ChromaDB vector
+#      index (via sync_engine.IncidentSyncManager), keeping the in-memory
+#      cache consistent.
+# Inputs: alert_log dicts, the in-memory active_incidents cache (sourced
+#   from incident_reports/ + ChromaDB via sync_engine/vector_engine).
+# Outputs: correlate_alert() -> a correlation decision (which incident, or
+#   new-incident-bridge, with a confidence score).
+# Workflow position: Investigation stage, evidence-correlation layer —
+#   called for each alert as it enters the investigation pipeline.
+# Called by [FYP-USED-BY]: verify via grep — likely orchestrator.py.
+# Calls [FYP-CALLS]: ingest_pipeline, vector_engine, sync_engine
+#   (FileIncidentRepository, ChromaIncidentVectorStore, IncidentSyncManager).
+# Key evaluator search terms: correlate_alert, evaluate_tier1, evaluate_tier2,
+#   CorrelationEngine, [FYP-EVALUATOR]
+# =============================================================================
+
 import os
 import json
 import time
@@ -18,7 +57,25 @@ from sync_engine import (
     IncidentStatus
 )
 
+# =============================================================================
+# [FYP-SECTION] INVESTIGATION EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-CLASS] `CorrelationEngine` — owns CorrelationEngine state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: __init__, load_active_incidents, sync_create_incident, sync_update_incident, _extract_indicators, _calculate_relational_score, _calculate_mitre_score, _calculate_temporal_score.
+# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:main_async.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class CorrelationEngine:
+    # [FYP-FUNCTION] `__init__` — implements the init operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `base_folder`, `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `ChromaIncidentVectorStore`, `FileIncidentRepository`, `IncidentSyncManager`, `load_active_incidents`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def __init__(self, base_folder: str = "incident_reports", db_path: str = "ChromaDatabase"):
         self.base_folder = base_folder
         self.db_path = db_path
@@ -31,6 +88,14 @@ class CorrelationEngine:
         # In-memory cache of active incidents: incident_id -> Incident
         self.active_incidents: Dict[str, Incident] = {}
         self.load_active_incidents()
+
+    # [FYP-FUNCTION] `load_active_incidents` — retrieves load active incidents data for the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:__init__; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `clear`, `exists`, `isdir`, `join`, `len`, `listdir`, `load`, `model_validate`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def load_active_incidents(self):
         """Loads all active incidents from the filesystem into the memory cache."""
@@ -53,11 +118,27 @@ class CorrelationEngine:
                         print(f"[-] CorrelationEngine: Failed to load incident {folder} into cache: {e}")
         print(f"[+] CorrelationEngine: Loaded {len(self.active_incidents)} active incidents into memory cache.")
 
+    # [FYP-FUNCTION] `sync_create_incident` — implements the sync create incident operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `create_incident`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     async def sync_create_incident(self, incident: Incident):
         """Performs a synchronous write-through (dual-write) creation and updates cache."""
         await self.sync_manager.create_incident(incident)
         if incident.metadata.status.value not in ("RESOLVED", "CLOSED"):
             self.active_incidents[incident.id] = incident
+
+    # [FYP-FUNCTION] `sync_update_incident` — implements the sync update incident operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `pop`, `update_incident`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     async def sync_update_incident(self, incident: Incident):
         """Performs a synchronous write-through (dual-write) update and updates cache."""
@@ -81,6 +162,14 @@ class CorrelationEngine:
         "command-and-control": 10,
         "impact": 11
     }
+
+    # [FYP-FUNCTION] `_extract_indicators` — transforms extract indicators input into the stable representation required by downstream investigation processing.
+    # [FYP-INPUT] Parameters: `alert_log`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:_should_bridge_alerts, soc_investigation_agent_revised/correlation_engine.py:evaluate_tier1, soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `add`, `get`, `join`, `len`, `lower`, `set`, `split`, `str`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _extract_indicators(self, alert_log: dict) -> Set[str]:
         """Extracts normalized forensic indicators from a raw or processed alert log."""
@@ -116,6 +205,14 @@ class CorrelationEngine:
                 indicators.add(str(val).strip().lower())
                 
         return indicators
+
+    # [FYP-FUNCTION] `_calculate_relational_score` — implements the calculate relational score operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `alert_indicators`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `endswith`, `get`, `join`, `len`, `lower`, `split`, `str`, `strip`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _calculate_relational_score(self, alert_indicators: Set[str], incident: Incident) -> float:
         """Calculates the physical asset/infrastructure overlap score S_rel."""
@@ -177,6 +274,14 @@ class CorrelationEngine:
         else:
             return 0.0
 
+    # [FYP-FUNCTION] `_calculate_mitre_score` — implements the calculate mitre score operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `alert_log`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `get`, `lower`, `max`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _calculate_mitre_score(self, alert_log: dict, incident: Incident) -> float:
         """Calculates MITRE ATT&CK Lifecycle Sequencing progression score S_mitre."""
         alert_tactic = alert_log.get("metadata", {}).get("tactic", "").lower()
@@ -206,6 +311,14 @@ class CorrelationEngine:
             return 0.5  # Parallel step at the same stage
         else:
             return 0.1  # Upstream transition (backwards progression or out-of-order)
+
+    # [FYP-FUNCTION] `_calculate_temporal_score` — implements the calculate temporal score operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `alert_epoch`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `abs`, `append`, `exp`, `get`, `int`, `len`, `max`, `range`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _calculate_temporal_score(self, alert_epoch: int, incident: Incident) -> float:
         """Calculates temporal proximity and anti-evasion rhythmic similarity S_temporal."""
@@ -249,9 +362,21 @@ class CorrelationEngine:
     # --- TIER 1 AGGREGATION ---
     async def evaluate_tier1(self, alert_log: dict) -> Tuple[str, float, Optional[str]]:
         """
-        Evaluates the incoming alert against all ongoing active incidents.
-        Returns: Tuple of (Decision, Score, IncidentID_or_None)
-        Decisions: "MERGE", "SIMILAR_BUT_UNRELATED", "UNRELATED"
+        [FYP-FUNCTION] Evidence Correlation — Tier 1 (match against active incidents)
+        [FYP-PROCESS] [FYP-EVALUATOR] [FYP-DECISION]
+
+        Evaluates the incoming alert against all ongoing active incidents,
+        combining _calculate_relational_score() (shared indicators),
+        _calculate_mitre_score() (tactic-chain proximity), and
+        _calculate_temporal_score() (time proximity/periodicity) into one
+        weighted score per candidate incident, then picks the best match.
+
+        Returns: Tuple of (Decision, Score, IncidentID_or_None).
+        Decisions: "MERGE", "SIMILAR_BUT_UNRELATED", "UNRELATED".
+
+        [FYP-USED-BY]: correlate_alert() below, which runs this first and
+        only falls through to evaluate_tier2() (new-incident bridging) when
+        this returns "UNRELATED".
         """
         alert_id = alert_log["id"]
         alert_epoch = alert_log["metadata"]["timestamp_epoch"]
@@ -368,6 +493,14 @@ class CorrelationEngine:
             return "UNRELATED", best_corr_score, None
 
     # --- TIER 2 CLUSTERING ---
+    # [FYP-FUNCTION] `_should_bridge_alerts` — implements the should bridge alerts operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `a1`, `a2`, `window_sec`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:evaluate_tier2; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_extract_indicators`, `abs`, `endswith`, `get`, `intersection`, `len`, `lower`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _should_bridge_alerts(self, a1: dict, a2: dict, window_sec: int) -> bool:
         """Determines if two orphan alerts exhibit clustering characteristics."""
         m1 = a1.get("metadata", {})
@@ -404,6 +537,14 @@ class CorrelationEngine:
                 return True
                 
         return False
+
+    # [FYP-FUNCTION] `evaluate_tier2` — implements the evaluate tier2 operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `target_alert`, `unassigned_alerts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:correlate_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_should_bridge_alerts`, `abs`, `add`, `append`, `len`, `pop`, `print`, `range`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     async def evaluate_tier2(self, target_alert: dict, unassigned_alerts: List[dict]) -> Tuple[str, List[dict]]:
         """
@@ -472,8 +613,17 @@ class CorrelationEngine:
     # --- MAIN CORRELATION ENTRY POINT ---
     async def correlate_alert(self, alert_log: dict, unassigned_alerts: List[dict]) -> dict:
         """
-        Coordinates the entire two-tier routing workflow for a new incoming alert.
-        Returns a decision dictionary.
+        [FYP-FUNCTION] Evidence Correlation — Public Entry Point
+        [FYP-ENTRY-POINT] [FYP-EVALUATOR] [FYP-PROCESS]
+
+        Coordinates the entire two-tier routing workflow for a new incoming
+        alert: runs evaluate_tier1() (match against active incidents) first;
+        only if that returns "UNRELATED" does it fall through to
+        evaluate_tier2() (bridge with other unassigned alerts into a new
+        incident). Returns a decision dictionary.
+
+        [FYP-USED-BY]: this is the CorrelationEngine class's main public
+        method — the whole class exists to support this call.
         """
         alert_id = alert_log["id"]
         print(f"[*] CorrelationEngine: Processing alert {alert_id} through two-tier engine...")

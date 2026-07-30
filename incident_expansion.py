@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, json, re, sqlite3, time, typing.
+# =============================================================================
+# File: incident_expansion.py
+# Purpose: This module expands a seed incident with related alert and entity evidence.
+# Main functionality: LocalCorpusSource, NetWitnessEventsSource, _frontier, expand_incident_map.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, json, re, sqlite3, time, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: LocalCorpusSource, NetWitnessEventsSource, _frontier, expand_incident_map, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 incident_expansion.py — Stage 2 of the autonomous incident-mapping upgrade.
 
@@ -49,26 +71,76 @@ _WEAK_SIGNAL_AT = 200     # above this: flag as weak indicator, still sample edg
 _UBIQUITOUS_AT = 1500     # above this: annotate only, add NO edges (gateway-class noise)
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-CLASS] `LocalCorpusSource` — owns LocalCorpusSource state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: __init__, __enter__, __exit__, close, pivot.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class LocalCorpusSource:
     """Read-only pivot source over the cached incident corpus in SQLite."""
 
     name = "local incident corpus"
 
+    # [FYP-FUNCTION] `__init__` — implements the init operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `db_path`, `timeout`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `connect`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def __init__(self, db_path: str, timeout: float = 10.0) -> None:
         self.db_path = db_path
         self._con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=timeout)
 
+    # [FYP-FUNCTION] `__enter__` — implements the enter operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: no nested function/service calls.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def __enter__(self) -> "LocalCorpusSource":
         return self
 
+    # [FYP-FUNCTION] `__exit__` — implements the exit operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `*exc`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `close`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def __exit__(self, *exc: Any) -> None:
         self.close()
+
+    # [FYP-FUNCTION] `close` — implements the close operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include app.py:gp_is_reachable, chroma_viewer.py:sqlite_count, chroma_viewer.py:sqlite_load; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `close`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def close(self) -> None:
         try:
             self._con.close()
         except Exception:
             pass
+
+    # [FYP-FUNCTION] `pivot` — implements the pivot operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `value`, `exclude_ids`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include incident_expansion.py:expand_incident_map; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `compile`, `escape`, `execute`, `fetchall`, `fetchone`, `get`, `len`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def pivot(self, value: str, exclude_ids: set[str], limit: int = 6) -> dict:
         """All incidents whose stored JSON mentions `value`.
@@ -112,6 +184,12 @@ class LocalCorpusSource:
         return {"count": count, "related": related}
 
 
+# [FYP-CLASS] `NetWitnessEventsSource` — owns NetWitnessEventsSource state or behaviour for the SOC analysis support component.
+# [FYP-PROCESS] Important methods: pivot.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class NetWitnessEventsSource:
     """Stage 2b stub: pivot against the LIVE NetWitness API instead of the
     local cache. Same contract as LocalCorpusSource.pivot(). Implementation
@@ -122,6 +200,14 @@ class NetWitnessEventsSource:
 
     name = "NetWitness live query"
 
+    # [FYP-FUNCTION] `pivot` — implements the pivot operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `value`, `exclude_ids`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include incident_expansion.py:expand_incident_map; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `NotImplementedError`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
     def pivot(self, value: str, exclude_ids: set[str], limit: int = 6) -> dict:
         raise NotImplementedError(
             "Live NetWitness pivoting lands in Stage 2b once the alerts "
@@ -129,9 +215,25 @@ class NetWitnessEventsSource:
         )
 
 
+# [FYP-FUNCTION] `_frontier` — implements the frontier operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `imap`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include incident_expansion.py:expand_incident_map; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `len`, `sorted`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _frontier(imap: dict) -> list[dict]:
     """Pivotable entity nodes, deterministic priority order: the incident's
     focus entity first, then hosts/users, then everything else."""
+    # [FYP-FUNCTION] `rank` — implements the rank operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `n`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `any`, `get`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def rank(n: dict) -> tuple:
         focus = 0 if any(
             e["src"] == n["id"] and e["relation"] == "focus_of"
@@ -148,6 +250,14 @@ def _frontier(imap: dict) -> list[dict]:
     ]
     return sorted(cands, key=rank)
 
+
+# [FYP-FUNCTION] `expand_incident_map` — implements the expand incident map operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `imap`, `source`, `max_pivots`, `max_related`, `deadline_seconds`, `profile_focus`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_frontier`, `add`, `add_edge`, `append`, `format_profile`, `get`, `hasattr`, `len`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def expand_incident_map(imap: dict, source: Any, max_pivots: int = 10,
                         max_related: int = 6,
@@ -166,6 +276,14 @@ def expand_incident_map(imap: dict, source: Any, max_pivots: int = 10,
     known_incidents = {n["label"] for n in imap["nodes"] if n["type"] == "incident"}
     nodes_by_id = {n["id"]: n for n in imap["nodes"]}
     pivots = related_added = 0
+
+    # [FYP-FUNCTION] `add_edge` — implements the add edge operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `src`, `dst`, `relation`, `evidence`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include incident_expansion.py:expand_incident_map; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def add_edge(src: str, dst: str, relation: str, evidence: str) -> None:
         for e in imap["edges"]:

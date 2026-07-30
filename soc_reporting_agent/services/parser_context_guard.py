@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, json, pathlib, re, shutil, typing.
+# =============================================================================
+# File: soc_reporting_agent/services/parser_context_guard.py
+# Purpose: This module validates parser context and prevents cross-incident or stale input reuse.
+# Main functionality: _is_useful, _first, _clean, _normalise_for_compare, _dig, _as_dict.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis parsing and reporting service component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, json, pathlib, re, shutil, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _is_useful, _first, _clean, _normalise_for_compare, _dig, _as_dict, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -7,6 +29,18 @@ from pathlib import Path
 from typing import Any
 
 
+# =============================================================================
+# [FYP-SECTION] PARSING AND REPORTING SERVICE EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_is_useful` — evaluates is useful conditions so invalid or unsafe parsing and reporting service processing is stopped early.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:_clean, soc_reporting_agent/services/parser_context_guard.py:_first, soc_reporting_agent/services/parser_context_guard.py:_walk_values; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`, `lower`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _is_useful(value: Any) -> bool:
     if value in (None, "", [], {}):
         return False
@@ -14,6 +48,14 @@ def _is_useful(value: Any) -> bool:
         return value.strip().lower() not in {"", "none", "null", "unknown", "n/a", "na"}
     return True
 
+
+# [FYP-FUNCTION] `_first` — implements the first operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `default`, `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_triage_bits, soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_useful`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _first(*values: Any, default: Any = None) -> Any:
     for value in values:
@@ -26,15 +68,39 @@ def _first(*values: Any, default: Any = None) -> Any:
     return default
 
 
+# [FYP-FUNCTION] `_clean` — implements the clean operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:env_load, soc_reporting_agent/adapters/run_reporting.py:_first, soc_reporting_agent/services/parser_context_guard.py:_title_clean; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_useful`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _clean(value: Any) -> str | None:
     if not _is_useful(value):
         return None
     return str(value).strip()
 
 
+# [FYP-FUNCTION] `_normalise_for_compare` — transforms normalise for compare input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:add_check; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `lower`, `str`, `strip`, `sub`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _normalise_for_compare(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
+
+# [FYP-FUNCTION] `_dig` — implements the dig operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `data`, `*path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `get`, `isinstance`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _dig(data: Any, *path: Any) -> Any:
     cur = data
@@ -50,9 +116,25 @@ def _dig(data: Any, *path: Any) -> Any:
     return cur
 
 
+# [FYP-FUNCTION] `_as_dict` — implements the as dict operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _as_dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
+
+# [FYP-FUNCTION] `_raw_source` — implements the raw source operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _raw_source(data: dict[str, Any]) -> dict[str, Any]:
     """Return the true raw NetWitness object when a dashboard DB wrapper is used."""
@@ -65,12 +147,28 @@ def _raw_source(data: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+# [FYP-FUNCTION] `_title_clean` — implements the title clean operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_clean`, `strip`, `sub`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _title_clean(value: Any) -> str | None:
     text = _clean(value)
     if not text:
         return None
     return re.sub(r"\s+", " ", text).strip()
 
+
+# [FYP-FUNCTION] `_walk_values` — implements the walk values operation used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `data`, `wanted_keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:_walk_values, soc_reporting_agent/services/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_useful`, `_walk_values`, `append`, `extend`, `isinstance`, `items`, `lower`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _walk_values(data: Any, wanted_keys: set[str]) -> list[Any]:
     values: list[Any] = []
@@ -87,6 +185,14 @@ def _walk_values(data: Any, wanted_keys: set[str]) -> list[Any]:
             values.extend(_walk_values(item, wanted_keys))
     return values
 
+
+# [FYP-FUNCTION] `extract_alert_identity` — transforms extract alert identity input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `raw_alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_reporting_agent/backend/app.py:start_background_run, soc_reporting_agent/backend/casework_store.py:normalise_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_dict`, `_clean`, `_first`, `_raw_source`, `_title_clean`, `_walk_values`, `append`, `extend`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
     """Extract the selected raw alert identity before parsing.
@@ -160,6 +266,14 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
         "destination_ip": _clean(_first(destination_ip_values, wrapper.get("destination_ip"), wrapper.get("ip_dst"))),
     }
 
+# [FYP-FUNCTION] `extract_parser_output_identity` — transforms extract parser output identity input into the stable representation required by downstream parsing and reporting service processing.
+# [FYP-INPUT] Parameters: `parser_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:validate_parser_identity; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_clean`, `_first`, `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def extract_parser_output_identity(parser_result: Any) -> dict[str, Any]:
     data = parser_result if isinstance(parser_result, dict) else {}
     processed = data.get("processed_alert") if isinstance(data.get("processed_alert"), dict) else {}
@@ -191,6 +305,14 @@ def extract_parser_output_identity(parser_result: Any) -> dict[str, Any]:
     }
 
 
+# [FYP-FUNCTION] `validate_parser_identity` — evaluates validate parser identity conditions so invalid or unsafe parsing and reporting service processing is stopped early.
+# [FYP-INPUT] Parameters: `input_identity`, `parser_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add_check`, `extract_parser_output_identity`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict[str, Any]) -> dict[str, Any]:
     """Validate that parser output belongs to the selected raw alert.
 
@@ -202,6 +324,14 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
     checks: list[dict[str, Any]] = []
     hard_failures: list[str] = []
     warnings: list[str] = []
+
+    # [FYP-FUNCTION] `add_check` — implements the add check operation used by the surrounding parsing and reporting service workflow.
+    # [FYP-INPUT] Parameters: `field`, `hard`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:validate_parser_identity; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_normalise_for_compare`, `append`, `get`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def add_check(field: str, hard: bool = False) -> None:
         expected = input_identity.get(field)
@@ -243,6 +373,14 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
         "warnings": warnings,
         "message": message,
     }
+
+# [FYP-FUNCTION] `clear_stale_parser_outputs` — persists or updates clear stale parser outputs state used by the surrounding parsing and reporting service workflow.
+# [FYP-INPUT] Parameters: `project_root`, `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:start_background_run; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `append`, `exists`, `is_dir`, `rmtree`, `str`, `unlink`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def clear_stale_parser_outputs(project_root: Path, ticket_id: str | None = None) -> list[str]:
     """Remove parser outputs that can leak stale alert context into a new run."""

@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, backend, datetime, jinja2, json, os, pathlib, re.
+# =============================================================================
+# File: soc_reporting_agent/reporting/template_document_exporter.py
+# Purpose: This module generates DOCX and PDF report artifacts from approved report content.
+# Main functionality: aegis_logo_path, utc_now, safe_filename, read_json, scrub_template_context, write_json.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis report generation and export component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, backend, datetime, jinja2, json, os, pathlib, re.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: aegis_logo_path, utc_now, safe_filename, read_json, scrub_template_context, write_json, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -151,6 +173,18 @@ TEXT_DARK = "1C293C"
 BORDER_GREY = "C8D4E2"
 
 
+# =============================================================================
+# [FYP-SECTION] REPORT GENERATION AND EXPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `aegis_logo_path` — implements the aegis logo path operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `project_root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:_existing_source_files, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `stat`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def aegis_logo_path(project_root: Path) -> Path | None:
     """Return the report-safe Aegis logo path if it is available."""
     for candidate in [
@@ -162,15 +196,39 @@ def aegis_logo_path(project_root: Path) -> Path | None:
     return None
 
 
+# [FYP-FUNCTION] `utc_now` — implements the utc now operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/export_cache.py:mark_export_status, soc_reporting_agent/reporting/editable_reports.py:_add_title_block, soc_reporting_agent/reporting/editable_reports.py:_build_report_entries; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isoformat`, `now`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
+
+# [FYP-FUNCTION] `safe_filename` — implements the safe filename operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/export_cache.py:collect_ticket_export_status, soc_reporting_agent/reporting/template_document_exporter.py:agent_export_dir, soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `str`, `strip`, `sub`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def safe_filename(value: Any) -> str:
     text = str(value or "unknown")
     text = re.sub(r"[^A-Za-z0-9_.-]+", "_", text).strip("_")
     return text[:120] or "unknown"
 
+
+# [FYP-FUNCTION] `read_json` — retrieves read json data for the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/common.py:normalise_incident, soc_reporting_agent/adapters/run_parser_normalisation.py:load_raw_alert_context, soc_reporting_agent/adapters/run_parser_normalisation.py:selected_ticket_id; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `isinstance`, `loads`, `read_text`, `stat`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def read_json(path: Path) -> dict[str, Any]:
     if not path.exists() or path.stat().st_size == 0:
@@ -181,6 +239,14 @@ def read_json(path: Path) -> dict[str, Any]:
     except Exception:
         return {}
 
+
+# [FYP-FUNCTION] `scrub_template_context` — implements the scrub template context operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `value`, `key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:build_agent_llm_fields, soc_reporting_agent/reporting/template_document_exporter.py:build_report_context, soc_reporting_agent/reporting/template_document_exporter.py:scrub_template_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `endswith`, `isinstance`, `items`, `lower`, `scrub_template_context`, `str`, `sub`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def scrub_template_context(value: Any, key: str = "") -> Any:
     """Remove local file paths and noisy artefacts before Jinja rendering."""
@@ -212,11 +278,27 @@ def scrub_template_context(value: Any, key: str = "") -> Any:
     return value
 
 
+# [FYP-FUNCTION] `write_json` — persists or updates write json state used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `path`, `payload`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_reporting_agent/adapters/run_reporting.py:_copy_report_artifacts, soc_reporting_agent/adapters/run_reporting.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `mkdir`, `write_text`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def write_json(path: Path, payload: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
 
+
+# [FYP-FUNCTION] `first_present` — implements the first present operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `default`, `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:_analyst_review_completed, soc_reporting_agent/reporting/export_context_enhancer.py:_approval_decision, soc_reporting_agent/reporting/export_context_enhancer.py:_find_recommended_containment_action; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def first_present(*values: Any, default: Any = "Not Provided") -> Any:
     for value in values:
@@ -224,6 +306,14 @@ def first_present(*values: Any, default: Any = "Not Provided") -> Any:
             return value
     return default
 
+
+# [FYP-FUNCTION] `to_list` — implements the to list operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/schema_normaliser.py:combine_iocs, soc_reporting_agent/reporting/schema_normaliser.py:normalise_ioc, soc_reporting_agent/reporting/template_document_exporter.py:build_agent_llm_fields; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`, `list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def to_list(value: Any) -> list[Any]:
     if value in (None, ""):
@@ -235,6 +325,14 @@ def to_list(value: Any) -> list[Any]:
     return [value]
 
 
+# [FYP-FUNCTION] `get_nested` — retrieves get nested data for the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `obj`, `path`, `default`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/report_validator.py:validate_required_fields, soc_reporting_agent/reporting/schema_normaliser.py:combine_iocs, soc_reporting_agent/reporting/schema_normaliser.py:normalise_confidence; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`, `split`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def get_nested(obj: dict[str, Any] | None, path: str, default: Any = None) -> Any:
     cur: Any = obj or {}
     for part in path.split("."):
@@ -244,6 +342,14 @@ def get_nested(obj: dict[str, Any] | None, path: str, default: Any = None) -> An
             return default
     return cur
 
+
+# [FYP-FUNCTION] `load_outputs_context` — retrieves load outputs context data for the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `project_root`, `output_dir`, `ticket`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:build_report_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `isinstance`, `read_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def load_outputs_context(project_root: Path, output_dir: Path, ticket: dict[str, Any] | None = None) -> tuple[dict[str, dict[str, Any]], list[str]]:
     input_dir = project_root / "inputs"
@@ -277,6 +383,14 @@ def load_outputs_context(project_root: Path, output_dir: Path, ticket: dict[str,
     return outputs, warnings
 
 
+# [FYP-FUNCTION] `build_report_context` — constructs build report context output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `project_root`, `output_dir`, `ticket`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:build_agent_context, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `build_context`, `count_placeholders`, `enhance_export_context`, `first_present`, `get`, `int`, `isinstance`, `load_outputs_context`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_report_context(project_root: Path, output_dir: Path, ticket: dict[str, Any] | None = None) -> dict[str, Any]:
     inputs, warnings = load_outputs_context(project_root, output_dir, ticket)
     context = build_context(inputs, warnings, output_dir=output_dir)
@@ -304,6 +418,14 @@ def build_report_context(project_root: Path, output_dir: Path, ticket: dict[str,
     return scrub_template_context(context)
 
 
+# [FYP-FUNCTION] `build_agent_context` — constructs build agent context output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `project_root`, `output_dir`, `ticket`, `agent_key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `build_agent_llm_fields`, `build_report_context`, `count_placeholders`, `get`, `isinstance`, `read_json`, `setdefault`, `utc_now`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_agent_context(project_root: Path, output_dir: Path, ticket: dict[str, Any] | None, agent_key: str) -> dict[str, Any]:
     report_context = build_report_context(project_root, output_dir, ticket)
     template_cfg = AGENT_TEMPLATES[agent_key]
@@ -328,6 +450,14 @@ def build_agent_context(project_root: Path, output_dir: Path, ticket: dict[str, 
     return agent_context
 
 
+# [FYP-FUNCTION] `build_agent_llm_fields` — constructs build agent llm fields output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `agent_key`, `context`, `output`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:build_agent_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ValueError`, `dumps`, `extract_json_object`, `get`, `get_nested`, `getenv`, `invoke_openai_text`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def build_agent_llm_fields(agent_key: str, context: dict[str, Any], output: dict[str, Any]) -> dict[str, Any]:
     """Return grounded narrative fields for stage report templates.
 
@@ -337,6 +467,14 @@ def build_agent_llm_fields(agent_key: str, context: dict[str, Any], output: dict
     deterministic fallback text fills the same template variables.
     """
     key = str(agent_key or "").lower()
+
+    # [FYP-FUNCTION] `parser_fact_pack` — implements the parser fact pack operation used by the surrounding report generation and export workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:build_agent_llm_fields; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `get`, `get_nested`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def parser_fact_pack() -> dict[str, Any]:
         extracted = output.get("important_extracted_fields") or {}
@@ -376,6 +514,14 @@ def build_agent_llm_fields(agent_key: str, context: dict[str, Any], output: dict
             },
             "downstream_target": "Triage Agent",
         }
+
+    # [FYP-FUNCTION] `threat_fact_pack` — implements the threat fact pack operation used by the surrounding report generation and export workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:build_agent_llm_fields; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `get`, `get_nested`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def threat_fact_pack() -> dict[str, Any]:
         ti = output.get("threat_intelligence") or {}
@@ -551,6 +697,14 @@ def build_agent_llm_fields(agent_key: str, context: dict[str, Any], output: dict
         "analyst_actions": output.get("recommended_next_action") or output.get("next_action") or "Review the output, validate missing evidence, and record analyst decision before closure.",
     }
 
+# [FYP-FUNCTION] `template_environment` — implements the template environment operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `project_root`, `template_folder`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:render_jinja_template; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Environment`, `FileSystemLoader`, `join`, `select_autoescape`, `str`, `to_list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def template_environment(project_root: Path, template_folder: str) -> Environment:
     template_dir = project_root / template_folder
     env = Environment(
@@ -564,12 +718,28 @@ def template_environment(project_root: Path, template_folder: str) -> Environmen
     return env
 
 
+# [FYP-FUNCTION] `render_jinja_template` — constructs render jinja template output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `project_root`, `template_name`, `context`, `template_folder`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get_template`, `render`, `template_environment`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def render_jinja_template(project_root: Path, template_name: str, context: dict[str, Any], *, template_folder: str) -> str:
     env = template_environment(project_root, template_folder)
     return env.get_template(template_name).render(**context)
 
 
 # -------------------- Markdown normalisation and parsing --------------------
+
+# [FYP-FUNCTION] `clean_markdown_text` — implements the clean markdown text operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:normalise_markdown_for_report; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `cleanup_report_text`, `replace`, `str`, `strip`, `sub`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def clean_markdown_text(text: str) -> str:
     text = str(text or "")
@@ -579,6 +749,14 @@ def clean_markdown_text(text: str) -> str:
     text = cleanup_report_text(text)
     return text.strip() + "\n"
 
+
+# [FYP-FUNCTION] `cleanup_report_text` — implements the cleanup report text operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:clean_markdown_text; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `escape`, `items`, `str`, `sub`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def cleanup_report_text(text: str) -> str:
     """Apply deterministic report polish without changing incident facts."""
@@ -594,6 +772,14 @@ def cleanup_report_text(text: str) -> str:
     text = re.sub(r"([.!?])\s+\1+", r"\1", text)
     return text
 
+
+# [FYP-FUNCTION] `split_inline_numbered_list` — implements the split inline numbered list operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:normalise_markdown_for_report; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `enumerate`, `finditer`, `len`, `list`, `start`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def split_inline_numbered_list(line: str) -> list[str] | None:
     """Turn '1. A. 2. B. 3. C.' into separate numbered lines.
@@ -614,6 +800,14 @@ def split_inline_numbered_list(line: str) -> list[str] | None:
     return parts or None
 
 
+# [FYP-FUNCTION] `split_gap_sentence` — implements the split gap sentence operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:normalise_markdown_for_report; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `findall`, `finditer`, `rstrip`, `search`, `split`, `strip`, `sum`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def split_gap_sentence(line: str) -> list[str] | None:
     """Split compact evidence-gap strings into bullets for readability."""
     if not re.search(r"\b(Critical|High|Medium|Low|Informational):\s+", line):
@@ -631,6 +825,14 @@ def split_gap_sentence(line: str) -> list[str] | None:
         out.append(f"- **{priority}:** {item.strip()}")
     return out
 
+
+# [FYP-FUNCTION] `normalise_markdown_for_report` — transforms normalise markdown for report input into the stable representation required by downstream report generation and export processing.
+# [FYP-INPUT] Parameters: `markdown`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:markdown_to_report_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `clean_markdown_text`, `extend`, `join`, `rstrip`, `split`, `split_gap_sentence`, `split_inline_numbered_list`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def normalise_markdown_for_report(markdown: str) -> str:
     lines = clean_markdown_text(markdown).split("\n")
@@ -652,9 +854,25 @@ def normalise_markdown_for_report(markdown: str) -> str:
     return "\n".join(out).strip() + "\n"
 
 
+# [FYP-FUNCTION] `parse_markdown_table` — transforms parse markdown table input into the stable representation required by downstream report generation and export processing.
+# [FYP-INPUT] Parameters: `lines`, `start`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:markdown_to_report_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `parse_pipe_table`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def parse_markdown_table(lines: list[str], start: int) -> tuple[dict[str, Any] | None, int]:
     return parse_pipe_table(lines, start)
 
+
+# [FYP-FUNCTION] `_block_contains_raw_markdown_table` — implements the block contains raw markdown table operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `block`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `get`, `search`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _block_contains_raw_markdown_table(block: dict[str, Any]) -> bool:
     text = str(block.get("text") or "")
@@ -665,6 +883,14 @@ def _block_contains_raw_markdown_table(block: dict[str, Any]) -> bool:
             return True
     return False
 
+
+# [FYP-FUNCTION] `validate_no_raw_markdown_tables` — evaluates validate no raw markdown tables conditions so invalid or unsafe report generation and export processing is stopped early.
+# [FYP-INPUT] Parameters: `blocks`, `section_title`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:_load_cached_json_blocks, soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks, soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ValueError`, `enumerate`, `get`, `isinstance`, `len`, `paragraph_contains_raw_pipe_table`, `repair_pipe_tables_in_blocks`, `str`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def validate_no_raw_markdown_tables(blocks: list[dict[str, Any]], section_title: str = "Report") -> None:
     repaired = repair_pipe_tables_in_blocks(blocks)
@@ -691,6 +917,14 @@ def validate_no_raw_markdown_tables(blocks: list[dict[str, Any]], section_title:
             )
 
 
+# [FYP-FUNCTION] `markdown_to_report_blocks` — implements the markdown to report blocks operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `markdown`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export, soc_reporting_agent/tests/test_structured_report_tables.py:test_template_exporter_uses_shared_plain_table_parser; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `flush_paragraph`, `group`, `join`, `len`, `lstrip`, `match`, `normalise_markdown_for_report`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def markdown_to_report_blocks(markdown: str) -> list[dict[str, Any]]:
     text = normalise_markdown_for_report(markdown)
     lines = text.split("\n")
@@ -698,6 +932,14 @@ def markdown_to_report_blocks(markdown: str) -> list[dict[str, Any]]:
     paragraph_buffer: list[str] = []
     in_code = False
     code_buffer: list[str] = []
+
+    # [FYP-FUNCTION] `flush_paragraph` — implements the flush paragraph operation used by the surrounding report generation and export workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:markdown_to_report_blocks; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `join`, `strip`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def flush_paragraph() -> None:
         nonlocal paragraph_buffer
@@ -785,12 +1027,28 @@ def markdown_to_report_blocks(markdown: str) -> list[dict[str, Any]]:
 
 # -------------------- DOCX styling helpers --------------------
 
+# [FYP-FUNCTION] `set_cell_shading` — implements the set cell shading operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `cell`, `fill`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:add_callout, soc_reporting_agent/reporting/template_document_exporter.py:add_code_block, soc_reporting_agent/reporting/template_document_exporter.py:set_cell_text; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `OxmlElement`, `append`, `get_or_add_tcPr`, `qn`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def set_cell_shading(cell, fill: str) -> None:
     tc_pr = cell._tc.get_or_add_tcPr()
     shd = OxmlElement("w:shd")
     shd.set(qn("w:fill"), fill)
     tc_pr.append(shd)
 
+
+# [FYP-FUNCTION] `set_cell_border` — implements the set cell border operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `cell`, `**kwargs`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:add_callout, soc_reporting_agent/reporting/template_document_exporter.py:add_code_block, soc_reporting_agent/reporting/template_document_exporter.py:set_cell_text; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `OxmlElement`, `append`, `find`, `first_child_found_in`, `get_or_add_tcPr`, `qn`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def set_cell_border(cell, **kwargs: str) -> None:
     tc = cell._tc
@@ -812,6 +1070,14 @@ def set_cell_border(cell, **kwargs: str) -> None:
             element.set(qn("w:color"), kwargs[edge])
 
 
+# [FYP-FUNCTION] `set_paragraph_bottom_border` — implements the set paragraph bottom border operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `paragraph`, `color`, `size`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:add_brand_header, soc_reporting_agent/reporting/template_document_exporter.py:add_heading_paragraph; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `OxmlElement`, `append`, `find`, `get_or_add_pPr`, `qn`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def set_paragraph_bottom_border(paragraph, color: str = BORDER_BLUE, size: str = "12") -> None:
     p = paragraph._p
     p_pr = p.get_or_add_pPr()
@@ -826,6 +1092,14 @@ def set_paragraph_bottom_border(paragraph, color: str = BORDER_BLUE, size: str =
     bottom.set(qn("w:color"), color)
     p_bdr.append(bottom)
 
+
+# [FYP-FUNCTION] `set_cell_margins` — implements the set cell margins operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `cell`, `top`, `start`, `bottom`, `end`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:add_callout, soc_reporting_agent/reporting/template_document_exporter.py:add_code_block, soc_reporting_agent/reporting/template_document_exporter.py:set_cell_text; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `OxmlElement`, `append`, `find`, `first_child_found_in`, `get_or_add_tcPr`, `items`, `qn`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def set_cell_margins(cell, top: int = 80, start: int = 90, bottom: int = 80, end: int = 90) -> None:
     tc = cell._tc
@@ -843,6 +1117,14 @@ def set_cell_margins(cell, top: int = 80, start: int = 90, bottom: int = 80, end
         node.set(qn("w:type"), "dxa")
 
 
+# [FYP-FUNCTION] `set_table_width` — implements the set table width operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `table`, `width_pct`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:add_callout, soc_reporting_agent/reporting/template_document_exporter.py:add_code_block, soc_reporting_agent/reporting/template_document_exporter.py:add_metadata_table; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `OxmlElement`, `append`, `find`, `qn`, `set`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def set_table_width(table, width_pct: int = 5000) -> None:
     tbl = table._tbl
     tbl_pr = tbl.tblPr
@@ -853,6 +1135,14 @@ def set_table_width(table, width_pct: int = 5000) -> None:
     tbl_w.set(qn("w:w"), str(width_pct))
     tbl_w.set(qn("w:type"), "pct")
 
+
+# [FYP-FUNCTION] `set_cell_text` — implements the set cell text operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `cell`, `text`, `bold`, `fill`, `size`, `color`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:add_metadata_table, soc_reporting_agent/reporting/template_document_exporter.py:add_report_table; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Pt`, `add_inline_markdown`, `bool`, `set_cell_border`, `set_cell_margins`, `set_cell_shading`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def set_cell_text(cell, text: Any, bold: bool = False, fill: str | None = None, size: int = 9, color: RGBColor | None = None) -> None:
     cell.text = ""
@@ -870,6 +1160,14 @@ def set_cell_text(cell, text: Any, bold: bool = False, fill: str | None = None, 
             run.font.color.rgb = color
         run.font.name = "Aptos"
 
+
+# [FYP-FUNCTION] `add_inline_markdown` — implements the add inline markdown operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `paragraph`, `text`, `base_size`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:add_callout, soc_reporting_agent/reporting/template_document_exporter.py:add_heading_paragraph, soc_reporting_agent/reporting/template_document_exporter.py:add_list; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Pt`, `RGBColor`, `add_run`, `compile`, `end`, `finditer`, `group`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def add_inline_markdown(paragraph, text: str, *, base_size: int = 10) -> None:
     text = str(text or "")
@@ -897,6 +1195,14 @@ def add_inline_markdown(paragraph, text: str, *, base_size: int = 10) -> None:
         run.font.size = Pt(base_size)
         run.font.name = "Aptos"
 
+
+# [FYP-FUNCTION] `add_brand_header` — implements the add brand header operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `doc`, `title`, `subtitle`, `logo_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Inches`, `Pt`, `add_paragraph`, `add_picture`, `add_run`, `exists`, `set_paragraph_bottom_border`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def add_brand_header(doc, title: str, subtitle: str, logo_path: Path | None = None) -> None:
     if logo_path and logo_path.exists():
@@ -939,6 +1245,14 @@ def add_brand_header(doc, title: str, subtitle: str, logo_path: Path | None = No
     set_paragraph_bottom_border(divider, BORDER_BLUE, "16")
 
 
+# [FYP-FUNCTION] `_strip_duplicate_leading_heading` — implements the strip duplicate leading heading operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `blocks`, `title`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:_docx_write_blocks, soc_reporting_agent/reporting/editable_reports.py:_final_report_blocks, soc_reporting_agent/reporting/editable_reports.py:_pdf_write_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`, `list`, `lower`, `pop`, `str`, `strip`, `sub`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _strip_duplicate_leading_heading(blocks: list[dict[str, Any]], title: str) -> list[dict[str, Any]]:
     """Avoid repeating the document title after the branded title block."""
     if not blocks:
@@ -957,6 +1271,14 @@ def _strip_duplicate_leading_heading(blocks: list[dict[str, Any]], title: str) -
     return cleaned
 
 
+# [FYP-FUNCTION] `add_heading_paragraph` — implements the add heading paragraph operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `doc`, `text`, `level`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Pt`, `add_inline_markdown`, `add_paragraph`, `get`, `set_paragraph_bottom_border`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def add_heading_paragraph(doc, text: str, level: int) -> None:
     sizes = {1: 17, 2: 14, 3: 12, 4: 11, 5: 10, 6: 10}
     colors = {1: BRAND_BLUE, 2: BRAND_BLUE, 3: BRAND_BLUE_DARK, 4: BRAND_BLUE_DARK, 5: BRAND_BLUE_DARK, 6: BRAND_BLUE_DARK}
@@ -973,6 +1295,14 @@ def add_heading_paragraph(doc, text: str, level: int) -> None:
         set_paragraph_bottom_border(p, "D9E5F4", "6")
 
 
+# [FYP-FUNCTION] `infer_callout_kind` — implements the infer callout kind operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def infer_callout_kind(text: str) -> str:
     lower = text.lower()
     if any(term in lower for term in ["critical", "high:", "missing required", "review required", "not confirmed", "not provided"]):
@@ -981,6 +1311,14 @@ def infer_callout_kind(text: str) -> str:
         return "success"
     return "info"
 
+
+# [FYP-FUNCTION] `add_callout` — implements the add callout operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `doc`, `text`, `kind`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Pt`, `add_inline_markdown`, `add_paragraph`, `add_table`, `get`, `set_cell_border`, `set_cell_margins`, `set_cell_shading`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def add_callout(doc, text: str, kind: str = "info") -> None:
     fill = {"info": LIGHT_BLUE, "warning": LIGHT_YELLOW, "success": LIGHT_GREEN, "danger": LIGHT_RED}.get(kind, LIGHT_BLUE)
@@ -1000,6 +1338,14 @@ def add_callout(doc, text: str, kind: str = "info") -> None:
     doc.add_paragraph("")
 
 
+# [FYP-FUNCTION] `add_code_block` — implements the add code block operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `doc`, `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Pt`, `RGBColor`, `add_paragraph`, `add_run`, `add_table`, `set_cell_border`, `set_cell_margins`, `set_cell_shading`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def add_code_block(doc, text: str) -> None:
     table = doc.add_table(rows=1, cols=1)
     set_table_width(table)
@@ -1015,6 +1361,14 @@ def add_code_block(doc, text: str) -> None:
     run.font.color.rgb = RGBColor(50, 55, 65)
     doc.add_paragraph("")
 
+
+# [FYP-FUNCTION] `add_list` — implements the add list operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `doc`, `items`, `numbered`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Inches`, `Pt`, `add_inline_markdown`, `add_paragraph`, `get`, `int`, `isinstance`, `max`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def add_list(doc, items: list, *, numbered: bool = False) -> None:
     styles = ["List Number"] * 3 if numbered else ["List Bullet", "List Bullet 2", "List Bullet 3"]
@@ -1038,6 +1392,14 @@ def add_list(doc, items: list, *, numbered: bool = False) -> None:
             run.font.color.rgb = BRAND_BLUE_DARK
 
 
+# [FYP-FUNCTION] `add_metadata_table` — implements the add metadata table operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `doc`, `meta`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add_paragraph`, `add_row`, `add_table`, `set_cell_text`, `set_table_width`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def add_metadata_table(doc, meta: list[tuple[str, Any]]) -> None:
     if not meta:
         return
@@ -1052,9 +1414,25 @@ def add_metadata_table(doc, meta: list[tuple[str, Any]]) -> None:
     doc.add_paragraph("")
 
 
+# [FYP-FUNCTION] `is_summary_paragraph` — evaluates is summary paragraph conditions so invalid or unsafe report generation and export processing is stopped early.
+# [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `bool`, `match`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def is_summary_paragraph(text: str) -> bool:
     return bool(re.match(r"^(Summary|Executive Summary|Decision|Conclusion|Final Assessment|Analyst Guidance|Review Focus):", text, flags=re.I))
 
+
+# [FYP-FUNCTION] `add_report_table` — implements the add report table operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `doc`, `columns`, `rows`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:create_docx_from_blocks; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add_paragraph`, `add_row`, `add_table`, `any`, `enumerate`, `len`, `list`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def add_report_table(doc, columns: list[str], rows: list[list[str]]) -> None:
     if not columns:
@@ -1081,6 +1459,14 @@ def add_report_table(doc, columns: list[str], rows: list[list[str]]) -> None:
             cells[idx].vertical_alignment = WD_CELL_VERTICAL_ALIGNMENT.TOP
     doc.add_paragraph("")
 
+
+# [FYP-FUNCTION] `create_docx_from_blocks` — constructs create docx from blocks output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `path`, `title`, `subtitle`, `blocks`, `meta`, `logo_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Document`, `Inches`, `Pt`, `RuntimeError`, `_strip_duplicate_leading_heading`, `add_brand_header`, `add_callout`, `add_code_block`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def create_docx_from_blocks(path: Path, *, title: str, subtitle: str, blocks: list[dict[str, Any]], meta: list[tuple[str, Any]], logo_path: Path | None = None) -> Path:
     if Document is None:
@@ -1139,6 +1525,14 @@ def create_docx_from_blocks(path: Path, *, title: str, subtitle: str, blocks: li
     return path
 
 
+# [FYP-FUNCTION] `libreoffice_binary` — implements the libreoffice binary operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:convert_docx_to_pdf; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `exists`, `str`, `which`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def libreoffice_binary() -> str | None:
     # Common macOS path is included because Flask may not inherit the user's shell PATH.
     candidates = [
@@ -1151,6 +1545,14 @@ def libreoffice_binary() -> str | None:
             return str(candidate)
     return None
 
+
+# [FYP-FUNCTION] `convert_docx_to_pdf` — transforms convert docx to pdf input into the stable representation required by downstream report generation and export processing.
+# [FYP-INPUT] Parameters: `docx_path`, `pdf_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:export_pdf, soc_reporting_agent/reporting/editable_reports.py:export_section_pdf, soc_reporting_agent/reporting/editable_reports.py:render_blocks_to_pdf; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `RuntimeError`, `TemporaryDirectory`, `exists`, `getenv`, `int`, `libreoffice_binary`, `mkdir`, `rename`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def convert_docx_to_pdf(docx_path: Path, pdf_path: Path) -> Path:
     office = libreoffice_binary()
@@ -1179,6 +1581,14 @@ def convert_docx_to_pdf(docx_path: Path, pdf_path: Path) -> Path:
     return pdf_path
 
 
+# [FYP-FUNCTION] `validate_export_text` — evaluates validate export text conditions so invalid or unsafe report generation and export processing is stopped early.
+# [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ValueError`, `search`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
 def validate_export_text(text: str) -> None:
     for pattern in FORBIDDEN_TEXT_PATTERNS:
         if pattern in text:
@@ -1187,14 +1597,38 @@ def validate_export_text(text: str) -> None:
         raise ValueError("Export validation failed: unresolved Jinja2 placeholder found.")
 
 
+# [FYP-FUNCTION] `report_export_dir` — implements the report export dir operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `output_dir`, `ticket_id`, `report_key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `safe_filename`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def report_export_dir(output_dir: Path, ticket_id: str, report_key: str) -> Path:
     return output_dir / "exports" / safe_filename(ticket_id) / "reporting" / safe_filename(report_key)
 
+
+# [FYP-FUNCTION] `agent_export_dir` — implements the agent export dir operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `output_dir`, `ticket_id`, `agent_key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `safe_filename`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def agent_export_dir(output_dir: Path, ticket_id: str, agent_key: str) -> Path:
     return output_dir / "exports" / safe_filename(ticket_id) / "agents" / safe_filename(agent_key)
 
 
+
+# [FYP-FUNCTION] `_existing_source_files` — implements the existing source files operation used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `project_root`, `output_dir`, `template_folder`, `template_name`, `json_file`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add`, `aegis_logo_path`, `append`, `insert`, `set`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _existing_source_files(project_root: Path, output_dir: Path, template_folder: str, template_name: str, json_file: str | None = None) -> list[Path]:
     candidates = [project_root / template_folder / template_name]
@@ -1230,6 +1664,14 @@ def _existing_source_files(project_root: Path, output_dir: Path, template_folder
     return deduped
 
 
+# [FYP-FUNCTION] `_load_cached_json_blocks` — retrieves load cached json blocks data for the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `json_path`, `source_hash`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export, soc_reporting_agent/tests/test_structured_report_tables.py:test_cached_blocks_are_repaired_before_reuse; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `exists`, `get`, `isinstance`, `loads`, `read_text`, `repair_pipe_tables_in_blocks`, `stat`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _load_cached_json_blocks(json_path: Path, source_hash: str) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
     if not json_path.exists() or json_path.stat().st_size == 0:
         return None
@@ -1252,11 +1694,27 @@ def _load_cached_json_blocks(json_path: Path, source_hash: str) -> tuple[dict[st
     return payload, repaired
 
 
+# [FYP-FUNCTION] `_write_cached_export_json` — persists or updates write cached export json state used by the surrounding report generation and export workflow.
+# [FYP-INPUT] Parameters: `json_path`, `export_json`, `out_dir`, `source_hash`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/template_document_exporter.py:generate_agent_export, soc_reporting_agent/reporting/template_document_exporter.py:generate_reporting_export; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `mark_export_status`, `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _write_cached_export_json(json_path: Path, export_json: dict[str, Any], out_dir: Path, source_hash: str) -> None:
     export_json["source_hash"] = source_hash
     write_json(json_path, export_json)
     mark_export_status(out_dir, key="json", status="ready", source_hash=source_hash, file_path=json_path, message="JSON export cache is ready.")
 
+
+# [FYP-FUNCTION] `generate_reporting_export` — constructs generate reporting export output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `project_root`, `output_dir`, `ticket`, `report_key`, `file_type`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:worker; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `KeyError`, `_existing_source_files`, `_load_cached_json_blocks`, `_write_cached_export_json`, `aegis_logo_path`, `build_report_context`, `calculate_source_hash`, `convert_docx_to_pdf`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def generate_reporting_export(project_root: Path, output_dir: Path, ticket: dict[str, Any] | None, report_key: str, file_type: str) -> Path:
     if report_key not in REPORT_TEMPLATES:
@@ -1369,6 +1827,14 @@ def generate_reporting_export(project_root: Path, output_dir: Path, ticket: dict
             raise
     raise KeyError(f"Unsupported export type: {file_type}")
 
+
+# [FYP-FUNCTION] `generate_agent_export` — constructs generate agent export output for the next report generation and export consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `project_root`, `output_dir`, `ticket`, `agent_key`, `file_type`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_ticket_agent_template_export, soc_reporting_agent/backend/app.py:worker, soc_reporting_agent/scripts/test_export_cache.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `KeyError`, `_existing_source_files`, `_load_cached_json_blocks`, `_write_cached_export_json`, `agent_export_dir`, `build_agent_context`, `calculate_source_hash`, `convert_docx_to_pdf`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def generate_agent_export(project_root: Path, output_dir: Path, ticket: dict[str, Any] | None, agent_key: str, file_type: str) -> Path:
     if agent_key not in AGENT_TEMPLATES:

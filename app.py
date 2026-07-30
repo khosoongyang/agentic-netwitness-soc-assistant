@@ -9,6 +9,79 @@ SOC Platform v4
 • ChromaDB semantic search & sync
 """
 
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: base64, case_view, collections, concurrent, datetime, importlib, json, nw_alerts.
+# =============================================================================
+# File: app.py  (repo root — ~8,600 lines)
+# Purpose: Main Streamlit dashboard and orchestration UI for Aegis, the
+#   agentic SOC (Security Operations Center) automation platform for
+#   NetWitness alert handling. This is the single entry point evaluators
+#   run (`streamlit run app.py`) and the file that ties the three agent
+#   subsystems (triage, investigation, reporting) together into one
+#   human-in-the-loop workflow with approval gates between stages.
+# Main functionalities:
+#   1. NetWitness authentication (token login/refresh) and incident polling
+#      — see nw_login(), nw_verify_token(), nw_fetch_incidents(),
+#      maybe_auto_fetch().
+#   2. Local persistence of incidents and per-stage pipeline artefacts in
+#      SQLite (soc_incidents.db via db_* helpers, soc_pipeline.db via
+#      pipeline_* helpers) plus optional ChromaDB vector storage for
+#      semantic search (chroma_* / pipeline_chroma_* helpers).
+#   3. Rendering of the full workflow UI: Overview/dashboard, My Workspace
+#      (per-incident Parsing -> Triage -> Threat Intel -> Investigation ->
+#      Reporting stage tabs with approval buttons and stage-lock/re-run
+#      controls), Ask a Question (the "Ask Aegis" chatbot via
+#      chat_respond()), All Cases, Data Pipeline (raw SQLite/ChromaDB
+#      inspection), and Settings (credential/config management).
+#   4. Driving the background multi-stage agent workflow (via
+#      soc_workflow.py) in a daemon thread (_workflow_worker) so long-running
+#      investigation/reporting runs survive Streamlit's UI-driven reruns.
+# Inputs: NetWitness REST API responses, user credentials/config entered in
+#   Settings (stored in .env locally or st.secrets on Streamlit Cloud),
+#   user interactions (button clicks, chat messages, approvals/rejections),
+#   on-disk SQLite databases (soc_incidents.db, soc_pipeline.db).
+# Outputs: Rendered Streamlit UI, rows written to SQLite, vectors written to
+#   ChromaDB collections, exported CSV/DOCX/PDF report files (via
+#   soc_reporting_agent / reporting_approval / report_editing), updates to
+#   st.session_state that drive the next rerun.
+# Workflow position: This IS the orchestration/presentation layer that sits
+#   on top of soc_workflow.py. Stage order enforced end-to-end: Parsing &
+#   Normalisation -> Triage -> Threat Intelligence Enrichment ->
+#   Investigation -> Reporting, each gated by an explicit human approval
+#   step before the next stage may run.
+# Called by: Invoked as the Streamlit script entry point via
+#   `streamlit run app.py`. Streamlit re-executes this ENTIRE script
+#   top-to-bottom on every UI interaction (button click, text input, etc.)
+#   — there is no persistent "running" state between reruns except what is
+#   explicitly stored in st.session_state / st.cache_resource / the SQLite
+#   DBs. Do not confuse a UI handler (a block that runs on this rerun
+#   because a button was clicked) with the actual processing function it
+#   calls (e.g. clicking "Approve" does not itself run triage — it flips
+#   state that a later block / background thread acts on).
+# Calls: soc_workflow.py (run_until_triage_approval, run_stage_chain, stage
+#   AI-summary helpers — the actual multi-agent orchestration), soc_triage_agent
+#   (CiscoLLMConfig, soc_triage_chat_respond, render_triage_trace), case_view.py
+#   (cv — per-case rendering helpers), workflow_state_store.py (wss — persisted
+#   per-incident workflow state/approval status), reporting_approval.py,
+#   report_editing.py, triage_ticket_editing.py, nw_alerts.py (NetWitness
+#   alert-detail fetch), the NetWitness REST API (via `requests`), ChromaDB
+#   (via `chromadb`), and local SQLite files soc_incidents.db / soc_pipeline.db.
+# Key evaluator search terms: nw_login, nw_verify_token, nw_fetch_incidents,
+#   maybe_auto_fetch, chat_respond, chroma_sync, chroma_search,
+#   _run_triage_workflow_with_ui, _workflow_worker, _case_stage_states,
+#   _render_case_stage_selector, active_page, My Workspace, Ask a Question,
+#   Data Pipeline, approve_reporting_candidate, stage-lock, re-run.
+# =============================================================================
+
+# =============================================================================
+# [FYP-SECTION] IMPORTS & STARTUP BOOTSTRAP
+# =============================================================================
+# Third-party imports, the pysqlite3 shim required for ChromaDB on Streamlit
+# Community Cloud, and (further below, after Streamlit Cloud secrets are
+# bridged into os.environ) the imports of Aegis's own subsystem modules
+# (soc_triage_agent, soc_workflow, case_view, workflow_state_store,
+# reporting_approval, report_editing, triage_ticket_editing).
 # ── Streamlit Community Cloud: ChromaDB needs sqlite3 >= 3.35 ──────────────────
 # Debian images on Streamlit Cloud ship a system sqlite3 older than 3.35, which
 # chromadb rejects ("unsupported version of sqlite3"). pysqlite3-binary bundles a
@@ -53,13 +126,22 @@ except ImportError:
 
 
 def _openai_ef():
-    """Shared OpenAI embedding function for every ChromaDB collection this
-    app creates. Replaces chromadb's bundled local ONNX MiniLM default."""
+    """[FYP-FUNCTION] Shared OpenAI Embedding Function for ChromaDB.
+    Shared OpenAI embedding function for every ChromaDB collection this
+    app creates. Replaces chromadb's bundled local ONNX MiniLM default.
+    Parameters: none (reads OPENAI_API_KEY from os.environ).
+    Returns: a chromadb embedding_functions.OpenAIEmbeddingFunction instance
+    (model "text-embedding-3-small").
+    [FYP-USED-BY] chroma_connect(), pipeline_chroma_* collection helpers —
+    anywhere a ChromaDB collection is created/opened in this file, so that
+    embeddings are computed consistently across collections.
+    [FYP-RAG] Embedding step feeding ChromaDB semantic search."""
     return _chroma_embedding_functions.OpenAIEmbeddingFunction(
         api_key=os.environ.get("OPENAI_API_KEY", ""),
         model_name="text-embedding-3-small",
     )
 
+# [FYP-SECTION] CLOUD SECRETS BRIDGING
 # ── Streamlit Community Cloud: secrets → environment ──────────────────────────
 # Locally the app reads credentials from .env (via python-dotenv). On Streamlit
 # Cloud there is no .env; secrets are entered in the dashboard and exposed as
@@ -67,6 +149,16 @@ def _openai_ef():
 # already set) so every existing os.environ.get(...) call site keeps working
 # unchanged. Guarded: a silent no-op locally when no secrets are configured.
 def _bridge_cloud_secrets() -> None:
+    """[FYP-FUNCTION] Bridge Streamlit Cloud Secrets into os.environ.
+    Copies every scalar entry from st.secrets into os.environ (without
+    overwriting anything already set, e.g. by a local .env file), so that
+    the rest of this file can uniformly call os.environ.get(...) regardless
+    of whether it's running locally (.env) or on Streamlit Community Cloud
+    (st.secrets). Parameters: none. Returns: None. Side effects: mutates
+    os.environ. [FYP-FALLBACK] Wrapped in try/except — silently no-ops if
+    st.secrets is unavailable (e.g. no secrets.toml locally).
+    [FYP-EVALUATOR] Called once at import time (line below the def) —
+    this is why credentials "just work" on both local and cloud deploys."""
     try:
         for _k, _v in st.secrets.items():
             if isinstance(_v, (str, int, float, bool)) and _k not in os.environ:
@@ -76,12 +168,25 @@ def _bridge_cloud_secrets() -> None:
 
 _bridge_cloud_secrets()
 
+# [FYP-SECTION] AGENT MODULE HOT-RELOAD + SUBSYSTEM IMPORTS
 # ── SOC Triage Agent (LangChain) ──────────────────────────────────────────────
 # Streamlit re-executes this script on every rerun but NEVER re-imports
 # modules already in sys.modules — edits to the agent files were invisible
 # until a full process restart. This shim reloads them when their file
 # mtime changes, so agent upgrades apply on the next page refresh.
 def _maybe_reload_agent_modules():
+    """[FYP-FUNCTION] Hot-Reload Agent Modules on File Change.
+    Detects if soc_triage_agent.soc_triage_agent or soc_workflow.py have
+    been modified on disk (via mtime, stamped on the module object as
+    __loaded_mtime__) since they were last imported, and calls
+    importlib.reload() on them if so. Parameters: none. Returns: None.
+    Rationale: Python caches imports in sys.modules for the lifetime of the
+    Streamlit server process; without this, editing the triage/workflow
+    agent source would require a full app restart to take effect. Called
+    once at import time (see call below). [FYP-FALLBACK] Wrapped in
+    try/except — any reload failure is silently swallowed so a bad edit
+    doesn't crash the whole dashboard; the previously-loaded module keeps
+    running until the error is fixed."""
     import importlib
     import sys as _sys
     watched = {
@@ -124,7 +229,13 @@ from reporting_approval import (approve_reporting_candidate, ReportValidationErr
 import report_editing
 import triage_ticket_editing
 
+# [FYP-SECTION] MULTI-AGENT WORKFLOW IMPORTS (soc_workflow.py)
 # ── Multi-agent workflow (triage → investigation → reporting) ────────────────
+# [FYP-FLOW] These are the orchestration entry points app.py calls into
+# soc_workflow.py, which itself drives the triage, investigation and
+# reporting agent subsystems in sequence with human-approval gates between
+# each stage. app.py owns the UI/approval buttons; soc_workflow.py owns the
+# actual multi-stage pipeline logic.
 try:
     from soc_workflow import (
         run_until_triage_approval as wf_run_until_triage_approval,
@@ -147,24 +258,42 @@ except Exception:
     WORKFLOW_OK = False
 
 
+# [FYP-SECTION] BACKGROUND WORKFLOW ENGINE (daemon thread pipeline runner)
 # ── Background workflow engine ───────────────────────────────────────────────
 # Streamlit interrupts the running script at its next UI call whenever the
 # user interacts (clicking "View" on the agent board, sending a message…).
 # Running investigation+reporting inline therefore died mid-run on any click.
 # They now run in a daemon worker thread that survives all interactions; the
 # UI polls the shared run record and renders its state live.
+# [FYP-EVALUATOR] This is THE mechanism that lets a multi-minute
+# investigation/reporting run survive Streamlit reruns: state lives in
+# _workflow_store() (a process-global st.cache_resource dict, not
+# st.session_state, so it's visible across reruns/sessions in the same
+# server process) and is mutated by _workflow_worker() running on a
+# background thread started by _run_triage_workflow_with_ui() /
+# the "Run" button handlers further down the file.
 
 _ANSI_STRIP = re.compile(r"\x1b\[[0-9;]*m")
 
 
 @st.cache_resource
 def _workflow_store() -> dict:
-    """Process-global store for the active background workflow run."""
+    """[FYP-FUNCTION] Process-Global Background-Run Store.
+    Process-global store for the active background workflow run.
+    Parameters: none. Returns: a dict with key "run" holding the current
+    background workflow run's state (or None if no run is active).
+    st.cache_resource means Streamlit constructs this dict ONCE per server
+    process and hands back the SAME object on every rerun/session — this is
+    what makes it usable as shared state between the UI thread and the
+    background worker thread ([FYP-STATE]).
+    [FYP-USED-BY] _run_triage_workflow_with_ui(), _workflow_worker(), and
+    the UI polling code that renders live progress from run["..."] fields."""
     return {"run": None}
 
 
 def _resolve_full_incident(sel_id: str, fallback_inc: dict) -> tuple[dict, bool]:
-    """Prefer the in-memory, live-fetched incident (st.session_state.incidents
+    """[FYP-FUNCTION] Resolve Full (Live) Incident Record by ID.
+    Prefer the in-memory, live-fetched incident (st.session_state.incidents
     — populated by the existing NetWitness alert-retrieval cycle and includes
     full per-alert data) over the SQLite-cached raw_json, which
     db_upsert_incidents deliberately strips alerts/journalEntries from before
@@ -178,11 +307,19 @@ def _resolve_full_incident(sel_id: str, fallback_inc: dict) -> tuple[dict, bool]
 
 def _board_touch(agent: str, *, status: str | None = None, think: str | None = None,
                  output: str | None = None, progress: int | None = None) -> None:
-    """Page-independent state update for st.session_state.agent_board — a
+    """[FYP-FUNCTION] Update Shared Agent-Board State (triage/investigation/reporting).
+    Page-independent state update for st.session_state.agent_board — a
     minimal version of the Agent Board page's local _board_set() closure
     (which also live-refreshes that page's on-screen slots; those slots
     don't exist on other pages, so this only updates the shared state that
-    every page reads)."""
+    every page reads).
+    Parameters: agent (key into st.session_state.agent_board, e.g. "triage",
+    "investigation", "reporting"), status/think/progress/output (any subset,
+    all optional). Returns: None. Side effects: mutates
+    st.session_state.agent_board[agent] in place ([FYP-STATE]).
+    [FYP-USED-BY] _run_triage_workflow_with_ui(), _workflow_worker() — both
+    call this repeatedly to stream live status/progress text while a stage
+    runs in the background thread."""
     panel = st.session_state.agent_board[agent]
     if status is not None:
         panel["status"] = status
@@ -200,10 +337,34 @@ def _board_touch(agent: str, *, status: str | None = None, think: str | None = N
 
 def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False,
                                  parsing_only: bool = False) -> dict | None:
-    """Run Parsing alone or the full Parsing+Triage path with UI feedback.
+    """[FYP-FUNCTION] Run Parsing / Triage Stage Synchronously with Live UI Feedback.
+    Run Parsing alone or the full Parsing+Triage path with UI feedback.
 
     The case-page Parsing action passes ``parsing_only=True``. Chat-driven
     triage and explicit Triage actions retain the full path.
+
+    Parameters: incident (dict — the incident/alert record being triaged,
+    source: st.session_state.incidents / SQLite via _resolve_full_incident),
+    allow_retry (bool — bypass the "already running" guard, used by an
+    explicit Retry button), parsing_only (bool — run only the Parsing &
+    Normalisation phase, used by the case-page "Run Parsing" action).
+    Returns: dict with the triage/parsing result on success, or None if a
+    run for this incident is already in progress (and allow_retry is False)
+    or the workflow errors out.
+    [FYP-VALIDATION] Guards against starting a duplicate run: checks
+    workflow_state_store (wss_get_state) for an existing "Processing" /
+    "Awaiting Approval" run before starting a new one.
+    [FYP-CALLS] soc_triage_agent.soc_triage_chat_respond /
+    soc_workflow.run_until_triage_approval-style triage pipeline (via the
+    on_progress callback pattern below), _board_touch() for live progress,
+    workflow_state_store (wss / wss_save_triage_result) to persist the
+    result. [FYP-USED-BY] "Run Parsing" / "Run Triage" button handlers in
+    the My Workspace stage tabs, and chat-driven triage from Ask Aegis.
+    [FYP-STAGE-LOCK] This is the function that actually EXECUTES the
+    Parsing/Triage stage — contrast with the stage-lock/unlock UI
+    (_case_stage_states, _render_case_stage_selector) which only decides
+    whether the button that calls this is enabled, not whether the stage
+    itself has run.
     """
     inc_id = str(incident.get("id") or incident.get("incidentId") or "")
 
@@ -232,6 +393,14 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False,
         _board_touch("triage", status="running", think="Workflow started")
 
     _prog = {"done": 0}
+
+    # [FYP-FUNCTION] `on_progress` — handles the on progress callback or event and coordinates the associated Streamlit application and dashboard response.
+    # [FYP-INPUT] Parameters: `event`, `label`, `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `_board_touch`, `get`, `len`, `max`, `next`, `round`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def on_progress(event, label, text=""):
         key = next((p for p in ALL_PHASES if label == p or label in p or p in label), label)
@@ -297,12 +466,47 @@ def _run_triage_workflow_with_ui(incident: dict, *, allow_retry: bool = False,
 
 
 def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
-    """Investigation + reporting stages, off the Streamlit script thread.
-    NO st.* calls in here — the UI polls `run` and renders its state."""
+    """[FYP-FUNCTION] Background Worker: Investigation + Reporting Stage Execution.
+    Investigation + reporting stages, off the Streamlit script thread.
+    NO st.* calls in here — the UI polls `run` and renders its state.
+
+    [FYP-EVALUATOR] This is the actual multi-stage PROCESSING engine for
+    Investigation and Reporting — it is NOT a UI handler. It is started on
+    a daemon thread (threading.Thread(target=_workflow_worker, ...)) by the
+    button handler that kicks off investigation, and runs independently of
+    Streamlit's script reruns. Do not confuse the button click that starts
+    this thread with this function itself — the click only launches the
+    thread; all real work (calling soc_workflow's investigate_with_feedback
+    and reporting stage runners, MITRE mapping, RAG lookups, DOCX/PDF
+    generation) happens here, asynchronously.
+
+    Parameters: run (dict — the shared run record from _workflow_store(),
+    containing "panels" for per-agent board state, "wf_md" a running
+    markdown log, "incident_id", "title", "cls"/"unc" classification
+    context, and flags like run["investigate"] / run["report"] selecting
+    which stages to execute), tri (dict — the completed triage result feeding
+    investigation), incident (dict — the full incident/alert record).
+    Returns: None (all results are written into `run` in place, which the
+    UI thread polls and renders — see [FYP-STATE]).
+    [FYP-CALLS] soc_workflow.investigate_with_feedback() (investigation +
+    the triage<->investigation feedback loop for gap-filling), and further
+    below in this function, the reporting-stage equivalent (see body).
+    [FYP-ERROR] Exceptions are caught and written into the panel's
+    status/output rather than raised, since there is no Streamlit script
+    context on a background thread to show st.error() in.
+    """
     import soc_workflow as _wfm
 
     panels = run["panels"]
     wf_md  = run["wf_md"]
+
+    # [FYP-FUNCTION] `bset` — implements the bset operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `agent`, `status`, `think`, `output`, `progress`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include app.py:_fb_event, app.py:_workflow_worker; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `int`, `max`, `min`, `now`, `str`, `strftime`, `sub`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def bset(agent, status=None, think=None, output=None, progress=None):
         p = panels[agent]
@@ -333,6 +537,14 @@ def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
         if run["investigate"]:
             bset("investigation", status="running", think="Investigation started",
                  progress=10)
+
+            # [FYP-FUNCTION] `_fb_event` — implements the fb event operation used by the surrounding Streamlit application and dashboard workflow.
+            # [FYP-INPUT] Parameters: `event`, `detail`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+            # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+            # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+            # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+            # [FYP-CALLS] Calls: `bset`.
+            # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
             def _fb_event(event: str, detail: str) -> None:
                 # Board choreography for the feedback loop: the work visibly
@@ -590,6 +802,7 @@ def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
         except Exception:
             pass
 
+# [FYP-SECTION] DESTRUCTIVE-ACTION CONFIRMATION HELPERS
 # ── Destructive-action confirmation ──────────────────────────────────────────
 # Every delete in this app used to fire on a single click with no "are you
 # sure" step (Clear Stage, per-record delete, credential clear). This is a
@@ -599,8 +812,18 @@ def _workflow_worker(run: dict, tri: dict, incident: dict) -> None:
 def _confirm_action(action_key: str, trigger_label: str, warn_body: str,
                     confirm_label: str = "Yes, delete", *,
                     use_container_width: bool = True) -> bool:
-    """Renders its own trigger button. First click arms it (shows the warning
-    + Confirm/Cancel); returns True only on the run where Confirm is clicked."""
+    """[FYP-FUNCTION] Two-Click "Are You Sure" Confirmation Widget.
+    Renders its own trigger button. First click arms it (shows the warning
+    + Confirm/Cancel); returns True only on the run where Confirm is clicked.
+
+    [FYP-STATE] Armed/disarmed state lives in
+    st.session_state[f"_confirm_armed_{action_key}"] — because Streamlit
+    reruns the whole script on every click, this session_state flag is the
+    only thing that survives between the "trigger clicked" rerun and the
+    "confirm clicked" rerun; there is no in-memory call stack that persists.
+    [FYP-USED-BY] Clear Stage / re-run buttons, per-record pipeline deletes,
+    credential clear buttons, report-editor "discard changes" prompts.
+    """
     armed_key = f"_confirm_armed_{action_key}"
     if not st.session_state.get(armed_key):
         if st.button(trigger_label, key=f"_confirm_trig_{action_key}",
@@ -622,12 +845,20 @@ def _confirm_action(action_key: str, trigger_label: str, warn_body: str,
 
 
 def _reject_with_reason(action_key: str, trigger_label: str = "Reject") -> str | None:
-    """Two-step reject control requiring a reason — the counterpart to
+    """[FYP-FUNCTION] Two-Step "Reject with Reason" Widget (HITL gate counterpart).
+    Two-step reject control requiring a reason — the counterpart to
     Approve that the HITL gates used to be missing entirely. Mirrors
     _confirm_action's arm/cancel pattern but collects required free text
     instead of a yes/no, since a rejection needs an audit-trail reason.
     Returns the reason string on the run the analyst submits it; None
-    otherwise (including while still armed/mid-entry)."""
+    otherwise (including while still armed/mid-entry).
+    [FYP-APPROVAL] Pairs with the Approve button at each human-in-the-loop
+    gate (e.g. before Reporting runs — see run["gate_report"] /
+    run["gate_decision"] in _workflow_worker above). Rejecting here sets
+    gate_decision="rejected" and the reason, which the background worker
+    thread reads via gate.wait() to short-circuit the next stage instead of
+    running it.
+    """
     armed_key = f"_reject_armed_{action_key}"
     if not st.session_state.get(armed_key):
         if st.button(trigger_label, key=f"_reject_trig_{action_key}",
@@ -656,6 +887,7 @@ def _reject_with_reason(action_key: str, trigger_label: str = "Reject") -> str |
 
 import json as _rw_json
 
+# [FYP-SECTION] REPORTS TAB — GENERATED FILES TABLE + "OPEN & EDIT" BLOCK EDITOR
 # ── Reports tab: Generated Files table + Open & Edit ─────────────────────────
 # See report_editing.py for the persistence/export layer. This app-side code
 # owns only presentation + Streamlit widget state; it never writes directly
@@ -670,19 +902,27 @@ _RW_ICONS = {
 
 
 def _clear_report_editor_state(prefix: str) -> None:
-    """Drops every widget/session key scoped to one editor session (report
+    """[FYP-FUNCTION] Reset One Report-Editor Session's Widget State.
+    Drops every widget/session key scoped to one editor session (report
     row + its blocks) so a later "Open & Edit" of the same report starts
     clean rather than showing stale in-progress edits from a cancelled or
-    already-saved session."""
+    already-saved session.
+    [FYP-STATE] Iterates st.session_state for keys starting with "rw_" that
+    also contain `prefix` (an incident/run/report-type composite key) —
+    a manual namespace-clear since Streamlit has no built-in scoped reset."""
     for k in [k for k in list(st.session_state.keys())
              if isinstance(k, str) and k.startswith("rw_") and prefix in k]:
         st.session_state.pop(k, None)
 
 
 def _render_reporting_ops_readonly(blocks: list) -> None:
-    """Read-only render of a block list — factored out of the old radio-based
+    """[FYP-FUNCTION] Render a Report Block List Read-Only.
+    Read-only render of a block list — factored out of the old radio-based
     Reports tab so both the "Open & Edit" comparison expander and any other
-    read-only preview use identical rendering."""
+    read-only preview use identical rendering.
+    [FYP-CALLS] cv.reporting_blocks_to_render_ops() converts the stored
+    block schema (headings/tables/bullet lists/page breaks) into a flat
+    list of render ops this function walks in a single pass."""
     for _op in cv.reporting_blocks_to_render_ops(blocks or []):
         if _op["op"] == "heading":
             _lvl = _op.get("level", 2)
@@ -702,10 +942,18 @@ def _render_reporting_ops_readonly(blocks: list) -> None:
 def _render_report_editor(incident_id: str, run_id: str, report_type: str, row_state: dict,
                           reporting_stage_attempt: int, analyst: str, *,
                           editor_module=None, active_key: str | None = None) -> None:
-    """editor_module/active_key exist so the Triage stage's ticket can reuse
+    """[FYP-FUNCTION] Interactive Block Editor for a Generated Report.
+    editor_module/active_key exist so the Triage stage's ticket can reuse
     this exact block editor (see triage_ticket_editing.py, whose
     save_report_edit/discard_report_edit are signature-compatible). The
-    defaults are the Reporting behaviour, unchanged."""
+    defaults are the Reporting behaviour, unchanged.
+    [FYP-PROCESS] Renders each block (heading/paragraph/bullet_list/table)
+    as its own editable widget keyed by a stable f"rw_..._{prefix}_{bidx}"
+    name; on Save, editor_module.save_report_edit() persists the edited
+    block list and st.rerun() returns to the read-only Generated Files view.
+    [FYP-STATE] `skeleton_key`/`baseline_key` session_state entries snapshot
+    the blocks as JSON once per session so is_dirty can diff the live widget
+    values against the original without re-reading the DB every rerun."""
     editor_module = editor_module or report_editing
     prefix = f"{incident_id}_{run_id}_{report_type}"
     active_key = active_key or f"rw_active_{incident_id}"
@@ -844,11 +1092,16 @@ def _render_report_editor(incident_id: str, run_id: str, report_type: str, row_s
 def _cached_report_export_bytes(incident_id: str, run_id: str, report_type: str,
                                 file_type: str, identity: tuple, reporting_stage_attempt: int,
                                 analyst: str, _editor_module, _row_state: dict) -> tuple[bytes, str]:
-    """Memoized by content identity (row_state's version/last_saved_iso) rather
+    """[FYP-FUNCTION] Cached DOCX/PDF Export Bytes for a Report.
+    Memoized by content identity (row_state's version/last_saved_iso) rather
     than session state, so the Download button below always has bytes ready for
     a genuine single click, while the actual render — which for PDF shells out
     to a LibreOffice conversion — only reruns when the saved content actually
-    changes, not on every unrelated Streamlit rerun of this page."""
+    changes, not on every unrelated Streamlit rerun of this page.
+    [FYP-EXPORT] @st.cache_data keyed on (incident_id, run_id, report_type,
+    file_type, identity, ...) — `identity` is the cache-busting signal;
+    editing and saving a report changes last_saved_iso, which invalidates
+    this cache entry and forces a fresh export next render."""
     return _editor_module.export_report(
         incident_id, run_id, report_type, file_type, row_state=_row_state,
         reporting_stage_attempt=reporting_stage_attempt, analyst=analyst)
@@ -858,6 +1111,10 @@ def _render_report_export_actions(incident_id: str, run_id: str, report_type: st
                                   file_type: str, row_state: dict,
                                   reporting_stage_attempt: int, analyst: str, *,
                                   editor_module=None) -> None:
+    """[FYP-FUNCTION] Render a Single Download (Word/PDF) Button for a Report Row.
+    Disabled when the report doesn't exist yet; otherwise calls the cached
+    exporter above and wires the resulting bytes into st.download_button.
+    [FYP-EXPORT] file_type is "docx" or "pdf"; MIME type is chosen accordingly."""
     editor_module = editor_module or report_editing
     label = "Download Word" if file_type == "docx" else "Download PDF"
     key = f"rw_dl_{incident_id}_{run_id}_{report_type}_{file_type}"
@@ -881,6 +1138,13 @@ def _render_report_export_actions(incident_id: str, run_id: str, report_type: st
 
 def _render_reports_workspace(incident_id: str, run_id: str, rep_cv: dict,
                               reporting_status: str, analyst: str, state: dict) -> None:
+    """[FYP-FUNCTION] Render the Reports Tab: Generated Files List or Active Editor.
+    Top-level entry point for the case-detail "Reports" tab. If a report is
+    currently being edited (st.session_state[f"rw_active_{incident_id}"] is
+    set) it delegates to _render_report_editor; otherwise it lists every
+    report in report_editing.CORE_REPORT_TYPES with status pill, Open & Edit,
+    and Download Word/PDF actions.
+    [FYP-USED-BY] Case-detail workspace's Reports tab (My Workspace page)."""
     active_key = f"rw_active_{incident_id}"
     active_report_type = st.session_state.get(active_key)
     current_attempt = rep_cv.get("current_attempt") or {}
@@ -956,8 +1220,9 @@ def _render_reports_workspace(incident_id: str, run_id: str, rep_cv: dict,
         st.divider()
 
 
+# [FYP-SECTION] LLM CONFIG (CISCO/OPENAI-COMPATIBLE ENDPOINT) + .ENV CREDENTIAL PERSISTENCE
 def _normalise_llm_url(url: str) -> str:
-    """
+    """[FYP-FUNCTION] Normalise an LLM Base URL for the OpenAI-Compatible Client.
     Ensure the base URL is safe for ChatOpenAI.
     - Strips trailing slashes
     - Removes any embedded model path (e.g. /models/some-model/...)
@@ -974,11 +1239,18 @@ def _normalise_llm_url(url: str) -> str:
     return url
 
 def get_cisco_cfg() -> CiscoLLMConfig:
-    """
+    """[FYP-FUNCTION] Build LLM Client Config from Session State (Sidebar Override) or Env Vars.
     Build CiscoLLMConfig from session state at call time so that
     credentials entered in the sidebar are always picked up. Falls back to
     the OPENAI_* env vars (already configured for the reporting agent) when
     no custom endpoint has been entered in the sidebar.
+    [FYP-CONFIG] Precedence: st.session_state["cisco_url"/"cisco_key"/
+    "cisco_model"] (sidebar UI entry) > OPENAI_BASE_URL/OPENAI_API_KEY/
+    OPENAI_MODEL env vars > hardcoded defaults (api.openai.com, gpt-4o-mini).
+    [FYP-USED-BY] Any code path that needs to talk to the configured LLM
+    from within app.py (e.g. Ask Aegis chat_respond below); the triage/
+    investigation/reporting agent packages have their own equivalent env
+    var reads.
     """
     raw_url = st.session_state.get("cisco_url", "").strip()
     url     = (_normalise_llm_url(raw_url) if raw_url
@@ -1002,12 +1274,24 @@ def get_cisco_cfg() -> CiscoLLMConfig:
 # ══════════════════════════════════════════════════════════════════════════════
 ENV_FILE = Path(__file__).parent / ".env"
 
+# [FYP-FUNCTION] `_clean` — implements the clean operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: `val`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:env_load, soc_reporting_agent/adapters/run_reporting.py:_first, soc_reporting_agent/services/parser_context_guard.py:_title_clean; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _clean(val: str) -> str:
     """Strip whitespace and stray quotes that dotenv sometimes leaves."""
     return val.strip().strip("'\"").strip()
 
 def env_load() -> dict:
-    """Read credentials from .env."""
+    """[FYP-FUNCTION] Read Persisted Credentials from .env into a dict.
+    [FYP-SECURITY] Values are read only from environment variables/.env —
+    never hardcoded in source. Callers must not log or display raw
+    password/key values; only the presence/absence of a credential should
+    ever be surfaced in the UI (e.g. a green/red connection status)."""
     if DOTENV_OK and ENV_FILE.exists():
         load_dotenv(ENV_FILE, override=True)
     return {
@@ -1022,7 +1306,11 @@ def env_load() -> dict:
     }
 
 def env_save(host: str, username: str, password: str) -> None:
-    """Persist NetWitness credentials to .env."""
+    """[FYP-FUNCTION] Persist NetWitness Credentials to .env.
+    [FYP-SECURITY] Password is base64-encoded before being written — this is
+    obfuscation for casual viewing of the .env file, NOT encryption; anyone
+    with filesystem read access can trivially decode it. Real secrecy relies
+    on OS file permissions / not committing .env to git."""
     if not DOTENV_OK:
         return
     try:
@@ -1034,6 +1322,14 @@ def env_save(host: str, username: str, password: str) -> None:
                 base64.b64encode(password.strip().encode()).decode("ascii"))
     except Exception:
         pass  # .env locked on Windows — credentials still active this session
+
+# [FYP-FUNCTION] `nw_cert_env_save` — implements the nw cert env save operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: `cert_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `set_key`, `str`, `strip`, `touch`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def nw_cert_env_save(cert_path: str) -> None:
     """Persist the TLS cert path to .env.
@@ -1048,6 +1344,14 @@ def nw_cert_env_save(cert_path: str) -> None:
     except Exception:
         pass  # .env locked on Windows — session state still holds the path
 
+# [FYP-FUNCTION] `nw_cert_env_clear` — implements the nw cert env clear operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `set_key`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def nw_cert_env_clear() -> None:
     if not DOTENV_OK:
         return
@@ -1056,6 +1360,14 @@ def nw_cert_env_clear() -> None:
             set_key(str(ENV_FILE), "NW_CERT_PATH", "")
     except Exception:
         pass
+
+# [FYP-FUNCTION] `cisco_env_save` — implements the cisco env save operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: `url`, `key`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `b64encode`, `decode`, `encode`, `set_key`, `str`, `strip`, `touch`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def cisco_env_save(url: str, key: str, model: str) -> None:
     """Persist Cisco LLM credentials to .env."""
@@ -1071,6 +1383,14 @@ def cisco_env_save(url: str, key: str, model: str) -> None:
     except Exception:
         pass
 
+# [FYP-FUNCTION] `env_clear` — implements the env clear operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `set_key`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def env_clear() -> None:
     if not DOTENV_OK:
         return
@@ -1081,6 +1401,14 @@ def env_clear() -> None:
             set_key(str(ENV_FILE), "NW_PASSWORD", "")
     except Exception:
         pass
+
+# [FYP-FUNCTION] `cisco_env_clear` — implements the cisco env clear operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `set_key`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def cisco_env_clear() -> None:
     if not DOTENV_OK:
@@ -1094,10 +1422,32 @@ def cisco_env_clear() -> None:
         pass
 
 def nw_login(host: str, username: str, password: str) -> tuple[bool, str, str]:
-    """
+    """[FYP-FUNCTION] NetWitness Login — Exchange Username/Password for an Access Token.
     Login with username/password → returns (ok, message, access_token).
     POST /rest/api/auth/userpass with form-encoded credentials.
     Auto-retries with verify=False if cert verification fails.
+
+    [FYP-EVALUATOR] This is the NetWitness authentication entry point — the
+    first external-system call in the whole pipeline. Everything downstream
+    (incident fetching, triage, investigation) depends on the access_token
+    this returns. There is no refresh-token flow here: the token is a
+    single bearer credential kept in st.session_state and re-obtained by
+    calling this function again (see the login button handler / auto-fetch
+    below) when a request comes back 401/expired.
+    [FYP-API] POST {host}/rest/api/auth/userpass, form-encoded body
+    (username, password), Content-Type: application/x-www-form-urlencoded.
+    Response JSON key is "accessToken" (or "access_token" as a fallback for
+    older NW API versions).
+    [FYP-SECURITY] Credentials are sent once per login call, never logged.
+    TLS verification (`verify`) comes from nw_tls_verify() — a custom CA
+    cert path can be supplied via the sidebar; on an SSLError this
+    deliberately falls back to verify=False (self-signed lab certs are
+    common for NetWitness deployments) rather than hard-failing the login.
+    [FYP-ERROR] Distinguishes connection errors (VPN/network), timeouts
+    (likely VPN not connected), and generic HTTP failures so the UI can
+    show an actionable message instead of a raw exception.
+    [FYP-USED-BY] Sidebar/top-nav login control and maybe_auto_fetch()'s
+    startup auto-login path.
     """
     if not host.strip():
         return False, "Host URL is empty — enter https://192.168.x.x", ""
@@ -1106,6 +1456,14 @@ def nw_login(host: str, username: str, password: str) -> tuple[bool, str, str]:
         return False, "Username is empty.", ""
     if not password.strip():
         return False, "Password is empty.", ""
+
+    # [FYP-FUNCTION] `_attempt` — implements the attempt operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `verify`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include app.py:nw_login, app.py:nw_verify_token; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `post`, `rstrip`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _attempt(verify):
         return requests.post(
@@ -1143,8 +1501,16 @@ def nw_login(host: str, username: str, password: str) -> tuple[bool, str, str]:
     except Exception as e:
         return False, f"Login error: {e}", ""
 
+# [FYP-SECTION] STREAMLIT PAGE CONFIG + GLOBAL CSS (Aegis design system)
+# [FYP-ENTRY-POINT] From here down is the top-level, module-scope Streamlit
+# script body. Streamlit has no persistent app object — this whole file is
+# re-executed top-to-bottom on every user interaction (button click, widget
+# change, st.rerun()) within the same session; only st.session_state and
+# on-disk/DB state survive between reruns. Anything not wrapped in a
+# function or an `if`/cache decorator below runs again every single time.
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE CONFIG
+# [FYP-SECTION] PAGE CONFIG — Streamlit tab title/icon/layout, must run before
+# any other st.* call in the script.
 # ══════════════════════════════════════════════════════════════════════════════
 st.set_page_config(
     page_title="Aegis",
@@ -1156,7 +1522,9 @@ st.set_page_config(
 )
 
 # ══════════════════════════════════════════════════════════════════════════════
-# CSS
+# [FYP-SECTION] CSS — the Aegis design-system global stylesheet, injected once
+# via st.markdown(unsafe_allow_html=True). Everything downstream that targets
+# `div.st-key-*` selectors (per-row/per-widget styling) layers on top of this.
 # ══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
@@ -1606,9 +1974,17 @@ hr { border-color: #0E1E2E; margin: 1.2rem 0; }
 """, unsafe_allow_html=True)
 
 
+# [FYP-SECTION] SESSION STATE INITIALISATION
 # ══════════════════════════════════════════════════════════════════════════════
 # SESSION STATE  — seed from .env on first load
 # ══════════════════════════════════════════════════════════════════════════════
+# [FYP-STATE] Because Streamlit re-runs this whole file top-to-bottom on every
+# interaction (see [FYP-ENTRY-POINT] above), st.session_state is the ONLY
+# place values survive between reruns — module-level variables/DEFAULTS below
+# are re-created every run but only WRITTEN into session_state if the key is
+# still missing (see the `for k, v in DEFAULTS.items()` guard a few lines
+# down), so a value set by a button handler earlier in the session is never
+# clobbered by this block on the next rerun.
 _env = env_load()
 # Decode base64 password
 if _env["password"]:
@@ -1684,10 +2060,17 @@ FULL_RESYNC_INTERVAL = timedelta(
     minutes=int(os.environ.get("NW_FULL_RESYNC_MIN", "60") or 60))
 
 
+# [FYP-SECTION] MISC HELPERS (severity normalisation, VPN reachability)
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 def normalise_sev(inc: dict) -> str:
+    """[FYP-FUNCTION] Map an incident's riskScore/severity field to one of the
+    four canonical buckets the whole UI colour-codes by: CRITICAL/HIGH/
+    MEDIUM/LOW. Accepts either a numeric NetWitness risk score (>=90/70/40
+    thresholds) or an already-textual severity string, so it tolerates both
+    raw NW incident dicts and internally-normalised ones.
+    [FYP-USED-BY] Dashboard/incidents tables, case detail header, sorting."""
     raw = str(inc.get("riskScore") or inc.get("severity") or "").upper()
     try:
         s = int(raw)
@@ -1696,10 +2079,12 @@ def normalise_sev(inc: dict) -> str:
         return raw if raw in ("CRITICAL","HIGH","MEDIUM","LOW") else "LOW"
 
 def gp_is_reachable() -> tuple[bool, str]:
-    """
+    """[FYP-FUNCTION] Cheap Pre-Flight VPN/Network Reachability Check.
     Check if the NW server is reachable via GlobalProtect VPN.
     Simply tries to open a TCP socket to the host:port.
     Returns (reachable, message).
+    [FYP-USED-BY] Login/connection UI — lets the app show "connect your VPN"
+    instead of a confusing timeout/connection-refused error.
     """
     import socket
     from urllib.parse import urlparse
@@ -1720,12 +2105,18 @@ def gp_is_reachable() -> tuple[bool, str]:
         )
 
 def nw_headers(include_content_type: bool = False) -> dict:
-    """
+    """[FYP-FUNCTION] Build the Auth Header(s) for a NetWitness REST Call.
     Build request headers based on the currently selected auth style.
     include_content_type should only be True for POST/PATCH requests that
     send a JSON body. GET requests must NOT include Content-Type or NW
     returns 400 'Unsupported format was supplied'.
-    """
+    [FYP-API] Reads st.session_state.nw_token (obtained from nw_login()) and
+    nw_auth_style — some NW deployments expect the token as a custom
+    'NetWitness-Token' header, others as a Bearer token or a Cookie; "Both"
+    sends Bearer+Cookie together for maximum compatibility. This style is a
+    sidebar-configurable value, not auto-detected.
+    [FYP-USED-BY] Every authenticated NetWitness request in this file
+    (nw_verify_token, nw_fetch_incidents, per-incident alert fetch)."""
     token = st.session_state.nw_token.strip()
     style = st.session_state.get("nw_auth_style", "NetWitness-Token")
 
@@ -1750,6 +2141,14 @@ def nw_headers(include_content_type: bool = False) -> dict:
     return base
 
 
+# [FYP-FUNCTION] `nw_tls_verify` — implements the nw tls verify operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:nw_login, app.py:nw_verify_token; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `get`, `is_file`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def nw_tls_verify():
     """
     Returns the value to pass as requests(verify=...).
@@ -1763,6 +2162,14 @@ def nw_tls_verify():
     return False
 
 
+# [FYP-FUNCTION] `nw_incidents_url` — implements the nw incidents url operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: `host`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_attempt, app.py:nw_fetch_incidents; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `rstrip`, `startswith`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def nw_incidents_url(host: str) -> str:
     """Build the incidents endpoint URL from the configurable path."""
     path = st.session_state.get("nw_incidents_path", "/rest/api/incidents").strip()
@@ -1771,10 +2178,25 @@ def nw_incidents_url(host: str) -> str:
     return f"{host.rstrip('/')}{path}"
 
 def nw_verify_token() -> tuple[bool, str]:
+    """[FYP-FUNCTION] Validate an Existing/Manually-Entered NetWitness Token.
+    Fires a cheap 1-row incidents request to confirm a token (whether from
+    nw_login() or pasted in manually via the sidebar) is still accepted by
+    the server, and surfaces the specific reason if not (missing RBAC
+    permission vs expired token vs unreachable host).
+    [FYP-USED-BY] "Verify token" control alongside the manual token entry
+    field — the alternative to the username/password nw_login() flow."""
     host  = st.session_state.nw_host.rstrip("/")
     token = st.session_state.nw_token.strip()
     if not host or not token:
         return False, "Enter both Host URL and token."
+
+    # [FYP-FUNCTION] `_attempt` — implements the attempt operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `verify`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include app.py:nw_login, app.py:nw_verify_token; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `get`, `nw_headers`, `nw_incidents_url`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _attempt(verify):
         return requests.get(
@@ -1807,6 +2229,14 @@ def nw_verify_token() -> tuple[bool, str]:
     except Exception as e:
         return False, f"Cannot reach server: {e}"
 
+# [FYP-FUNCTION] `_bounded_get` — implements the bounded get operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: `url`, `headers`, `params`, `verify`, `timeout`, `wall_seconds`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_fetch_alerts, app.py:nw_fetch_incidents; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Thread`, `TimeoutError`, `is_alive`, `join`, `start`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
 def _bounded_get(url: str, *, headers=None, params=None, verify=False,
                  timeout: int = 30, wall_seconds: int = 45):
     """requests.get with a HARD wall-clock cap.
@@ -1818,6 +2248,14 @@ def _bounded_get(url: str, *, headers=None, params=None, verify=False,
     raised and the orphaned thread is abandoned to finish/die on its own."""
     import threading as _th
     box: dict = {}
+
+    # [FYP-FUNCTION] `_do` — implements the do operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `get`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def _do():
         try:
@@ -1855,7 +2293,16 @@ def nw_fetch_incidents(
     limit: int | None = None, since: str | None = None,
     deadline_seconds: int | None = None,
 ) -> tuple[bool, list, str]:
-    """
+    """[FYP-FUNCTION] Fetch (and Alert-Enrich) Incidents from NetWitness.
+    [FYP-EVALUATOR] This is THE incident-ingestion entry point for the whole
+    platform — everything the Triage/Investigation/Reporting agents ever see
+    originates from here. Two-phase process:
+      1. Page through GET {host}{incidents_path} (pageSize=100) until the API
+         reports hasNext=False, a `limit` is hit, or MAX_PAGES is reached.
+      2. For every incident fetched, concurrently GET .../{id}/alerts (also
+         paginated) and merge the alert digest onto the incident dict via
+         nw_alerts._merge_alert_digest() — this is what supplies the host/
+         user/IP/MITRE detail the incident object alone doesn't carry.
     Returns (ok, items, diagnostic_message).
     ok=True even if items is empty (empty just means no incidents in NW right now).
     ok=False means a real error occurred (auth, network, etc).
@@ -1870,6 +2317,15 @@ def nw_fetch_incidents(
     only incidents created/updated after that point — used by the periodic
     auto-refresh so it isn't re-fetching + re-enriching the entire incident
     history (and every incident's full alert history) every 30s.
+    [FYP-API] GET {host}/rest/api/incidents (paginated) then GET
+    {host}{path}/{incidentId}/alerts per incident, both bearing nw_headers().
+    [FYP-ERROR] A stalling server can't hang the app forever: every page/alert
+    request runs through _bounded_get()'s wall-clock cap, and the whole call
+    has an overall `deadline_seconds` budget (env NW_FETCH_DEADLINE, default
+    600s) — on timeout it returns ok=True with whatever was fetched so far
+    plus a diagnostic string, rather than blocking the UI indefinitely.
+    [FYP-USED-BY] maybe_auto_fetch() (periodic/startup refresh) and the
+    manual "Fetch now" control.
     """
     if not st.session_state.nw_verified or not st.session_state.nw_token:
         return False, [], "Not authenticated."
@@ -1946,6 +2402,14 @@ def nw_fetch_incidents(
         clean_path = st.session_state.get("nw_incidents_path", "/rest/api/incidents").strip()
         if clean_path.endswith("/list"):
             clean_path = clean_path[:-5]
+
+        # [FYP-FUNCTION] `_fetch_alerts` — retrieves fetch alerts data for the surrounding Streamlit application and dashboard workflow.
+        # [FYP-INPUT] Parameters: `inc`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+        # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+        # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+        # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+        # [FYP-CALLS] Calls: `_alerts_error_hint`, `_alerts_has_more`, `_bounded_get`, `_extract_alert_items`, `_merge_alert_digest`, `extend`, `get`, `json`.
+        # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
         def _fetch_alerts(inc: dict) -> None:
             inc_id = str(inc.get("id") or inc.get("incidentId") or "").strip()
@@ -2031,9 +2495,14 @@ def nw_fetch_incidents(
     except Exception as e:
         return False, [], f"Exception: {e}"
 
+# [FYP-SECTION] [FYP-DATABASE] SQLITE — PERMANENT INCIDENT LOG (soc_incidents.db)
 # ══════════════════════════════════════════════════════════════════════════════
 # SQLITE  — permanent incident log
 # ══════════════════════════════════════════════════════════════════════════════
+# [FYP-FLOW] This table is the durable cache of everything nw_fetch_incidents()
+# has ever seen: every fetch upserts here, so the dashboard/incidents list can
+# render instantly from disk instead of waiting on a live NetWitness round
+# trip, and incident history survives across app restarts / VPN drops.
 import sqlite3
 import json as _json
 
@@ -2045,7 +2514,8 @@ SOC_DB_DIR = Path(__file__).parent / "soc_db"
 DB_FILE = SOC_DB_DIR / "soc_incidents.db"
 
 def db_upsert_incidents(incidents: list) -> int:
-    """Upsert a list of incident dicts — new rows inserted, existing rows updated."""
+    """[FYP-FUNCTION] [FYP-DATABASE] Upsert a list of incident dicts — new rows inserted, existing rows updated.
+    [FYP-USED-BY] maybe_auto_fetch() after every nw_fetch_incidents() call."""
     now = datetime.now().isoformat(timespec="seconds")
     rows = []
     for inc in incidents:
@@ -2105,7 +2575,7 @@ def db_upsert_incidents(incidents: list) -> int:
     return len(rows)
 
 def db_get_incident(inc_id: str) -> dict | None:
-    """Exact-id lookup — used by My Workspace to resolve a clicked case."""
+    """[FYP-FUNCTION] [FYP-DATABASE] Exact-id lookup — used by My Workspace to resolve a clicked case."""
     if not inc_id:
         return None
     with db_connect() as con:
@@ -2114,13 +2584,16 @@ def db_get_incident(inc_id: str) -> dict | None:
     return dict(row) if row else None
 
 def db_set_parsing_status(inc_id: str, status: str) -> None:
+    """[FYP-FUNCTION] [FYP-DATABASE] [FYP-STAGE-LOCK] Set the Parsing-stage status column for one incident
+    (e.g. "Running"/"Complete"/"Failed") — read back by the case stage
+    selector to decide whether Parsing is done/locked."""
     with db_connect() as con:
         con.execute("UPDATE incidents SET parsing_status = ? WHERE id = ?",
                     (status, str(inc_id)))
         con.commit()
 
 def db_save_parsing_result(inc_id: str, result: dict) -> None:
-    """Persist a compact parsing summary — full normalised_alert/processed_alert
+    """[FYP-FUNCTION] [FYP-DATABASE] Persist a compact parsing summary — full normalised_alert/processed_alert
     stay on disk (see run_parsing); the DB only needs enough to drive status UI."""
     parsing_status = "Complete" if result.get("status") == "completed" else "Failed"
     summary = {
@@ -2141,7 +2614,7 @@ def db_save_parsing_result(inc_id: str, result: dict) -> None:
         con.commit()
 
 def db_load_parsed_context(inc_id: str) -> dict | None:
-    """Load the parsed_incident.json this incident's Parsing stage already produced
+    """[FYP-FUNCTION] Load the parsed_incident.json this incident's Parsing stage already produced
     (via the Start Process button), for feeding into triage as parsed_context.
     db_save_parsing_result only stores a compact summary + the on-disk paths
     (see its docstring), so this reads the flat parsed_incident back off disk.
@@ -2174,7 +2647,7 @@ def db_load_incidents(
     search:   str = "",
     limit:    int = 500,
 ) -> list[dict]:
-    """Query incidents from SQLite with optional filters."""
+    """[FYP-FUNCTION] [FYP-DATABASE] Query incidents from SQLite with optional filters."""
     clauses, params = [], []
     if severity != "ALL":
         clauses.append("severity = ?"); params.append(severity)
@@ -2194,7 +2667,8 @@ def db_load_incidents(
 _CLOSED_STATUSES = ("CLOSED", "RESOLVED", "REMEDIATED")
 
 def db_stats() -> dict:
-    """Return aggregate stats from the permanent log."""
+    """[FYP-FUNCTION] [FYP-DATABASE] Return aggregate stats from the permanent log.
+    [FYP-USED-BY] Overview/dashboard header tiles (_render_overview_header)."""
     with db_connect() as con:
         total   = con.execute("SELECT COUNT(*) FROM incidents").fetchone()[0]
         by_sev  = dict(con.execute(
@@ -2232,6 +2706,14 @@ def db_stats() -> dict:
         "last_fetch": last_f[0] if last_f else "—",
     }
 
+# [FYP-FUNCTION] `db_export_csv` — implements the db export csv operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `DictWriter`, `StringIO`, `db_load_incidents`, `get`, `getvalue`, `writeheader`, `writerow`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def db_export_csv() -> str:
     """Return all incidents as a CSV string for download."""
     import csv, io
@@ -2249,13 +2731,21 @@ def db_export_csv() -> str:
     return buf.getvalue()
 
 # ══════════════════════════════════════════════════════════════════════════════
-# STARTUP — runs once per session, silently connects & fetches
+# [FYP-SECTION] STARTUP — runs once per session, silently connects & fetches
+# The actual startup fetch logic lives further down (see "Step 1"/"Step 2"
+# below, around the _startup_login_and_fetch() closure) — this header marks
+# where the module-scope startup sequence begins; db_init()/pipeline_db_init()
+# run first so both permanent stores exist before anything queries them.
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Initialise DB on every startup (no-op if tables already exist)
 db_init()
 # ══════════════════════════════════════════════════════════════════════════════
-# PIPELINE DATABASE — per-stage SQLite + ChromaDB, fully inline (no 2nd app)
+# [FYP-SECTION] [FYP-DATABASE] PIPELINE DATABASE — per-stage SQLite + ChromaDB,
+# fully inline (no 2nd app). PIPELINE_STAGES below are the 8 named "buckets" a
+# case moves through after triage (mirrors the workflow stages in
+# soc_workflow.py); each stage is both a soc_pipeline.db table and (if Chroma
+# is connected) a ChromaDB collection "pipeline_<stage>" for semantic search.
 # ══════════════════════════════════════════════════════════════════════════════
 PIPELINE_STAGES = [
     "alerts_to_triage",
@@ -2300,14 +2790,18 @@ PIPELINE_COLORS = {
 PIPELINE_DB_FILE = SOC_DB_DIR / "soc_pipeline.db"
 
 def _pl_con():
-    # Busy-timeout so UI reads and the background worker's writes never
-    # collide into silent 'database is locked' failures.
+    """[FYP-FUNCTION] [FYP-DATABASE] Open a connection to soc_pipeline.db.
+    Busy-timeout so UI reads and the background worker's writes never
+    collide into silent 'database is locked' failures."""
     con = sqlite3.connect(str(PIPELINE_DB_FILE), check_same_thread=False,
                           timeout=15)
     con.row_factory = sqlite3.Row
     return con
 
 def pipeline_db_init():
+    """[FYP-FUNCTION] [FYP-DATABASE] Create one table per PIPELINE_STAGES
+    entry if missing. Called once at import time (line below the class of
+    pipeline helpers) so every stage table exists before first use."""
     with _pl_con() as c:
         try:
             c.execute("PRAGMA journal_mode=WAL")
@@ -2322,6 +2816,9 @@ def pipeline_db_init():
         c.commit()
 
 def pipeline_count(stage):
+    """[FYP-FUNCTION] [FYP-DATABASE] Row count for one pipeline stage table.
+    [FYP-USED-BY] _render_circular_pipeline_section (Overview) and the Data
+    Pipeline page's per-stage stat cards."""
     try:
         with _pl_con() as c:
             return c.execute(f"SELECT COUNT(*) FROM {stage}").fetchone()[0]
@@ -2329,6 +2826,8 @@ def pipeline_count(stage):
         return 0
 
 def pipeline_load(stage, limit=300):
+    """[FYP-FUNCTION] [FYP-DATABASE] Most-recent rows for one pipeline stage,
+    newest first."""
     try:
         with _pl_con() as c:
             rows = c.execute(
@@ -2339,6 +2838,11 @@ def pipeline_load(stage, limit=300):
         return []
 
 def pipeline_insert(stage, record):
+    """[FYP-FUNCTION] [FYP-DATABASE] Upsert (INSERT OR REPLACE) one record
+    into a pipeline stage table. Re-running the same incident id REPLACEs
+    the row rather than creating a new one — the workflow_runs_count/summary
+    stamping below exists purely so a refreshed record is visibly distinct
+    from "nothing happened"."""
     import uuid as _uuid
     rec_id = str(record.get("id") or record.get("unc") or _uuid.uuid4())[:64]
     now = datetime.now().isoformat(timespec="seconds")
@@ -2381,8 +2885,9 @@ def pipeline_insert(stage, record):
 
 
 def pipeline_last_write(stage):
-    """Most recent created_at in a stage — shown on the stage card so it's
-    obvious when the stage last changed (counts alone hide REPLACEs)."""
+    """[FYP-FUNCTION] [FYP-DATABASE] Most recent created_at in a stage —
+    shown on the stage card so it's obvious when the stage last changed
+    (counts alone hide REPLACEs)."""
     try:
         with _pl_con() as c:
             v = c.execute(f"SELECT MAX(created_at) FROM {stage}").fetchone()[0]
@@ -2391,6 +2896,10 @@ def pipeline_last_write(stage):
         return "—"
 
 def _pl_chroma_col(stage):
+    """[FYP-FUNCTION] Get-or-create the ChromaDB collection for one pipeline
+    stage ("pipeline_<stage>"). Returns None (never raises) if Chroma isn't
+    connected — every caller below treats that as "semantic search/sync is
+    just unavailable this session", not an error."""
     if not CHROMA_OK or not st.session_state.get("chroma_client"):
         return None
     try:
@@ -2401,6 +2910,9 @@ def _pl_chroma_col(stage):
         return None
 
 def pipeline_chroma_insert(stage, record):
+    """[FYP-FUNCTION] Embed and upsert one record's title+summary into the
+    stage's ChromaDB collection, mirroring the SQLite row pipeline_insert()
+    writes. [FYP-CALLS] _pl_chroma_col."""
     col = _pl_chroma_col(stage)
     if col is None:
         return
@@ -2418,6 +2930,8 @@ def pipeline_chroma_insert(stage, record):
         pass
 
 def pipeline_chroma_count(stage):
+    """[FYP-FUNCTION] Vector count for one pipeline stage's ChromaDB
+    collection — 0 if Chroma isn't connected."""
     col = _pl_chroma_col(stage)
     if col is None:
         return 0
@@ -2427,6 +2941,10 @@ def pipeline_chroma_count(stage):
         return 0
 
 def pipeline_chroma_search(stage, query, n=5):
+    """[FYP-FUNCTION] Semantic (embedding) search within one pipeline
+    stage's ChromaDB collection. [FYP-USED-BY] Data Pipeline tab's per-stage
+    search box. Returns [] if unavailable/empty; a synthetic 'err' row on
+    exception so the UI has something to render instead of crashing."""
     col = _pl_chroma_col(stage)
     if col is None or not query.strip():
         return []
@@ -2443,6 +2961,9 @@ def pipeline_chroma_search(stage, query, n=5):
         return [{"id": "err", "doc": str(e), "score": 0, "meta": {}}]
 
 def pipeline_chroma_all(stage):
+    """[FYP-FUNCTION] Dump every document+metadata in one pipeline stage's
+    ChromaDB collection (no query/ranking) — used to browse a stage's
+    vector store directly rather than searching it."""
     col = _pl_chroma_col(stage)
     if col is None:
         return []
@@ -2456,12 +2977,17 @@ def pipeline_chroma_all(stage):
         return []
 
 def pipeline_insert_full(stage, record):
-    """Insert into SQLite and ChromaDB (if connected)."""
+    """[FYP-FUNCTION] [FYP-DATABASE] Insert into SQLite and ChromaDB (if
+    connected). [FYP-CALLS] pipeline_insert, pipeline_chroma_insert. This is
+    the one entry point stage-advancement code should call — it keeps the
+    SQL table and the vector index for a stage in sync on every write."""
     rec_id = pipeline_insert(stage, record)
     pipeline_chroma_insert(stage, record)
     return rec_id
 
 def pipeline_delete(stage, rec_id):
+    """[FYP-FUNCTION] [FYP-DATABASE] Delete one record from both the SQLite
+    table and (if present) the matching ChromaDB vector, by id."""
     try:
         with _pl_con() as c:
             c.execute(f"DELETE FROM {stage} WHERE id=?", (rec_id,))
@@ -2478,11 +3004,11 @@ def pipeline_delete(stage, rec_id):
 pipeline_db_init()
 
 # ──────────────────────────────────────────────────────────────────────────────
-# EXPORT HELPERS  — generate downloadable bytes from a pipeline record
+# [FYP-SECTION] EXPORT HELPERS  — generate downloadable bytes from a pipeline record
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _make_csv_bytes(row: dict) -> bytes:
-    """
+    """[FYP-FUNCTION]
     Build a CSV file from a pipeline SQLite row.
     Flattens the raw_json payload if present so the sheet has all fields.
     Returns UTF-8 bytes suitable for st.download_button.
@@ -2515,7 +3041,7 @@ def _make_csv_bytes(row: dict) -> bytes:
 
 
 def _make_docx_bytes(row: dict) -> bytes:
-    """
+    """[FYP-FUNCTION]
     Build a professional SOC Initial Ticket .docx from a pipeline record.
     Uses python-docx (pip install python-docx). Falls back to a plain-text
     .txt wrapped as bytes if the library is unavailable.
@@ -2635,7 +3161,7 @@ def _make_docx_bytes(row: dict) -> bytes:
         return "\n".join(lines).encode("utf-8")
 
 
-# Step 1 — load persisted incidents from SQLite immediately
+# [FYP-FLOW] Step 1 — load persisted incidents from SQLite immediately
 # so the UI is never empty even before the live fetch completes
 if not st.session_state.incidents:
     _db_rows = db_load_incidents(limit=500)
@@ -2644,12 +3170,14 @@ if not st.session_state.incidents:
             _json.loads(r["raw_json"]) for r in _db_rows if r.get("raw_json")
         ]
 
-# Step 2 — silently auto-verify & auto-fetch if .env has credentials.
-# Runs once per session (tracked by _startup_done flag) in a BACKGROUND
-# thread with a soft wait: a slow or wedged NetWitness (mid-response
-# stalls evade per-request timeouts) previously hung every page load
-# forever, before a single element rendered. The UI now renders from the
-# SQLite cache immediately; live data is adopted whenever the fetch lands.
+# [FYP-FLOW] [FYP-EVALUATOR] Step 2 — silently auto-verify & auto-fetch if
+# .env has credentials. Runs once per session (tracked by _startup_done
+# flag) in a BACKGROUND thread with a soft wait: a slow or wedged
+# NetWitness (mid-response stalls evade per-request timeouts) previously
+# hung every page load forever, before a single element rendered. The UI
+# now renders from the SQLite cache immediately; live data is adopted
+# whenever the fetch lands. [FYP-CALLS] nw_login, nw_fetch_incidents
+# (both documented above at their definitions, ~line 1352 and ~2172).
 if not st.session_state._startup_done and _env["host"] and _env["username"] and _env["password"]:
     st.session_state._startup_done = True
     st.session_state.nw_host     = _env["host"]
@@ -2659,6 +3187,10 @@ if not st.session_state._startup_done and _env["host"] and _env["username"] and 
     st.session_state._startup_fetching = True
 
     def _startup_login_and_fetch() -> None:
+        """[FYP-FUNCTION] Background-thread body for the Step 2 startup
+        flow: log in to NetWitness, then run either an incremental or full
+        incident fetch depending on how stale the SQLite cache is (see the
+        `since`/incremental_since() logic below)."""
         try:
             ok, msg, token = nw_login(_env["host"], _env["username"],
                                       _env["password"])
@@ -2725,7 +3257,7 @@ if not st.session_state._startup_done and _env["host"] and _env["username"] and 
                                    "will appear when the fetch completes.")
 
 def incremental_since(last_fetch: datetime) -> str:
-    """
+    """[FYP-FUNCTION]
     ISO8601 cutoff for an incremental refresh — everything since the last
     successful fetch, minus a 5-minute overlap to tolerate clock skew and
     NetWitness indexing lag. Incidents re-fetched inside that overlap just
@@ -2736,7 +3268,7 @@ def incremental_since(last_fetch: datetime) -> str:
 
 
 def _merge_incidents(cached: list, fresh: list) -> list:
-    """
+    """[FYP-FUNCTION]
     Upsert `fresh` incidents into `cached` by id, keeping everything else
     untouched. Used for incremental refreshes, where `fresh` is only the
     new/updated subset NetWitness returned for the `since` window — not
@@ -2754,6 +3286,13 @@ def _merge_incidents(cached: list, fresh: list) -> list:
 
 
 def maybe_auto_fetch():
+    """[FYP-FUNCTION] [FYP-FLOW] Periodic incident refresh, called once per
+    render from the "AUTO-FETCH on every render" section below. Skips if
+    not verified or a fetch is already in flight; otherwise runs the fetch
+    off the render thread (daemon thread + add_script_run_ctx, same pattern
+    as the startup fetch) so a due refresh never blocks page interaction.
+    Incremental vs. full is decided the same way as the startup fetch —
+    incremental most cycles, forced full every FULL_RESYNC_INTERVAL."""
     if not st.session_state.nw_verified:
         return
     # Don't stack a second fetch on top of the startup background fetch or a
@@ -2787,6 +3326,14 @@ def maybe_auto_fetch():
         # exactly how the startup fetch already behaves.
         st.session_state._bg_fetching = True
 
+        # [FYP-FUNCTION] `_bg_auto_fetch` — implements the bg auto fetch operation used by the surrounding Streamlit application and dashboard workflow.
+        # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+        # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+        # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+        # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+        # [FYP-CALLS] Calls: `_merge_incidents`, `db_upsert_incidents`, `now`, `nw_fetch_incidents`.
+        # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
         def _bg_auto_fetch():
             try:
                 ok, items, _diag = nw_fetch_incidents(since=since,
@@ -2816,6 +3363,14 @@ def maybe_auto_fetch():
         _t.start()
 
 def chroma_connect(path: str = "./chroma_db") -> tuple[bool, str]:
+    """[FYP-FUNCTION] [FYP-RAG] Open (or create) the top-level "soc_incidents"
+    ChromaDB collection — the one behind the sidebar's ChromaDB status card
+    and the Overview/dashboard vector count, distinct from the per-stage
+    pipeline collections in the [FYP-DATABASE] PIPELINE DATABASE section
+    (_pl_chroma_col). Cosine similarity space; embeddings via _openai_ef().
+    [FYP-STATE] Result cached in st.session_state.chroma_client/chroma_col.
+    [FYP-ERROR] Any failure (chromadb missing, bad path, embedding-endpoint
+    error) is returned as (False, message) — never raised."""
     if not CHROMA_OK:
         return False, "chromadb not installed — run: pip install chromadb"
     try:
@@ -2831,6 +3386,11 @@ def chroma_connect(path: str = "./chroma_db") -> tuple[bool, str]:
         return False, str(e)
 
 def chroma_sync(incidents: list) -> tuple[int, str]:
+    """[FYP-FUNCTION] [FYP-RAG] Embed and upsert a batch of incident dicts
+    (title+summary as the document, severity/status/created as metadata)
+    into the top-level ChromaDB collection opened by chroma_connect().
+    [FYP-USED-BY] Sidebar/Data-management "Sync to ChromaDB" action, run
+    after a NetWitness fetch so semantic search stays current."""
     col = st.session_state.chroma_col
     if col is None:
         return 0, "Connect ChromaDB first."
@@ -2854,6 +3414,12 @@ def chroma_sync(incidents: list) -> tuple[int, str]:
     return len(docs), f"Synced {len(docs)} incidents."
 
 def chroma_search(query: str, n: int = 5) -> list:
+    """[FYP-FUNCTION] [FYP-RAG] Semantic (embedding) search over the
+    top-level ChromaDB collection populated by chroma_sync(). Returns up to
+    `n` hits as {id, text, score (0-100, derived from cosine distance),
+    meta}. [FYP-ERROR] Query failures are folded into a single synthetic
+    "err" result rather than raised, so callers can render it inline.
+    [FYP-USED-BY] Global incident search box (semantic mode)."""
     col = st.session_state.chroma_col
     if col is None or not query.strip() or col.count() == 0:
         return []
@@ -2869,7 +3435,8 @@ def chroma_search(query: str, n: int = 5) -> list:
 def chat_respond(user_msg: str, incident: Optional[dict] = None,
                  parsed_context: Optional[dict] = None,
                  case_context: Optional[dict] = None) -> str:
-    """
+    """[FYP-FUNCTION] [FYP-LLM] "Ask Aegis" chat entry point — this app's
+    thin wrapper around soc_triage_agent.soc_triage_chat_respond().
     ── SOC TRIAGE AGENT (LangChain) ─────────────────────────
     Powered by soc_triage_agent.py.
     Trigger words: triage, analyse, analyze, ioc, classify, ticket, investigate
@@ -2883,18 +3450,28 @@ def chat_respond(user_msg: str, incident: Optional[dict] = None,
     that Q&A path in every completed workflow stage instead of just the
     raw incident.
     ─────────────────────────────────────────────────────────
-    """
+    [FYP-CALLS] get_cisco_cfg() for the LLM client config, then delegates
+    everything else (prompting, tool routing, ticket generation) to
+    soc_triage_chat_respond(). [FYP-USED-BY] The "Ask Aegis" chat box —
+    both the standalone Ask a Question page and the My Workspace case-chat
+    panel — pass case_context from case_view.build_aegis_context() when a
+    case is selected so answers are grounded in that case's full pipeline
+    history, not just the raw incident payload."""
     return soc_triage_chat_respond(user_msg, incident, llm_config=get_cisco_cfg(),
                                    parsed_context=parsed_context,
                                    case_context=case_context)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# AUTO-FETCH on every render
+# [FYP-SECTION] [FYP-FLOW] AUTO-FETCH on every render — one call per script run;
+# maybe_auto_fetch() itself no-ops unless verified and REFRESH_INTERVAL is due.
 # ══════════════════════════════════════════════════════════════════════════════
 maybe_auto_fetch()
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# [FYP-SECTION] SIDEBAR / TOP-NAV SETUP — RBAC role toggle + any pending page
+# redirect, resolved before routing/rendering below reads them.
 # ══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2926,7 +3503,9 @@ if st.session_state.get("jump_to_ask_tab", False):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HEADER METRICS
+# [FYP-SECTION] HEADER METRICS — module-scope aggregates (total/active counts,
+# severity histogram, vector count, last-sync time, permanent-DB total) computed
+# once per render and reused by the Overview header, top nav, and stat cards.
 # ══════════════════════════════════════════════════════════════════════════════
 incidents = st.session_state.incidents
 total     = len(incidents)
@@ -2944,6 +3523,14 @@ import ui_components as _ui
 importlib.reload(_ui)
 st.markdown(_ui.COMPONENT_CSS, unsafe_allow_html=True)
 
+
+# [FYP-FUNCTION] `_build_case_findings` — constructs build case findings output for the next Streamlit application and dashboard consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `inc`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `aggregate_verdict`, `append`, `fromkeys`, `get`, `list`, `lower`, `next`, `sorted`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _build_case_findings(inc: dict):
     """Real 'key findings' for an incident: the distilled alert behaviours
@@ -2978,6 +3565,14 @@ def _build_case_findings(inc: dict):
     return findings, v
 
 
+# [FYP-FUNCTION] `_build_case_context` — constructs build case context output for the next Streamlit application and dashboard consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `inc`, `sev`, `status`, `alerts`, `verdict`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `len`, `str`, `title`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _build_case_context(inc: dict, sev: str, status: str, alerts, verdict: dict):
     """Aegis 'case context' grid facts from the incident + unified verdict."""
     am = inc.get("alertMeta") or {}
@@ -3001,6 +3596,14 @@ def _build_case_context(inc: dict, sev: str, status: str, alerts, verdict: dict)
              "This counts how many were seen in this incident."),
     ]
 
+
+# [FYP-FUNCTION] `_pipeline_worked_ids` — implements the pipeline worked ids operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_pick_next_move; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_pl_con`, `add`, `execute`, `fetchall`, `set`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _pipeline_worked_ids() -> set:
     """Incident ids already present anywhere in the SOC pipeline DB —
@@ -3058,6 +3661,14 @@ _NEXT_ACTION = {
 }
 
 
+# [FYP-FUNCTION] `_pipeline_stage_map` — implements the pipeline stage map operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_case_table; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_pl_con`, `execute`, `fetchall`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _pipeline_stage_map() -> dict:
     """incident_id -> most-advanced pipeline stage it's reached, computed
     once per page render (one query per stage table) — NOT once per row,
@@ -3099,12 +3710,20 @@ _CASE_STAGE_POSITION = {
 def _case_stage_states(inc_id: str, status: str, stage_map: dict,
                        parsing_status: str | None = None,
                        workflow_state: dict | None = None) -> list:
-    """Return the five persisted workflow-stage display states.
+    """[FYP-FUNCTION] [FYP-STAGE-LOCK] Return the five persisted
+    workflow-stage display states.
 
     Durable workflow status is authoritative whenever a run exists. The
     pipeline-position fallback is retained for legacy cases created before
     per-stage statuses were persisted.
-    """
+
+    [FYP-STAGE-LOCK] This is the single source of truth for which stages
+    are "done" / "current" / "approval" (awaiting HITL sign-off, see
+    _confirm_action/_reject_with_reason) / "locked" (not reachable yet).
+    An approval gate hard-stops everything after it regardless of what
+    stale pipeline rows claim — see the approval_index loop below.
+    [FYP-USED-BY] _render_case_stage_selector() (the case-detail stepper
+    UI) and the per-case workspace's stage content routing."""
     workflow_state = workflow_state or {}
     if workflow_state.get("run_id") or workflow_state.get("workflow_status"):
         stage_columns = [
@@ -3191,13 +3810,24 @@ def _case_stage_states(inc_id: str, status: str, stage_map: dict,
 def _render_case_stage_selector(
     stages: list, selected_stage: str, case_id: str
 ) -> str:
-    """Render the case workflow as native controls.
+    """[FYP-FUNCTION] [FYP-UI] [FYP-STAGE-LOCK] Render the case workflow as
+    native controls (the circular 5-step stepper at the top of My
+    Workspace's case detail: Parsing / Triage / Threat Intel / Investigation
+    / Reporting).
 
     The previous workflow used HTML anchors with query parameters.  That made
     selecting a stage a browser navigation, which briefly left/reloaded the
     workspace.  Native buttons keep the selection in Streamlit session state
     and only rerender the detail content below this control.
-    """
+
+    [FYP-STAGE-LOCK] Each stage's `stages[i]["state"]` (from
+    _case_stage_states()) drives both its button's `disabled=` flag and a
+    per-column CSS override injected via st.html — "locked"/"queued" stages
+    render dimmed and unclickable, so a user can inspect any completed
+    stage's output but cannot jump ahead of the workflow's current gate.
+    [FYP-STATE] Clicking a stage sets st.session_state.case_selected_stage
+    (+ _id) and st.rerun()s; that state is what the case-detail body below
+    this selector reads to decide which stage's panel to show."""
     _selected_index = next(
         (i for i, stage in enumerate(stages)
          if str(stage.get("name") or "") == selected_stage),
@@ -3386,6 +4016,14 @@ def _render_case_stage_selector(
     return selected_stage
 
 
+# [FYP-FUNCTION] `_next_action_for` — implements the next action for operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: `inc_id`, `status`, `stage_map`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_case_table; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `str`, `upper`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _next_action_for(inc_id: str, status: str, stage_map: dict) -> tuple:
     """(action, detail) for the Incidents table's Next Action column.
     Deliberately never invents an action with no matching control on the
@@ -3398,6 +4036,14 @@ def _next_action_for(inc_id: str, status: str, stage_map: dict) -> tuple:
     return "Triage this case", "Not yet triaged"
 
 
+# [FYP-FUNCTION] `_esc_html` — implements the esc html operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: `s`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_case_stage_selector, app.py:_render_case_table; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `replace`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _esc_html(s) -> str:
     return (str(s if s is not None else "")
             .replace("&", "&amp;").replace("<", "&lt;")
@@ -3407,6 +4053,14 @@ def _esc_html(s) -> str:
 _SEV_BORDER = {"CRITICAL": "#ff6e7c", "HIGH": "#f4bc5f",
                "MEDIUM": "#c9a6f7", "LOW": "#43d28c"}
 
+
+# [FYP-FUNCTION] `_render_case_table` — constructs render case table output for the next Streamlit application and dashboard consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `rows`, `key_prefix`, `heading`, `subheading`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_esc_html`, `_next_action_for`, `_pipeline_stage_map`, `button`, `clear`, `columns`, `container`, `expander`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _render_case_table(rows: list, *, key_prefix: str, heading: str = "Open cases",
                        subheading: str = "") -> None:
@@ -3738,14 +4392,25 @@ def _render_case_table(rows: list, *, key_prefix: str, heading: str = "Open case
 
 
 def _pick_next_move(incs: list):
-    """Deterministic 'most urgent case to pick up next': unworked incidents
+    """[FYP-FUNCTION] Deterministic 'most urgent case to pick up next': unworked incidents
     first, then severity band, then riskScore, then distilled-behaviour
     richness, then newest. Cheap (no skills, no network) — safe to run every
-    rerun. Returns (incident, meta) or (None, {})."""
+    rerun. Returns (incident, meta) or (None, {}).
+    [FYP-USED-BY] The "Your next move" hero card inside
+    _render_overview_header() below — currently unreachable there (see that
+    function's docstring)."""
     if not incs:
         return None, {}
     worked = _pipeline_worked_ids()
     _rank = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
+
+    # [FYP-FUNCTION] `_risk` — implements the risk operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `i`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include app.py:_pick_next_move; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `get`, `int`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def _risk(i):
         try:
@@ -3753,8 +4418,24 @@ def _pick_next_move(incs: list):
         except (TypeError, ValueError):
             return 0
 
+    # [FYP-FUNCTION] `_behaviours` — implements the behaviours operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `i`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include app.py:_pick_next_move; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `get`, `len`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _behaviours(i):
         return len((i.get("alertMeta") or {}).get("AlertTitles") or [])
+
+    # [FYP-FUNCTION] `_id` — implements the id operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `i`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include app.py:_pick_next_move; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `get`, `str`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _id(i):
         return str(i.get("id") or i.get("incidentId") or "")
@@ -3778,6 +4459,12 @@ def _pick_next_move(incs: list):
     }
 
 def _render_overview_header():
+    """[FYP-FUNCTION] [FYP-UI] Overview page header: title + summary line.
+    [FYP-EVALUATOR] The unconditional `return` below means everything after
+    it — the "Your next move" hero card built from _pick_next_move() — is
+    dead code under the current control flow; it never executes. Documented
+    as-is per HARD RESTRICTIONS (comments/docstrings only, no logic
+    changes)."""
     st.markdown(_ui.page_title(
         "Operations overview",
         f"{active:,} active · {total:,} in session · last sync {last_sync}"),
@@ -3862,6 +4549,13 @@ def _render_overview_header():
 
 
 def _render_circular_pipeline_section():
+    """[FYP-FUNCTION] [FYP-UI] Overview page's "System cases pipeline" ring
+    diagram: per-stage counts from pipeline_count() (soc_pipeline.db) plus
+    an average cycle-time stat blended from three sources — workflow_state
+    per-incident timestamps, workflow_approvals decision gaps, and the
+    workflow_runs audit table's recorded duration_seconds. [FYP-DATABASE]
+    Read-only; every query is wrapped so a schema hiccup on any one source
+    just drops that source's contribution rather than breaking the page."""
     try:
         _pstages = [
             ("Triage", "alerts_to_triage"),
@@ -3968,7 +4662,11 @@ def _render_circular_pipeline_section():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# PAGE ROUTING
+# [FYP-SECTION] [FYP-ENTRY-POINT] PAGE ROUTING — resolves `active_page`
+# (Overview / My Workspace / All Cases / Ask a Question / Data Pipeline),
+# then the `if active_page == ...` / `elif ...` chain below (PAGE 1..4
+# banners further down) is the dashboard's whole-page dispatcher: exactly
+# one branch runs its render code per Streamlit script execution.
 # ══════════════════════════════════════════════════════════════════════════════
 # Workflow steps are normal links so they remain accessible and can be opened in
 # a new tab. Rehydrate both pieces of workspace context from their URL instead
@@ -3982,9 +4680,14 @@ if _linked_case_id and _linked_case_stage in _CASE_DISPLAY_STAGES:
 active_page = st.session_state.get("nav_page", "Overview")
 
 def _render_top_nav(active_page: str) -> None:
-    """Top navigation bar -- replaces the old left sidebar entirely. Real
+    """[FYP-FUNCTION] [FYP-UI] Top navigation bar -- replaces the old left sidebar entirely. Real
     st.button widgets drive page routing (raw HTML can't trigger reruns
-    on click)."""
+    on click).
+    [FYP-FLOW] Each nav button click sets st.session_state.nav_page and
+    st.rerun()s; the PAGE ROUTING dispatcher above reads nav_page (as
+    `active_page`) on the next script run to decide which page body to
+    render. [FYP-USED-BY] Called once near the top of every page body,
+    right after routing resolves `active_page`."""
     _tabs = [
         ("Overview", "Overview"),
         ("My Workspace", "My Workspace"),
@@ -4133,7 +4836,9 @@ STATUS_COLORS = {
 
 
 # ─────────────────────────────────────────────────────────────
-# PAGE 1 — OVERVIEW
+# [FYP-SECTION] PAGE 1 — OVERVIEW: header/next-move hero, circular pipeline
+# ring, then a capped "Open cases" table (top 500 by severity/ownership
+# from the permanent SQLite log, filterable by severity/stage/owner).
 # ─────────────────────────────────────────────────────────────
 if active_page == "Overview":
     _render_overview_header()
@@ -4224,7 +4929,17 @@ if active_page == "Overview":
 
 
 # ─────────────────────────────────────────────────────────────
-# PAGE — MY WORKSPACE (case queue + case detail workspace)
+# [FYP-SECTION] [FYP-FLOW] PAGE — MY WORKSPACE (case queue + case detail
+# workspace). Two sub-views selected by whether a case is loaded:
+#   1. No st.session_state.selected_case_id → queue view, a table of cases
+#      currently mid-pipeline (post_triage_investigate / post_investigation
+#      / pending_ticket_report).
+#   2. selected_case_id set → single-case workspace: header, the 5-stage
+#      [FYP-STAGE-LOCK] stepper (_render_case_stage_selector /
+#      _case_stage_states), and below it the selected stage's own
+#      output/approve-reject/re-run panel. This is where
+#      [FYP-APPROVAL]/[FYP-STAGE-LOCK]/[FYP-RERUN] controls documented
+#      further down in this block live.
 # ─────────────────────────────────────────────────────────────
 elif active_page == "My Workspace":
     _sel_id = st.session_state.get("selected_case_id")
@@ -4447,7 +5162,24 @@ elif active_page == "My Workspace":
                 """)
 
                 def _rerun_selected_workflow_stage() -> None:
-                    """Restart the selected persisted stage using its real runner."""
+                    """[FYP-FUNCTION] [FYP-RERUN] Restart the selected persisted stage using its real runner.
+                    [FYP-STAGE-LOCK] Which stage is "selected" comes from the
+                    stepper (_render_case_stage_selector /
+                    _selected_stage) — a case can only re-run a stage it's
+                    reachable at, since the stepper disables buttons for
+                    locked/queued stages before this closure is ever reached.
+                    [FYP-CALLS] Parsing/Triage re-runs go through
+                    _run_triage_workflow_with_ui(allow_retry=True) (the same
+                    synchronous run path the first-time "Run Triage" button
+                    uses); every later stage (Threat Intel/Investigation/
+                    Reporting) goes through wss.rerun_stage() then kicks off
+                    wf_run_stage_chain() on a background thread — mirrors
+                    _workflow_worker()'s daemon-thread pattern so the UI
+                    doesn't block. [FYP-ERROR] wss.rerun_stage() can raise
+                    ApprovalConflictError (e.g. stage already re-run/approved
+                    concurrently) — caught and shown as a warning, no crash.
+                    [FYP-USED-BY] The header's per-stage "Re-run" action
+                    button, rendered below when _header_can_rerun is True."""
                     if _header_selected_stage in {"parsing", "triage"}:
                         _full_inc, _is_full = _resolve_full_incident(_sel_id, inc)
                         if not _is_full:
@@ -4481,7 +5213,7 @@ elif active_page == "My Workspace":
                     st.rerun()
 
                 def _proceed_to_next_workflow_stage() -> None:
-                    """Change the displayed stage only — never start it.
+                    """[FYP-FUNCTION] [FYP-STAGE-LOCK] Change the displayed stage only — never start it.
 
                     Approving/completing a stage leaves the next one
                     "Pending" (see workflow_state_store.approve_triage()/
@@ -4527,6 +5259,37 @@ elif active_page == "My Workspace":
                     st.query_params["case_stage"] = _next_stage
                     st.rerun()
 
+                # [FYP-APPROVAL] [FYP-STAGE-LOCK] [FYP-RERUN] Case-header
+                # action button — a single slot whose label/handler is
+                # chosen by the selected stage's persisted status, in this
+                # priority order:
+                #   1. _header_pending_approval  → "Approve" (calls
+                #      wss.approve_triage / approve_investigation /
+                #      approve_reporting_candidate — the HITL sign-off gate;
+                #      leaves the NEXT stage "Pending", never auto-starts
+                #      it) + "Re-run" (redo the awaiting-approval stage
+                #      itself via _rerun_selected_workflow_stage()).
+                #   2. Stage already Complete/Approved → "Proceed to Next
+                #      Stage" (navigation only, see
+                #      _proceed_to_next_workflow_stage()'s own docstring)
+                #      plus a stage-specific "Re-run" (Threat Intel's re-run
+                #      warns it clears downstream Investigation/Reporting
+                #      output).
+                #   3. _header_can_rerun (a run exists, nothing in flight)
+                #      → plain "Re-run".
+                #   4. _process_running → disabled "Running..." placeholder
+                #      (spinner via scoped CSS above; no click handler).
+                #   5. _process_closed → disabled "Process complete".
+                #   6. Otherwise → "Start Process": either begins the
+                #      already-approved-but-Pending next stage
+                #      (wss.begin_stage() + wf_run_stage_chain() on a daemon
+                #      thread) or, for a fresh case, runs
+                #      _run_triage_workflow_with_ui() synchronously for
+                #      Parsing/Triage.
+                # [FYP-ERROR] Every workflow-state-store call here is wrapped
+                # against ApprovalConflictError/ReportValidationError so a
+                # race (e.g. two tabs approving the same stage) surfaces as
+                # a warning/error, not a crash.
                 with st.container(key="case_header_action"):
                     _header_content, _header_action = st.columns(
                         [6.5, 1.15], vertical_alignment="center"
@@ -4761,6 +5524,19 @@ elif active_page == "My Workspace":
                     unsafe_allow_html=True,
                 )
 
+                # [FYP-UI] Selected-stage detail panel — from here to the end
+                # of this `elif active_page == "My Workspace":` branch,
+                # everything renders the ONE stage picked by the stepper
+                # above (_selected_stage): its persisted result JSON
+                # (_stage_result_columns), its AI summary/"thinking process"
+                # (generated on demand via wf_generate_triage_ai_summary /
+                # wf_generate_stage_ai_summary and cached back into the DB
+                # via wss.save_stage_ai_summary so the LLM call isn't
+                # repeated every rerun), and stage-specific output — e.g.
+                # Parsing's own branch below hunts several candidate output
+                # directories for the parsed-incident JSON to offer as a
+                # download, since older cases may have been parsed before a
+                # given output path convention existed.
                 _findings, _ctx = [], []
                 try:
                     _findings, _verdict = _build_case_findings(inc)
@@ -5438,6 +6214,14 @@ elif active_page == "My Workspace":
                                 _rtitle = _rr2.get("title") or _rtype
                                 _dc1, _dc2 = st.columns(2)
 
+                                # [FYP-FUNCTION] `_record_report_download` — persists or updates record report download state used by the surrounding Streamlit application and dashboard workflow.
+                                # [FYP-INPUT] Parameters: `rtype`, `fmt`, `sha`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+                                # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+                                # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+                                # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+                                # [FYP-CALLS] Calls: `get`, `record_activity`.
+                                # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
                                 def _record_report_download(rtype=_rtype, fmt="docx", sha=""):
                                     wss.record_activity(
                                         _sel_id, _rep_run_id, "reporting",
@@ -5505,6 +6289,14 @@ elif active_page == "My Workspace":
                                             **_zip_result, "identity": _zip_identity}
                                         st.rerun()
                             else:
+                                # [FYP-FUNCTION] `_record_export_all_download` — persists or updates record export all download state used by the surrounding Streamlit application and dashboard workflow.
+                                # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+                                # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+                                # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+                                # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+                                # [FYP-CALLS] Calls: `get`, `record_activity`.
+                                # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
                                 def _record_export_all_download():
                                     wss.record_activity(
                                         _sel_id, _rep_run_id, "reporting",
@@ -5559,6 +6351,14 @@ elif active_page == "My Workspace":
                     # rule). Read-only; never runs a workflow stage.
                     _cv = cv.build_case_view(_sel_id, _inc_row.get("run_id"))
 
+                    # [FYP-FUNCTION] `_render_investigation_approval_controls` — constructs render investigation approval controls output for the next Streamlit application and dashboard consumer or analyst-facing view.
+                    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+                    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+                    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+                    # [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+                    # [FYP-CALLS] Calls: `approve_investigation`, `button`, `columns`, `get`, `reject_investigation`, `rerun`, `strip`, `success`.
+                    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
                     def _render_investigation_approval_controls() -> None:
                         """Detailed investigation decision controls.
 
@@ -5609,6 +6409,14 @@ elif active_page == "My Workspace":
                                         st.success("Investigation rejected — "
                                                   "Reporting is blocked.")
                                         st.rerun()
+
+                    # [FYP-FUNCTION] `_investigation_processing_fragment` — implements the investigation processing fragment operation used by the surrounding Streamlit application and dashboard workflow.
+                    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+                    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+                    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+                    # [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+                    # [FYP-CALLS] Calls: `caption`, `get`, `get_state`, `info`, `rerun`.
+                    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
                     @st.fragment(run_every="2s")
                     def _investigation_processing_fragment() -> None:
@@ -6123,6 +6931,14 @@ elif active_page == "My Workspace":
                 st.session_state.setdefault("ws_chat_seq_counter", 0)
                 _ask_pending = st.session_state.ws_ask_pending
 
+                # [FYP-FUNCTION] `_ws_next_seq` — implements the ws next seq operation used by the surrounding Streamlit application and dashboard workflow.
+                # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+                # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+                # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+                # [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_ws_ask_start; dynamic framework calls may add callers.
+                # [FYP-CALLS] Calls: no nested function/service calls.
+                # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
                 def _ws_next_seq() -> int:
                     # Monotonic ordering key stamped on every message so the
                     # render loop can sort strictly on "when it was added"
@@ -6132,6 +6948,14 @@ elif active_page == "My Workspace":
                     # an explicit, reliable sequence value.
                     st.session_state.ws_chat_seq_counter += 1
                     return st.session_state.ws_chat_seq_counter
+
+                # [FYP-FUNCTION] `_ws_ask_start` — implements the ws ask start operation used by the surrounding Streamlit application and dashboard workflow.
+                # [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+                # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+                # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+                # [FYP-USED-BY] Static symbol references include app.py:_ws_ask_submit_typed; dynamic framework calls may add callers.
+                # [FYP-CALLS] Calls: `_ws_next_seq`, `append`, `get`, `setdefault`, `strip`.
+                # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
                 def _ws_ask_start(text: str) -> None:
                     """Begin a turn: append the user message plus a loading
@@ -6152,6 +6976,14 @@ elif active_page == "My Workspace":
                     st.session_state.ws_ask_pending = True
                     st.session_state.ws_ask_pending_prompt = text
                     st.session_state.ws_chat_input_seq += 1
+
+                # [FYP-FUNCTION] `_ws_ask_submit_typed` — implements the ws ask submit typed operation used by the surrounding Streamlit application and dashboard workflow.
+                # [FYP-INPUT] Parameters: `key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+                # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+                # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+                # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+                # [FYP-CALLS] Calls: `_ws_ask_start`, `get`.
+                # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
                 def _ws_ask_submit_typed(key: str) -> None:
                     # Looks up the value fresh at callback time (Streamlit has
@@ -6373,6 +7205,14 @@ elif active_page == "Ask a Question":
     """, unsafe_allow_html=True)
 
     # ── Helper: parse uploaded file into an incident dict ──────
+    # [FYP-FUNCTION] `_parse_uploaded_file` — transforms parse uploaded file input into the stable representation required by downstream Streamlit application and dashboard processing.
+    # [FYP-INPUT] Parameters: `uploaded_file`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `DictReader`, `StringIO`, `decode`, `dict`, `get`, `isinstance`, `isoformat`, `list`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
     def _parse_uploaded_file(uploaded_file) -> tuple[dict, str]:
         """
         Parse a Streamlit UploadedFile into an incident dict.
@@ -6606,6 +7446,14 @@ elif active_page == "Ask a Question":
 
     _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
+    # [FYP-FUNCTION] `_board_set` — implements the board set operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `agent`, `status`, `think`, `output`, `progress`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_render_board_card`, `_render_board_detail`, `append`, `get`, `int`, `max`, `min`, `now`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
     def _board_set(agent: str, status: str | None = None,
                    think: str | None = None, output: str | None = None,
                    progress: int | None = None) -> None:
@@ -6636,12 +7484,34 @@ elif active_page == "Ask a Question":
         except Exception:
             pass
 
+    # [FYP-CLASS] `_BoardTee` — owns BoardTee state or behaviour for the Streamlit application and dashboard component.
+    # [FYP-PROCESS] Important methods: __init__, markdown, empty.
+    # [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+    # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+    # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
     class _BoardTee:
         """Duck-typed st.empty() that mirrors writes to several containers —
         used to send the triage LLM token stream to both the in-status panel
         and the agent board's detail view."""
+        # [FYP-FUNCTION] `__init__` — implements the init operation used by the surrounding Streamlit application and dashboard workflow.
+        # [FYP-INPUT] Parameters: `*targets`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+        # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+        # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+        # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+        # [FYP-CALLS] Calls: no nested function/service calls.
+        # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
         def __init__(self, *targets):
             self.targets = [t for t in targets if t is not None]
+
+        # [FYP-FUNCTION] `markdown` — implements the markdown operation used by the surrounding Streamlit application and dashboard workflow.
+        # [FYP-INPUT] Parameters: `*a`, `**k`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+        # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+        # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+        # [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_render_board_card, app.py:_render_board_detail; dynamic framework calls may add callers.
+        # [FYP-CALLS] Calls: `markdown`.
+        # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
         def markdown(self, *a, **k):
             for t in self.targets:
@@ -6650,12 +7520,28 @@ elif active_page == "Ask a Question":
                 except Exception:
                     pass
 
+        # [FYP-FUNCTION] `empty` — implements the empty operation used by the surrounding Streamlit application and dashboard workflow.
+        # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+        # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+        # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+        # [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:empty; dynamic framework calls may add callers.
+        # [FYP-CALLS] Calls: `empty`.
+        # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
         def empty(self):
             for t in self.targets:
                 try:
                     t.empty()
                 except Exception:
                     pass
+
+    # [FYP-FUNCTION] `_render_board_card` — constructs render board card output for the next Streamlit application and dashboard consumer or analyst-facing view.
+    # [FYP-INPUT] Parameters: `container`, `agent`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_board_set; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `get`, `int`, `markdown`, `str`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _render_board_card(container, agent: str) -> None:
         icon, name, color = {a: (i, n, c) for a, i, n, c in _AGENTS}[agent]
@@ -6793,6 +7679,14 @@ elif active_page == "Ask a Question":
     # updates in real time while the workflow executes further down the page.
     _board_live_detail: dict = {}
 
+    # [FYP-FUNCTION] `_render_board_detail` — constructs render board detail output for the next Streamlit application and dashboard consumer or analyst-facing view.
+    # [FYP-INPUT] Parameters: `agent`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_board_set; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `caption`, `get`, `index`, `join`, `markdown`, `replace`, `startswith`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _render_board_detail(agent: str) -> None:
         slots = _board_live_detail.get(agent)
         if not slots:
@@ -6837,6 +7731,14 @@ elif active_page == "Ask a Question":
     # Replaces the raw filesystem paths that used to be printed in the Output
     # panel with actual st.download_button controls, wired to the paths the
     # reporting agent's export step already returns in document_exports.
+    # [FYP-FUNCTION] `_saved_label` — implements the saved label operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include app.py:_render_generated_files; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `Path`, `date`, `exists`, `fromtimestamp`, `now`, `stat`, `str`, `strftime`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
     def _saved_label(path: str | None) -> str | None:
         if not path:
             return None
@@ -6852,10 +7754,26 @@ elif active_page == "Ask a Question":
             return f"Generated today at {hh}"
         return f"Generated on {ts.strftime('%b %d, %Y')} at {hh}"
 
+    # [FYP-FUNCTION] `_gf_badge` — implements the gf badge operation used by the surrounding Streamlit application and dashboard workflow.
+    # [FYP-INPUT] Parameters: `text`, `color`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include app.py:_render_generated_files; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: no nested function/service calls.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _gf_badge(text: str, color: str = "#A78BFA") -> str:
         return (f'<span style="background:{color}1A;color:{color};'
                 f'border:1px solid {color}44;padding:1px 8px;border-radius:10px;'
                 f'font-size:0.6rem;font-weight:600;margin-left:8px">{text}</span>')
+
+    # [FYP-FUNCTION] `_render_generated_files` — constructs render generated files output for the next Streamlit application and dashboard consumer or analyst-facing view.
+    # [FYP-INPUT] Parameters: `panel`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `Path`, `_gf_badge`, `_saved_label`, `button`, `columns`, `container`, `download_button`, `dumps`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _render_generated_files(panel: dict) -> None:
         exports = panel.get("exports") or {}

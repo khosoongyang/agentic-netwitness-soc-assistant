@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, adapters, backend, datetime, json, os, pathlib, shutil.
+# =============================================================================
+# File: soc_reporting_agent/adapters/run_reporting.py
+# Purpose: This module provides the command-line adapter for the reporting stage.
+# Main functionality: _copy_first_existing, _prepare_inputs, _clean, _first, _iso_to_ts, _is_new_enough.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis stage adapter component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, adapters, backend, datetime, json, os, pathlib, shutil.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _copy_first_existing, _prepare_inputs, _clean, _first, _iso_to_ts, _is_new_enough, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -16,6 +38,18 @@ from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exist
 from backend.reporting_context_resolver import ensure_reporting_inputs
 
 
+# =============================================================================
+# [FYP-SECTION] STAGE ADAPTER EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_copy_first_existing` — implements the copy first existing operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `candidates`, `dest`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_prepare_inputs; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `copy2`, `exists`, `mkdir`, `resolve`, `stat`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _copy_first_existing(candidates: list[Path], dest: Path) -> bool:
     for path in candidates:
         if path.exists() and path.stat().st_size > 0:
@@ -25,6 +59,14 @@ def _copy_first_existing(candidates: list[Path], dest: Path) -> bool:
             return True
     return False
 
+
+# [FYP-FUNCTION] `_prepare_inputs` — implements the prepare inputs operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_copy_first_existing`, `copy_if_exists`, `ensure_reporting_inputs`, `exists`, `extend`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _prepare_inputs(ticket_id: str | None = None) -> None:
     copy_if_exists(OUTPUTS_DIR / "triage_result.json", INPUTS_DIR / "triage_result.json")
@@ -57,6 +99,14 @@ def _prepare_inputs(ticket_id: str | None = None) -> None:
         copy_if_exists(OUTPUTS_DIR / "enriched_alert.json", INPUTS_DIR / "enriched_alert.json")
 
 
+# [FYP-FUNCTION] `_clean` — implements the clean operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:env_load, soc_reporting_agent/adapters/run_reporting.py:_first, soc_reporting_agent/services/parser_context_guard.py:_title_clean; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`, `lower`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _clean(value: Any) -> Any:
     if value in (None, "", [], {}):
         return None
@@ -65,6 +115,14 @@ def _clean(value: Any) -> Any:
     return value
 
 
+# [FYP-FUNCTION] `_first` — implements the first operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `default`, `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_triage_bits, soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_clean`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _first(*values: Any, default: Any = None) -> Any:
     for value in values:
         cleaned = _clean(value)
@@ -72,6 +130,14 @@ def _first(*values: Any, default: Any = None) -> Any:
             return cleaned
     return default
 
+
+# [FYP-FUNCTION] `_iso_to_ts` — implements the iso to ts operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `fromisoformat`, `replace`, `str`, `timestamp`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _iso_to_ts(value: Any) -> float | None:
     try:
@@ -83,6 +149,14 @@ def _iso_to_ts(value: Any) -> float | None:
         return None
 
 
+# [FYP-FUNCTION] `_is_new_enough` — evaluates is new enough conditions so invalid or unsafe stage adapter processing is stopped early.
+# [FYP-INPUT] Parameters: `path`, `started_ts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_find_reporting_result, soc_reporting_agent/adapters/run_reporting.py:_has_report_artifacts, soc_reporting_agent/adapters/run_reporting.py:_latest_manifest; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `stat`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _is_new_enough(path: Path, started_ts: float | None) -> bool:
     if not path.exists() or path.stat().st_size == 0:
         return False
@@ -92,13 +166,37 @@ def _is_new_enough(path: Path, started_ts: float | None) -> bool:
     return path.stat().st_mtime >= started_ts - 1.0
 
 
+# [FYP-FUNCTION] `_run_succeeded` — orchestrates the run succeeded entry point and its ordered stage adapter operations.
+# [FYP-INPUT] Parameters: `run_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `bool`, `get`, `int`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _run_succeeded(run_result: dict[str, Any]) -> bool:
     return bool(run_result.get("success")) and int(run_result.get("returncode", 1)) == 0
 
 
+# [FYP-FUNCTION] `_normalise_status` — transforms normalise status input into the stable representation required by downstream stage adapter processing.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_has_limitations; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `lower`, `replace`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _normalise_status(value: Any) -> str:
     return str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
 
+
+# [FYP-FUNCTION] `_has_limitations` — evaluates has limitations conditions so invalid or unsafe stage adapter processing is stopped early.
+# [FYP-INPUT] Parameters: `inv`, `approval`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_resolve_reporting_mode; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_normalise_status`, `bool`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _has_limitations(inv: dict[str, Any], approval: dict[str, Any]) -> bool:
     status = _normalise_status(inv.get("status") or inv.get("workflow_decision"))
@@ -121,6 +219,14 @@ def _has_limitations(inv: dict[str, Any], approval: dict[str, Any]) -> bool:
     )
 
 
+# [FYP-FUNCTION] `_resolve_reporting_mode` — implements the resolve reporting mode operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `inv`, `approval`, `wrapper`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_first`, `_has_limitations`, `get`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _resolve_reporting_mode(inv: dict[str, Any], approval: dict[str, Any], wrapper: dict[str, Any] | None = None) -> str:
     explicit = _first(
         approval.get("reporting_mode"),
@@ -134,12 +240,28 @@ def _resolve_reporting_mode(inv: dict[str, Any], approval: dict[str, Any], wrapp
     return "with_limitations" if _has_limitations(inv, approval) else "standard"
 
 
+# [FYP-FUNCTION] `_limitations` — implements the limitations operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `inv`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _limitations(inv: dict[str, Any]) -> list[Any]:
     value = inv.get("missing_evidence") or inv.get("limitations") or inv.get("missing_fields") or []
     if isinstance(value, list):
         return value
     return [value] if value else []
 
+
+# [FYP-FUNCTION] `_error_summary` — implements the error summary operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `run_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `len`, `reversed`, `splitlines`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _error_summary(run_result: dict[str, Any]) -> str:
     stderr = str(run_result.get("stderr") or "").strip()
@@ -153,6 +275,14 @@ def _error_summary(run_result: dict[str, Any]) -> str:
             return line
     return lines[-1][:500] if lines else "Reporting Agent failed before generating report sections."
 
+
+# [FYP-FUNCTION] `_clear_stale_reporting_wrappers` — persists or updates clear stale reporting wrappers state used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `extend`, `unlink`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _clear_stale_reporting_wrappers(ticket_id: str | None = None) -> None:
     candidates = [
@@ -173,6 +303,14 @@ def _clear_stale_reporting_wrappers(ticket_id: str | None = None) -> None:
         except Exception:
             pass
 
+
+# [FYP-FUNCTION] `_artifact_candidates` — implements the artifact candidates operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_find_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `add`, `append`, `exists`, `extend`, `latest_file`, `resolve`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _artifact_candidates(ticket_id: str | None = None) -> list[Path]:
     candidates: list[Path] = []
@@ -202,12 +340,28 @@ def _artifact_candidates(ticket_id: str | None = None) -> list[Path]:
     return out
 
 
+# [FYP-FUNCTION] `_find_reporting_result` — implements the find reporting result operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`, `started_ts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_artifact_candidates`, `_is_new_enough`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _find_reporting_result(ticket_id: str | None = None, started_ts: float | None = None) -> Path | None:
     for path in _artifact_candidates(ticket_id):
         if path.name == "reporting_result.json" and _is_new_enough(path, started_ts):
             return path
     return None
 
+
+# [FYP-FUNCTION] `_real_report_artifact_paths` — implements the real report artifact paths operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_has_report_artifacts; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add`, `append`, `exists`, `extend`, `latest_file`, `resolve`, `set`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _real_report_artifact_paths(ticket_id: str | None = None) -> list[Path]:
     paths: list[Path] = []
@@ -234,12 +388,28 @@ def _real_report_artifact_paths(ticket_id: str | None = None) -> list[Path]:
     return out
 
 
+# [FYP-FUNCTION] `_has_report_artifacts` — evaluates has report artifacts conditions so invalid or unsafe stage adapter processing is stopped early.
+# [FYP-INPUT] Parameters: `ticket_id`, `started_ts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_new_enough`, `_real_report_artifact_paths`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _has_report_artifacts(ticket_id: str | None = None, started_ts: float | None = None) -> bool:
     for path in _real_report_artifact_paths(ticket_id):
         if _is_new_enough(path, started_ts):
             return True
     return False
 
+
+# [FYP-FUNCTION] `_latest_manifest` — implements the latest manifest operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`, `started_ts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_new_enough`, `append`, `extend`, `latest_file`, `read_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _latest_manifest(ticket_id: str | None = None, started_ts: float | None = None) -> dict[str, Any]:
     paths: list[Path] = []
@@ -258,6 +428,14 @@ def _latest_manifest(ticket_id: str | None = None, started_ts: float | None = No
     return {}
 
 
+# [FYP-FUNCTION] `_copy_report_artifacts` — implements the copy report artifacts operation used by the surrounding stage adapter workflow.
+# [FYP-INPUT] Parameters: `ticket_id`, `wrapper`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `mkdir`, `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _copy_report_artifacts(ticket_id: str | None, wrapper: dict[str, Any]) -> None:
     if not ticket_id:
         return
@@ -267,6 +445,14 @@ def _copy_report_artifacts(ticket_id: str | None, wrapper: dict[str, Any]) -> No
     write_json(OUTPUTS_DIR / "reporting_result.json", wrapper)
     write_json(INPUTS_DIR / "reporting_result.json", wrapper)
 
+
+# [FYP-FUNCTION] `_normalise_reporting_result` — transforms normalise reporting result input into the stable representation required by downstream stage adapter processing.
+# [FYP-INPUT] Parameters: `run_result`, `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_reporting.py:main, soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_reporting_wrapper_backfill, soc_reporting_agent/scripts/test_reporting_appendix_context.py:test_failed_subprocess_not_completed; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_copy_report_artifacts`, `_error_summary`, `_find_reporting_result`, `_first`, `_has_report_artifacts`, `_is_new_enough`, `_iso_to_ts`, `_latest_manifest`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) -> dict[str, Any]:
     started_ts = _iso_to_ts(run_result.get("started_at"))
@@ -349,6 +535,14 @@ def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) 
     _copy_report_artifacts(ticket_id, wrapper)
     return wrapper
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered stage adapter operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `RuntimeError`, `_clear_stale_reporting_wrappers`, `_normalise_reporting_result`, `_prepare_inputs`, `bool`, `get`, `getenv`, `int`.
+# [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
 def main() -> int:
     strict = os.getenv("STRICT_AGENT_MODE", "false").lower() == "true"

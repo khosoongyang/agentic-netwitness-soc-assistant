@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, datetime, ipaddress, re, uuid.
+# =============================================================================
+# File: detection_rules.py
+# Purpose: This module builds and formats detection rules from confirmed incident indicators and techniques.
+# Main functionality: _is_public_ip, _select_indicators, _severity_level, _yq, build_sigma_rule, sigma_to_yaml.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, datetime, ipaddress, re, uuid.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _is_public_ip, _select_indicators, _severity_level, _yq, build_sigma_rule, sigma_to_yaml, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 detection_rules.py — auto-generated detection content (post-triage,
 pre-investigation).
@@ -77,6 +99,18 @@ _D3FEND = {
 }
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_is_public_ip` — evaluates is public ip conditions so invalid or unsafe SOC analysis support processing is stopped early.
+# [FYP-INPUT] Parameters: `v`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:_select_indicators, diamond_model.py:_extract, ioc_correlation.py:_extract_iocs; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ip_address`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _is_public_ip(v: str) -> bool:
     try:
         a = ipaddress.ip_address(v)
@@ -85,6 +119,14 @@ def _is_public_ip(v: str) -> bool:
     except ValueError:
         return False
 
+
+# [FYP-FUNCTION] `_select_indicators` — implements the select indicators operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:build_sigma_rule; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_is_public_ip`, `append`, `bool`, `dedup`, `get`, `isinstance`, `items`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _select_indicators(incident: dict, triage_result: dict | None) -> dict:
     """Pull the detectable indicators: public destination IPs from
@@ -118,6 +160,14 @@ def _select_indicators(incident: dict, triage_result: dict | None) -> dict:
             elif "process" in k or "filename" in k:
                 processes.append(val)
 
+    # [FYP-FUNCTION] `dedup` — implements the dedup operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `seq`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include detection_rules.py:_select_indicators, diamond_model.py:_extract, osquery_investigation.py:_extract_iocs; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `fromkeys`, `list`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def dedup(seq):
         return list(dict.fromkeys(seq))
 
@@ -127,6 +177,14 @@ def _select_indicators(incident: dict, triage_result: dict | None) -> dict:
         "endpoint": bool(hashes or processes),
     }
 
+
+# [FYP-FUNCTION] `_severity_level` — implements the severity level operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `asset`, `threat_intel`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:build_sigma_rule; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `bool`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _severity_level(asset: dict | None, threat_intel: dict | None) -> str:
     """Sigma level from asset tier + the case-level TI risk (deterministic)."""
@@ -143,6 +201,14 @@ def _severity_level(asset: dict | None, threat_intel: dict | None) -> str:
 
 # ── YAML emit (hand-rolled for the fixed Sigma shape — no PyYAML) ────────────
 
+# [FYP-FUNCTION] `_yq` — implements the yq operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `v`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:sigma_to_yaml; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isdigit`, `match`, `replace`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _yq(v: str) -> str:
     """Quote a scalar for YAML when needed."""
     s = str(v)
@@ -150,6 +216,14 @@ def _yq(v: str) -> str:
         return s
     return "'" + s.replace("'", "''") + "'"
 
+
+# [FYP-FUNCTION] `build_sigma_rule` — constructs build sigma rule output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `threat_intel`, `asset`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:build_detection; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_select_indicators`, `_severity_level`, `append`, `bool`, `get`, `group`, `lower`, `match`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_sigma_rule(incident: dict, triage_result: dict | None = None,
                      threat_intel: dict | None = None,
@@ -215,6 +289,14 @@ def build_sigma_rule(incident: dict, triage_result: dict | None = None,
             "has_selection": bool(selection)}
 
 
+# [FYP-FUNCTION] `sigma_to_yaml` — implements the sigma to yaml operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `rule`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:build_detection; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_yq`, `append`, `isinstance`, `items`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def sigma_to_yaml(rule: dict) -> str:
     """Emit the Sigma rule dict as YAML text (fixed shape)."""
     out: list[str] = []
@@ -251,6 +333,14 @@ def sigma_to_yaml(rule: dict) -> str:
     return "\n".join(out)
 
 
+# [FYP-FUNCTION] `to_splunk` — implements the to splunk operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `built`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:build_detection; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `isinstance`, `items`, `join`, `split`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def to_splunk(built: dict) -> str:
     """Splunk SPL translation of the Sigma selection."""
     sel = built["rule"]["detection"]["selection"]
@@ -265,6 +355,14 @@ def to_splunk(built: dict) -> str:
         clauses.append("(" + " OR ".join(f'{f}="{v}"' for v in vals) + ")")
     return "index=* " + " ".join(clauses) + " | stats count by _time, host"
 
+
+# [FYP-FUNCTION] `to_sentinel_kql` — implements the to sentinel kql operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `built`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:build_detection; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `isinstance`, `items`, `join`, `split`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def to_sentinel_kql(built: dict) -> str:
     """Microsoft Sentinel KQL translation of the Sigma selection."""
@@ -284,12 +382,28 @@ def to_sentinel_kql(built: dict) -> str:
     return f"{table}\n| where " + "\n    or ".join(clauses)
 
 
+# [FYP-FUNCTION] `d3fend_for` — implements the d3fend for operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `technique`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:build_detection; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `split`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def d3fend_for(technique: str) -> list[tuple[str, str]]:
     """MITRE D3FEND countermeasures for an ATT&CK technique (offense→defense)."""
     if not technique:
         return []
     return _D3FEND.get(technique) or _D3FEND.get(technique.split(".")[0]) or []
 
+
+# [FYP-FUNCTION] `build_detection` — constructs build detection output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `threat_intel`, `asset`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `build_sigma_rule`, `d3fend_for`, `len`, `sigma_to_yaml`, `to_sentinel_kql`, `to_splunk`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_detection(incident: dict, triage_result: dict | None = None,
                     threat_intel: dict | None = None,
@@ -311,6 +425,14 @@ def build_detection(incident: dict, triage_result: dict | None = None,
         "endpoint_rule": built["indicators"]["endpoint"],
     }
 
+
+# [FYP-FUNCTION] `format_detection` — constructs format detection output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `det`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `append`, `join`, `splitlines`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_detection(det: dict) -> str:
     """Plain-text block for the investigation alert / LLM prompt / UI."""

@@ -1,4 +1,37 @@
 """
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, ipaddress, os, pathlib, re, sqlite3, time, typing.
+# =============================================================================
+# File: ioc_correlation.py (repo root)
+# Purpose: [FYP-PROCESS] Evidence Correlation against the LOCAL incident
+#   corpus (not external threat intel — see threat_intel.py for that).
+#   Scores "have WE seen this IOC before, how severe, is it in an open
+#   case" — distinct from threat_intel.py's external reputation scoring.
+# Main functionalities:
+#   1. correlate_iocs(): [FYP-EVALUATOR] main entry point — extracts IOCs
+#      from the incident/triage result, searches soc_db/soc_incidents.db
+#      (read-only) for prior mentions, checks soc_db/soc_pipeline.db and
+#      soc_tickets.db for whether the IOC is in an open case, and derives a
+#      HIGH/MEDIUM/LOW/NONE confidence band via _confidence().
+#   2. Safety properties (all deliberate, see module docstring): read-only
+#      DB access, a "ubiquity guard" that caps common/shared-infrastructure
+#      IOCs at LOW confidence, boundary-verified substring matches, bounded
+#      per-IOC sampling + wall-clock deadline, a kill switch env var
+#      (NW_DISABLE_IOC_CORRELATION=1), and it never raises.
+# Inputs: incident dict, triage_result dict (for extracted IOCs).
+# Outputs: correlate_iocs() -> per-IOC correlation dict with confidence
+#   band + reasons; format_correlation() -> plain-text rendering.
+# Workflow position: runs during/after Triage, alongside or before Threat
+#   Intelligence Enrichment — internal corroboration, not external lookup.
+# Called by [FYP-USED-BY]: verify via grep before demoing — check
+#   soc_workflow.py and app.py for `ioc_correlation.correlate_iocs`.
+# Calls [FYP-CALLS]: sqlite3 against soc_db/soc_incidents.db,
+#   soc_db/soc_pipeline.db, soc_db/soc_tickets.db (all read-only).
+# Key evaluator search terms: correlate_iocs, _confidence, ubiquity guard,
+#   [FYP-EVALUATOR]
+# =============================================================================
+
 ioc_correlation.py — internal IOC correlation (triage-agent skill, standalone).
 
 Adapted from dandye's "Security IOC Correlation" SecOps skill
@@ -79,7 +112,25 @@ _CLOSED_PIPELINE = ("post_triage_no_investigate", "finalized_report",
                     "post_investigation", "workflow_runs")
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+
 def _is_public_ip(v: str) -> bool:
+    """[FYP-FUNCTION] Public-vs-private IP classifier.
+
+    True iff `v` parses as an IPv4/IPv6 address AND is none of
+    private/loopback/link-local/multicast/reserved — i.e. routable
+    "external" address space. Any parse failure (not an IP at all) is
+    treated as not-public (returns False) rather than raising, since
+    callers use this purely to sort already-IP-shaped strings into the
+    public/private buckets.
+    [FYP-CALLS] ipaddress.ip_address() only — no I/O.
+    [FYP-USED-BY] _extract_iocs() (this file), to split incident IPs into
+    the "public" / "private" scope so private/internal IPs are still kept
+    (unlike the external-enrichment path in threat_intel.py) but tagged
+    for the ubiquity-aware confidence scoring downstream."""
     try:
         a = ipaddress.ip_address(v)
         return not (a.is_private or a.is_loopback or a.is_link_local
@@ -89,17 +140,45 @@ def _is_public_ip(v: str) -> bool:
 
 
 def _boundary(value: str) -> re.Pattern:
-    """Match `value` only on token boundaries (digits/letters/dot are 'inside'),
-    so partial IP/hash substrings don't produce phantom correlations."""
+    """[FYP-FUNCTION] Boundary-verified match compiler (the substring-match
+    safety net referenced throughout this module's docstrings).
+
+    Match `value` only on token boundaries (digits/letters/dot are 'inside'),
+    so partial IP/hash substrings don't produce phantom correlations — e.g.
+    "192.168.0.34" must not match inside "192.168.0.341" or
+    "x192.168.0.34". A negative lookbehind/lookahead on [0-9A-Za-z.] around
+    the escaped literal value achieves this without a full tokenizer.
+    [FYP-CALLS] re.compile() only — no I/O; the returned pattern is applied
+    by the caller against already-fetched raw_json/payload text.
+    [FYP-USED-BY] _corpus_correlate() and _case_correlate() (this file) to
+    re-verify every row the cheap instr(raw_json, value) SQL substring
+    search returns, before it counts toward frequency/severity/case
+    aggregates. _subnet_correlate() inlines the same boundary convention
+    directly (for its prefix + trailing-octet pattern) rather than calling
+    this helper, since it needs to capture the matched neighbour IP too."""
     return re.compile(r"(?<![0-9A-Za-z.])" + re.escape(value) + r"(?![0-9A-Za-z.])")
 
 
 def _extract_iocs(incident: dict, triage_result: dict | None,
                   max_iocs: int) -> tuple[list[tuple[str, str, str]], bool]:
-    """Deterministic IOC pull for internal correlation. Unlike the external
+    """[FYP-FUNCTION] [FYP-PROCESS] IOC Extraction (internal correlation input).
+
+    Deterministic IOC pull for internal correlation. Unlike the external
     enrichment path we KEEP private IPs — an internal host IP that recurs across
     high-severity alerts is exactly the internal signal this skill exists to
-    surface. Returns ([(type, value, scope)], truncated)."""
+    surface. Returns ([(type, value, scope)], truncated).
+
+    Sourcing: hashes/domains come from triage_result's metakeys_payload
+    (metakey_values, keyed by name — "domain"/"fqdn"/"host" substrings route
+    to domains, a 32-64 hex char value routes to hashes); IPs come from the
+    incident's alertMeta DestinationIp/SourceIp fields and are split
+    public/private via _is_public_ip(). Ordering is deliberate: hashes and
+    domains (most discriminating) first, then public IPs, then private IPs
+    (most likely to be shared infrastructure) last, before the max_iocs
+    budget truncates the list.
+    [FYP-CALLS] no I/O — pure dict/string parsing, no DB or network access.
+    [FYP-USED-BY] correlate_iocs() (this file) only; not imported elsewhere
+    (verified via grep — the leading underscore marks it module-private)."""
     mkv = ((triage_result or {}).get("metakeys_payload") or {}).get("metakey_values") or {}
     am = incident.get("alertMeta") or {}
 
@@ -118,6 +197,14 @@ def _extract_iocs(incident: dict, triage_result: dict | None,
             if isinstance(v, str) and _IP_RE.match(v):
                 (pub_ips if _is_public_ip(v) else priv_ips).append(v)
 
+    # [FYP-FUNCTION] `dedup` — implements the dedup operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `seq`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include detection_rules.py:_select_indicators, diamond_model.py:_extract, osquery_investigation.py:_extract_iocs; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `fromkeys`, `list`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def dedup(seq: list) -> list:
         return list(dict.fromkeys(seq))
 
@@ -132,10 +219,18 @@ def _extract_iocs(incident: dict, triage_result: dict | None,
 
 
 def _seed_ids(incident: dict) -> set[str]:
-    """Best-effort identifiers of the CURRENT incident so its own case rows are
+    """[FYP-FUNCTION] Self-exclusion id set (prevents an incident "corroborating"
+    itself).
+
+    Best-effort identifiers of the CURRENT incident so its own case rows are
     excluded from 'related' correlation. Corpus ids (INC-53033) and pipeline/
     ticket ids (incident 53000-….json) differ, so we collect both plus the bare
-    numeric core."""
+    numeric core.
+    [FYP-CALLS] none — pure dict/regex parsing of the incident's own id
+    fields; no DB or network access.
+    [FYP-USED-BY] correlate_iocs() (this file), which passes the resulting
+    set into _case_correlate() so a case entry whose incident_id matches the
+    incident being correlated is filtered out of open_cases/closed_cases."""
     ids: set[str] = set()
     for k in ("id", "incident_id"):
         v = incident.get(k)
@@ -149,10 +244,24 @@ def _seed_ids(incident: dict) -> set[str]:
 
 def _corpus_correlate(con: sqlite3.Connection, value: str,
                       sample_cap: int) -> dict:
-    """Frequency + severity + recency of `value` across the incident corpus.
+    """[FYP-FUNCTION] [FYP-PROCESS] Corpus frequency/severity/recency lookup.
+
+    Frequency + severity + recency of `value` across the incident corpus.
     raw_mentions is the fast substring count (same honest convention as
     incident_expansion); severity/status/recency are computed over the newest
-    boundary-verified sample."""
+    boundary-verified sample.
+
+    Two-pass query: (1) a cheap COUNT(*) with instr(raw_json, value) for the
+    headline raw_mentions figure over the WHOLE corpus, then (2) the newest
+    `sample_cap` matching rows are fetched and each is individually
+    re-fetched and boundary-verified via _boundary() before being counted
+    into sev_dist/hi_sev/first_seen/last_seen/related — this keeps the
+    expensive per-row verification bounded regardless of how common the IOC
+    is (see the _WEAK_SIGNAL_AT/_UBIQUITOUS_AT thresholds this feeds into
+    via _confidence()).
+    [FYP-CALLS] sqlite3 SELECT (read-only) against soc_db/soc_incidents.db
+    — one COUNT(*) query plus up to `sample_cap` + 1 row-fetch queries.
+    [FYP-USED-BY] correlate_iocs() per-IOC loop (this file) only."""
     raw = con.execute(
         "SELECT COUNT(*) FROM incidents WHERE instr(raw_json, ?) > 0", (value,)
     ).fetchone()[0]
@@ -197,8 +306,17 @@ _SUBNET_SAMPLE = 40      # newest rows sampled per subnet for neighbour extracti
 
 
 def _subnet_prefix(ip: str) -> str | None:
-    """'a.b.c.' prefix for a private IPv4 — its /24 neighbourhood. Public IPs
-    return None: a /24 around external infrastructure is not lateral movement."""
+    """[FYP-FUNCTION] /24 prefix derivation, gated to private IPv4 only.
+
+    'a.b.c.' prefix for a private IPv4 — its /24 neighbourhood. Public IPs
+    return None: a /24 around external infrastructure is not lateral
+    movement, so this deliberately only ever seeds the subnet-pivot loop
+    with prefixes drawn from *this network's* private address space.
+    [FYP-CALLS] ipaddress.ip_address() only — no I/O.
+    [FYP-USED-BY] correlate_iocs()'s subnet-pivot loop (this file) to build
+    the deduplicated, _SUBNET_CAP-bounded prefix list it feeds into
+    _subnet_correlate(); private IPs with no usable /24 (loopback/
+    link-local) or public IPs yield None and are filtered out."""
     try:
         a = ipaddress.ip_address(ip)
         if a.version == 4 and a.is_private and not (a.is_loopback or a.is_link_local):
@@ -210,10 +328,26 @@ def _subnet_prefix(ip: str) -> str | None:
 
 def _subnet_correlate(con: sqlite3.Connection, prefix: str,
                       own_ips: set[str], sample_cap: int = _SUBNET_SAMPLE) -> dict:
-    """/24 neighbourhood scan: exact-match correlation misses lateral movement
+    """[FYP-FUNCTION] [FYP-PROCESS] Subnet (/24) neighbourhood scan.
+
+    /24 neighbourhood scan: exact-match correlation misses lateral movement
     when the neighbour host's IP differs from the incident's own IOCs. Fast
     substring count on the prefix, then boundary-verified neighbour-IP
-    extraction over the newest sample (the incident's own IPs excluded)."""
+    extraction over the newest sample (the incident's own IPs excluded).
+
+    Deliberately informational-only: results feed the separate `subnets`
+    list in correlate_iocs()'s return value, never the per-IOC `confidence`
+    band — a busy /24 must not let volume alone read as a HIGH-confidence
+    IOC (same ubiquity-guard spirit as _confidence()). Only private-IP
+    prefixes are ever passed in (see _subnet_prefix()); a public-IP /24 is
+    someone else's infrastructure, not this network's lateral-movement
+    neighbourhood.
+    [FYP-CALLS] sqlite3 SELECT (read-only) against soc_db/soc_incidents.db
+    — one COUNT(*) plus one bounded (`sample_cap`) row fetch; no per-row
+    re-fetch (raw_json is already in the sampled rows here).
+    [FYP-USED-BY] correlate_iocs() subnet-pivot loop (this file) only,
+    bounded by _SUBNET_CAP prefixes per incident and the shared wall-clock
+    deadline; skipped entirely when NW_DISABLE_SUBNET_PIVOT=1."""
     raw = con.execute(
         "SELECT COUNT(*) FROM incidents WHERE instr(raw_json, ?) > 0", (prefix,)
     ).fetchone()[0]
@@ -249,9 +383,26 @@ def _subnet_correlate(con: sqlite3.Connection, prefix: str,
 def _case_correlate(pcon: sqlite3.Connection | None,
                     tcon: sqlite3.Connection | None,
                     value: str, seed_ids: set[str]) -> tuple[list, list]:
-    """Which SOC cases reference `value`: (open_cases, closed_cases). Open =
+    """[FYP-FUNCTION] [FYP-PROCESS] Open/closed SOC case lookup.
+
+    Which SOC cases reference `value`: (open_cases, closed_cases). Open =
     active pipeline stage or an analyst ticket; closed = a finalized/archived
-    pipeline stage. The current incident's own rows are excluded."""
+    pipeline stage. The current incident's own rows are excluded.
+
+    Iterates the module-level _ACTIVE_PIPELINE / _CLOSED_PIPELINE table-name
+    tuples against soc_pipeline.db (each table queried independently —
+    sqlite3.Error on a missing/renamed table is swallowed per-table so one
+    absent stage table doesn't abort the rest), then queries the `tickets`
+    table in soc_tickets.db (analyst tickets always count as "open"). Every
+    hit is boundary-verified via _boundary() and rows whose incident_id is
+    in `seed_ids` (the CURRENT incident, from _seed_ids()) are excluded so
+    an incident never "corroborates" itself.
+    [FYP-CALLS] sqlite3 SELECT (read-only) against soc_db/soc_pipeline.db
+    (tables named in _ACTIVE_PIPELINE/_CLOSED_PIPELINE) and
+    soc_db/soc_tickets.db (`tickets` table). Either connection may be None
+    (DB file absent) — handled by the `if pcon is not None` / `if tcon is
+    not None` guards.
+    [FYP-USED-BY] correlate_iocs() per-IOC loop (this file) only."""
     bnd = _boundary(value)
     open_cases: list[dict] = []
     closed_cases: list[dict] = []
@@ -292,11 +443,34 @@ def _case_correlate(pcon: sqlite3.Connection | None,
 
 def _confidence(raw_mentions: int, hi_sev: int,
                 open_cases: list, closed_cases: list) -> tuple[str, list[str]]:
-    """Deterministic HIGH/MEDIUM/LOW/NONE band from frequency + severity +
+    """[FYP-FUNCTION] [FYP-PROCESS] [FYP-EVALUATOR] Confidence-band scoring
+    (the ubiquity guard lives here).
+
+    Deterministic HIGH/MEDIUM/LOW/NONE band from frequency + severity +
     case status, with the ubiquity guard. Returns (band, rationale). The bands
     are defensible (frequency/severity/status, same spirit as the neighbouring
     confidence models) — not a byte-for-byte port of Chronicle's internal
-    thresholds, which are not public."""
+    thresholds, which are not public.
+
+    Rubric, in evaluation order:
+      1. NONE  — zero corpus mentions and no case link at all (first
+         internal sighting).
+      2. Ubiquity guard (checked BEFORE the HIGH/MEDIUM/LOW branches, so it
+         always wins) — raw_mentions > _UBIQUITOUS_AT (1500) caps the band
+         at MEDIUM (if in an open case) or LOW: shared/internal
+         infrastructure must never read as HIGH purely on volume.
+      3. HIGH — not "weak" (_WEAK_SIGNAL_AT < raw_mentions <=
+         _UBIQUITOUS_AT) AND (in an open case OR recurring
+         (raw_mentions >= _RECURRING_AT) with at least one HIGH/CRITICAL
+         hit).
+      4. MEDIUM — any case link (open or closed), or recurring
+         (raw_mentions >= _RECURRING_AT), or a few sightings (>=3) with a
+         HIGH/CRITICAL hit.
+      5. LOW — everything else with at least one mention/case.
+    [FYP-CALLS] none — pure arithmetic/string formatting over the
+    aggregates _corpus_correlate() and _case_correlate() already computed;
+    no DB or network access here.
+    [FYP-USED-BY] correlate_iocs() per-IOC loop (this file) only."""
     rationale: list[str] = []
     if raw_mentions == 0 and not open_cases and not closed_cases:
         return "none", ["not seen in prior alerts or cases — first internal sighting"]
@@ -339,9 +513,24 @@ def correlate_iocs(incident: dict, triage_result: dict | None = None,
                    tickets_db: str | None = None,
                    max_iocs: int = 10, sample_cap: int = 60,
                    deadline_seconds: float = 8.0) -> dict:
-    """Correlate the incident's IOCs against internal alert history + SOC cases.
+    """
+    [FYP-FUNCTION] Evidence Correlation (internal corpus)
+    [FYP-PROCESS] [FYP-ENTRY-POINT] [FYP-EVALUATOR]
+
+    Correlate the incident's IOCs against internal alert history + SOC cases.
     Read-only, deterministic, wall-clock bounded; never raises. Returns
-    {"available": bool, "results": [...], "stats": {...}}."""
+    {"available": bool, "results": [...], "stats": {...}}.
+
+    [FYP-VALIDATION]/[FYP-FALLBACK]: NW_DISABLE_IOC_CORRELATION kill switch
+    short-circuits to available=False before touching any database.
+
+    Processing: _extract_iocs() pulls candidate IOCs from the incident/
+    triage result -> _corpus_correlate()/_subnet_correlate() search
+    soc_incidents.db for prior mentions -> _case_correlate() checks
+    soc_pipeline.db/soc_tickets.db for open-case status ->
+    _confidence() combines frequency/severity/status into a HIGH/MEDIUM/
+    LOW/NONE band, applying the ubiquity-guard cap.
+    """
     if os.environ.get("NW_DISABLE_IOC_CORRELATION"):
         return {"available": False, "reason": "disabled via NW_DISABLE_IOC_CORRELATION",
                 "results": [], "stats": {}}
@@ -353,6 +542,14 @@ def correlate_iocs(incident: dict, triage_result: dict | None = None,
     inc_path = incidents_db or str(_INCIDENTS_DB)
     pipe_path = pipeline_db or str(_PIPELINE_DB)
     tick_path = tickets_db or str(_TICKETS_DB)
+
+    # [FYP-FUNCTION] `_ro` — implements the ro operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include ioc_correlation.py:correlate_iocs; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `connect`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def _ro(path: str) -> sqlite3.Connection | None:
         try:
@@ -442,7 +639,26 @@ def correlate_iocs(incident: dict, triage_result: dict | None = None,
 
 
 def format_correlation(corr: dict) -> str:
-    """Plain-text block for the Map panel (and any LLM prompt reuse)."""
+    """[FYP-FUNCTION] Plain-text rendering of correlate_iocs()'s output.
+
+    Plain-text block for the Map panel (and any LLM prompt reuse). Renders,
+    in order: an "unavailable"/"no IOCs" short-circuit, a confidence-band
+    summary line, per-IOC blocks (value/type/scope, confidence, rationale
+    bullets, corpus window + verified-sample fraction, up to 4 ACTIVE case
+    refs), a rollup of HIGH-confidence values, informational subnet
+    neighbourhood blocks (see _subnet_correlate()'s docstring on why these
+    never affect confidence), and truncation/deadline/corpus-snapshot notes.
+    Purely a string formatter over the dict correlate_iocs() already built —
+    performs no further DB access, scoring, or correlation of its own.
+    [FYP-CALLS] none — pure string formatting of the `corr` dict passed in.
+    [FYP-USED-BY]: [FYP-EVALUATOR] verify via grep before demoing — a
+    repo-wide grep for `format_correlation(` at the time of writing found no
+    caller outside this module's own docstring "Usage" example (module
+    docstring, top of file); external callers (diamond_model.py,
+    reporting_sop.py, skills_sidecar.py, soc_workflow.py, triage_verdict.py)
+    all consume correlate_iocs()'s returned dict directly rather than this
+    formatter, so treat this as an available-but-unwired convenience
+    renderer rather than a proven part of the live request path."""
     if not corr.get("available"):
         return "INTERNAL IOC CORRELATION unavailable: " + corr.get("reason", "unknown")
     if not corr["results"]:

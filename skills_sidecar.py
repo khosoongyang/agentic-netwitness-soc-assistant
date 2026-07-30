@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, os, typing.
+# =============================================================================
+# File: skills_sidecar.py
+# Purpose: This module builds deterministic supplemental analysis passed from investigation into reporting.
+# Main functionality: _disabled, _safe, _collect_diamond, _collect_verdict, _collect_correlation, _collect_asset.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, os, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _disabled, _safe, _collect_diamond, _collect_verdict, _collect_correlation, _collect_asset, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 skills_sidecar.py — bridge the deterministic SOC skill suite into the reporting
 agent's written incident report.
@@ -41,9 +63,29 @@ from typing import Any
 
 # ── environment ──────────────────────────────────────────────────────────────
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_disabled` — implements the disabled operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:build_compliance_evidence, final_verdict.py:build_final_verdict, reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `bool`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _disabled() -> bool:
     return bool(os.environ.get("NW_DISABLE_SKILLS_SIDECAR"))
 
+
+# [FYP-FUNCTION] `_safe` — implements the safe operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `fn`, `*args`, `**kwargs`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:_asset, reporting_sop.py:_iocs, reporting_sop.py:_mitigation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `fn`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _safe(fn, *args, **kwargs) -> Any:
     """Run a skill call; return its result or None on any failure. The skills are
@@ -57,6 +99,14 @@ def _safe(fn, *args, **kwargs) -> Any:
 
 # ── individual skill adapters (each returns a small, report-ready fragment) ──
 
+# [FYP-FUNCTION] `_collect_diamond` — implements the collect diamond operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _collect_diamond(incident: dict, triage_result: dict | None,
                      ti_result: dict | None) -> dict | None:
     try:
@@ -68,6 +118,14 @@ def _collect_diamond(incident: dict, triage_result: dict | None,
         return None
     return d
 
+
+# [FYP-FUNCTION] `_collect_verdict` — implements the collect verdict operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _collect_verdict(incident: dict, triage_result: dict | None,
                      ti_result: dict | None) -> dict | None:
@@ -81,6 +139,14 @@ def _collect_verdict(incident: dict, triage_result: dict | None,
     return v
 
 
+# [FYP-FUNCTION] `_collect_correlation` — implements the collect correlation operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _collect_correlation(incident: dict, triage_result: dict | None) -> dict | None:
     try:
         from ioc_correlation import correlate_iocs
@@ -91,6 +157,14 @@ def _collect_correlation(incident: dict, triage_result: dict | None) -> dict | N
         return None
     return c
 
+
+# [FYP-FUNCTION] `_collect_asset` — implements the collect asset operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _collect_asset(incident: dict, triage_result: dict | None) -> dict | None:
     try:
@@ -107,6 +181,14 @@ def _collect_asset(incident: dict, triage_result: dict | None) -> dict | None:
     return a
 
 
+# [FYP-FUNCTION] `_collect_mitigation` — implements the collect mitigation operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `ti_result`, `asset`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _collect_mitigation(incident: dict, triage_result: dict | None,
                         ti_result: dict | None, asset: dict | None) -> dict | None:
     try:
@@ -119,6 +201,14 @@ def _collect_mitigation(incident: dict, triage_result: dict | None,
     return m
 
 
+# [FYP-FUNCTION] `_collect_sop` — implements the collect sop operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `investigation_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _collect_sop(incident: dict, triage_result: dict | None,
                  investigation_result: dict | None, ti_result: dict | None) -> dict | None:
     try:
@@ -130,6 +220,14 @@ def _collect_sop(incident: dict, triage_result: dict | None,
         return None
     return s
 
+
+# [FYP-FUNCTION] `_collect_compliance` — implements the collect compliance operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `investigation_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _collect_compliance(incident: dict, triage_result: dict | None,
                         investigation_result: dict | None,
@@ -144,6 +242,14 @@ def _collect_compliance(incident: dict, triage_result: dict | None,
         return None
     return e
 
+
+# [FYP-FUNCTION] `_collect_final_verdict` — implements the collect final verdict operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `investigation_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_safe`, `get`, `isinstance`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _collect_final_verdict(incident: dict, triage_result: dict | None,
                            investigation_result: dict | None,
@@ -161,6 +267,14 @@ def _collect_final_verdict(incident: dict, triage_result: dict | None,
 
 # ── field builders (skill output -> reporting-agent input shapes) ────────────
 
+# [FYP-FUNCTION] `_mitre_from_diamond` — implements the mitre from diamond operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `diamond`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _mitre_from_diamond(diamond: dict | None) -> list[str]:
     if not diamond:
         return []
@@ -175,6 +289,14 @@ def _mitre_from_diamond(diamond: dict | None) -> list[str]:
         return [tech]
     return []
 
+
+# [FYP-FUNCTION] `_iocs_from_correlation` — implements the iocs from correlation operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `corr`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `capitalize`, `get`, `join`, `len`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _iocs_from_correlation(corr: dict | None, limit: int = 8) -> list[dict]:
     """Turn correlation results into the reporting agent's IOC shape. Only the
@@ -209,9 +331,25 @@ def _iocs_from_correlation(corr: dict | None, limit: int = 8) -> list[dict]:
     return out
 
 
+# [FYP-FUNCTION] `_assets_from_skills` — implements the assets from skills operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `asset`, `diamond`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_add`, `get`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _assets_from_skills(asset: dict | None, diamond: dict | None) -> list[dict]:
     out: list[dict] = []
     seen: set[str] = set()
+
+    # [FYP-FUNCTION] `_add` — implements the add operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `hostname`, `criticality`, `ips`, `asset_type`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include nw_alerts.py:_add, nw_alerts.py:_distill_alerts, skills_sidecar.py:_assets_from_skills; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `add`, `append`, `isinstance`, `startswith`, `str`, `upper`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _add(hostname, criticality=None, ips=None, asset_type="Endpoint"):
         if not hostname:
@@ -238,6 +376,14 @@ def _assets_from_skills(asset: dict | None, diamond: dict | None) -> list[dict]:
     return out
 
 
+# [FYP-FUNCTION] `_users_from_diamond` — implements the users from diamond operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `diamond`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _users_from_diamond(diamond: dict | None) -> list[dict]:
     if not diamond:
         return []
@@ -248,6 +394,14 @@ def _users_from_diamond(diamond: dict | None) -> list[dict]:
             out.append({"username": u})
     return out
 
+
+# [FYP-FUNCTION] `_recs_from_skills` — implements the recs from skills operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `mitigation`, `verdict`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `enumerate`, `get`, `join`, `len`, `min`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _recs_from_skills(mitigation: dict | None, verdict: dict | None) -> list[dict]:
     """Recommended actions the reporting agent can render directly. Ordered:
@@ -282,6 +436,14 @@ def _recs_from_skills(mitigation: dict | None, verdict: dict | None) -> list[dic
 
 # ── narrative block (human-readable, routed into technical_analysis) ─────────
 
+# [FYP-FUNCTION] `_diamond_lines` — implements the diamond lines operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `d`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:_build_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `join`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _diamond_lines(d: dict) -> list[str]:
     v = d.get("victim") or {}
     infra = d.get("infrastructure") or {}
@@ -312,6 +474,14 @@ def _diamond_lines(d: dict) -> list[str]:
     return lines
 
 
+# [FYP-FUNCTION] `_verdict_lines` — implements the verdict lines operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `v`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:_build_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _verdict_lines(v: dict) -> list[str]:
     lines = ["### Unified Triage Verdict",
              f"- **{v.get('level')}** — {v.get('action')}"]
@@ -324,6 +494,14 @@ def _verdict_lines(v: dict) -> list[str]:
         lines.append(f"- Signals unavailable: {', '.join(v['missing'])}")
     return lines
 
+
+# [FYP-FUNCTION] `_correlation_lines` — implements the correlation lines operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `c`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:_build_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `join`, `len`, `str`, `upper`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _correlation_lines(c: dict, limit: int = 5) -> list[str]:
     lines: list[str] = []
@@ -361,6 +539,14 @@ def _correlation_lines(c: dict, limit: int = 5) -> list[str]:
     return lines
 
 
+# [FYP-FUNCTION] `_mitigation_lines` — implements the mitigation lines operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `m`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:_build_narrative; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _mitigation_lines(m: dict, limit: int = 4) -> list[str]:
     lines = ["### Recommended Mitigations & Coverage",
              f"- Incident impact **{m.get('impact')}**; achievable risk reduction "
@@ -370,6 +556,14 @@ def _mitigation_lines(m: dict, limit: int = 4) -> list[str]:
                      f"(defense-in-depth {'yes' if t.get('defense_in_depth') else 'no'})")
     return lines
 
+
+# [FYP-FUNCTION] `_build_narrative` — constructs build narrative output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `diamond`, `verdict`, `corr`, `mitigation`, `sop`, `compliance`, `final`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:build_skills_context; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_correlation_lines`, `_diamond_lines`, `_mitigation_lines`, `_verdict_lines`, `append`, `format_compliance_evidence`, `format_final_verdict`, `format_sop`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _build_narrative(diamond, verdict, corr, mitigation, sop=None, compliance=None,
                      final=None) -> str:
@@ -422,6 +616,14 @@ def _build_narrative(diamond, verdict, corr, mitigation, sop=None, compliance=No
 
 
 # ── public API ───────────────────────────────────────────────────────────────
+
+# [FYP-FUNCTION] `build_skills_context` — constructs build skills context output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `investigation_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_sidecar, skills_sidecar.py:<module>, soc_workflow.py:handoff_to_reporting; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_assets_from_skills`, `_build_narrative`, `_collect_asset`, `_collect_compliance`, `_collect_correlation`, `_collect_diamond`, `_collect_final_verdict`, `_collect_mitigation`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_skills_context(incident: dict, triage_result: dict | None = None,
                          investigation_result: dict | None = None,
@@ -484,6 +686,14 @@ def build_skills_context(incident: dict, triage_result: dict | None = None,
     }
 
 
+# [FYP-FUNCTION] `_merge_lists` — transforms merge lists input into the stable representation required by downstream SOC analysis support processing.
+# [FYP-INPUT] Parameters: `existing`, `extra`, `key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:enrich_investigation_result; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add`, `append`, `get`, `isinstance`, `key`, `set`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _merge_lists(existing: Any, extra: list, key=lambda x: str(x).strip().lower()) -> list:
     """Union two lists, existing entries first, de-duplicated by ``key``."""
     out: list = []
@@ -500,6 +710,14 @@ def _merge_lists(existing: Any, extra: list, key=lambda x: str(x).strip().lower(
             out.append(item)
     return out
 
+
+# [FYP-FUNCTION] `enrich_investigation_result` — implements the enrich investigation result operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `investigation_result`, `bundle`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:<module>, soc_workflow.py:handoff_to_reporting; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_as_list`, `_merge_lists`, `dict`, `get`, `isinstance`, `lower`, `str`, `strip`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def enrich_investigation_result(investigation_result: dict | None,
                                 bundle: dict) -> dict:
@@ -568,11 +786,27 @@ def enrich_investigation_result(investigation_result: dict | None,
     return inv
 
 
+# [FYP-FUNCTION] `_as_list` — implements the as list operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_detection_summary, final_verdict.py:_build; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _as_list(value: Any) -> list:
     if value in (None, "", [], {}):
         return []
     return value if isinstance(value, list) else [value]
 
+
+# [FYP-FUNCTION] `format_skills_context` — constructs format skills context output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `bundle`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `get`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_skills_context(bundle: dict) -> str:
     """Plain-text rendering of the bundle (for logs / Map-panel reuse)."""

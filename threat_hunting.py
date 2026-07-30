@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, datetime, json, re, sqlite3, statistics.
+# =============================================================================
+# File: threat_hunting.py
+# Purpose: This module creates threat-hunting pivots and queries from confirmed incident indicators.
+# Main functionality: score_hypothesis, detect_anomalies, ioc_sweep_plan, _entity_daily_counts, build_hunt_package, format_hunt.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis threat intelligence and NetWitness integration component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, datetime, json, re, sqlite3, statistics.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: score_hypothesis, detect_anomalies, ioc_sweep_plan, _entity_daily_counts, build_hunt_package, format_hunt, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 threat_hunting.py — proactive threat-hunting analyzer (standalone).
 
@@ -104,6 +126,18 @@ _TITLE_ENTITY_RE = re.compile(r"\bfor\s+(.+?)\s*$")
 
 # ── mode 1: hunt-hypothesis scoring (skill's hunt_mode, refactored) ──────────
 
+# =============================================================================
+# [FYP-SECTION] THREAT INTELLIGENCE AND NETWITNESS INTEGRATION EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `score_hypothesis` — implements the score hypothesis operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `hypothesis`, `actor_relevance`, `control_gap`, `data_availability`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_hunting.py:build_hunt_package; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `add`, `append`, `findall`, `get`, `keys`, `len`, `list`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def score_hypothesis(hypothesis: str, actor_relevance: int = 2,
                      control_gap: int = 2, data_availability: int = 2) -> dict:
     """Skill's hunt-mode scoring for a single hypothesis string."""
@@ -146,6 +180,14 @@ def score_hypothesis(hypothesis: str, actor_relevance: int = 2,
 
 
 # ── mode 2: z-score anomaly detection (skill's anomaly_mode, refactored) ─────
+
+# [FYP-FUNCTION] `detect_anomalies` — implements the detect anomalies operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `events`, `baseline_mean`, `baseline_std`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_hunting.py:build_hunt_package; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `enumerate`, `float`, `fromisoformat`, `get`, `isinstance`, `items`, `join`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def detect_anomalies(events: list, baseline_mean: float, baseline_std: float) -> dict:
     """Skill's z-score anomaly detection over a list of {volume,timestamp,
@@ -220,6 +262,14 @@ def detect_anomalies(events: list, baseline_mean: float, baseline_std: float) ->
 
 # ── mode 3: IOC sweep plan (skill's ioc_mode, refactored) ────────────────────
 
+# [FYP-FUNCTION] `ioc_sweep_plan` — implements the ioc sweep plan operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `iocs`, `ioc_date`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `get`, `isinstance`, `items`, `len`, `now`, `round`, `strptime`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def ioc_sweep_plan(iocs: dict, ioc_date: str | None = None) -> dict:
     type_keys = {"ip": ["ip", "ips"], "domain": ["domain", "domains"],
                  "hash": ["hash", "hashes"], "url": ["url", "urls"],
@@ -249,6 +299,14 @@ def ioc_sweep_plan(iocs: dict, ioc_date: str | None = None) -> dict:
 
 # ── investigation entry point ────────────────────────────────────────────────
 
+# [FYP-FUNCTION] `_entity_daily_counts` — implements the entity daily counts operation used by the surrounding threat intelligence and NetWitness integration workflow.
+# [FYP-INPUT] Parameters: `db_path`, `entity`, `max_rows`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include threat_hunting.py:build_hunt_package; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `close`, `compile`, `connect`, `escape`, `execute`, `fetchall`, `get`, `items`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _entity_daily_counts(db_path: str, entity: str, max_rows: int = 3000) -> list:
     """Per-day incident counts for `entity` across the corpus (read-only)."""
     boundary = re.compile(r"(?<![0-9A-Za-z.])" + re.escape(entity) + r"(?![0-9A-Za-z.])")
@@ -274,6 +332,14 @@ def _entity_daily_counts(db_path: str, entity: str, max_rows: int = 3000) -> lis
                     "action": "incident", "volume": v}
                    for k, v in per_day.items()), key=lambda e: e["timestamp"])
 
+
+# [FYP-FUNCTION] `build_hunt_package` — constructs build hunt package output for the next threat intelligence and NetWitness integration consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_entity_daily_counts`, `append`, `detect_anomalies`, `get`, `group`, `len`, `lower`, `mean`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def build_hunt_package(incident: dict, triage_result: dict | None = None,
                        db_path: str | None = None) -> dict:
@@ -335,6 +401,14 @@ def build_hunt_package(incident: dict, triage_result: dict | None = None,
     return {"available": True, "entity": entity, "tactic": tactic,
             "technique": technique, "hypotheses": hyps[:6], "anomalies": anomalies}
 
+
+# [FYP-FUNCTION] `format_hunt` — constructs format hunt output for the next threat intelligence and NetWitness integration consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `pkg`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `append`, `get`, `int`, `isinstance`, `join`, `sorted`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_hunt(pkg: dict) -> str:
     """Plain-text rendering for the UI."""

@@ -1,3 +1,12 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/technical_findings_template.md.j2
+   Purpose: Renders detailed technical evidence and investigation findings for SOC readers.
+   Main functionality: Presents affected entities, IOCs, events, MITRE mappings, and evidence gaps.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: technical_findings text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting generation, after investigation and before analyst confirmation.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: technical_findings, Technical Findings, [FYP-PROCESS]. #}
 # Technical Findings
 
 ## 1. Technical Context

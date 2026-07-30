@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, backend, json, pathlib, shutil, sys, tempfile.
+# =============================================================================
+# File: soc_reporting_agent/scripts/test_reporting_context_resolution.py
+# Purpose: This module implements test and validation behaviour for test reporting context resolution.
+# Main functionality: write_json, run_case, case_ticket_limited, case_outputs_completed_with_gaps, case_unknown_needs_more_data, case_failed_blocks.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis test and validation component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, backend, json, pathlib, shutil, sys, tempfile.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: write_json, run_case, case_ticket_limited, case_outputs_completed_with_gaps, case_unknown_needs_more_data, case_failed_blocks, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -18,10 +40,30 @@ from backend.reporting_context_resolver import (  # noqa: E402
 from backend import ticket_workflow  # noqa: E402
 
 
+# =============================================================================
+# [FYP-SECTION] TEST SETUP, FIXTURES, AND ASSERTIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `write_json` — persists or updates write json state used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `path`, `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_reporting_agent/adapters/run_reporting.py:_copy_report_artifacts, soc_reporting_agent/adapters/run_reporting.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `mkdir`, `write_text`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+
+# [FYP-FUNCTION] `run_case` — orchestrates the run case entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: `name`, `setup_fn`, `expected_exists`, `expected_usable`, `expected_approval`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_reporting_context_resolution.py:main, soc_reporting_agent/scripts/test_reporting_gate_with_limited_investigation.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `TemporaryDirectory`, `ensure_reporting_inputs`, `exists`, `mkdir`, `resolve_investigation_approval_context`, `resolve_investigation_context`, `setup_fn`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def run_case(name: str, setup_fn, expected_exists: bool, expected_usable: bool, expected_approval: bool | None = None) -> dict:
     with tempfile.TemporaryDirectory() as tmp:
@@ -51,6 +93,14 @@ def run_case(name: str, setup_fn, expected_exists: bool, expected_usable: bool, 
         }
 
 
+# [FYP-FUNCTION] `case_ticket_limited` — implements the case ticket limited operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def case_ticket_limited(root: Path) -> dict:
     return {
         "investigation_result": {
@@ -62,6 +112,14 @@ def case_ticket_limited(root: Path) -> dict:
     }
 
 
+# [FYP-FUNCTION] `case_outputs_completed_with_gaps` — implements the case outputs completed with gaps operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def case_outputs_completed_with_gaps(root: Path) -> dict:
     write_json(root / "outputs" / "investigation_result.json", {
         "status": "completed_with_evidence_gaps",
@@ -71,6 +129,14 @@ def case_outputs_completed_with_gaps(root: Path) -> dict:
     write_json(root / "outputs" / "investigation_approval_result.json", {"decision": "approved"})
     return {}
 
+
+# [FYP-FUNCTION] `case_unknown_needs_more_data` — implements the case unknown needs more data operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def case_unknown_needs_more_data(root: Path) -> dict:
     write_json(root / "outputs" / "unknown" / "investigation_result.json", {
@@ -82,6 +148,14 @@ def case_unknown_needs_more_data(root: Path) -> dict:
     return {}
 
 
+# [FYP-FUNCTION] `case_failed_blocks` — implements the case failed blocks operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def case_failed_blocks(root: Path) -> dict:
     write_json(root / "outputs" / "investigation_result.json", {
         "status": "failed",
@@ -91,9 +165,25 @@ def case_failed_blocks(root: Path) -> dict:
     return {}
 
 
+# [FYP-FUNCTION] `case_missing_blocks` — implements the case missing blocks operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `root`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def case_missing_blocks(root: Path) -> dict:
     return {}
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `len`, `mkdir`, `print`, `run_case`, `sum`, `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def main() -> int:
     tests = [

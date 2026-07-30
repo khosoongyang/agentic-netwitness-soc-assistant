@@ -1,3 +1,61 @@
+# ==============================================================================
+# [FYP-FILE] final_verdict.py
+# Important dependencies: __future__, os, typing.
+# Key evaluator search terms: _disabled, _s, _as_list, _triage_base, _ioc_evidence, _response_readiness, [FYP-FUNCTION].
+# ------------------------------------------------------------------------------
+# File: final_verdict.py (repo root)
+# Purpose: Deterministic, rule-based capstone that runs AFTER investigation
+#   and asks whether the investigation SUBSTANTIATED the triage-time risk
+#   prediction. Re-aggregates triage_verdict.py's verdict with investigation-
+#   side signals into a refined verdict, plus a disposition (Confirmed /
+#   Likely TP / Inconclusive / Possible FP) and a confidence rating that
+#   triage_verdict.py cannot produce on its own (it runs before investigation
+#   exists).
+# Main functionalities:
+#   - build_final_verdict(): [FYP-PROCESS] Post-Investigation Substantiation
+#     / Final Verdict & Confidence — public entry point; never raises, wraps
+#     _build() in a try/except.
+#   - _build(): the actual aggregation — combines the triage baseline with
+#     four investigation-side signal collectors (_ioc_evidence,
+#     _response_readiness, _diamond_signal, _mitre_confirmation) into a
+#     substantiation score, then a refined severity band, disposition and
+#     confidence.
+#   - format_final_verdict(): Markdown headline section for reports / the
+#     Map panel.
+# Inputs: incident (dict), optional triage_result, investigation_result,
+#   ti_result — all already-persisted stage outputs, never re-run here.
+# Outputs: build_final_verdict() -> {available, stage, level, priority,
+#   disposition, confidence, action, delta, triage_verdict, signals,
+#   rationale, missing, stats}.
+# Workflow position: runs after the Investigation stage; reads
+#   triage_verdict.py's output as its pre-investigation baseline (via
+#   _triage_base()) and refines it with investigation evidence.
+# Called by [FYP-USED-BY]: skills_sidecar.py — `_collect_final_verdict`
+#   (from final_verdict import build_final_verdict) feeds the reporting
+#   agent's Automated Analytical Intelligence section, and a second import
+#   (`from final_verdict import format_final_verdict`) renders it as that
+#   section's lead paragraph (both confirmed via grep).
+# Calls [FYP-CALLS]: triage_verdict.aggregate_verdict() (the pre-
+#   investigation baseline this module refines), diamond_model.build_diamond()
+#   (kill-chain completeness signal), tactic_inference.infer_tactics()
+#   (fallback MITRE tactic inference when nothing was already assigned) —
+#   all imported inside try/except so a missing skill only drops that one
+#   signal.
+# HONESTY RULES [FYP-DECISION] baked into _build(): escalates at most ONE
+#   severity band, and only on strong corroborated substantiation of a
+#   high-severity ATT&CK tactic; NEVER silently downgrades — an
+#   unsubstantiated elevated incident keeps its triage-time level but is
+#   flagged low-confidence "verify (possible false positive)" instead of
+#   being closed out.
+# Kill switch: NW_DISABLE_FINAL_VERDICT env var short-circuits to
+#   {"available": False, ...} — see _disabled().
+# Key evaluator search terms [FYP-EVALUATOR]: "Post-Investigation
+#   Substantiation" / "Final Verdict" (build_final_verdict/_build),
+#   "Disposition" (Confirmed/Likely TP/Inconclusive/Possible FP block in
+#   _build), "Confidence" (the subst -> confidence mapping), "Escalation
+#   rule" (the `if subst >= 3 and severe_confirmed and (corroborated or
+#   count_ge2 >= 2)` one-band-only escalation gate).
+# ==============================================================================
 """
 final_verdict.py — post-investigation "final" incident verdict (standalone capstone).
 
@@ -49,15 +107,29 @@ _SEVERE_TACTICS = (
 )
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+
 def _disabled() -> bool:
+    """[FYP-FUNCTION] Kill-switch check for build_final_verdict() — True when
+    NW_DISABLE_FINAL_VERDICT is set in the environment (see file header)."""
     return bool(os.environ.get("NW_DISABLE_FINAL_VERDICT"))
 
 
 def _s(v: Any) -> str:
+    """[FYP-FUNCTION] Safe-string coercion: None/blank -> "", else str(v).strip().
+    Used throughout this file so a missing/None field degrades to an empty
+    string instead of raising when concatenated into a label."""
     return str(v or "").strip()
 
 
 def _as_list(v: Any) -> list:
+    """[FYP-FUNCTION] Normalises a field that may arrive as None, a bare
+    scalar, or an already-a-list into a list — None/""/[]/{} -> [], a single
+    non-list value -> [value], so every caller below can safely len()/iterate
+    without a type check of its own."""
     if v in (None, "", [], {}):
         return []
     return v if isinstance(v, list) else [v]
@@ -66,6 +138,14 @@ def _as_list(v: Any) -> list:
 # ── investigation-side signal collectors (each -> {level 0-3, label, detail} | None)
 
 def _triage_base(incident, triage_result, ti_result) -> dict | None:
+    """[FYP-FUNCTION] [FYP-CALLS] Pre-investigation baseline signal.
+    Re-runs triage_verdict.aggregate_verdict() to get the triage-time
+    CRITICAL/HIGH/MEDIUM/LOW band + corroboration stats that _build() then
+    refines. Fault-tolerant on both axes: an import failure (module missing)
+    and a raised exception during aggregation both degrade to None, and a
+    successful-but-"available": False result is also treated as None — the
+    caller (_build) simply proceeds without a triage baseline rather than
+    crashing the whole post-investigation verdict."""
     try:
         from triage_verdict import aggregate_verdict
     except Exception:
@@ -80,6 +160,11 @@ def _triage_base(incident, triage_result, ti_result) -> dict | None:
 
 
 def _ioc_evidence(inv: dict) -> dict:
+    """[FYP-FUNCTION] IOC Evidence Depth Signal.
+    [FYP-DECISION] Deterministic count-based level: level 3 (high) if the
+    investigation documented >=3 IOCs, level 2 (medium) if 1-2, else level 0
+    (none). No LLM — purely len() of the persisted investigation_result's
+    iocs list. Always "available" (never errors), even when inv is empty."""
     n = len(_as_list(inv.get("iocs")))
     level = 3 if n >= 3 else (2 if n >= 1 else 0)
     return {"name": "IOC evidence depth", "level": level,
@@ -88,6 +173,13 @@ def _ioc_evidence(inv: dict) -> dict:
 
 
 def _response_readiness(inv: dict) -> dict:
+    """[FYP-FUNCTION] Response Readiness Signal.
+    [FYP-DECISION] Deterministic keyword scan (via _action_text) over the
+    investigation's recommended_actions: level 3 if any action text contains
+    a containment/remediation keyword (contain/isolate/remediate/reset/
+    block/quarantine/re-image/eradicate/recover/patch), level 2 if actions
+    exist but none are "strong", else level 0. Purely rule-based string
+    matching — no LLM judgement of action quality."""
     actions = _as_list(inv.get("recommended_actions"))
     kw = ("contain", "isolat", "remediat", "reset", "block", "quarantine",
           "re-image", "reimage", "eradicat", "recover", "patch")
@@ -101,6 +193,14 @@ def _response_readiness(inv: dict) -> dict:
 
 
 def _diamond_signal(incident, triage_result, ti_result) -> dict:
+    """[FYP-FUNCTION] Kill-Chain Characterisation Signal [FYP-CALLS]
+    diamond_model.build_diamond() — reads the Diamond Model's
+    completeness_pct (how many of the 4 Diamond vertices — adversary,
+    capability, infrastructure, victim — were populated) and buckets it
+    deterministically: [FYP-DECISION] level 3 at >=60% complete, level 2 at
+    >=40%, level 1 at >=20%, else 0. Import failure, a raised exception, or
+    an unavailable Diamond result all degrade to the same
+    {"level": 0, "available": False} stub rather than crashing this module."""
     try:
         from diamond_model import build_diamond
         d = build_diamond(incident, triage_result, ti_result)
@@ -117,6 +217,22 @@ def _diamond_signal(incident, triage_result, ti_result) -> dict:
 
 
 def _mitre_confirmation(incident, triage_result=None, inv=None) -> dict:
+    """[FYP-FUNCTION] MITRE Confirmation Signal — the one signal collector
+    whose level feeds the escalation rule (see _build()'s severe_confirmed).
+    [FYP-DECISION] Two-step, fully deterministic (no LLM in this function):
+      1. Prefer an ALREADY-ASSIGNED tactic (investigation's mitre_mapping,
+         else the raw incident's mitre_tactic, else the persisted triage
+         result's mitre_tactic) — treated as "confirmed"/high confidence.
+      2. Only when nothing is assigned, [FYP-CALLS] [FYP-FALLBACK]
+         tactic_inference.infer_tactics() as a deterministic heuristic
+         fallback (import/exception/unavailable all degrade to
+         {"level": 0, "available": False} rather than crashing).
+    `severe` = whether the confirmed/inferred tactic is one of the
+    high-impact _SEVERE_TACTICS (impact, exfiltration, lateral movement,
+    C2, privilege escalation, credential access). Final level = the
+    confidence level (high=3/medium=2/low=1), bumped by one (capped at 3)
+    when the tactic is severe — so a severe tactic always outranks a
+    non-severe one at the same confidence."""
     # 1. A tactic already assigned by investigation/triage/the incident is a
     #    CONFIRMED classification (high confidence). Prefer it over inference.
     tactic, conf, src = "", "high", "confirmed"
@@ -152,6 +268,10 @@ def _mitre_confirmation(incident, triage_result=None, inv=None) -> dict:
 
 
 def _action_text(a: Any) -> str:
+    """[FYP-FUNCTION] Normalises one recommended_actions entry (a plain
+    string, or a dict with recommendation/action/rationale/risk_addressed
+    keys) into a single lowercase string for _response_readiness()'s
+    keyword scan."""
     if isinstance(a, dict):
         return " ".join(_s(a.get(k)) for k in
                         ("recommendation", "action", "rationale", "risk_addressed")).lower()
@@ -175,8 +295,17 @@ _ACTIONS = {
 def build_final_verdict(incident: dict, triage_result: dict | None = None,
                         investigation_result: dict | None = None,
                         ti_result: dict | None = None) -> dict:
-    """Post-investigation verdict. Returns {"available": bool, ...}; never raises.
-    Requires an investigation_result with some substance, else available=False."""
+    """[FYP-FUNCTION] [FYP-PROCESS] Post-Investigation Substantiation / Final
+    Verdict & Confidence — THE public entry point of this file (see file
+    header for the full contract). Thin, never-raising wrapper around
+    _build(): normalises None inputs to {} and catches any exception _build()
+    raises, converting it to {"available": False, "reason": "error: <type>"}
+    so a bug in one signal collector can never break the caller (skills_
+    sidecar.py's reporting-agent feed). Also the sole place the
+    NW_DISABLE_FINAL_VERDICT kill switch (_disabled()) is checked.
+
+    Requires an investigation_result with some substance (see _build()'s
+    has_investigation check), else returns available=False."""
     if _disabled():
         return {"available": False, "reason": "disabled via NW_DISABLE_FINAL_VERDICT"}
     try:
@@ -186,6 +315,46 @@ def build_final_verdict(incident: dict, triage_result: dict | None = None,
 
 
 def _build(incident, triage_result, inv, ti_result) -> dict:
+    """[FYP-FUNCTION] [FYP-PROCESS] Post-Investigation Substantiation / Final
+    Verdict & Confidence — the actual aggregation logic behind
+    build_final_verdict(). 100% deterministic, no LLM, no network of its own
+    (everything it calls — triage_verdict, diamond_model, tactic_inference —
+    is itself rule-based).
+
+    Processing (in order):
+      1. [FYP-CALLS] _triage_base() — the pre-investigation baseline band.
+      2. [FYP-CALLS] _ioc_evidence(), _response_readiness(), _diamond_signal(),
+         _mitre_confirmation() — the four investigation-side signals, always
+         computed (each individually fault-tolerant; unavailable ones are
+         simply excluded from `scored`, never a crash).
+      3. [FYP-DECISION] Substantiation band 0-3 (None/Low/Medium/High): looks
+         only at the investigation-side signals' max level and how many hit
+         >=2 — mirrors triage_verdict.py's corroboration philosophy (a
+         single strong signal alone tops out at 1, not 3).
+      4. [FYP-DECISION] Escalation rule (see file header's "Escalation rule"
+         evaluator term): the refined severity band starts equal to the
+         triage-time band and is escalated by AT MOST ONE band, only when
+         substantiation is High (subst>=3) AND the confirmed/inferred MITRE
+         tactic is both severe and high-confidence (severe_confirmed) AND
+         either the triage verdict was itself already corroborated or >=2
+         investigation signals hit level>=2. It is NEVER downgraded — see
+         the `elif subst == 0 and triage_level >= 2` branch, which only
+         flags low confidence, never lowers the band. This is the file's
+         core HONESTY RULE (see file header).
+      5. [FYP-DECISION] Disposition: Confirmed True Positive (subst==3) /
+         Likely True Positive (subst==2) / Inconclusive (subst==1) /
+         Unsubstantiated-verify-possible-FP (subst==0 and the triage band
+         was elevated) or No adverse findings (subst==0 and triage was
+         already LOW).
+      6. [FYP-DECISION] Confidence calculation — DETERMINISTIC, a plain
+         dict lookup keyed on the same `subst` score computed in step 3
+         (High/Medium/Low/Low for subst 3/2/1/0). No LLM and no separate
+         model call ever produces "confidence" — it is entirely derived
+         from how many/how-strong the rule-based investigation-side
+         signals were, exactly like every other verdict in this module.
+
+    [FYP-USED-BY]: skills_sidecar.py (see file header) via
+    build_final_verdict()."""
     # only meaningful after an investigation actually produced something
     has_investigation = bool(
         _as_list(inv.get("iocs")) or _as_list(inv.get("recommended_actions"))
@@ -209,7 +378,10 @@ def _build(incident, triage_result, inv, ti_result) -> dict:
     max_inv = max(levels) if levels else 0
     count_ge2 = sum(1 for lv in levels if lv >= 2)
 
-    # substantiation band 0-3 (None/Low/Medium/High)
+    # [FYP-DECISION] substantiation band 0-3 (None/Low/Medium/High) — see
+    # _build()'s docstring step 3. Requires BOTH a top-tier signal AND
+    # corroboration (>=2 signals at level>=2) for the top band, same
+    # corroboration philosophy as triage_verdict.aggregate_verdict().
     if max_inv >= 3 and count_ge2 >= 2:
         subst = 3
     elif max_inv >= 2 and count_ge2 >= 1:
@@ -223,8 +395,10 @@ def _build(incident, triage_result, inv, ti_result) -> dict:
     corroborated = bool(base and (base.get("stats", {}).get("corroborating_strong", 0) >= 1))
     severe_confirmed = mitre.get("available") and mitre.get("severe") and mitre["level"] >= 3
 
-    # refined level: escalate ONE band only on strong, corroborated severe-tactic
-    # substantiation; otherwise hold the triage level (never silently downgrade).
+    # [FYP-DECISION] refined level: escalate ONE band only on strong, corroborated
+    # severe-tactic substantiation; otherwise hold the triage level (never
+    # silently downgrade — see _build()'s docstring step 4 / file header
+    # HONESTY RULES / the "Escalation rule" evaluator term).
     refined_level = triage_level
     delta = "unchanged"
     if subst >= 3 and severe_confirmed and (corroborated or count_ge2 >= 2):
@@ -238,7 +412,13 @@ def _build(incident, triage_result, inv, ti_result) -> dict:
     refined_band = _LEVEL_BAND[refined_level]
     substantiated = subst >= 2
 
-    # disposition
+    # [FYP-DECISION] disposition — deterministic mapping straight off the
+    # substantiation score `subst` computed above (see _build()'s docstring
+    # step 5); the only place `triage_level` re-enters is to distinguish a
+    # thin-evidence elevated incident ("verify — possible false positive")
+    # from a thin-evidence incident that was already LOW ("no adverse
+    # findings") — this is what prevents subst==0 from ever reading as a
+    # clean bill of health on a triage-time CRITICAL/HIGH.
     if subst >= 3:
         disposition = "Confirmed — True Positive"
     elif subst == 2:
@@ -249,6 +429,12 @@ def _build(incident, triage_result, inv, ti_result) -> dict:
         disposition = ("Unsubstantiated — verify (possible false positive)"
                        if triage_level >= 2 else "No adverse findings")
 
+    # [FYP-DECISION] Confidence calculation — fully deterministic dict lookup
+    # keyed on `subst` (the same 0-3 substantiation score the band/
+    # disposition above are derived from). No LLM, no separate confidence
+    # model: "how confident is this verdict" is entirely a function of how
+    # many/how-strong the rule-based investigation-side signals corroborated
+    # the triage-time prediction.
     confidence = {3: "High", 2: "Medium", 1: "Low", 0: "Low"}[subst]
     priority = {3: 1, 2: 2, 1: 3, 0: 4}[refined_level]
     action = _ACTIONS[(refined_band, substantiated)]
@@ -277,7 +463,14 @@ def _build(incident, triage_result, inv, ti_result) -> dict:
 # ── rendering ─────────────────────────────────────────────────────────────────
 
 def format_final_verdict(v: dict | None, compact: bool = False) -> str:
-    """Markdown headline section for the report / Map panel."""
+    """[FYP-FUNCTION] Markdown headline section for the report / Map panel —
+    renders a build_final_verdict() dict (level/disposition/confidence/
+    priority/delta/action/rationale/missing) into a human-readable summary.
+    Returns "" (renders nothing) when v is falsy or v["available"] is False,
+    so a disabled/unavailable verdict silently drops out of a report rather
+    than printing a placeholder. [FYP-USED-BY]: skills_sidecar.py (see file
+    header) as the Automated Analytical Intelligence section's lead
+    paragraph."""
     if not v or not v.get("available"):
         return ""
     lines = ["## Final Incident Verdict (post-investigation)"]

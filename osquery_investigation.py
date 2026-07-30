@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, ipaddress, os, re, typing.
+# =============================================================================
+# File: osquery_investigation.py
+# Purpose: This module constructs and interprets osquery-based endpoint investigation actions.
+# Main functionality: _is_public_ip, _focus, _infer_platform, _extract_iocs, _mitre, _platform_ok.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, ipaddress, os, re, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _is_public_ip, _focus, _infer_platform, _extract_iocs, _mitre, _platform_ok, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 osquery_investigation.py — per-incident osquery DFIR investigation pack
 (investigation-agent skill, standalone).
@@ -219,6 +241,18 @@ _HUNT_QUERIES: list[dict] = [
 ]
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_is_public_ip` — evaluates is public ip conditions so invalid or unsafe SOC analysis support processing is stopped early.
+# [FYP-INPUT] Parameters: `v`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_rules.py:_select_indicators, diamond_model.py:_extract, ioc_correlation.py:_extract_iocs; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ip_address`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _is_public_ip(v: str) -> bool:
     try:
         a = ipaddress.ip_address(v)
@@ -227,6 +261,14 @@ def _is_public_ip(v: str) -> bool:
     except ValueError:
         return False
 
+
+# [FYP-FUNCTION] `_focus` — implements the focus operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include osquery_investigation.py:build_investigation_pack, velociraptor_investigation.py:build_collection_plan; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `any`, `get`, `group`, `isinstance`, `items`, `lower`, `match`, `search`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _focus(incident: dict, triage_result: dict | None) -> dict:
     """Best-effort focus of the investigation: the host if we can name one, plus
@@ -256,6 +298,14 @@ def _focus(incident: dict, triage_result: dict | None) -> dict:
     return {"host": host, "title_entity": title_entity}
 
 
+# [FYP-FUNCTION] `_infer_platform` — implements the infer platform operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `host`, `incident`, `override`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include osquery_investigation.py:build_investigation_pack, velociraptor_investigation.py:build_collection_plan; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `join`, `lower`, `match`, `search`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _infer_platform(host: str | None, incident: dict, override: str | None) -> tuple[str, str]:
     """Return (platform, note). platform ∈ {windows, posix, unknown}."""
     if override:
@@ -271,6 +321,14 @@ def _infer_platform(host: str | None, incident: dict, override: str | None) -> t
     return "unknown", ("platform unknown — no host name resolved; assuming a Windows "
                        "endpoint (corpus convention) but cross-platform queries included")
 
+
+# [FYP-FUNCTION] `_extract_iocs` — transforms extract iocs input into the stable representation required by downstream SOC analysis support processing.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include alert_triage.py:normalize_to_incident, ioc_correlation.py:correlate_iocs, osquery_investigation.py:build_investigation_pack; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `dedup`, `get`, `isinstance`, `items`, `lower`, `match`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _extract_iocs(incident: dict, triage_result: dict | None) -> dict:
     mkv = ((triage_result or {}).get("metakeys_payload") or {}).get("metakey_values") or {}
@@ -292,11 +350,27 @@ def _extract_iocs(incident: dict, triage_result: dict | None) -> dict:
                 # cmdline/etc_hosts pivot; the dot rule excludes bare NetBIOS names.
                 domains.append(v)
 
+    # [FYP-FUNCTION] `dedup` — implements the dedup operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `seq`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include detection_rules.py:_select_indicators, diamond_model.py:_extract, osquery_investigation.py:_extract_iocs; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `fromkeys`, `list`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def dedup(seq):
         return list(dict.fromkeys(seq))
 
     return {"ips": dedup(ips), "hashes": dedup(hashes), "domains": dedup(domains)}
 
+
+# [FYP-FUNCTION] `_mitre` — implements the mitre operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include diamond_model.py:build_diamond, osquery_investigation.py:build_investigation_pack, reporting_sop.py:build_incident_sop; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `isinstance`, `str`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _mitre(incident: dict, triage_result: dict | None) -> dict:
     mk = (triage_result or {}).get("metakeys_payload") or {}
@@ -314,6 +388,14 @@ def _mitre(incident: dict, triage_result: dict | None) -> dict:
     return {"technique": tech, "tactic": tactic}
 
 
+# [FYP-FUNCTION] `_platform_ok` — implements the platform ok operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `q_platform`, `inferred`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include osquery_investigation.py:_take, osquery_investigation.py:build_investigation_pack; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _platform_ok(q_platform: str, inferred: str) -> bool:
     if q_platform == "all":
         return True
@@ -326,6 +408,14 @@ def _platform_ok(q_platform: str, inferred: str) -> bool:
     # posix
     return q_platform in ("posix", "linux", "darwin")
 
+
+# [FYP-FUNCTION] `_ioc_pivot_queries` — implements the ioc pivot queries operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `iocs`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include osquery_investigation.py:build_investigation_pack; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `join`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _ioc_pivot_queries(iocs: dict) -> list[dict]:
     """Queries parameterized with THIS incident's actual IOCs."""
@@ -358,6 +448,14 @@ def _ioc_pivot_queries(iocs: dict) -> list[dict]:
     return out
 
 
+# [FYP-FUNCTION] `_select_hunt` — implements the select hunt operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `mitre`, `inferred`, `budget`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include osquery_investigation.py:build_investigation_pack, velociraptor_investigation.py:build_collection_plan; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_take`, `append`, `get`, `join`, `lower`, `set`, `split`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _select_hunt(mitre: dict, inferred: str, budget: int) -> tuple[list[dict], str]:
     """Pick technique-matched queries first (exact id, then base id), then fill
     from the same tactic, respecting the platform + budget."""
@@ -366,6 +464,14 @@ def _select_hunt(mitre: dict, inferred: str, budget: int) -> tuple[list[dict], s
     base = tech.split(".")[0] if tech else ""
     chosen: list[dict] = []
     seen: set[str] = set()
+
+    # [FYP-FUNCTION] `_take` — implements the take operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `pred`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:_select_hunt, velociraptor_investigation.py:_select_hunt; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_platform_ok`, `add`, `append`, `len`, `pred`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _take(pred):
         for q in _HUNT_QUERIES:
@@ -394,6 +500,14 @@ def _select_hunt(mitre: dict, inferred: str, budget: int) -> tuple[list[dict], s
     return chosen, "; ".join(basis_parts)
 
 
+# [FYP-FUNCTION] `build_investigation_pack` — constructs build investigation pack output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident`, `triage_result`, `platform`, `max_hunt_queries`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_extract_iocs`, `_focus`, `_infer_platform`, `_ioc_pivot_queries`, `_mitre`, `_platform_ok`, `_select_hunt`, `_shape`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_investigation_pack(incident: dict, triage_result: dict | None = None,
                              platform: str | None = None,
                              max_hunt_queries: int = 10) -> dict:
@@ -410,6 +524,14 @@ def build_investigation_pack(incident: dict, triage_result: dict | None = None,
     triage = [q for q in _TRIAGE_QUERIES if _platform_ok(q["platform"], inferred)]
     hunt, hunt_basis = _select_hunt(mitre, inferred, max_hunt_queries)
     ioc_pivot = _ioc_pivot_queries(iocs)
+
+    # [FYP-FUNCTION] `_shape` — implements the shape operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `q`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:build_investigation_pack, velociraptor_investigation.py:build_collection_plan; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `get`, `replace`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _shape(q: dict) -> dict:
         return {
@@ -438,6 +560,14 @@ def build_investigation_pack(incident: dict, triage_result: dict | None = None,
     }
 
 
+# [FYP-FUNCTION] `format_pack` — constructs format pack output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `pack`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_emit`, `append`, `get`, `join`, `len`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def format_pack(pack: dict) -> str:
     """Plain-text block for the Map panel."""
     if not pack.get("available"):
@@ -457,6 +587,14 @@ def format_pack(pack: dict) -> str:
     if ic["ips"] or ic["hashes"] or ic["domains"]:
         lines.append(f"  IOCs pivoted: {len(ic['ips'])} IP(s), "
                      f"{len(ic['hashes'])} hash(es), {len(ic['domains'])} domain(s)")
+
+    # [FYP-FUNCTION] `_emit` — implements the emit operation used by the surrounding SOC analysis support workflow.
+    # [FYP-INPUT] Parameters: `header`, `queries`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, soc_triage_agent/soc_triage_agent.py:_call, soc_triage_agent/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `get`, `rstrip`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _emit(header: str, queries: list[dict]) -> None:
         if not queries:

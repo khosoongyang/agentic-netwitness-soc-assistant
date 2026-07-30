@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, json, re, sqlite3.
+# =============================================================================
+# File: detection_engineering.py
+# Purpose: This module derives detection-engineering recommendations from incident evidence for analyst review and reporting.
+# Main functionality: validate_sigma, to_elastic_eql, catalog_entry, _capability_by_tactic, assess_attack_coverage, format_coverage.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, json, re, sqlite3.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: validate_sigma, to_elastic_eql, catalog_entry, _capability_by_tactic, assess_attack_coverage, format_coverage, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 detection_engineering.py — detection-as-code rigor + ATT&CK coverage.
 
@@ -62,6 +84,18 @@ _UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
 
 # ── detection-as-code: Sigma validation ─────────────────────────────────────
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `validate_sigma` — evaluates validate sigma conditions so invalid or unsafe SOC analysis support processing is stopped early.
+# [FYP-INPUT] Parameters: `rule`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `any`, `append`, `bool`, `get`, `lower`, `match`, `startswith`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def validate_sigma(rule: dict) -> dict:
     """The skill's field gate: a Sigma rule needs all required fields, a UUID
     id, an attack.* tag, and a non-empty detection selection."""
@@ -83,6 +117,14 @@ def validate_sigma(rule: dict) -> dict:
 
 
 # ── Elastic EQL compile target (3rd SIEM) ────────────────────────────────────
+
+# [FYP-FUNCTION] `to_elastic_eql` — implements the to elastic eql operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `built`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `append`, `get`, `isinstance`, `items`, `join`, `split`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def to_elastic_eql(built: dict) -> str:
     """Elastic EQL translation of the Sigma selection (complements the
@@ -106,6 +148,14 @@ def to_elastic_eql(built: dict) -> str:
 
 
 # ── detection catalog entry (YAML metadata) ─────────────────────────────────
+
+# [FYP-FUNCTION] `catalog_entry` — implements the catalog entry operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `built`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `get`, `join`, `startswith`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def catalog_entry(built: dict) -> str:
     """The skill's Detection Catalog metadata for a generated rule."""
@@ -134,6 +184,14 @@ def catalog_entry(built: dict) -> str:
 
 # ── ATT&CK coverage assessment ───────────────────────────────────────────────
 
+# [FYP-FUNCTION] `_capability_by_tactic` — implements the capability by tactic operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include detection_engineering.py:assess_attack_coverage; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `replace`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _capability_by_tactic() -> dict:
     """Which of our modules can produce detection/hunt/mitigation content for
     each ATT&CK tactic — read from the modules' own tables (honest)."""
@@ -160,6 +218,14 @@ def _capability_by_tactic() -> dict:
         pass
     return cap
 
+
+# [FYP-FUNCTION] `assess_attack_coverage` — implements the assess attack coverage operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `db_path`, `corpus_sample`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_capability_by_tactic`, `append`, `close`, `connect`, `execute`, `get`, `items`, `join`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def assess_attack_coverage(db_path: str | None = None,
                            corpus_sample: int = 20000) -> dict:
@@ -232,6 +298,14 @@ def assess_attack_coverage(db_path: str | None = None,
         "corpus_incidents_scanned": scanned,
     }
 
+
+# [FYP-FUNCTION] `format_coverage` — constructs format coverage output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `cov`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `append`, `join`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_coverage(cov: dict) -> str:
     """Plain-text ATT&CK coverage report for the UI."""

@@ -1,4 +1,88 @@
 """
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# =============================================================================
+# File:
+#   soc_workflow.py
+#
+# Purpose:
+#   THE ORCHESTRATION ENGINE for the Aegis SOC platform. This is a headless,
+#   code-driven "puppet master" — not a UI file — that sequences the four
+#   pipeline stages (Parsing, Triage, Investigation, Reporting), persists
+#   every stage transition to the pipeline database, and implements the
+#   in-process evidence-gap feedback loop that can trigger an automatic
+#   Investigation re-run without any human click. app.py (the Streamlit
+#   dashboard) imports functions from this module directly and calls them
+#   from its own session-state-driven, human-gated flow; this file itself
+#   also exposes a `main()` CLI entry point that runs the whole chain
+#   headlessly (`python soc_workflow.py --incident-file ...`).
+#
+# Main functionalities:
+#   1. Stage routing: needs_investigation() decides Investigation vs
+#      straight-to-Reporting based on the triage classification.
+#   2. Stage handoffs: handoff_to_investigation(), handoff_to_reporting()
+#      package one stage's output into the next stage's expected input files.
+#   3. Automatic re-run / feedback loop: detect_evidence_gaps() +
+#      investigate_with_feedback() re-run Investigation in-process when the
+#      first pass leaves too many evidence gaps (WORKFLOW_FEEDBACK_THRESHOLD).
+#   4. Pipeline database bookkeeping: pipeline_insert()/pipeline_db_init()
+#      write to soc_db/soc_pipeline.db, the same six-stage schema app.py's
+#      "Pipeline DB" tab renders.
+#   5. Subprocess/CLI stage runners: run_investigation(), run_reporting(),
+#      export_report_documents() shell out to soc_investigation_agent_revised/
+#      and soc_reporting_agent/ via their own entry points/adapters.
+#   6. Headless end-to-end stage chain: run_until_triage_approval(),
+#      resume_after_triage_approval(), run_investigation_stage(),
+#      run_reporting_stage(), run_stage_chain(), main().
+#
+# Inputs:
+#   An incident dict (from sample_incident.json / a fetched NetWitness
+#   incident / app.py's session state), plus files dropped by upstream
+#   stages (triaged_alerts/, soc_reporting_agent/inputs/*.json).
+#
+# Outputs:
+#   JSON result files consumed by the next stage, rows in
+#   soc_db/soc_pipeline.db, exported report documents, and return dicts
+#   consumed directly by app.py's UI rendering.
+#
+# Workflow position:
+#   Sits BETWEEN the UI (app.py) and the four stage subsystems. app.py calls
+#   into this module's functions on each analyst-triggered stage action; this
+#   module does not itself gate on human approval or lock stages in the UI
+#   sense — see workflow_state_store.py / app.py session state for that.
+#
+# Called by:
+#   app.py (verified via grep: needs_investigation, investigate_with_feedback,
+#   build_post_investigation_record, pipeline_insert, handoff_to_reporting,
+#   run_reporting are all called from app.py). eval_harness.py calls
+#   build_investigation_alert for a regression test. run_full_workflow()/
+#   main() are CLI-only entry points, not called by app.py.
+#
+# Calls:
+#   soc_triage_agent (TriageAgent, CiscoLLMConfig), soc_investigation_agent_revised/
+#   (via subprocess/file-queue), soc_reporting_agent/ (via its own adapter),
+#   workflow_state_store.py (wss), workflow_validation.py (wv), nw_alerts.py
+#   (_merge_alert_digest), soc_db/soc_pipeline.db (sqlite3).
+#
+# Important dependencies:
+#   workflow_state_store, workflow_validation, nw_alerts — all repo-root
+#   siblings documented separately.
+#
+# Important side effects:
+#   Writes soc_db/soc_pipeline.db rows, writes JSON artifacts under each
+#   stage's run directory, launches subprocesses for Investigation/Reporting.
+#
+# Error and fallback behaviour:
+#   Parsing failures are non-fatal (parsed_context left None, triage runs
+#   standalone). See [FYP-ERROR]/[FYP-FALLBACK] tags at individual call sites.
+#
+# Key evaluator search terms:
+#   needs_investigation, detect_evidence_gaps, investigate_with_feedback,
+#   handoff_to_investigation, handoff_to_reporting, pipeline_insert,
+#   run_stage_chain, run_until_triage_approval, resume_after_triage_approval,
+#   [FYP-FLOW], [FYP-DECISION], [FYP-RERUN], [FYP-STAGE-LOCK]
+# =============================================================================
+
 soc_workflow.py — SOC multi-agent workflow orchestrator
 ========================================================
 Code-driven "puppet master" connecting four stages:
@@ -77,7 +161,7 @@ INVESTIGATE_CLASSIFICATIONS = {"critical", "high", "medium"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 1.  PIPELINE DATABASE  (same schema/stages as app.py)
+# [FYP-SECTION] 1.  PIPELINE DATABASE  (same schema/stages as app.py)
 # ══════════════════════════════════════════════════════════════════════════════
 
 PIPELINE_STAGES = [
@@ -95,12 +179,39 @@ PIPELINE_STAGES = [
 def build_post_investigation_record(inv: dict, ticket: dict,
                                     title: str = "",
                                     run_stamp: str | None = None) -> dict:
-    """Pipeline record for the post_investigation stage — one shape shared by
+    """
+    [FYP-FUNCTION] Post-Investigation Pipeline Record Builder
+
+    Pipeline record for the post_investigation stage — one shape shared by
     app.py and the CLI workflow so the DB viewer sees consistent fields.
 
     With run_stamp, the record id is run-scoped (postinv_#UNC@stamp) so every
     workflow execution APPENDS a new findings row instead of replacing the
-    previous one; ticket lineage stays via incident_id + ticket_unc fields."""
+    previous one; ticket lineage stays via incident_id + ticket_unc fields.
+
+    [FYP-STATE]: id shape is the key decision here — no run_stamp means the
+    id is unc-scoped only (`postinv_{unc}`), so pipeline_insert()'s
+    INSERT OR REPLACE will overwrite any prior post_investigation row for
+    that ticket instead of appending a new one. Callers that want per-run
+    history (e.g. investigate_with_feedback's re-run) must pass run_stamp.
+
+    Args:
+        inv: investigation agent's native result dict (severity, summary, ...).
+        ticket: the triage ticket dict this investigation was run for
+            (supplies incident_id/unc/title/classification fallbacks).
+        title: optional override for the record title; falls back to
+            ticket["title"] then incident_id.
+        run_stamp: optional per-run token (see [FYP-STATE] above) used to
+            make the record id unique per workflow execution.
+
+    Returns:
+        dict shaped for pipeline_insert(stage="post_investigation", record=...):
+        id/incident_id/ticket_unc/title/severity/summary/investigation.
+
+    [FYP-USED-BY]: app.py (imported as `_wfm`) — builds this record after an
+    investigation run completes, then passes it straight to
+    `_wfm.pipeline_insert("post_investigation", rec)`.
+    """
     inc_id = inv.get("incident_id") or ticket.get("incident_id") or ""
     unc    = ticket.get("unc") or inc_id
     rec_id = f"postinv_{unc}@{run_stamp}" if run_stamp else f"postinv_{unc}"
@@ -115,7 +226,16 @@ def build_post_investigation_record(inv: dict, ticket: dict,
     }
 
 
+# [FYP-FUNCTION] `_pl_con` — implements the pl con operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_pipeline_stage_map, app.py:_pipeline_worked_ids; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `connect`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _pl_con() -> sqlite3.Connection:
+    # [FYP-DATABASE]: opens a fresh sqlite3 connection per call (no pooling).
     # Generous busy-timeout: the app's poll loop reads these tables every
     # ~1.5s while the worker writes — waits must outlast brief read locks.
     con = sqlite3.connect(str(PIPELINE_DB_FILE), check_same_thread=False,
@@ -125,6 +245,28 @@ def _pl_con() -> sqlite3.Connection:
 
 
 def pipeline_db_init() -> None:
+    """
+    [FYP-FUNCTION] Pipeline DB Schema Initialiser
+
+    [FYP-DATABASE]: idempotent bootstrap of soc_db/soc_pipeline.db — creates
+    the 8 PIPELINE_STAGES tables (see PIPELINE_STAGES list above) with
+    `CREATE TABLE IF NOT EXISTS`, so calling this on an already-initialised
+    DB is a safe no-op for existing tables. Also switches the DB to WAL mode
+    (best-effort; failure is swallowed) so app.py's UI-thread poll loop can
+    read concurrently while a worker thread writes via pipeline_insert().
+
+    Schema (identical across all 8 tables): id TEXT PRIMARY KEY,
+    incident_id, title, severity, stage, created_at, summary, raw_json
+    (full record JSON — the typed columns above are just for cheap
+    filtering/sorting in the DB viewer; raw_json is the source of truth).
+
+    [FYP-CALLS]: run_until_triage_approval() (this module) calls
+    pipeline_db_init() once at the start of a fresh headless run. app.py
+    keeps its own separate pipeline_db_init()/pipeline_insert() pair
+    (same schema, called at import time) for its own direct sqlite3 writes
+    — the two implementations are independent but must stay schema-
+    compatible since they share the same DB file/tables.
+    """
     with _pl_con() as c:
         try:
             c.execute("PRAGMA journal_mode=WAL")
@@ -140,9 +282,46 @@ def pipeline_db_init() -> None:
 
 
 def pipeline_insert(stage: str, record: dict) -> str:
-    """Insert a record into a pipeline stage table (mirrors app.py behaviour).
+    """
+    [FYP-FUNCTION] Pipeline DB Row Writer (used at every stage transition)
+
+    Insert a record into a pipeline stage table (mirrors app.py behaviour).
     Same-id re-inserts REPLACE the row; a run counter + timestamp stamp the
-    summary so refreshed records are visibly new in the DB viewer."""
+    summary so refreshed records are visibly new in the DB viewer.
+
+    [FYP-DATABASE]: `INSERT OR REPLACE` keyed on `id` — this is an UPSERT,
+    not an append. Whether a given call creates a new row or overwrites an
+    existing one is entirely controlled by the `id` the CALLER puts on
+    `record` (see build_post_investigation_record's [FYP-STATE] note: a
+    run_stamp-suffixed id appends history, a bare id overwrites in place).
+
+    Re-insert bookkeeping: before writing, reads back any existing row's
+    raw_json to recover `workflow_runs_count`, increments it, and — if this
+    is not the first write for this id — prefixes the summary with
+    `[run N · HH:MM:SS]` so an analyst re-viewing the DB tab can tell a row
+    was refreshed rather than created fresh.
+
+    Args:
+        stage: one of PIPELINE_STAGES (table name — interpolated directly
+            into the SQL, so callers MUST pass a trusted constant, never
+            unsanitised user input).
+        record: dict to persist; `id`/`unc` is used as the primary key
+            (falls back to a fresh uuid4 if neither is present, truncated
+            to 64 chars), `incident_id`/`incidentId`, `title`/`name`,
+            `severity`/`classification` are lifted into typed columns for
+            cheap querying, and the full dict is stored as raw_json.
+
+    Returns:
+        The row id actually written (str) — callers often keep this to
+        cross-reference the row later.
+
+    [FYP-USED-BY]: called throughout this module at every stage handoff
+    (handoff_to_investigation, handoff_to_reporting, run_investigation,
+    run_reporting, run_until_triage_approval, run_investigation_stage,
+    run_reporting_stage, run_stage_chain) and directly by app.py (via the
+    `_wfm.pipeline_insert` alias) for post_investigation/finalized_report/
+    workflow_runs records raised from UI-driven actions.
+    """
     import uuid as _uuid
     rec_id = str(record.get("id") or record.get("unc") or _uuid.uuid4())[:64]
     now = datetime.now().isoformat(timespec="seconds")
@@ -177,20 +356,31 @@ def pipeline_insert(stage: str, record: dict) -> str:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2.  HELPERS
+# [FYP-SECTION] 2.  HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
 
 def _log(tag: str, msg: str) -> None:
+    """[FYP-FUNCTION] tiny timestamped console logger — `[HH:MM:SS] [tag] msg`,
+    flushed immediately so output interleaves correctly with subprocess
+    streaming (see _run_subprocess_streaming). Used throughout this module
+    wherever a plain print() with a consistent prefix is wanted."""
     print(f"[{datetime.now().strftime('%H:%M:%S')}] [{tag}] {msg}", flush=True)
 
 
 def _write_json(path: Path, data: Any) -> None:
+    """[FYP-FUNCTION] Plain (non-atomic) JSON writer — creates parent dirs and
+    pretty-prints `data` to `path`. NOT crash-safe mid-write; for artifacts
+    that must survive a crash/restart use _atomic_write_json() instead (see
+    [FYP-SECTION] 2.5 below)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False, default=str),
                     encoding="utf-8")
 
 
 def _read_json(path: Path, default: Any = None) -> Any:
+    """[FYP-FUNCTION] [FYP-FALLBACK] Best-effort JSON reader — returns
+    `default` (never raises) for a missing/empty/corrupt file, so callers
+    can treat "no prior artifact" and "unreadable artifact" identically."""
     try:
         if not path.exists() or path.stat().st_size == 0:
             return default
@@ -200,7 +390,7 @@ def _read_json(path: Path, default: Any = None) -> Any:
 
 
 def _safe_ticket_id(unc: str) -> str:
-    """'#00012A' -> 'TKT-00012A' (filesystem/env safe)."""
+    """[FYP-FUNCTION] '#00012A' -> 'TKT-00012A' (filesystem/env safe)."""
     core = re.sub(r"[^A-Za-z0-9]", "", str(unc or ""))
     return f"TKT-{core}" if core else "TKT-UNKNOWN"
 
@@ -209,7 +399,10 @@ def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
                               extra_env: dict[str, str] | None = None,
                               line_cb=None, watchdog_cb=None,
                               watchdog_interval: int | None = None) -> dict:
-    """Like _run_subprocess, but streams merged stdout/stderr line-by-line to
+    """
+    [FYP-FUNCTION] Streaming Subprocess Runner (Investigation/Reporting agents)
+
+    Like _run_subprocess, but streams merged stdout/stderr line-by-line to
     line_cb(str) while the process runs — used by the app's agent board to
     show live 'thinking' for subprocess agents. Same result shape.
 
@@ -220,7 +413,19 @@ def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
     lock's renewal failed — see run_investigation's docstring), the child
     process is terminated exactly like a timeout, but the result's
     status is "lock_lost", not "timeout" — callers must treat that
-    distinctly (never as a normal completed/failed investigation)."""
+    distinctly (never as a normal completed/failed investigation).
+
+    [FYP-ERROR] [FYP-FALLBACK]: three distinct terminal outcomes besides a
+    clean exit — "lock_lost" (watchdog_cb returned False), "timeout" (ran
+    past `timeout` seconds) and "execution_error" (Popen/launch itself
+    raised) — all returned as a dict rather than an exception, so callers
+    branch on `result["status"]`/`result["success"]` instead of try/except.
+    [FYP-USED-BY]: run_investigation(), run_reporting() (this module) —
+    both subprocess stage runners, so live agent output can be surfaced to
+    app.py's UI as it happens. _run_subprocess() (non-streaming, below) is
+    the plain counterpart used by export_report_documents() and as the
+    non-streaming code path inside run_investigation()/run_reporting().
+    """
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUTF8", "1")
@@ -241,6 +446,14 @@ def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
         timed_out = {"v": False}
         lock_lost = {"v": False}
 
+        # [FYP-FUNCTION] `_kill_on_timeout` — implements the kill on timeout operation used by the surrounding workflow orchestration and state workflow.
+        # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+        # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+        # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+        # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+        # [FYP-CALLS] Calls: `kill`.
+        # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
         def _kill_on_timeout():
             timed_out["v"] = True
             try:
@@ -252,6 +465,14 @@ def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
         watchdog.start()
 
         lock_timer_holder: dict = {}
+
+        # [FYP-FUNCTION] `_check_lock` — evaluates check lock conditions so invalid or unsafe workflow orchestration and state processing is stopped early.
+        # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+        # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+        # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+        # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+        # [FYP-CALLS] Calls: `Timer`, `kill`, `poll`, `start`, `terminate`, `wait`, `watchdog_cb`.
+        # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
         def _check_lock() -> None:
             if proc.poll() is not None:
@@ -313,6 +534,13 @@ def _run_subprocess_streaming(cmd: list[str], cwd: Path, timeout: int,
 
 def _run_subprocess(cmd: list[str], cwd: Path, timeout: int,
                     extra_env: dict[str, str] | None = None) -> dict:
+    """[FYP-FUNCTION] Plain (non-streaming) subprocess runner — blocks on
+    subprocess.run() and returns the same {started_at, returncode, success,
+    stdout, stderr[, status]} result shape as _run_subprocess_streaming(),
+    just without live line-by-line callbacks. [FYP-USED-BY]:
+    export_report_documents(); also used as the non-watchdog code path
+    inside run_investigation()/run_reporting() when no live-progress
+    callback is supplied."""
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUTF8", "1")
@@ -338,6 +566,10 @@ def _run_subprocess(cmd: list[str], cwd: Path, timeout: int,
 
 
 def _first(*values, default=None):
+    """[FYP-FUNCTION] Returns the first "truthy-ish" value among `values`
+    (skipping None, "", [], {}), else `default` — a compact fallback-chain
+    helper used when picking the first present field across several
+    possible key spellings/sources."""
     for v in values:
         if v not in (None, "", [], {}):
             return v
@@ -345,7 +577,7 @@ def _first(*values, default=None):
 
 
 def _normalise_llm_url(url: str) -> str:
-    """Ensure the base URL ends with /v1 (same rule as app.py's get_cisco_cfg).
+    """[FYP-FUNCTION] Ensure the base URL ends with /v1 (same rule as app.py's get_cisco_cfg).
     Some OpenAI-compatible gateways answer 401 — not 404 — for unknown
     routes, so a missing /v1 looks exactly like a bad token. This bit the
     first live run."""
@@ -356,7 +588,7 @@ def _normalise_llm_url(url: str) -> str:
 
 
 def _maybe_b64_decode(value: str) -> str:
-    """app.py's sidebar save writes CISCO_LLM_KEY to .env base64-encoded
+    """[FYP-FUNCTION] [FYP-FALLBACK] app.py's sidebar save writes CISCO_LLM_KEY to .env base64-encoded
     ("to avoid special char issues"). Decode when the value is valid base64;
     hand-edited raw tokens (e.g. "sk-...") fail validation and pass through."""
     import base64
@@ -368,13 +600,19 @@ def _maybe_b64_decode(value: str) -> str:
 
 
 def _openai_compat_env() -> dict[str, str]:
-    """LLM env for the investigation/reporting subprocesses.
+    """
+    [FYP-FUNCTION] [FYP-FALLBACK] LLM env for the investigation/reporting subprocesses.
 
     Preference order:
       1. A real OPENAI_API_KEY in the environment — use OpenAI as-is.
       2. Fall back to a custom OpenAI-compatible endpoint configured via
          CISCO_LLM_URL/KEY/MODEL, reusing the triage agent's credentials.
       3. Neither present — return {} and the agents use their non-LLM paths.
+
+    [FYP-USED-BY]: run_investigation(), run_reporting() (this module) — the
+    returned dict is passed as `extra_env` so the subprocess inherits LLM
+    credentials without them needing to already be in the parent's real
+    os.environ (e.g. when only the Cisco gateway vars are set).
     """
     if os.environ.get("OPENAI_API_KEY", "").strip():
         return {}
@@ -392,17 +630,22 @@ def _openai_compat_env() -> dict[str, str]:
 
 
 def _llm_seed() -> str:
-    """One fixed seed for every LLM call in the pipeline — same policy as the
-    triage agent (CISCO_LLM_SEED, default 42) so repeat runs are reproducible."""
+    """[FYP-FUNCTION] One fixed seed for every LLM call in the pipeline — same policy as the
+    triage agent (CISCO_LLM_SEED, default 42) so repeat runs are reproducible.
+    [FYP-USED-BY]: run_investigation(), run_reporting() — passed to the
+    subprocess as OPENAI_SEED/REPORTING_LLM_SEED alongside _openai_compat_env()."""
     return os.environ.get("CISCO_LLM_SEED", "").strip() or "42"
 
 
 def _safe(s: str) -> str:
+    """[FYP-FUNCTION] Filesystem/env-safe slug: any char outside
+    [A-Za-z0-9_-] becomes "_". Used to build directory/file names from
+    arbitrary incident/run identifiers (see _artifact_dir below)."""
     return re.sub(r"[^A-Za-z0-9_-]", "_", str(s))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2.5  RUN-SCOPED ARTIFACT PERSISTENCE (identity-enveloped, atomic writes)
+# [FYP-SECTION] 2.5  RUN-SCOPED ARTIFACT PERSISTENCE (identity-enveloped, atomic writes)
 # ══════════════════════════════════════════════════════════════════════════════
 # Every artifact this module writes for durable resume (the full raw
 # incident; later, run-scoped parsing summaries) lives under this one
@@ -414,7 +657,7 @@ _TRUSTED_OUTPUT_ROOT = REP_DIR / "outputs"
 
 
 def _artifact_dir(incident_id: str, run_id: str) -> Path:
-    """A readable prefix plus a content hash of the FULL original
+    """[FYP-FUNCTION] [FYP-STATE] A readable prefix plus a content hash of the FULL original
     identifier, so two different incident_ids that _safe() would
     otherwise collapse to the same sanitized string never share a
     directory."""
@@ -425,7 +668,7 @@ def _artifact_dir(incident_id: str, run_id: str) -> Path:
 
 
 def reporting_attempt_dir(incident_id: str, run_id: str, reporting_stage_attempt: int) -> Path:
-    """Native run-scoped Reporting workspace root for one attempt —
+    """[FYP-FUNCTION] [FYP-STATE] Native run-scoped Reporting workspace root for one attempt —
     reporting_attempt_dir(...)/inputs and .../outputs are passed to the
     Reporting subprocess chain as REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR
     (see handoff_to_reporting()/run_reporting()/run_reporting_stage()), so
@@ -438,7 +681,7 @@ def reporting_attempt_dir(incident_id: str, run_id: str, reporting_stage_attempt
 
 
 def _atomic_write_json(path: Path, data: dict) -> None:
-    """Write-temp-then-replace so a crash or restart mid-write can never
+    """[FYP-FUNCTION] Write-temp-then-replace so a crash or restart mid-write can never
     leave a partially-written file behind to be loaded."""
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.parent / f".{path.name}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
@@ -451,7 +694,7 @@ def _atomic_write_json(path: Path, data: dict) -> None:
 
 def _save_run_artifact(incident_id: str, run_id: str, filename: str,
                        artifact_type: str, payload: dict) -> Path:
-    """Every artifact is wrapped in an identity envelope, not just the raw
+    """[FYP-FUNCTION] [FYP-STATE] Every artifact is wrapped in an identity envelope, not just the raw
     payload, so reload can validate BOTH incident_id and run_id without
     depending on whatever (possibly absent) identity fields the payload
     itself happens to carry."""
@@ -467,6 +710,11 @@ def _save_run_artifact(incident_id: str, run_id: str, filename: str,
 
 
 def _resolve_trusted_path(path_str: str | None) -> Path | None:
+    """[FYP-FUNCTION] [FYP-ERROR] Path-traversal guard: resolves `path_str`
+    and requires it to sit inside _TRUSTED_OUTPUT_ROOT and exist as a file,
+    else returns None. Every artifact reload in this module goes through
+    this first — a state-store row pointing outside the trusted root (or at
+    a directory, or nowhere) is treated as "no artifact", not an error."""
     if not path_str:
         return None
     try:
@@ -478,7 +726,7 @@ def _resolve_trusted_path(path_str: str | None) -> Path | None:
 
 
 def _load_artifact_envelope(path: Path | None, incident_id: str, run_id: str) -> dict | None:
-    """Shared reload+validate routine — checks both incident_id and run_id
+    """[FYP-FUNCTION] [FYP-STATE] Shared reload+validate routine — checks both incident_id and run_id
     against the envelope (not the payload's own, possibly-absent identity
     fields), and a half-written temp file is never at the final path (see
     _atomic_write_json), so this either finds a complete file or none."""
@@ -495,7 +743,7 @@ def _load_artifact_envelope(path: Path | None, incident_id: str, run_id: str) ->
 
 
 def _data_availability(incident: dict) -> dict:
-    """Real fetch-outcome metadata for the incident about to be persisted as
+    """[FYP-FUNCTION] [FYP-DECISION] Real fetch-outcome metadata for the incident about to be persisted as
     this run's raw-incident artifact — NOT a bare bool(incident.get("alerts")),
     which can't distinguish "alerts were fetched and there genuinely are
     none" from "the fetch failed" or "this is the slim, already-stripped
@@ -534,7 +782,7 @@ def _data_availability(incident: dict) -> dict:
 
 
 def load_raw_incident_for_run(incident_id: str, run_id: str) -> dict | None:
-    """The ONLY source of the full raw incident (with alertMeta) for the
+    """[FYP-FUNCTION] [FYP-STATE] The ONLY source of the full raw incident (with alertMeta) for the
     durable Threat Intelligence path — never st.session_state. Returns
     None (not a guess) if the row's run_id doesn't match or the file is
     missing/invalid/mismatched.
@@ -558,7 +806,7 @@ def load_raw_incident_for_run(incident_id: str, run_id: str) -> dict | None:
 
 
 def load_data_availability_for_run(incident_id: str, run_id: str) -> dict | None:
-    """Companion to load_raw_incident_for_run() — returns the fetch-outcome
+    """[FYP-FUNCTION] Companion to load_raw_incident_for_run() — returns the fetch-outcome
     metadata stamped alongside the incident, or None for a legacy artifact
     (predating this metadata) or a missing/invalid one. case_view.py must
     treat None the same as "unavailable / assume incomplete", never as
@@ -574,7 +822,7 @@ def load_data_availability_for_run(incident_id: str, run_id: str) -> dict | None
 
 
 def load_parsing_result_for_run(incident_id: str, run_id: str) -> dict | None:
-    """Reads the run-scoped parsing summary saved by
+    """[FYP-FUNCTION] Reads the run-scoped parsing summary saved by
     wss.save_parsing_result() and, where the paths it recorded still
     resolve inside the trusted root, loads the full normalised_alert/
     processed_alert content back from disk. Returns None if the summary's
@@ -600,7 +848,7 @@ def load_parsing_result_for_run(incident_id: str, run_id: str) -> dict | None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2.6  STAGE CLAIM / LEASE  (execution/threading layer only)
+# [FYP-SECTION] 2.6  STAGE CLAIM / LEASE  (execution/threading layer only)
 # ══════════════════════════════════════════════════════════════════════════════
 # The pure database transactions (claim_stage, renew_stage_lease,
 # release_stage_lease, complete_stage, the global execution lock functions,
@@ -630,7 +878,10 @@ _GLOBAL_LOCK_MAX_WAIT_SECONDS = 1800
 
 
 class LeaseRenewer:
-    """Background renewal thread for the duration of one stage's real work,
+    """
+    [FYP-CLASS] Background Stage-Lease/Global-Lock Heartbeat Thread
+
+    Background renewal thread for the duration of one stage's real work,
     used uniformly for Threat Intelligence/Investigation/Reporting so no
     stage depends on having frequent progress callbacks to stay alive.
     Exposes `lease_lost` so the stage function can notice a lost lease
@@ -640,7 +891,31 @@ class LeaseRenewer:
     substitute for it. Optionally ALSO renews a global workspace lock on
     the same heartbeat tick once also_renew_global_lock() is called —
     exposes `global_lock_lost` separately from `lease_lost` so a caller can
-    tell which one failed."""
+    tell which one failed.
+
+    [FYP-STAGE-LOCK]: one instance per stage-function invocation
+    (constructed with incident_id/run_id/worker_id, the SAME worker_id
+    claim_stage() returned to the caller). `.start()` right after
+    claim_stage() succeeds, `.stop()` in a `finally:` block so the thread
+    is always torn down. Ticks every `_HEARTBEAT_RENEW_SECONDS`, calling
+    `renew_stage_lease()` (and, if `also_renew_global_lock()` was called,
+    `renew_global_lock()` too) — either renewal failing sets the
+    corresponding Event and stops the loop; it does not retry.
+
+    [FYP-USED-BY]: resume_after_triage_approval(), run_investigation_stage()
+    (also calls also_renew_global_lock("investigation_workspace")),
+    run_reporting_stage() (also calls
+    also_renew_global_lock("reporting_workspace")) — all three of this
+    module's durable per-stage worker functions.
+    """
+    # [FYP-FUNCTION] `__init__` — implements the init operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: `incident_id`, `run_id`, `worker_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `Event`, `Thread`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def __init__(self, incident_id: str, run_id: str, worker_id: str):
         self._incident_id = incident_id
         self._run_id = run_id
@@ -651,8 +926,24 @@ class LeaseRenewer:
         self.global_lock_lost = threading.Event()
         self._t = threading.Thread(target=self._run, daemon=True)
 
+    # [FYP-FUNCTION] `also_renew_global_lock` — implements the also renew global lock operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: `lock_name`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: no nested function/service calls.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def also_renew_global_lock(self, lock_name: str) -> None:
         self._global_lock_name = lock_name
+
+    # [FYP-FUNCTION] `_run` — implements the run operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `renew_global_lock`, `renew_stage_lease`, `set`, `wait`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _run(self):
         while not self._stop.wait(_HEARTBEAT_RENEW_SECONDS):
@@ -664,8 +955,24 @@ class LeaseRenewer:
                 self.global_lock_lost.set()
                 break
 
+    # [FYP-FUNCTION] `start` — implements the start operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_bounded_get, app.py:_proceed_to_next_workflow_stage; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `start`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def start(self):
         self._t.start()
+
+    # [FYP-FUNCTION] `stop` — implements the stop operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_workflow.py:resume_after_triage_approval, soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `join`, `set`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def stop(self):
         self._stop.set()
@@ -673,25 +980,53 @@ class LeaseRenewer:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3.  STAGE 1 — TRIAGE  (in-process)
+# [FYP-SECTION] 3.  STAGE 1 — TRIAGE  (in-process)
 # ══════════════════════════════════════════════════════════════════════════════
 
 def run_triage(incident: dict, progress_fn=None,
                parsed_context: dict | None = None,
                force: bool = False) -> dict:
-    """Run the triage agent in-process. Returns its native result dict.
+    """
+    [FYP-FUNCTION] Triage Stage Runner (in-process, LLM-backed)
+
+    Run the triage agent in-process. Returns its native result dict.
 
     parsed_context is Stage 0's processed_alert (see run_parsing) — when
     present, the IOC/risk/classification phases reuse those already-extracted
     indicators instead of re-deriving them from the raw incident. force=True
-    bypasses TriageAgent's result cache, for an explicit retry."""
+    bypasses TriageAgent's result cache, for an explicit retry.
+
+    Args:
+        incident: raw incident dict to triage.
+        progress_fn: optional live-progress callback, forwarded straight
+            into TriageAgent so its internal phases (IOC extraction, risk
+            scoring, classification, ticket generation, ...) can stream
+            progress to the caller.
+        parsed_context: see above; None means triage derives everything
+            from `incident` itself (no Parsing handoff).
+        force: bypass TriageAgent's own result cache and force a fresh run.
+
+    Returns:
+        TriageAgent.triage()'s native result dict — contains a "ticket" key
+        (classification, unc, summary, mitre_tactic/technique, ...) on
+        success, or an "error" key on failure.
+
+    [FYP-CALLS]: soc_triage_agent.TriageAgent.triage() (a fresh
+    TriageAgent instance per call, configured via CiscoLLMConfig).
+    [FYP-USED-BY]: run_until_triage_approval() (this module) — the only
+    caller; not called by app.py directly (only indirectly through
+    run_until_triage_approval).
+    """
     from soc_triage_agent import CiscoLLMConfig, TriageAgent
     agent = TriageAgent(cfg=CiscoLLMConfig(), progress_fn=progress_fn)
     return agent.triage(incident, force=force, parsed_context=parsed_context)
 
 
 def run_parsing(incident: dict, run_id: str) -> dict:
-    """Run the existing Parsing & Normalisation stage in-process, reusing
+    """
+    [FYP-FUNCTION] Parsing Stage Runner (in-process, rule-based)
+
+    Run the existing Parsing & Normalisation stage in-process, reusing
     soc_reporting_agent's parser unmodified. Mirrors run_triage()'s pattern:
     a thin wrapper, no new parsing logic. Also asks the LLM for a plain-
     English summary of what the parser extracted (see generate_parsing_ai_summary).
@@ -699,7 +1034,24 @@ def run_parsing(incident: dict, run_id: str) -> dict:
     run_id now required — scopes the output directory per run (not just
     per incident) so a durable reload (load_parsing_result_for_run) can
     trust the files belong to THIS run, not a stale/overwritten previous
-    run of the same incident."""
+    run of the same incident.
+
+    Args:
+        incident: raw incident dict to parse/normalise.
+        run_id: this run's id — output written under
+            REP_DIR/outputs/{safe(incident_id)}/{safe(run_id)}/parsing/.
+
+    Returns:
+        The parser's native result dict (status/normalised_alert/
+        processed_alert/missing_important_fields/...), with ai_summary/
+        ai_thinking merged in on a "completed" status.
+
+    [FYP-CALLS]: soc_reporting_agent/services/parser_normaliser.
+    run_parser_normalisation_for_dashboard() (imported lazily, with
+    REP_DIR added to sys.path first), generate_parsing_ai_summary().
+    [FYP-USED-BY]: run_until_triage_approval() (this module) — the only
+    caller (skipped entirely when use_mock_triage=True).
+    """
     rep_dir = str(REP_DIR)
     if rep_dir not in sys.path:
         sys.path.insert(0, rep_dir)
@@ -713,8 +1065,19 @@ def run_parsing(incident: dict, run_id: str) -> dict:
     return result
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# [FYP-SECTION] 3.5  AI-SUMMARY / "THINKING" RENDERING HELPERS
+# ══════════════════════════════════════════════════════════════════════════════
+# Shared by every stage (Parsing/Triage/Threat-Intel/Investigation/Reporting):
+# building the bounded fact packet sent to the summary LLM call
+# (_stage_ai_summary_context), enforcing the plain-English length/format
+# limits app.py's UI expects (limit_ai_summary_sentences), and turning each
+# stage's raw agent output into the human-readable "thinking" panels/trace
+# tables the UI renders (render_*_thinking_plain, _investigation_*). None
+# of this changes stage decisions — it is presentation-layer only.
+
 def _split_ai_summary_sections(text: str) -> tuple[str, str]:
-    """Split the LLM's labelled SUMMARY/THINKING reply into two strings.
+    """[FYP-FUNCTION] Split the LLM's labelled SUMMARY/THINKING reply into two strings.
     Falls back to treating the whole reply as the summary if the model
     didn't follow the requested labels."""
     m = re.search(r"SUMMARY:\s*(.*?)\s*THINKING:\s*(.*)", text, re.IGNORECASE | re.DOTALL)
@@ -737,7 +1100,10 @@ def limit_ai_summary_sentences(
     max_sentences: int = _AI_SUMMARY_MAX_SENTENCES,
     max_words: int = _AI_SUMMARY_MAX_WORDS,
 ) -> str:
-    """Return a concise, plain-text AI summary with a hard sentence cap.
+    """
+    [FYP-FUNCTION] AI-Summary Length Enforcer
+
+    Return a concise, plain-text AI summary with a hard sentence cap.
 
     Prompts request one or two sentences, but model instructions alone are
     not a reliable output boundary. This guard is applied both when a
@@ -824,7 +1190,12 @@ def limit_ai_summary_sentences(
 
 
 def _stage_ai_summary_context(stage: str, result: dict) -> str:
-    """Build a bounded, stage-specific fact packet for the summary model."""
+    """[FYP-FUNCTION] Build a bounded, stage-specific fact packet for the summary model.
+    Normalises the many possible stage-name spellings (aliases dict) down to
+    one of parsing/triage/threat_intel/investigation/reporting and picks
+    just the fields relevant to that stage out of its raw result dict, so
+    the LLM summary prompt stays small and on-topic instead of receiving
+    the whole (often large) stage result verbatim."""
     key = re.sub(r"[^a-z]+", "_", str(stage or "").strip().lower()).strip("_")
     aliases = {
         "parsing_and_normalisation": "parsing",
@@ -935,10 +1306,20 @@ def generate_stage_ai_summary(
     stage_result: dict,
     model: str | None = None,
 ) -> dict:
-    """Generate the one-to-two sentence analyst summary for any stage.
+    """
+    [FYP-FUNCTION] Generic Per-Stage AI Summary Generator
+
+    Generate the one-to-two sentence analyst summary for any stage.
 
     The detailed native stage result remains unchanged and available in its
     Output view. This is a separate, deliberately short orientation layer.
+
+    [FYP-FALLBACK]: any LLM-call exception is caught and turned into a
+    visible "AI summary unavailable — LLM call failed: ..." string rather
+    than propagating — a summary-generation failure must never fail the
+    stage itself.
+    [FYP-CALLS]: _stage_ai_summary_context(), soc_reporting_agent/backend/
+    openai_client.invoke_openai_text(), limit_ai_summary_sentences().
     """
     rep_dir = str(REP_DIR)
     if rep_dir not in sys.path:
@@ -976,7 +1357,7 @@ def generate_stage_ai_summary(
 
 
 def generate_parsing_ai_summary(parsing_result: dict, model: str | None = None) -> dict:
-    """Ask OpenAI for a plain-English summary of what the Parsing &
+    """[FYP-FUNCTION] [FYP-FALLBACK] Ask OpenAI for a plain-English summary of what the Parsing &
     Normalisation stage extracted, based on its processed_alert output.
     Reuses the existing OpenAI helper (soc_reporting_agent/backend/openai_client.py,
     already used by the reporting stage) — no separate LLM client is introduced."""
@@ -1025,7 +1406,7 @@ def generate_parsing_ai_summary(parsing_result: dict, model: str | None = None) 
 
 
 def render_triage_thinking_plain(triage_result: dict) -> str:
-    """Connected-narrative 'thinking process' for the Triage panel — built
+    """[FYP-FUNCTION] Connected-narrative 'thinking process' for the Triage panel — built
     ONLY from TriageAgent.triage()'s own trace (the real IOC Checklist /
     Risk Rating / SOC Classification phase output), not a secondary LLM
     re-summarization. An LLM asked to reflect on the finished ticket can
@@ -1089,7 +1470,7 @@ def render_triage_thinking_plain(triage_result: dict) -> str:
 
 
 def _thinking_fragment(value: Any, limit: int = 560) -> str:
-    """Collapse persisted agent output into a short, card-safe sentence."""
+    """[FYP-FUNCTION] Collapse persisted agent output into a short, card-safe sentence."""
     text = re.sub(r"\s+", " ", str(value or "")).strip()
     if len(text) <= limit:
         return text
@@ -1097,7 +1478,7 @@ def _thinking_fragment(value: Any, limit: int = 560) -> str:
 
 
 def _investigation_trace_rows(narrative_report: str, limit: int = 3) -> list[dict]:
-    """Read orchestrator.py's persisted Playbook Execution Trace table.
+    """[FYP-FUNCTION] Read orchestrator.py's persisted Playbook Execution Trace table.
 
     main.py writes FinalIncidentAnalysis.execution_trace to the Markdown
     report. soc_workflow.run_investigation() then persists that report in
@@ -1128,7 +1509,7 @@ def _investigation_trace_rows(narrative_report: str, limit: int = 3) -> list[dic
 
 
 def _investigation_recommended_containment_actions(narrative_report: str) -> list[str]:
-    """Read orchestrator.py's persisted Recommended Containment Actions bullets.
+    """[FYP-FUNCTION] Read orchestrator.py's persisted Recommended Containment Actions bullets.
 
     main.py writes FinalIncidentAnalysis.recommended_containment (the
     Investigation agent's specific, policy-driven containment findings — e.g.
@@ -1178,6 +1559,10 @@ _MITRE_HEADER_ALIASES = {
 
 
 def _split_mitre_table_row(line: str) -> list[str]:
+    """[FYP-FUNCTION] Split one Markdown table row (`| a | b\\|c | ... |`) into
+    unescaped cell strings — a small deterministic parser used by
+    _investigation_mitre_mappings() below to read the narrative report's
+    MITRE table without any Markdown-table library dependency."""
     line = line.strip()
     if line.startswith("|"):
         line = line[1:]
@@ -1188,7 +1573,7 @@ def _split_mitre_table_row(line: str) -> list[str]:
 
 
 def _investigation_mitre_mappings(narrative_report: str) -> list[dict]:
-    """Read orchestrator.py's persisted MITRE ATT&CK TTP Mapping table.
+    """[FYP-FUNCTION] Read orchestrator.py's persisted MITRE ATT&CK TTP Mapping table.
 
     main.py writes FinalIncidentAnalysis.mitre_mappings (mitre_mapper.
     MitreTTPMapping — timeline_phase, observed_evidence, tactic,
@@ -1241,6 +1626,10 @@ def _investigation_mitre_mappings(narrative_report: str) -> list[dict]:
 
 
 def _parse_progress_datetime(value: Any) -> datetime | None:
+    """[FYP-FUNCTION] [FYP-FALLBACK] Best-effort ISO-8601 parse (handles a
+    trailing "Z") — returns None rather than raising on anything
+    unparseable, so progress-rendering helpers can treat a bad/missing
+    timestamp as "unknown" instead of crashing the UI."""
     raw = str(value or "").strip()
     if not raw:
         return None
@@ -1251,6 +1640,9 @@ def _parse_progress_datetime(value: Any) -> datetime | None:
 
 
 def _format_progress_datetime(value: Any) -> str:
+    """[FYP-FUNCTION] Human-readable "YYYY-MM-DD HH:MM:SS [UTC]" rendering of
+    a progress timestamp; falls back to the raw value (or a placeholder
+    string) when it can't be parsed — see _parse_progress_datetime()."""
     parsed = _parse_progress_datetime(value)
     if parsed is None:
         return str(value or "Time not recorded")
@@ -1261,6 +1653,10 @@ def _format_progress_datetime(value: Any) -> str:
 
 
 def _format_elapsed(started_at: Any, finished_at: Any) -> str:
+    """[FYP-FUNCTION] HH:MM:SS elapsed time between two progress timestamps;
+    returns "" if either is missing/unparseable. Normalises mixed
+    naive/aware datetimes (drops tzinfo from whichever side has it) rather
+    than raising a TypeError on subtraction."""
     started = _parse_progress_datetime(started_at)
     finished = _parse_progress_datetime(finished_at)
     if started is None or finished is None:
@@ -1282,7 +1678,14 @@ def _render_stage_progress_plain(
     workflow_state: dict,
     activity: list[dict],
 ) -> str:
-    """Timestamped stage progress from the durable workflow ledger."""
+    """[FYP-FUNCTION] [FYP-STATE] Timestamped stage progress from the durable workflow ledger.
+    Reconstructs a plain-text, deduplicated timeline (started/completed/
+    approved/rejected) for one stage by filtering `activity` (the workflow
+    ledger's event log — see workflow_state_store.py) down to events for
+    this stage's aliases, then synthesises a synthetic "started" line from
+    worker_started_at and a synthetic terminal line from the stage's status
+    column when the ledger itself has no explicit matching event yet — so
+    the panel never shows a stage as silently stuck with no timeline at all."""
     stage_aliases = {
         "parsing": {"parsing", "parsing_normalisation"},
         "triage": {"triage"},
@@ -1480,13 +1883,26 @@ def render_agent_thinking_plain(
     workflow_state: dict | None = None,
     activity: list[dict] | None = None,
 ) -> str:
-    """Render every agent's timestamped Thinking Process progress.
+    """
+    [FYP-FUNCTION] Unified "Thinking Process" Renderer (all stages)
+
+    Render every agent's timestamped Thinking Process progress.
 
     The case workspace supplies workflow_state + activity, producing the
     durable stage_started/stage_succeeded/stage_failed/approval timeline,
     current worker heartbeat, and elapsed stage time. The result-only
     branches remain as a backwards-compatible fallback for non-workspace
     callers. No hidden model chain-of-thought or generic case verdict is used.
+
+    [FYP-DECISION]: when workflow_state/activity are supplied this
+    delegates entirely to _render_stage_progress_plain() (the durable
+    ledger-based timeline); only legacy/no-workspace callers fall through
+    to the per-stage (parsing/triage/threat_intel/investigation/reporting)
+    result-field rendering below, built from each stage's own persisted
+    output (e.g. render_triage_thinking_plain() for triage,
+    _investigation_trace_rows()/_thinking_fragment() for investigation).
+    [FYP-CALLS]: _render_stage_progress_plain(), render_triage_thinking_plain(),
+    _investigation_trace_rows(), _thinking_fragment().
     """
     result = result if isinstance(result, dict) else {}
     key = re.sub(r"[^a-z]+", "_", str(stage or "").strip().lower()).strip("_")
@@ -1694,13 +2110,21 @@ def render_agent_thinking_plain(
 
 
 def generate_triage_ai_summary(triage_result: dict, model: str | None = None) -> dict:
-    """Ask OpenAI for a plain-English summary of what TriageAgent.triage()
+    """
+    [FYP-FUNCTION] Triage AI-Summary Generator
+
+    Ask OpenAI for a plain-English summary of what TriageAgent.triage()
     produced (the 'AI-Generated Summary' panel). The 'Thinking Process'
     panel is filled separately and deterministically by
     render_triage_thinking_plain() from the agent's own trace — not from
     this LLM call — so it stays accurate even if this call fails or the
     LLM misreads the data. Reuses the same OpenAI helper as the Parsing
-    stage — no separate LLM client is introduced."""
+    stage — no separate LLM client is introduced.
+
+    [FYP-FALLBACK]: LLM-call exceptions are caught and rendered as a visible
+    "AI summary unavailable" string, mirroring generate_parsing_ai_summary()
+    / generate_stage_ai_summary() — a summary failure never fails Triage.
+    """
     rep_dir = str(REP_DIR)
     if rep_dir not in sys.path:
         sys.path.insert(0, rep_dir)
@@ -1754,8 +2178,22 @@ def generate_triage_ai_summary(triage_result: dict, model: str | None = None) ->
 
 
 def mock_triage_result(incident: dict) -> dict:
-    """Canned triage output with the same shape as TriageAgent.triage().
-    Used with --mock-triage to test the workflow without LLM access."""
+    """
+    [FYP-FUNCTION] [FYP-FALLBACK] Canned Triage Result (offline/LLM-less testing)
+
+    Canned triage output with the same shape as TriageAgent.triage() —
+    same top-level keys (mock/metakeys_payload/ticket/trace/error) so every
+    downstream consumer (needs_investigation(), handoff_to_investigation(),
+    handoff_to_reporting(), pipeline_insert(), the AI-summary/thinking
+    renderers) can treat it identically to a real LLM-backed result. Fixed
+    HIGH classification/#99999Z ticket id — deliberately obvious as mock
+    data (never mistakeable for a real ticket).
+
+    Used with --mock-triage to test the workflow without LLM access.
+
+    [FYP-USED-BY]: run_until_triage_approval() (this module) — called
+    instead of run_triage() only when use_mock_triage=True.
+    """
     inc_id  = str(incident.get("id") or incident.get("incidentId") or "unknown")
     title   = incident.get("title") or incident.get("name") or "Untitled"
     now_iso = datetime.utcnow().isoformat()
@@ -1795,13 +2233,46 @@ def mock_triage_result(incident: dict) -> dict:
 
 
 def needs_investigation(triage_result: dict) -> bool:
+    """
+    [FYP-FUNCTION] Workflow Stage Routing (Triage -> Investigation decision)
+
+    Purpose:
+        The single [FYP-DECISION] point that decides whether an incident is
+        routed to the Investigation stage or goes straight from Triage to
+        Threat Intel/Reporting. This is what an evaluator should be shown
+        for "where is the next stage selected".
+
+    Parameters:
+        triage_result: the completed Triage stage output dict. Reads the
+            classification from either metakeys_payload.classification (LLM
+            path) or ticket.classification (fallback path) — whichever is
+            populated.
+
+    Processing:
+        Lower-cases the classification string and checks membership in
+        INVESTIGATE_CLASSIFICATIONS = {"critical", "high", "medium"}
+        (module-level constant near the top of this file). "low"/"informational"
+        and anything unrecognised return False.
+
+    Returns:
+        bool — True routes the incident into Investigation via
+        handoff_to_investigation()/investigate_with_feedback(); False skips
+        straight to Threat Intel/Reporting.
+
+    [FYP-USED-BY]:
+        app.py (verified via grep) when deciding which stage tab/button to
+        unlock next after Triage completes.
+
+    [FYP-EVALUATOR]: demonstrate this function for "how is the next stage
+    selected" — it is a pure, deterministic function with no side effects.
+    """
     cls = str(triage_result.get("metakeys_payload", {}).get("classification")
               or triage_result.get("ticket", {}).get("classification") or "").lower()
     return cls in INVESTIGATE_CLASSIFICATIONS
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3.5  STAGE — THREAT INTELLIGENCE ENRICHMENT  (in-process)
+# [FYP-SECTION] 3.5  STAGE — THREAT INTELLIGENCE ENRICHMENT  (in-process)
 # ══════════════════════════════════════════════════════════════════════════════
 # Thin orchestration wrapper around threat_intel.run_threat_intel_for_dashboard()
 # (VirusTotal + AbuseIPDB + AlienVault OTX, case-level enrichment_risk_score/
@@ -1812,20 +2283,34 @@ def needs_investigation(triage_result: dict) -> bool:
 # before returning, so nothing here mutates the result further.
 
 class ThreatIntelValidationError(Exception):
-    """Raised when inputs handed to run_threat_intel() don't belong to the
+    """[FYP-CLASS] [FYP-ERROR] Raised when inputs handed to run_threat_intel() don't belong to the
     same incident/run — refuses a stale or mismatched enrichment."""
 
 
 def run_threat_intel(incident_id: str, run_id: str,
                      normalised_alert: dict | None,
                      triage_result: dict, incident: dict | None = None) -> dict:
-    """Threat Intelligence Enrichment stage. Takes the already-loaded,
+    """
+    [FYP-FUNCTION] [FYP-EVALUATOR] Threat Intelligence Enrichment Stage Runner (in-process)
+
+    Threat Intelligence Enrichment stage. Takes the already-loaded,
     already-validated Triage + Parsing outputs (and, where available, the
     full raw incident) for THIS incident/run explicitly — never re-reads
     "the latest" state itself. Never raises on lookup failures (the engine
     degrades every provider call to a "skipped"/"error" status instead);
     only raises ThreatIntelValidationError if the triage_result's own
-    embedded incident_id doesn't match incident_id."""
+    embedded incident_id doesn't match incident_id.
+
+    [FYP-EVALUATOR]: THE actual threat-intel work, despite living behind a
+    durable stage runner confusingly named resume_after_triage_approval()
+    (see that function's own [FYP-EVALUATOR] note) — good place to show
+    "where does VirusTotal/AbuseIPDB/AlienVault OTX enrichment happen".
+    [FYP-CALLS]: threat_intel.run_threat_intel_for_dashboard() (the actual
+    provider-lookup engine — VirusTotal/AbuseIPDB/AlienVault OTX), which
+    also writes this stage's own output files under `output_dir`.
+    [FYP-USED-BY]: resume_after_triage_approval() (this module) — the sole
+    caller; not called by app.py directly.
+    """
     import threat_intel
 
     ticket = triage_result.get("ticket") or {}
@@ -1858,7 +2343,7 @@ def run_threat_intel(incident_id: str, run_id: str,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4.  HANDOFF — TRIAGE → INVESTIGATION
+# [FYP-SECTION] 4.  HANDOFF — TRIAGE → INVESTIGATION
 # ══════════════════════════════════════════════════════════════════════════════
 
 _IP_RE = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -1867,6 +2352,11 @@ _NOISE_VALUES = {"", "unknown", "none", "null", "n/a", "-", "0.0.0.0",
 
 
 def _flatten_dict(d, prefix: str = "") -> dict:
+    """[FYP-FUNCTION] Recursively flatten a nested dict/list into a single
+    dict of {"a.b[0].c": value} dotted/indexed paths — used by
+    _harvest_incident_context() to scan every field of an arbitrarily
+    nested raw incident for user/host/IP-shaped values without hardcoding
+    every possible nesting shape."""
     items: dict = {}
     if isinstance(d, dict):
         for k, v in d.items():
@@ -1879,12 +2369,28 @@ def _flatten_dict(d, prefix: str = "") -> dict:
     return items
 
 
+# [FYP-FUNCTION] `_scalar` — implements the scalar operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:_mk, soc_workflow.py:handoff_to_reporting; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _scalar(value):
     """Metakey values may be lists after deep extraction — take the first."""
     if isinstance(value, (list, tuple)):
         return value[0] if value else None
     return value
 
+
+# [FYP-FUNCTION] `_harvest_incident_context` — implements the harvest incident context operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert, soc_workflow.py:handoff_to_reporting; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_add`, `_flatten_dict`, `append`, `findall`, `get`, `group`, `keys`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _harvest_incident_context(incident: dict) -> dict:
     """Best-effort forensic context from the raw incident, used when triage's
@@ -1897,6 +2403,14 @@ def _harvest_incident_context(incident: dict) -> dict:
     src_ips: list = []
     dst_ips: list = []
     all_ips: list = []
+
+    # [FYP-FUNCTION] `_add` — implements the add operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: `bucket`, `val`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include nw_alerts.py:_add, nw_alerts.py:_distill_alerts, skills_sidecar.py:_assets_from_skills; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `len`, `lower`, `str`, `strip`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _add(bucket: list, val) -> None:
         s = str(val).strip()
@@ -1943,6 +2457,14 @@ def _harvest_incident_context(incident: dict) -> dict:
             "title_entity": title_entity}
 
 
+# [FYP-FUNCTION] `_to_iso_timestamp` — implements the to iso timestamp operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `float`, `fromisoformat`, `isinstance`, `isoformat`, `replace`, `str`, `strip`, `sub`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def _to_iso_timestamp(value) -> str:
     """Normalize timestamp spellings to ISO-8601."""
     if value in (None, "", "Unknown"):
@@ -1964,6 +2486,14 @@ def _to_iso_timestamp(value) -> str:
         return str(value)
 
 
+# [FYP-FUNCTION] `prune_empty` — implements the prune empty operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: `d`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert, soc_workflow.py:prune_empty; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `isinstance`, `items`, `prune_empty`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def prune_empty(d):
     """Recursively strip None, empty strings, empty lists/dicts, and 'Unknown'."""
     if isinstance(d, dict):
@@ -1975,6 +2505,14 @@ def prune_empty(d):
     return d
 
 
+# [FYP-FUNCTION] `build_investigation_alert` — constructs build investigation alert output for the next workflow orchestration and state consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `triage_result`, `incident`, `supplement`, `threat_intel_result`, `parsing_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_playbook, soc_workflow.py:handoff_to_investigation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_amlist`, `_cmdlines`, `_first`, `_harvest_incident_context`, `_mk`, `_mklist`, `_process_lineage`, `_to_iso_timestamp`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def build_investigation_alert(triage_result: dict, incident: dict,
                               supplement: dict | None = None,
                               threat_intel_result: dict | None = None,
@@ -1985,10 +2523,26 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     mkv     = payload.get("metakey_values") or {}
     ctx     = _harvest_incident_context(incident)
 
+    # [FYP-FUNCTION] `_mk` — implements the mk operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: `key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_scalar`, `get`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _mk(key):
         return _scalar(mkv.get(key))
 
     _am = incident.get("alertMeta") or {}
+
+    # [FYP-FUNCTION] `_amlist` — implements the amlist operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: `*keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_workflow.py:_cmdlines, soc_workflow.py:_process_lineage, soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `fromkeys`, `get`, `isinstance`, `list`, `str`, `strip`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _amlist(*keys) -> list:
         out: list = []
@@ -2000,6 +2554,14 @@ def build_investigation_alert(triage_result: dict, incident: dict,
                 out.append(str(v).strip())
         return list(dict.fromkeys(out))
 
+    # [FYP-FUNCTION] `_mklist` — implements the mklist operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: `*keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_workflow.py:_cmdlines, soc_workflow.py:_process_lineage, soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `fromkeys`, `get`, `isinstance`, `list`, `str`, `strip`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def _mklist(*keys) -> list:
         out: list = []
         for k in keys:
@@ -2009,6 +2571,14 @@ def build_investigation_alert(triage_result: dict, incident: dict,
             elif v not in (None, "", [], {}):
                 out.append(str(v).strip())
         return list(dict.fromkeys(out))
+
+    # [FYP-FUNCTION] `_process_lineage` — implements the process lineage operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_amlist`, `_mklist`, `append`, `len`, `range`, `replace`, `split`, `str`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _process_lineage() -> list:
         edges: list = []
@@ -2031,6 +2601,14 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     dst_ip = _first(_mk("ip.dst"), incident.get("destination_ip"), (ctx["destination_ips"] or [None])[0])
     hostname = _first(_mk("host.name"), incident.get("hostname"), (ctx["hosts"] or [None])[0])
     user = _first(_mk("user.name"), incident.get("username"), (ctx["users"] or [None])[0])
+
+    # [FYP-FUNCTION] `_cmdlines` — implements the cmdlines operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_amlist`, `_mklist`, `add`, `append`, `get`, `isinstance`, `set`, `str`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _cmdlines() -> list:
         out = _mklist("param.src", "param.dst", "param", "param_src", "param_dst", "process.cmdline", "cmdline", "command_line", "process_cmd", "os.cmdline")
@@ -2166,6 +2744,25 @@ def handoff_to_investigation(triage_result: dict, incident: dict,
                              supplement: dict | None = None,
                              threat_intel_result: dict | None = None,
                              parsing_result: dict | None = None) -> Path:
+    """
+    [FYP-FUNCTION] Triage -> Investigation Handoff
+
+    Purpose: [FYP-FLOW] Packages Triage (+ optional Threat Intel/Parsing)
+    output into the JSON alert file soc_investigation_agent_revised/ picks
+    up from its triaged_alerts/ inbox — the file-queue handoff between the
+    Triage and Investigation stages.
+
+    [FYP-VALIDATION]/[FYP-STAGE-LOCK]: quarantines any leftover queued alert
+    from a DIFFERENT incident into triaged_alerts/stale/ before writing this
+    incident's alert. Investigation drains the whole queue in one pass, so a
+    stale file from a previously-interrupted run would otherwise get merged
+    into this run's report — this is a correctness safeguard, not a UI lock.
+
+    Returns: Path to the written alert JSON. Side effect: file write under
+    soc_investigation_agent_revised/triaged_alerts/.
+
+    [FYP-USED-BY]: investigate_with_feedback() / run_investigation_stage().
+    """
     alert = build_investigation_alert(triage_result, incident,
                                       supplement=supplement,
                                       threat_intel_result=threat_intel_result,
@@ -2198,7 +2795,7 @@ def handoff_to_investigation(triage_result: dict, incident: dict,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 5.  STAGE 2 — INVESTIGATION  (subprocess)  +  TRIAGE FEEDBACK LOOP
+# [FYP-SECTION] 5.  STAGE 2 — INVESTIGATION  (subprocess)  +  TRIAGE FEEDBACK LOOP
 # ══════════════════════════════════════════════════════════════════════════════
 
 _SEV_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
@@ -2220,13 +2817,25 @@ _HIGH_VALUE_GAP_KEYWORDS = (
 
 
 def detect_evidence_gaps(inv: dict) -> list[str]:
-    """Decide whether the investigation lacked information, and name the gaps.
+    """
+    [FYP-FUNCTION] Evidence Gap Detection (automatic re-run trigger)
 
-    Triggers when the fraction of NOT_MET playbook steps meets or exceeds
-    the configurable threshold (WORKFLOW_FEEDBACK_THRESHOLD, default 0.4 = 40%).
-    Returns the unmet steps' instructions — prioritised by investigative
-    value — these become the questions the triage agent's deep-dive pass
-    must answer."""
+    [FYP-DECISION]/[FYP-RERUN]: Decide whether the investigation lacked
+    information, and name the gaps. Triggers when the fraction of NOT_MET
+    playbook steps meets or exceeds the configurable threshold
+    (env var WORKFLOW_FEEDBACK_THRESHOLD, default 0.4 = 40%). Returns the
+    unmet steps' instructions — prioritised by investigative value via
+    _HIGH_VALUE_GAP_KEYWORDS — these become the questions the triage agent's
+    deep-dive pass must answer.
+
+    [FYP-EVALUATOR]: this is the exact threshold check that decides whether
+    investigate_with_feedback() below performs an automatic Investigation
+    re-run — no human clicks anything for this particular re-run.
+
+    Input: inv — the Investigation stage result dict (narrative_report,
+    status, missing_evidence). Output: list of up to 8 gap description
+    strings, or [] if investigation was sufficient.
+    """
     try:
         threshold = float(os.environ.get("WORKFLOW_FEEDBACK_THRESHOLD", "0.4"))
     except ValueError:
@@ -2242,6 +2851,14 @@ def detect_evidence_gaps(inv: dict) -> list[str]:
         if len(not_met) / len(rows) >= threshold:
             # Prioritise high-value investigative gaps so the triage
             # deep-dive focuses on scope/containment questions first.
+            # [FYP-FUNCTION] `_gap_priority` — implements the gap priority operation used by the surrounding workflow orchestration and state workflow.
+            # [FYP-INPUT] Parameters: `item`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+            # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+            # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+            # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+            # [FYP-CALLS] Calls: `any`, `lower`.
+            # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
             def _gap_priority(item):
                 _, instr = item
                 instr_l = instr.lower()
@@ -2263,7 +2880,39 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
                               threat_intel_result: dict | None = None,
                               watchdog_cb=None,
                               parsing_result: dict | None = None) -> dict:
-    """Investigation with a triage feedback loop."""
+    """
+    [FYP-FUNCTION] Investigation Re-run / Feedback Loop (automatic)
+
+    [FYP-EVALUATOR] [FYP-RERUN]: THE function that implements automatic
+    Investigation re-execution. Runs Investigation once via
+    handoff_to_investigation() + run_investigation(); if
+    detect_evidence_gaps() finds the NOT_MET ratio over threshold, it feeds
+    those gaps back into a deep-dive triage supplement (soc_triage_agent's
+    deep_triage_supplement) and re-runs Investigation again — up to
+    max_passes times (env WORKFLOW_FEEDBACK_PASSES, default 1 extra pass).
+    This entire loop is IN-PROCESS and automatic: no analyst approval or
+    button click is required between passes.
+
+    [FYP-DECISION]: a playbook-redirection safeguard prevents the feedback
+    loop from silently overwriting the triage classification (`cls` above)
+    — it only ever supplements evidence, never re-labels severity itself.
+
+    Parameters: triage_result/incident (stage inputs), inc_id, timeout,
+    line_cb/feedback_cb (progress callbacks into app.py's UI), max_passes,
+    threat_intel_result/parsing_result (upstream context).
+
+    Returns: the final Investigation result dict (same shape as
+    run_investigation()'s return), now possibly enriched by the deep-dive
+    pass. [FYP-USED-BY]: app.py's Investigation-stage execution handler.
+    """
+    # [FYP-FUNCTION] `_emit` — implements the emit operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: `event`, `detail`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, soc_triage_agent/soc_triage_agent.py:_call, soc_triage_agent/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `feedback_cb`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
     def _emit(event: str, detail: str = "") -> None:
         if feedback_cb:
             try:
@@ -2393,6 +3042,14 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
     return inv
 
 
+# [FYP-FUNCTION] `_annotate_severity_divergence` — implements the annotate severity divergence operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: `inv`, `triage_classification`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_investigation; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `capitalize`, `get`, `lower`, `rstrip`, `str`, `strip`, `upper`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _annotate_severity_divergence(inv: dict, triage_classification) -> None:
     """Logical coherence: if the investigation's severity differs from the
     triage classification, say so explicitly instead of leaving two agents
@@ -2415,16 +3072,49 @@ def _annotate_severity_divergence(inv: dict, triage_classification) -> None:
                       + ("\n\n" if inv.get("summary") else "") + note)
 
 def reconcile_incident_severity(incident_id: str, unc: str, final_severity: str) -> None:
-    """Annotate the stored ticket records with the investigation's severity.
+    """
+    [FYP-FUNCTION] Post-Investigation Severity Reconciliation
+    [FYP-EVALUATOR]: demonstrate this for "what happens when Investigation's
+    verdict disagrees with Triage's?" — this is the annotation step, run
+    only when _annotate_severity_divergence() (called just before this, in
+    run_investigation()) flagged a real divergence.
 
-    NON-DESTRUCTIVE by design: the triage classification is the triage
-    agent's judgment and stays untouched (the divergence note tells the
-    analyst to reconcile). This adds an `investigation_severity` field to
-    the tickets payload and the pipeline initial_ticket record so both DBs
-    carry the final assessment alongside the original one.
+    Annotate the stored ticket records with the investigation's severity.
+
+    [FYP-DECISION]: NON-DESTRUCTIVE by design: the triage classification is
+    the triage agent's judgment and stays untouched (the divergence note
+    tells the analyst to reconcile manually). This only ADDS an
+    `investigation_severity` field alongside it — both soc_tickets.db's
+    `tickets.payload` and soc_pipeline.db's `initial_ticket.raw_json` end up
+    carrying the original triage verdict AND the final investigation
+    verdict side by side, never one overwriting the other.
+
+    [FYP-DATABASE]: writes to TWO separate sqlite databases in sequence
+    (soc_db/soc_tickets.db then soc_db/soc_pipeline.db), each independently
+    best-effort — a failure on either is caught, logged via _log("RECONCILE",
+    ...), and does NOT raise, so a DB hiccup here never fails the
+    investigation itself (this function returns None either way).
+
+    Args:
+        incident_id: the alert/incident id the investigation ran for
+            (used only in log lines here, not as a DB key).
+        unc: the triage ticket's UNC — the actual lookup key in both
+            `tickets` (WHERE unc=?) and `initial_ticket` (WHERE id=?, since
+            initial_ticket rows are keyed by ticket unc — see
+            run_until_triage_approval's pipeline_insert("initial_ticket", ...)).
+        final_severity: the investigation's severity verdict (title-cased
+            here via .strip().capitalize()) to record as
+            `investigation_severity`. A falsy value or missing `unc` is a
+            silent no-op (nothing to reconcile).
+
+    [FYP-CALLS]: reads/writes soc_db/soc_tickets.db (`tickets` table) and
+    soc_db/soc_pipeline.db (`initial_ticket` table) directly via sqlite3 —
+    bypasses pipeline_insert() since this is a targeted UPDATE of an
+    existing row, not a new stage record.
 
     (Note: the tickets table's `payload` column IS the ticket dict itself —
-    an earlier version assumed a wrapper object and silently failed.)"""
+    an earlier version assumed a wrapper object and silently failed.)
+    """
     if not final_severity or not unc:
         return
     final_severity = final_severity.strip().capitalize()
@@ -2472,22 +3162,60 @@ def reconcile_incident_severity(incident_id: str, unc: str, final_severity: str)
 def run_investigation(incident_id: str, timeout: int = 600,
                       line_cb=None, triage_classification=None,
                       watchdog_cb=None) -> dict:
-    """Run the investigation agent over its triaged_alerts/ queue and collect
+    """
+    [FYP-FUNCTION] Investigation Agent Subprocess Runner
+    [FYP-EVALUATOR]: the actual `python main.py` launch for
+    soc_investigation_agent_revised — pair with handoff_to_investigation()
+    (writes its triaged_alerts/ input) and investigate_with_feedback()
+    (the caller that decides whether a SECOND call to this function is
+    needed, i.e. the automatic re-run/feedback loop).
+
+    Run the investigation agent over its triaged_alerts/ queue and collect
     the incident folder that absorbed our alert. line_cb streams the agent's
     log output live (used by the app's agent board); triage_classification
     enables explicit severity-divergence annotation.
 
-    watchdog_cb, when given, is polled every _HEARTBEAT_RENEW_SECONDS while
-    the subprocess runs (see _run_subprocess_streaming) — used by
-    run_investigation_stage() to renew the global shared-workspace lock
-    DURING the subprocess call, not just before/after it. If it ever
-    returns False (lock lost), the still-running child process is
-    terminated before this function returns, so a second worker can never
-    observe the shared triaged_alerts/incident_reports tree mid-write from
-    a worker that no longer holds the lock. This is distinct from a plain
-    timeout: the result's status is "lock_lost", and the caller must NOT
-    treat that as a normal investigation failure (no complete_stage() call,
-    no last_error update — see run_investigation_stage)."""
+    [FYP-STAGE-LOCK]: watchdog_cb, when given, is polled every
+    _HEARTBEAT_RENEW_SECONDS while the subprocess runs (see
+    _run_subprocess_streaming) — used by run_investigation_stage() to renew
+    the global shared-workspace lock DURING the subprocess call, not just
+    before/after it. If it ever returns False (lock lost), the still-running
+    child process is terminated before this function returns, so a second
+    worker can never observe the shared triaged_alerts/incident_reports tree
+    mid-write from a worker that no longer holds the lock. This is distinct
+    from a plain timeout: the result's status is "lock_lost", and the caller
+    must NOT treat that as a normal investigation failure (no complete_stage()
+    call, no last_error update — see run_investigation_stage).
+
+    Args:
+        incident_id: the alert id this investigation was launched for — used
+            to identify, among the (possibly several) Incident-* folders the
+            subprocess may have touched, the one that actually absorbed
+            THIS alert (matched against incident_data.json's raw_alerts ids,
+            filtered to folders new-or-touched since `started`).
+        timeout: seconds before the subprocess is killed (default 600s).
+        line_cb: optional per-line callback streaming the child's stdout/
+            stderr live (agent board log tail); forces the streaming
+            subprocess path (_run_subprocess_streaming) when set.
+        triage_classification: triage's severity verdict, forwarded to
+            _annotate_severity_divergence() so a mismatch with the
+            investigation's own severity is flagged AND (via
+            reconcile_incident_severity()) persisted to the ticket DBs.
+        watchdog_cb: see [FYP-STAGE-LOCK] above.
+
+    Returns:
+        dict with status one of "completed" | "completed_limited" | "failed"
+        | "lock_lost", plus severity/summary/indicators/narrative_report/
+        recommended_containment/mitre_mappings/artifacts on success. A
+        "lock_lost" result is a SENTINEL, not a normal failure — see above.
+
+    [FYP-CALLS]: reconcile_incident_severity() (only when a real
+    severity divergence is detected), _investigation_recommended_
+    containment_actions(), _investigation_mitre_mappings(),
+    _annotate_severity_divergence().
+    [FYP-USED-BY]: investigate_with_feedback() (both the first pass and any
+    automatic re-run pass — see the module's [FYP-RERUN] feedback loop).
+    """
     before = {p.name for p in (INV_DIR / "incident_reports").glob("Incident-*")}
     started = time.time()
 
@@ -2610,7 +3338,7 @@ def run_investigation(incident_id: str, timeout: int = 600,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 6.  HANDOFF — TRIAGE/INVESTIGATION → REPORTING
+# [FYP-SECTION] 6.  HANDOFF — TRIAGE/INVESTIGATION → REPORTING
 # ══════════════════════════════════════════════════════════════════════════════
 
 def handoff_to_reporting(triage_result: dict, incident: dict,
@@ -2618,7 +3346,11 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
                          threat_intel_result: dict | None = None, *,
                          incident_id: str | None = None, run_id: str | None = None,
                          reporting_stage_attempt: int | None = None) -> str:
-    """Write the input files the reporting agent's adapter expects.
+    """
+    [FYP-FUNCTION] Investigation/Triage -> Reporting Handoff
+    [FYP-FLOW] [FYP-RERUN] [FYP-EVALUATOR]
+
+    Write the input files the reporting agent's adapter expects.
 
     When incident_id/run_id/reporting_stage_attempt are ALL given (the
     durable run_reporting_stage() path), writes into a native run-scoped
@@ -2835,8 +3567,16 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 7.  STAGE 3 — REPORTING  (subprocess via the reporting agent's own adapter)
+# [FYP-SECTION] 7.  STAGE 3 — REPORTING  (subprocess via the reporting agent's own adapter)
 # ══════════════════════════════════════════════════════════════════════════════
+
+# [FYP-FUNCTION] `_archive_run_exports` — implements the archive run exports operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: `exports`, `run_stamp`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_reporting; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `copy2`, `dict`, `get`, `mkdir`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _archive_run_exports(exports: dict, run_stamp: str) -> dict:
     """Copy this run's DOCX/PDF to run-stamped archive files. The exporter
@@ -2867,13 +3607,53 @@ def run_reporting(ticket_id: str, timeout: int = 900,
                   reporting_output_dir: Path | None = None,
                   run_id: str | None = None,
                   reporting_stage_attempt: int | None = None) -> dict:
-    """reporting_input_dir/reporting_output_dir, when given (the durable
+    """
+    [FYP-FUNCTION] Reporting Agent Subprocess Runner
+    [FYP-EVALUATOR]: launches soc_reporting_agent/adapters/run_reporting.py,
+    reads back final_report.json, then triggers export_report_documents()
+    for DOCX/PDF — the single function that turns an approved investigation
+    into a finished report artifact. Pair with handoff_to_reporting()
+    (writes this call's inputs) and run_reporting_stage() (the durable
+    caller that supplies reporting_input_dir/output_dir/run_id/attempt).
+
+    reporting_input_dir/reporting_output_dir, when given (the durable
     run_reporting_stage() path), point the subprocess chain at a native
     run-scoped workspace via REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR
     instead of the shared, flat REP_DIR/inputs|outputs — see
     reporting_attempt_dir(). Left None (the legacy in-memory Agent Board
     engine's call path, unchanged) falls back to the original flat
-    behaviour exactly as before."""
+    behaviour exactly as before.
+
+    Args:
+        ticket_id: sanitised ticket id (see _safe_ticket_id) — passed to the
+            subprocess as SOC_TICKET_ID; used for the ticket's own output
+            subfolder.
+        timeout: seconds before the subprocess is killed (default 900s);
+            the inner adapter gets `max(timeout - 60, 300)` via
+            REPORTING_TIMEOUT, keeping a safety margin for this wrapper's
+            own bookkeeping.
+        run_stamp: when given, this run's exported DOCX/PDF are additionally
+            archived under a run-stamped filename (see _archive_run_exports)
+            so a later run's export never silently overwrites this one's
+            historical copy.
+        line_cb: optional live stdout/stderr streaming callback (agent board).
+        reporting_input_dir / reporting_output_dir / run_id /
+            reporting_stage_attempt: durable run-scoping — see docstring
+            above and reporting_attempt_dir().
+
+    Returns:
+        The reporting agent's final_report.json contents (dict), augmented
+        with `orchestrator_subprocess` (returncode/success) and
+        `document_exports` (DOCX/PDF paths from export_report_documents(),
+        possibly archived). On a hard failure (no final_report.json
+        produced at all) returns {"agent": ..., "status": "failed",
+        "error": ..., "subprocess": run}.
+
+    [FYP-CALLS]: export_report_documents(), _archive_run_exports().
+    [FYP-USED-BY]: run_reporting_stage() (durable path) and app.py directly
+    (via `_wfm.run_reporting(...)`) for the legacy in-memory Agent Board
+    engine.
+    """
     llm_env = _openai_compat_env()
     has_llm = bool(os.environ.get("OPENAI_API_KEY", "").strip() or llm_env)
     output_dir = reporting_output_dir or (REP_DIR / "outputs")
@@ -2937,6 +3717,14 @@ def run_reporting(ticket_id: str, timeout: int = 900,
     return final
 
 
+# [FYP-FUNCTION] `export_report_documents` — constructs export report documents output for the next workflow orchestration and state consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `incident_id`, `timeout`, `reporting_output_dir`, `run_id`, `reporting_stage_attempt`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_reporting; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `_log`, `_run_subprocess`, `append`, `bool`, `exists`, `get`, `len`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def export_report_documents(incident_id: str | None, timeout: int = 180, *,
                             reporting_output_dir: Path | None = None,
                             run_id: str | None = None,
@@ -2990,8 +3778,18 @@ def export_report_documents(incident_id: str | None, timeout: int = 180, *,
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 8.  FULL WORKFLOW
+# [FYP-SECTION] 8.  FULL WORKFLOW  (durable-run entry points: run_until_triage_approval,
+# resume_after_triage_approval, run_investigation_stage, run_reporting_stage,
+# run_stage_chain — the CLI/UI-facing stage-by-stage API, most evaluator-relevant)
 # ══════════════════════════════════════════════════════════════════════════════
+
+# [FYP-FUNCTION] `enrich_incident_with_apiretrieval_fetch` — implements the enrich incident with apiretrieval fetch operation used by the surrounding workflow orchestration and state workflow.
+# [FYP-INPUT] Parameters: `incident`, `host`, `token`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_until_triage_approval; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_log`, `_merge_alert_digest`, `dict`, `get`, `get_comprehensive_incident_payload`, `isinstance`, `items`, `len`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def enrich_incident_with_apiretrieval_fetch(incident: dict, host: str | None = None, token: str | None = None) -> dict:
     """Enrich incident with comprehensive raw alerts via APIRetrieval FETCH API or disk exports."""
@@ -3019,7 +3817,14 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
                               force_triage: bool = False, allow_retry: bool = False,
                               progress_fn=None, parsing_only: bool = False,
                               host: str | None = None, token: str | None = None) -> dict:
-    """The single Parsing -> Triage entry point. Both the Start Process
+    """
+    [FYP-FUNCTION] [FYP-ENTRY-POINT] Parsing -> Triage Durable Run Starter
+    [FYP-EVALUATOR]: this is where a NEW workflow run is born
+    (wss.start_run) and where soc_pipeline.db first gets a row
+    ("alerts_to_triage") for this incident — a good starting point to trace
+    a single incident all the way through the pipeline DB tabs.
+
+    The single Parsing -> Triage entry point. Both the Start Process
     button and the chat trigger in app.py call this through the shared
     _run_triage_workflow_with_ui() helper — there is no second,
     independently-sequenced path.
@@ -3030,9 +3835,66 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     retains the full Parsing -> Triage path. Full runs stop after the
     mandatory SOC Analyst approval pause and do not start Investigation.
 
+    [FYP-APPROVAL]: the function's whole job is to run exactly two stages
+    (Parsing, Triage) and then STOP at `wv.mandatory_triage_approval(...)` —
+    it never calls run_investigation_stage()/run_reporting_stage() itself.
+    Continuing past Triage requires a separate, explicit analyst action
+    (Approve Triage in app.py), which is what eventually calls
+    resume_after_triage_approval()/run_stage_chain().
+
+    [FYP-FLOW]: sequence is pipeline_db_init() -> enrich incident via
+    APIRetrieval -> wss.start_run() (mints run_id) -> persist raw incident
+    artifact -> pipeline_insert("alerts_to_triage", ...) -> run_parsing() ->
+    validate via workflow_validation -> (stop here if parsing_only) ->
+    run_triage()/mock_triage_result() -> AI summary -> pipeline_insert
+    ("initial_ticket", ...) -> wss.save_triage_result() -> one-time IOC
+    correlation snapshot -> mandatory approval gate -> pipeline_insert
+    ("workflow_runs", ...) -> return ctx.
+
+    [FYP-ERROR] [FYP-FALLBACK]: any Parsing or Triage exception/non-
+    "completed" status is caught, recorded into ctx["errors"], the relevant
+    workflow_state_store statuses are set to "Failed"/"Blocked", and the
+    function returns EARLY with that partial ctx — it never raises those
+    stage errors upward. The IOC correlation snapshot is explicitly
+    best-effort/non-fatal: a failure there is logged and recorded as
+    status="Failed" in workflow_state_store, but Triage still proceeds to
+    "Awaiting Approval" normally.
+
     Raises workflow_state_store.WorkflowAlreadyRunningError if a run is
     already Processing or Awaiting Approval for this incident and
-    allow_retry=False."""
+    allow_retry=False.
+
+    Args:
+        incident: raw incident dict (NetWitness-style — id/incidentId,
+            title/name, summary, riskScore/severity, ...).
+        use_mock_triage: skip Parsing's real output feed and the real LLM
+            triage call, using mock_triage_result() instead (fast/offline
+            testing path — see main()'s --mock-triage flag).
+        force_triage: bypass run_triage()'s result cache and force a fresh
+            LLM call.
+        allow_retry: permit starting a new run even if a prior run for this
+            incident is still Processing/Awaiting Approval (see raises above).
+        progress_fn: optional (event, label, text) callback for live UI
+            progress (wired through to run_triage() too).
+        parsing_only: stop after Parsing, leaving Triage "Pending" for a
+            later explicit action (used by the case-page's standalone
+            Parsing button).
+        host / token: forwarded to enrich_incident_with_apiretrieval_fetch()
+            for an optional live NetWitness re-fetch of richer alert data.
+
+    Returns:
+        ctx: dict with keys incident/errors/stages/run_id/parsing/triage/
+        approval/thinking_process (shape varies by how far the run got
+        before stopping/failing — always has "errors" and "stages").
+
+    [FYP-CALLS]: pipeline_db_init(), enrich_incident_with_apiretrieval_fetch(),
+    run_parsing(), run_triage()/mock_triage_result(), generate_triage_ai_summary(),
+    pipeline_insert() (x3: alerts_to_triage, initial_ticket, workflow_runs),
+    workflow_state_store (wss.*), workflow_validation (wv.*), ioc_correlation.
+    [FYP-USED-BY]: app.py, imported as `wf_run_until_triage_approval`
+    (only non-underscore-prefixed alias used directly, per the module's
+    dead-import cleanup note above).
+    """
     pipeline_db_init()
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
     title  = incident.get("title") or incident.get("name") or "Untitled"
@@ -3067,6 +3929,14 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
         "id": inc_id, "incident_id": inc_id, "title": title,
         "severity": str(incident.get("riskScore") or incident.get("severity") or ""),
         "summary": str(incident.get("summary") or "")[:500]})
+
+    # [FYP-FUNCTION] `_emit` — implements the emit operation used by the surrounding workflow orchestration and state workflow.
+    # [FYP-INPUT] Parameters: `event`, `label`, `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, soc_triage_agent/soc_triage_agent.py:_call, soc_triage_agent/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `progress_fn`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def _emit(event: str, label: str, text: str = "") -> None:
         if progress_fn:
@@ -3249,18 +4119,68 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
 
 
 def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
-    """Durable resume entry point for Threat Intelligence. Takes ONLY
+    """
+    [FYP-FUNCTION] [FYP-ENTRY-POINT] Durable Threat-Intelligence Stage Runner
+    [FYP-EVALUATOR]: despite the name, this is the THREAT INTELLIGENCE
+    stage runner, not a triage-approval handler — it is what "resuming after
+    triage was approved" actually DOES (next stage after Triage is Threat
+    Intel). Good pairing with run_investigation_stage()/run_reporting_stage()
+    to show the three durable per-stage workers share one shape: claim_stage
+    -> LeaseRenewer -> do the work -> complete_stage -> release lease.
+
+    Durable resume entry point for Threat Intelligence. Takes ONLY
     incident_id/run_id — reloads workflow state, the parsing result, the
     full raw incident, and the triage result from SQLite/disk. Safe to
     call from a fresh process, a new Streamlit session, or after a
     restart, as long as soc_incidents.db still shows this run_id as
     current and threat_intel_status == 'Processing' (set atomically by
     workflow_state_store.approve_triage() or .retry_threat_intel()). NO
-    st.* calls; safe to run in a background thread. Every stage
-    completion — success or failure — goes through complete_stage(),
-    which atomically checks this worker still owns the lease before
-    writing, so a worker that lost its lease mid-run can never clobber a
-    newer worker's result."""
+    st.* calls; safe to run in a background thread.
+
+    [FYP-STAGE-LOCK]: claim_stage(..., expect_status="Processing") is the
+    atomic ownership check — if another worker already claimed this stage
+    (or the status has moved on), this raises StageClaimError immediately
+    and the function does nothing further (propagated to the caller, e.g.
+    run_stage_chain, as "already being handled elsewhere / nothing to do").
+    A LeaseRenewer background thread then keeps this worker's claim alive
+    for the duration of the (potentially slow, LLM-backed) threat-intel
+    call.
+
+    [FYP-STATE]: every stage completion — success or failure — goes through
+    complete_stage(), which atomically checks this worker still owns the
+    lease before writing, so a worker that lost its lease mid-run can never
+    clobber a newer worker's result. On success, status_updates advances
+    threat_intel_status to Complete/"Complete with Warnings" AND flips
+    investigation_status/workflow_status to "Processing" in the SAME atomic
+    write — this is what makes run_stage_chain()'s next dispatch branch
+    ("if investigation_status == Processing") observe the handoff correctly.
+
+    [FYP-ERROR] [FYP-FALLBACK]: any exception during the threat-intel call
+    itself is caught, a best-effort complete_stage() records status="failed"
+    (threat_intel_status="Failed", investigation_status="Blocked",
+    workflow_status="Failed"), wss.set_last_error() records the message, and
+    a {"status": "failed", ...} dict is returned — this function does not
+    propagate arbitrary exceptions to its caller (only StageClaimError is
+    re-raised, deliberately, so run_stage_chain can distinguish "lost the
+    race" from "actually failed").
+
+    Args:
+        incident_id: the incident this run belongs to.
+        run_id: the specific durable run (from wss.start_run() in
+            run_until_triage_approval()) being resumed.
+
+    Returns:
+        The threat-intel result dict (run_threat_intel()'s return, plus an
+        AI summary) on success, or {"status": "failed", "errors": [...]}
+        on failure. Raises StageClaimError if this worker never actually
+        owned/kept the stage lease (a losing race, not a crash).
+
+    [FYP-CALLS]: claim_stage(), LeaseRenewer, run_threat_intel(),
+    generate_stage_ai_summary(), complete_stage(), release_stage_lease(),
+    load_parsing_result_for_run(), load_raw_incident_for_run().
+    [FYP-USED-BY]: run_stage_chain() (this module) — the sole caller; NOT
+    imported directly by app.py (see the module's dead-import note).
+    """
     try:
         worker_id, _stage_attempt = claim_stage(
             incident_id, run_id, stage="threat_intel",
@@ -3335,21 +4255,73 @@ _INVESTIGATION_LOCK = "investigation_workspace"
 
 
 def run_investigation_stage(incident_id: str, run_id: str) -> dict:
-    """Durable Investigation stage wrapper. Ends in 'Awaiting Approval'
+    """
+    [FYP-FUNCTION] [FYP-ENTRY-POINT] Durable Investigation Stage Runner
+    [FYP-EVALUATOR]: strong evaluator demo — shows BOTH a per-incident
+    stage lease AND a cross-incident global workspace lock in one function,
+    because the Investigation agent's triaged_alerts/incident_reports tree
+    is shared by every incident, not partitioned per-run like the other
+    stages' artifact directories.
+
+    Durable Investigation stage wrapper. Ends in 'Awaiting Approval'
     (never 'Complete') on success — Investigation still requires mandatory
     SOC Analyst approval before Reporting can start.
 
-    Per-incident worker leases alone do not stop a DIFFERENT incident's
-    investigation from entering the same shared triaged_alerts/
-    incident_reports workspace at the same time (main.py drains the whole
-    queue / scans the whole tree every invocation). So after claiming this
-    incident's own stage lease, this function also acquires the global
-    "investigation_workspace" lock (workflow_state_store.acquire_global_lock)
-    before calling investigate_with_feedback() — with a bounded backoff wait
-    (not "give up and hope a future poll retries it": Streamlit's polling
-    fragment only refreshes the DISPLAY, it never calls run_stage_chain()
-    on its own). The SAME worker stays alive, continuously renewing its own
-    stage lease, for up to _GLOBAL_LOCK_MAX_WAIT_SECONDS while waiting."""
+    [FYP-STAGE-LOCK]: per-incident worker leases alone do not stop a
+    DIFFERENT incident's investigation from entering the same shared
+    triaged_alerts/incident_reports workspace at the same time (main.py
+    drains the whole queue / scans the whole tree every invocation). So
+    after claiming this incident's own stage lease (claim_stage), this
+    function ALSO acquires the global "investigation_workspace" lock
+    (workflow_state_store.acquire_global_lock) before calling
+    investigate_with_feedback() — with a bounded backoff wait (not "give up
+    and hope a future poll retries it": Streamlit's polling fragment only
+    refreshes the DISPLAY, it never calls run_stage_chain() on its own).
+    The SAME worker stays alive, continuously renewing its own stage lease
+    AND (once acquired) the global lock, for up to
+    _GLOBAL_LOCK_MAX_WAIT_SECONDS while waiting for the shared workspace.
+
+    [FYP-DECISION]: the wait loop uses exponential backoff (starts at 2s,
+    ×1.5 each retry, capped at 30s) and surfaces a live
+    set_worker_progress_note("Waiting for Investigation capacity") so the
+    UI can show WHY a run appears stalled, rather than looking silently
+    stuck.
+
+    [FYP-ERROR] [FYP-FALLBACK]: three distinct non-success paths, all
+    handled differently:
+      1. StageClaimError (lost the per-incident lease, or lease lost while
+         waiting for the global lock, or the global lock never freed up in
+         time) — re-raised, NOT recorded as a failure; the stage stays
+         "Processing" for a future resume attempt.
+      2. inv_result["status"] == "lock_lost" (global lock renewal failed
+         DURING the subprocess — see run_investigation()'s watchdog_cb) —
+         also converted to StageClaimError and the subprocess's output is
+         explicitly discarded (no complete_stage() call), because it may
+         have run concurrently with another worker's writes to the shared
+         tree.
+      3. inv_result["status"] == "failed" — a genuine investigation
+         failure: complete_stage() records it, investigation_status/
+         reporting_status/workflow_status all move to Failed/Blocked/
+         Failed with last_error set.
+
+    Args:
+        incident_id: the incident this run belongs to.
+        run_id: the specific durable run being resumed/continued.
+
+    Returns:
+        On success: the investigation result dict with status overridden to
+        "awaiting_approval" (the underlying investigate_with_feedback()
+        result keeps its own internal status too). On failure: the raw
+        failed result dict. Raises StageClaimError on a lost race (see above).
+
+    [FYP-CALLS]: claim_stage(), LeaseRenewer, acquire_global_lock()/
+    renew_global_lock()/release_global_lock(), investigate_with_feedback(),
+    generate_stage_ai_summary(), build_post_investigation_record(),
+    pipeline_insert("post_investigation", ...), complete_stage(),
+    release_stage_lease().
+    [FYP-USED-BY]: run_stage_chain() (this module) — the sole caller; NOT
+    imported directly by app.py.
+    """
     try:
         worker_id, _stage_attempt = claim_stage(
             incident_id, run_id, stage="investigation",
@@ -3490,20 +4462,76 @@ _REPORTING_LOCK = "reporting_workspace"
 
 
 def run_reporting_stage(incident_id: str, run_id: str) -> dict:
-    """Durable Reporting stage wrapper — reuses handoff_to_reporting()/
+    """
+    [FYP-FUNCTION] [FYP-ENTRY-POINT] Durable Reporting Stage Runner
+    [FYP-EVALUATOR]: the final durable stage worker — good place to show
+    the hash-verified handoff manifest (content integrity, not just
+    presence checks) and the candidate-manifest identity check, both of
+    which are defence-in-depth ON TOP OF the reporting_workspace lock.
+
+    Durable Reporting stage wrapper — reuses handoff_to_reporting()/
     run_reporting() unmodified. Ends in 'Awaiting Approval' on success;
     only reporting_approval.approve_reporting_candidate() (which validates
     the candidate set, then calls workflow_state_store.
     commit_reporting_approval()) ever sets workflow_status to 'Complete'.
 
     Threat Intelligence is loaded and passed to handoff_to_reporting()
-    explicitly (not assumed to be embedded in investigation_result). The
-    "reporting_workspace" global lock covers the complete lifecycle: a
+    explicitly (not assumed to be embedded in investigation_result).
+
+    [FYP-STAGE-LOCK]: the "reporting_workspace" global lock (same
+    acquire-with-backoff pattern as run_investigation_stage's
+    "investigation_workspace" lock) covers the complete lifecycle: a
     run-scoped copy of the handoff is persisted BEFORE touching the shared
     REP_DIR/inputs|outputs paths, the shared workspace is used only while
     the lock is held, and a run-scoped copy of the generated output is
     persisted AFTER reading it back — the lock is released only once that
-    copy exists, never immediately after writing inputs."""
+    copy exists, never immediately after writing inputs.
+
+    [FYP-DECISION]: TWO extra integrity checks beyond the lock itself:
+      1. handoff_manifest.json verification — after handoff_to_reporting()
+         writes its inputs, this reads back the manifest it wrote (paths +
+         size + sha256 per file, see handoff_to_reporting's run-scoped
+         branch) and re-hashes every file ON DISK to confirm nothing was
+         truncated/altered before the subprocess launches. A mismatch
+         raises RuntimeError (caught by the outer except, recorded as a
+         failed stage).
+      2. candidate_manifest identity check — after run_reporting()
+         completes, the exported candidate manifest's own
+         incident_id/run_id/reporting_stage_attempt must match this call's
+         — otherwise the lock's guarantee would have been violated by a
+         lock-design bug, so this is treated as a hard failure, not a
+         warning (unlike the softer ticket_id mismatch check just above it,
+         which only logs a WARNING since the lock already rules out the
+         dangerous case).
+
+    [FYP-ERROR] [FYP-FALLBACK]: StageClaimError propagates on a lost
+    per-incident lease OR a failure to acquire the global lock within
+    _GLOBAL_LOCK_MAX_WAIT_SECONDS (stage stays "Processing" for a future
+    resume). Any other exception (including the handoff-manifest
+    RuntimeError above) is caught, best-effort recorded via complete_stage()
+    with status="Failed", wss.set_last_error() set, and {"status": "failed"}
+    returned.
+
+    Args:
+        incident_id: the incident this run belongs to.
+        run_id: the specific durable run being resumed/continued.
+
+    Returns:
+        On success: the reporting agent's final result dict (status
+        "awaiting_approval"-equivalent via reporting_status, document
+        exports attached). On failure: {"status": "failed"} (details go to
+        last_error / the DB record, not the return value). Raises
+        StageClaimError on a lost race.
+
+    [FYP-CALLS]: claim_stage(), LeaseRenewer, acquire_global_lock()/
+    release_global_lock(), _save_run_artifact() (x2: reporting_handoff,
+    reporting_output), reporting_attempt_dir(), handoff_to_reporting(),
+    run_reporting(), generate_stage_ai_summary(),
+    pipeline_insert("pending_ticket_report"/"finalized_report", ...),
+    complete_stage(), release_stage_lease().
+    [FYP-USED-BY]: run_stage_chain() (this module) — the sole caller; NOT
+    imported directly by app.py.
+    """
     try:
         worker_id, _stage_attempt = claim_stage(
             incident_id, run_id, stage="reporting",
@@ -3723,16 +4751,67 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
 
 
 def run_stage_chain(incident_id: str, run_id: str) -> None:
-    """Top-level worker entry point AND what "Resume Workflow" calls. A
+    """
+    [FYP-FUNCTION] [FYP-ENTRY-POINT] State-Aware Stage Dispatcher
+    [FYP-EVALUATOR]: THE function app.py hands to background threads
+    (`threading.Thread(target=wf_run_stage_chain, ...)`) every time it
+    kicks off or resumes work after Triage approval — the single place that
+    decides "what runs next" for a given run_id. Read this alongside
+    resume_after_triage_approval()/run_investigation_stage()/
+    run_reporting_stage() to see the full Threat Intel -> Investigation ->
+    Reporting chain and how each stage hands off to the next purely via
+    workflow_state_store's *_status columns.
+
+    Top-level worker entry point AND what "Resume Workflow" calls. A
     state-aware dispatcher: reads current state ONCE and resumes
     whichever stage is actually 'Processing', falling through to the
     next stage only if that stage's own outcome says to continue. This
     means a fresh run (started right after Approve Triage) and an
     interrupted-mid-Investigation resume both correctly converge on the
     right stage — it does NOT always restart from Threat Intelligence.
-    Pure backend function: no Streamlit import, no UI dependency, safe
-    to call from a thread, a script, or a future queue consumer. Never
-    raises — every branch is wrapped by the stage functions themselves."""
+
+    [FYP-FLOW]: three sequential `if state[...] == "Processing":` checks
+    (threat_intel_status -> investigation_status -> reporting_status), each
+    guarded so it only proceeds to the NEXT stage's check if the current
+    one both succeeded AND didn't end in a normal pause:
+      - threat_intel: any failure -> return (don't touch investigation).
+      - investigation: result status in {"failed", "awaiting_approval"} ->
+        return (awaiting_approval is a SUCCESSFUL pause requiring analyst
+        action, not a failure — explicitly distinguished from "failed" in
+        the comment/branch itself).
+      - reporting: fires and returns regardless (last stage in the chain).
+    Between stages, `state = wss.get_state(incident_id)` is re-read so the
+    next check sees the just-updated status, not a stale snapshot from
+    before this call started.
+
+    [FYP-DECISION]: the leading `if not state or state["run_id"] != run_id:
+    return` guard is what makes this function race-safe against a NEWER run
+    superseding this one (e.g. force-retry) — it silently does nothing
+    rather than resuming stale work.
+
+    [FYP-ERROR] [FYP-FALLBACK]: every StageClaimError from the three stage
+    functions is caught locally and treated as "someone else is already
+    handling this — stop quietly," not a caller-visible error. This
+    function itself never raises: "Pure backend function: no Streamlit
+    import, no UI dependency, safe to call from a thread, a script, or a
+    future queue consumer."
+
+    Args:
+        incident_id: the incident this run belongs to.
+        run_id: the specific durable run to resume/continue.
+
+    Returns:
+        None always — outcomes are observable only via
+        workflow_state_store's persisted status columns (this function is
+        fire-and-forget from the caller's point of view).
+
+    [FYP-CALLS]: resume_after_triage_approval(), run_investigation_stage(),
+    run_reporting_stage(), workflow_state_store.get_state().
+    [FYP-USED-BY]: app.py, imported as `wf_run_stage_chain` — launched via
+    `threading.Thread(target=wf_run_stage_chain, args=(incident_id, run_id))`
+    at multiple points (after Approve Triage, after Approve Investigation,
+    on an explicit "Resume Workflow" action, on retry-after-failure).
+    """
     state = wss.get_state(incident_id)
     if not state or state["run_id"] != run_id:
         return   # superseded by a newer run — nothing to resume here
@@ -3768,10 +4847,62 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 9.  CLI
+# [FYP-SECTION] 9.  CLI  [FYP-ENTRY-POINT] main() — `python soc_workflow.py --incident-file ...`
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main() -> int:
+    """
+    [FYP-FUNCTION] [FYP-ENTRY-POINT] Headless CLI Entry Point
+    [FYP-EVALUATOR]: `python soc_workflow.py --incident-file sample_incident.json`
+    — the standalone, no-UI way to exercise Parsing -> Triage without
+    launching app.py at all. Useful for a quick evaluator smoke test or for
+    CI-style regression checks against a canned incident file.
+
+    Parses CLI args, loads an incident JSON file, and drives it through
+    run_until_triage_approval() ONLY — this CLI currently stops at the
+    mandatory Triage approval pause; it does NOT continue into Investigation
+    or Reporting (see [FYP-FALLBACK] note below re: --skip-investigation /
+    --force-investigation / the two --*-timeout flags).
+
+    [FYP-FLOW]: reconfigure stdout to UTF-8 (best-effort, e.g. for Windows
+    consoles) -> load .env (best-effort) -> argparse -> read the incident
+    JSON off disk -> run_until_triage_approval(...) -> print a stage-by-
+    stage summary + any errors -> write the full (incident-stripped)
+    context to workflow_last_run.json -> return an exit code.
+
+    [FYP-FALLBACK]: --skip-investigation, --force-investigation,
+    --investigation-timeout, and --reporting-timeout are all ACCEPTED by
+    argparse but NOT yet wired to any behaviour in this function — passing
+    them prints a NOTE explaining they're reserved for a future "resume
+    after approval" CLI command, rather than silently ignoring them. This
+    is intentional forward-compatibility, not a bug: the durable resume
+    path (resume_after_triage_approval/run_investigation_stage/
+    run_reporting_stage/run_stage_chain) has no CLI wrapper yet, only the
+    app.py UI drives it today.
+
+    CLI arguments:
+        --incident-file  (required) path to a NetWitness-style incident
+            JSON dict.
+        --mock-triage    use mock_triage_result() instead of a real LLM call
+            (fast/offline path — forwarded to run_until_triage_approval()).
+        --force-triage   bypass run_triage()'s cache and force a fresh
+            LLM call.
+        --allow-retry    permit starting a new run even if a prior run for
+            this incident is still Processing/Awaiting Approval.
+        --skip-investigation / --force-investigation / --investigation-timeout
+            / --reporting-timeout: reserved, not yet used (see above).
+
+    Returns:
+        Process exit code: 0 on a successful (or non-triage-erroring) run,
+        1 if ctx["errors"] contains a "triage" key (parsing failures alone
+        do not force a non-zero exit here — only a triage-stage error does).
+
+    [FYP-CALLS]: run_until_triage_approval(), _write_json().
+    [FYP-USED-BY]: nothing in-repo — this is the `if __name__ == "__main__"`
+    CLI entry point itself, invoked as a subprocess by an operator/evaluator,
+    not imported/called by app.py (app.py drives the same underlying
+    functions directly instead).
+    """
     try:
         sys.stdout.reconfigure(encoding="utf-8")
     except Exception:
@@ -3786,6 +4917,8 @@ def main() -> int:
                     help="Path to an incident JSON file (NetWitness-style dict)")
     ap.add_argument("--mock-triage", action="store_true",
                     help="Use canned triage output (no LLM call)")
+    # [FYP-FALLBACK]: these four flags are parsed but not yet consumed — see
+    # the docstring above. Kept as reserved/forward-compatible CLI surface.
     ap.add_argument("--skip-investigation", action="store_true")
     ap.add_argument("--force-investigation", action="store_true")
     ap.add_argument("--investigation-timeout", type=int, default=600)
@@ -3798,9 +4931,13 @@ def main() -> int:
 
     incident = json.loads(Path(args.incident_file).read_text(encoding="utf-8"))
 
+    # [FYP-EVALUATOR]: this is the CLI's ONLY pipeline call — Parsing and
+    # Triage run here; the function returns at the mandatory approval gate.
     ctx = run_until_triage_approval(
         incident, use_mock_triage=args.mock_triage, force_triage=args.force_triage, allow_retry=args.allow_retry)
 
+    # Surface a NOTE (not an error) for any reserved/not-yet-wired flag the
+    # caller passed, so a CLI user isn't left wondering why nothing happened.
     _unused = [f"--{f.replace('_', '-')}" for f in
               ("skip_investigation", "force_investigation") if getattr(args, f, False)]
     if getattr(args, "investigation_timeout", 600) != 600:
@@ -3821,6 +4958,8 @@ def main() -> int:
         print("  errors:")
         for k, v in ctx["errors"].items():
             print(f"    {k}: {str(v)[:200]}")
+    # Dump the full run context (minus the raw incident, already on disk via
+    # the incident file itself) for post-hoc inspection/debugging.
     out_path = ROOT / "workflow_last_run.json"
     slim = {k: v for k, v in ctx.items() if k != "incident"}
     _write_json(out_path, slim)
@@ -3829,4 +4968,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # [FYP-ENTRY-POINT]: `python soc_workflow.py --incident-file ...`
     raise SystemExit(main())

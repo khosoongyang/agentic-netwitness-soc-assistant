@@ -1,3 +1,36 @@
+# ==============================================================================
+# [FYP-FILE] asset_criticality.py
+# File: asset_criticality.py
+# Workflow position: Aegis SOC analysis support.
+# Important dependencies: __future__, re.
+# Key evaluator search terms: classify_asset, _containment_checklist, assess_incident, format_assessment, [FYP-FUNCTION].
+# ------------------------------------------------------------------------------
+# Purpose: Deterministic, code-only asset-criticality model. Classifies an
+#   incident's named host/user entity into a tier (critical_infrastructure /
+#   production_server / workstation / unclassified) from naming-pattern regex,
+#   then derives a criticality-adjusted response urgency and a PICERL
+#   containment checklist scoped to that tier. An ANNOTATION layer over triage
+#   severity — never rewrites the triage classification.
+# Main functionalities:
+#   - classify_asset(): [FYP-FUNCTION] single name -> tier via regex table.
+#   - _containment_checklist(): [FYP-FUNCTION] tier-scoped PICERL steps.
+#   - assess_incident(): [FYP-FUNCTION] [FYP-PROCESS] main entry point —
+#     collects candidate assets from the incident, ranks them, and returns
+#     the escalation annotation + containment checklist.
+#   - format_assessment(): [FYP-FUNCTION] plain-text rendering for prompts/UI.
+# Inputs: incident (dict), optional triage_classification (str).
+# Outputs: assess_incident() -> {assets, highest_tier, highest_rank,
+#   triage_classification, response_urgency, escalation, containment_checklist}.
+# Called by [FYP-USED-BY]: diamond_model.py (_asset_tier), reporting_sop.py,
+#   skills_sidecar.py, triage_verdict.py (_asset_signal) — all via
+#   `from asset_criticality import assess_incident`, each wrapped in its own
+#   try/except so a missing/broken module degrades gracefully (confirmed via
+#   grep; no other importers found in the repo).
+# Calls [FYP-CALLS]: stdlib re only — no I/O, no network, no DB.
+# Kill switch: docstring below states WORKFLOW_ASSET_CRITICALITY=0, but grep
+#   across the repo finds no code (here or in any caller) that actually reads
+#   this env var — documented intent, not currently wired.
+# ==============================================================================
 """
 asset_criticality.py — incident-response asset-criticality model
 (post-triage, pre-investigation).
@@ -33,6 +66,7 @@ from __future__ import annotations
 
 import re
 
+# [FYP-SECTION] constants — tier ranks, naming-pattern regex, urgency copy
 _TITLE_ENTITY_RE = re.compile(r"\bfor\s+(.+?)\s*$")
 _IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 
@@ -61,8 +95,16 @@ _URGENCY = {
 }
 
 
+# [FYP-SECTION] tier classification + containment checklist
+
 def classify_asset(name: str) -> dict:
-    """{'name', 'tier', 'rank', 'reason'} for one asset/entity name."""
+    """[FYP-FUNCTION] Classify one asset/entity name into a criticality tier.
+
+    Runs the name through the critical/production/workstation/personal-account
+    regex table (checked in that priority order) and returns
+    {'name', 'tier', 'rank', 'reason'}. IPs and empty names are honestly
+    reported as unclassified rather than guessed at.
+    """
     v = (name or "").strip()
     if not v:
         return {"name": v, "tier": "unclassified", "rank": 0,
@@ -87,7 +129,11 @@ def classify_asset(name: str) -> dict:
 
 
 def _containment_checklist(rank: int, asset: str) -> list[str]:
-    """PICERL containment/eradication guidance scoped to asset tier."""
+    """[FYP-FUNCTION] PICERL containment/eradication/recovery guidance scoped
+    to asset tier (rank 3=critical infra, 2=production server, else
+    workstation). Returns a plain list of advisory steps, most-cautious
+    first (never power off critical infra, snapshot servers before
+    isolating, workstations get straightforward isolate+reimage)."""
     if rank >= 3:
         return [
             f"Containment: do NOT power off {asset} — volatile evidence and "
@@ -121,8 +167,11 @@ def _containment_checklist(rank: int, asset: str) -> list[str]:
     ]
 
 
+# [FYP-SECTION] main entry point + rendering
+
 def assess_incident(incident: dict, triage_classification: str | None = None) -> dict:
-    """Deterministic asset-criticality assessment for one incident.
+    """[FYP-FUNCTION] [FYP-PROCESS] Deterministic asset-criticality assessment
+    for one incident — the module's main entry point.
 
     Collects candidate assets (title entity + any harvested hostnames the
     incident carries), classifies each, and derives the criticality-adjusted
@@ -170,7 +219,8 @@ def assess_incident(incident: dict, triage_classification: str | None = None) ->
 
 
 def format_assessment(a: dict) -> str:
-    """Plain-text block for the investigation alert / LLM prompt."""
+    """[FYP-FUNCTION] Plain-text rendering of assess_incident()'s output for
+    the investigation alert / LLM prompt. Pure string formatting, no I/O."""
     lines = ["ASSET CRITICALITY ASSESSMENT (deterministic, NIST SP 800-61 / "
              "PICERL asset model)"]
     for x in a["assets"]:

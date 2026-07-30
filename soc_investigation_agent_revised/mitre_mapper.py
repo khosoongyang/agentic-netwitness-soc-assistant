@@ -1,3 +1,51 @@
+# ==========================================================================
+# [FYP-FILE]
+# Important dependencies: dotenv, json, os, pydantic, re, typing.
+# File: soc_investigation_agent_revised/mitre_mapper.py
+# Purpose: MITRE ATT&CK TTP mapping engine. Takes a fully-correlated incident
+#   (whatever shape it arrives in — sync_engine.Incident, a plain dict, or a
+#   raw list of events) and produces a structured, chronologically-ordered
+#   mapping of the incident's observed behavior onto MITRE ATT&CK
+#   tactics/techniques/sub-technique IDs, plus a human-readable Markdown
+#   summary table used directly in the final incident report.
+# Main functionalities:
+#   - normalize_incident_input(): adapter that converts any of the accepted
+#     incident shapes into a uniform (incident_id, List[TimelineEvent]),
+#     chronologically sorted by timestamp_epoch — this IS the "investigation
+#     timeline" construction step for MITRE analysis.
+#   - format_event_sequence(): renders the timeline into the single text
+#     context block sent to the LLM.
+#   - map_incident_mitre_ttps(): main entry point — LLM-driven holistic
+#     (not alert-by-alert) MITRE ATT&CK mapping with a mock-response
+#     override for tests and a deterministic keyword-heuristic fallback
+#     (fallback_heuristic_mapper) when no LLM is configured/available.
+#   - generate_markdown_table(): renders the structured mapping into the
+#     Markdown table embedded in the final Word/Markdown incident report
+#     under "Technical Chronology & MITRE ATT&CK TTP Mapping".
+# Inputs: a correlated incident (Pydantic Incident, dict, or event list) and
+#   an optional pre-constructed LLM (LangChain ChatOpenAI-compatible).
+# Outputs: Tuple[IncidentMitreAnalysis, str] — the structured Pydantic
+#   analysis (attack_chain_summary + ordered MitreTTPMapping list) and its
+#   rendered Markdown table.
+# Workflow position: Investigation stage / MITRE ATT&CK mapping layer.
+#   Invoked once per incident, after evidence correlation has assembled the
+#   full alert set and (in the orchestrator.py path) after/alongside final
+#   report generation.
+# Called by: main.py's generate_local_standalone_report() (0-LLM-call path
+#   for single, DB-unrelated alerts — mock_response bypass not used here,
+#   llm=None forces the heuristic fallback); orchestrator.py's
+#   generate_final_analysis() and compile_final_report() (both prefer the
+#   structured `mitre_mappings` already produced by the main report LLM call
+#   and only fall back to calling map_incident_mitre_ttps(..., llm=None)
+#   directly if that field is empty or report generation itself failed).
+# Calls: langchain_openai.ChatOpenAI / langchain_core.prompts (only when an
+#   LLM is available); no direct ChromaDB/RAG calls — operates purely on the
+#   already-correlated incident data passed in by its caller.
+# Key evaluator search terms: MITRE ATT&CK, TTP mapping, timeline_phase,
+#   technique_id, T1566, attack_chain_summary, IncidentMitreAnalysis,
+#   investigation timeline, chronological narrative, MITRE mapped.
+# ==========================================================================
+
 import os
 import json
 import re
@@ -9,6 +57,15 @@ load_dotenv()
 
 # --- PYDANTIC SCHEMAS FOR INPUT & STRUCTURED OUTPUT ---
 
+# [FYP-SECTION] A single normalized point in the investigation timeline —
+# the common shape every incoming incident representation is converted into
+# by normalize_incident_input() before MITRE mapping.
+# [FYP-CLASS] `TimelineEvent` — owns TimelineEvent state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/mitre_mapper.py:normalize_incident_input.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class TimelineEvent(BaseModel):
     timestamp: str = Field(default="N/A", description="Event timestamp (ISO string or human-readable format)")
     source: str = Field(default="Unknown", description="Log source type (e.g., Endpoint, Network, Firewall, POP3)")
@@ -16,12 +73,29 @@ class TimelineEvent(BaseModel):
     log_summary: str = Field(description="Raw log text, document summary, or alert details")
     alert_context: Dict[str, Any] = Field(default_factory=dict, description="Additional context such as alert ID, risk score, or raw indicators")
 
+# [FYP-SECTION] One chronological step of the attack chain, mapped to a
+# precise MITRE ATT&CK tactic/technique/sub-technique. This is the row shape
+# rendered by generate_markdown_table().
+# [FYP-CLASS] `MitreTTPMapping` — owns MitreTTPMapping state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/mitre_mapper.py:fallback_heuristic_mapper.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class MitreTTPMapping(BaseModel):
     timeline_phase: str = Field(description="Summary of the timeline phase or activity in chronological order.")
     observed_evidence: str = Field(description="Concrete evidence from logs (e.g., users, hosts, IPs, commands, URLs, filenames).")
     tactic: str = Field(description="MITRE ATT&CK Tactic name (e.g., Initial Access, Execution, Defense Evasion, Lateral Movement).")
     technique_name: str = Field(description="MITRE ATT&CK Technique or Sub-technique Name (e.g., Phishing: Spearphishing Link).")
     technique_id: str = Field(description="Precise MITRE ATT&CK ID including sub-technique if applicable (e.g., T1566.002).")
+
+# [FYP-SECTION] Top-level structured output of map_incident_mitre_ttps():
+# the incident-level attack narrative plus its ordered list of TTP mappings.
+# [FYP-CLASS] `IncidentMitreAnalysis` — owns IncidentMitreAnalysis state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/mitre_mapper.py:fallback_heuristic_mapper, soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 class IncidentMitreAnalysis(BaseModel):
     incident_id: str = Field(description="Unique identifier of the correlated incident.")
@@ -31,6 +105,10 @@ class IncidentMitreAnalysis(BaseModel):
 
 # --- INPUT HANDLING & NORMALIZATION ---
 
+# [FYP-FUNCTION] Extracts a normalized timestamp string from an event's
+# metadata (preferring the human-readable timestamp_str, falling back to
+# raw epoch, then a handful of alternate top-level keys).
+# [FYP-USED-BY]: normalize_incident_input().
 def parse_event_timestamp(event_dict: Dict[str, Any]) -> str:
     """Extracts a normalized timestamp string from event dict/metadata."""
     meta = event_dict.get("metadata", {})
@@ -44,20 +122,32 @@ def parse_event_timestamp(event_dict: Dict[str, Any]) -> str:
             return str(event_dict[ts_key])
     return "N/A"
 
+# [FYP-FUNCTION] Extracts a "user: X | host: Y" display string from an
+# event's metadata/top-level fields.
+# [FYP-USED-BY]: normalize_incident_input().
 def parse_user_host(event_dict: Dict[str, Any]) -> str:
     """Extracts user/host information from event dict/metadata."""
     meta = event_dict.get("metadata", {}) if isinstance(event_dict.get("metadata"), dict) else {}
     username = meta.get("username") or event_dict.get("username") or event_dict.get("user") or "Unknown"
     hostname = meta.get("hostname") or event_dict.get("hostname") or event_dict.get("host") or "Unknown"
-    
+
     parts = []
     if username != "Unknown":
         parts.append(f"user: {username}")
     if hostname != "Unknown":
         parts.append(f"host: {hostname}")
-    
+
     return " | ".join(parts) if parts else "Unknown"
 
+# [FYP-FUNCTION] [FYP-PROCESS] [FYP-EVALUATOR] Investigation-timeline
+# construction: the single adapter that converts any accepted incident shape
+# — a Pydantic Incident (sync_engine/correlation_engine), a plain dict (with
+# raw_alerts/timeline/events/alerts), or a bare list of events/dicts — into
+# a uniform, chronologically-sorted List[TimelineEvent]. This IS "where the
+# investigation timeline is generated" for MITRE mapping purposes: every
+# other function in this module (format_event_sequence,
+# fallback_heuristic_mapper, the LLM prompt) operates on its output.
+# [FYP-USED-BY]: map_incident_mitre_ttps() (always called first).
 def normalize_incident_input(incident_input: Any) -> Tuple[str, List[TimelineEvent]]:
     """
     Ingests a correlated incident object (Pydantic model, dictionary, or event list)
@@ -140,7 +230,17 @@ def normalize_incident_input(incident_input: Any) -> Tuple[str, List[TimelineEve
                     alert_context=item
                 ))
 
-    # Sort events chronologically if epoch/timestamp metadata is available
+    # [FYP-PROCESS] Sort events chronologically if epoch/timestamp metadata is
+    # available — this ordering is what makes the LLM/heuristic mapping a
+    # true chronological attack-chain narrative rather than an arbitrary one.
+    # [FYP-FUNCTION] `get_sort_key` — retrieves get sort key data for the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `ev`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `float`, `get`, `isinstance`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def get_sort_key(ev: TimelineEvent):
         meta = ev.alert_context.get("metadata", {}) if isinstance(ev.alert_context, dict) else {}
         if isinstance(meta, dict) and "timestamp_epoch" in meta and meta["timestamp_epoch"]:
@@ -153,6 +253,9 @@ def normalize_incident_input(incident_input: Any) -> Tuple[str, List[TimelineEve
 
 # --- PROMPT TEMPLATE ---
 
+# [FYP-SECTION] System prompt driving the LLM's holistic (whole-incident,
+# not per-alert) MITRE ATT&CK mapping and narrative generation. Mandates
+# precise sub-technique IDs and strict chronological ordering of `mappings`.
 SYSTEM_PROMPT = """You are a Principal SOC Cyber Threat Intelligence & Incident Response Specialist.
 Your task is to analyze an entire correlated incident timeline as a SINGLE, HOLISTIC attack progression and map the attack steps to precise MITRE ATT&CK TTPs.
 
@@ -194,6 +297,10 @@ Analyze the full event sequence holistically and generate the MITRE ATT&CK TTP m
 """
 
 
+# [FYP-FUNCTION] Renders the normalized TimelineEvent list into the single
+# numbered text block ("[Event #1] ... [Event #2] ...") injected into
+# HUMAN_PROMPT_TEMPLATE as {event_sequence_text}.
+# [FYP-USED-BY]: map_incident_mitre_ttps() (LLM path only).
 def format_event_sequence(events: List[TimelineEvent]) -> str:
     """Formats event sequence into a single context block for the LLM prompt."""
     blocks = []
@@ -206,7 +313,7 @@ def format_event_sequence(events: List[TimelineEvent]) -> str:
                 technique = meta.get("technique", "N/A")
                 ips = meta.get("ips", "")
                 ctx_str = f" Context: tactic={tactic}, technique={technique}, ips={ips}"
-        
+
         block = (
             f"[Event #{idx}]\n"
             f"Timestamp: {ev.timestamp}\n"
@@ -220,6 +327,13 @@ def format_event_sequence(events: List[TimelineEvent]) -> str:
 
 # --- RESPONSE PARSER & MARKDOWN TABLE GENERATOR ---
 
+# [FYP-FUNCTION] [FYP-EVALUATOR] Renders a completed IncidentMitreAnalysis
+# into the Markdown table embedded verbatim in the final incident report
+# under "Technical Chronology & MITRE ATT&CK TTP Mapping" — this is where a
+# MITRE mapping becomes the report artifact an analyst actually reads.
+# [FYP-USED-BY]: map_incident_mitre_ttps() (every return path); also called
+# directly by orchestrator.py after it builds an IncidentMitreAnalysis out of
+# the report LLM's own `mitre_mappings` field.
 def generate_markdown_table(analysis: IncidentMitreAnalysis) -> str:
     """
     Renders the IncidentMitreAnalysis into a formatted Markdown summary table with headers:
@@ -242,17 +356,35 @@ def generate_markdown_table(analysis: IncidentMitreAnalysis) -> str:
 
 # --- FALLBACK HEURISTIC MAPPER (FOR OFFLINE / MOCK RUNS) ---
 
+# [FYP-FUNCTION] [FYP-DECISION] Deterministic, no-LLM MITRE mapper: walks the
+# normalized timeline in order and keyword-matches each event's log summary
+# against a small set of known attack-stage phrases (phishing, AppData
+# execution, cmd.exe/services.exe, net use/SMB) to assign a tactic/technique/
+# sub-technique ID, falling back to a generic Execution/PowerShell mapping
+# when nothing matches. Produces the same IncidentMitreAnalysis shape as the
+# LLM path so downstream code (generate_markdown_table, report assembly)
+# doesn't need to know which path produced it.
+# [FYP-USED-BY]: map_incident_mitre_ttps() when llm=None (offline/mock runs)
+# or when the LLM call itself fails.
+# [FYP-FUNCTION] `fallback_heuristic_mapper` — implements the fallback heuristic mapper operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `incident_id`, `events`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/mitre_mapper.py:map_incident_mitre_ttps; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `IncidentMitreAnalysis`, `MitreTTPMapping`, `append`, `capitalize`, `enumerate`, `get`, `isinstance`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def fallback_heuristic_mapper(incident_id: str, events: List[TimelineEvent]) -> IncidentMitreAnalysis:
     """Generates a structured IncidentMitreAnalysis using incident-level heuristics when LLM is unavailable."""
     mappings = []
     narrative_lines = [f"Comprehensive Chronological Attack Narrative for Incident {incident_id}:"]
-    
+
     for idx, ev in enumerate(events, 1):
         summary_lower = ev.log_summary.lower()
         meta = ev.alert_context.get("metadata", {}) if isinstance(ev.alert_context, dict) else {}
         ts = ev.timestamp
         uh = ev.user_or_host
-        
+
         # Extract IOCs
         iocs = []
         if isinstance(meta, dict):
@@ -277,7 +409,7 @@ def fallback_heuristic_mapper(incident_id: str, events: List[TimelineEvent]) -> 
             phase = f"Initial Access - Email Activity ({ts})"
             evidence = f"{uh} received email/attachment: {ev.log_summary[:80]}..."
             narrative_lines.append(f"- Step {idx} [{ts}]: Initial Access - {uh} was targeted via phishing email. {ev.log_summary}{ioc_str}")
-        
+
         # Outbound / Evasion / Unsigned AppData
         elif "appdata" in summary_lower or "unsigned" in summary_lower or "outbound" in summary_lower:
             tactic = "Defense Evasion"
@@ -331,6 +463,27 @@ def fallback_heuristic_mapper(incident_id: str, events: List[TimelineEvent]) -> 
 
 
 # --- MAIN HANDLER FUNCTION ---
+
+# [FYP-FUNCTION] [FYP-ENTRY-POINT] [FYP-EVALUATOR] Main handler / public
+# entry point for "where is the incident MITRE-mapped": normalizes the
+# incident into a timeline, then routes through exactly one of three paths
+# in priority order — (1) an explicit mock_response override for
+# tests/offline runs, (2) a real LLM call (LangChain ChatOpenAI structured
+# output, with a manual JSON-extraction retry if structured output itself
+# errors), or (3) the deterministic fallback_heuristic_mapper() if no LLM is
+# configured or every LLM attempt failed. Every path returns the same
+# (IncidentMitreAnalysis, markdown_table) shape.
+# [FYP-USED-BY]: main.py's generate_local_standalone_report() (llm=None,
+# heuristic path only); orchestrator.py's generate_final_analysis() and
+# compile_final_report() (llm=None fallback path, invoked only when the
+# report LLM didn't already produce `mitre_mappings`).
+# [FYP-FUNCTION] `map_incident_mitre_ttps` — transforms map incident mitre ttps input into the stable representation required by downstream investigation processing.
+# [FYP-INPUT] Parameters: `incident_input`, `llm`, `mock_response`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_local_standalone_report, soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `ChatOpenAI`, `ValueError`, `fallback_heuristic_mapper`, `format_event_sequence`, `from_messages`, `generate_markdown_table`, `getenv`, `group`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def map_incident_mitre_ttps(
     incident_input: Any,

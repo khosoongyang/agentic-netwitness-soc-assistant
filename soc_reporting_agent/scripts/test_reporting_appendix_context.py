@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, json, pathlib, shutil, subprocess, sys.
+# =============================================================================
+# File: soc_reporting_agent/scripts/test_reporting_appendix_context.py
+# Purpose: This module implements test and validation behaviour for test reporting appendix context.
+# Main functionality: write_json, reset_io, seed_inputs, test_context_and_templates, test_adapter_success_wrapper, test_failed_subprocess_not_completed.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis test and validation component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, json, pathlib, shutil, subprocess, sys.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: write_json, reset_io, seed_inputs, test_context_and_templates, test_adapter_success_wrapper, test_failed_subprocess_not_completed, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -13,10 +35,30 @@ INPUTS = ROOT / "inputs"
 OUTPUTS = ROOT / "outputs"
 
 
+# =============================================================================
+# [FYP-SECTION] TEST SETUP, FIXTURES, AND ASSERTIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `write_json` — persists or updates write json state used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `path`, `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_reporting_agent/adapters/run_reporting.py:_copy_report_artifacts, soc_reporting_agent/adapters/run_reporting.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `mkdir`, `write_text`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+
+# [FYP-FUNCTION] `reset_io` — persists or updates reset io state used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_reporting_appendix_context.py:main, soc_reporting_agent/scripts/test_reporting_appendix_context.py:test_failed_subprocess_not_completed; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `mkdir`, `rmtree`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def reset_io() -> None:
     for path in (INPUTS, OUTPUTS):
@@ -24,6 +66,14 @@ def reset_io() -> None:
             shutil.rmtree(path)
         path.mkdir(parents=True, exist_ok=True)
 
+
+# [FYP-FUNCTION] `seed_inputs` — implements the seed inputs operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_merged_report_context.py:main, soc_reporting_agent/scripts/test_reporting_appendix_context.py:main, soc_reporting_agent/scripts/test_reporting_appendix_context.py:test_failed_subprocess_not_completed; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def seed_inputs() -> None:
     write_json(INPUTS / "processed_alert.json", {
@@ -85,6 +135,14 @@ def seed_inputs() -> None:
     })
 
 
+# [FYP-FUNCTION] `test_context_and_templates` — verifies context and templates behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `Path`, `build_context`, `get`, `len`, `load_reporting_inputs`, `read_text`, `render_reports`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_context_and_templates() -> None:
     from reporting.input_loader import load_reporting_inputs
     from reporting.context_builder import build_context
@@ -101,6 +159,14 @@ def test_context_and_templates() -> None:
     final_text = Path(generated["final_incident_report"]).read_text(encoding="utf-8")
     assert "Appendix A" in final_text, "final report appendix missing"
 
+
+# [FYP-FUNCTION] `test_adapter_success_wrapper` — verifies adapter success wrapper behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `__import__`, `dict`, `exists`, `get`, `len`, `loads`, `read_text`, `run`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_adapter_success_wrapper() -> None:
     result = subprocess.run(
@@ -123,6 +189,14 @@ def test_adapter_success_wrapper() -> None:
     assert len(wrapper.get("investigation_limitations") or []) == 3, wrapper
 
 
+# [FYP-FUNCTION] `test_failed_subprocess_not_completed` — verifies failed subprocess not completed behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `_normalise_reporting_result`, `get`, `len`, `reset_io`, `seed_inputs`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_failed_subprocess_not_completed() -> None:
     from adapters.run_reporting import _normalise_reporting_result
     reset_io()
@@ -143,6 +217,14 @@ def test_failed_subprocess_not_completed() -> None:
     assert wrapper["reporting_mode"] == "with_limitations", wrapper
     assert len(wrapper.get("investigation_limitations") or []) == 3, wrapper
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `dumps`, `len`, `mkdir`, `print`, `reset_io`, `seed_inputs`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def main() -> int:
     reset_io()

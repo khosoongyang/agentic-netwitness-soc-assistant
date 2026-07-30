@@ -1,3 +1,12 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/soc_analyst_review_template.md.j2
+   Purpose: Renders the analyst-review section used to assess investigation evidence and gaps.
+   Main functionality: Presents review findings, decisions, caveats, and recommended follow-up.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: soc_analyst_review text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting review, before confirmation and export.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: soc_analyst_review, SOC Analyst Review, [FYP-APPROVAL]. #}
 # SOC Analyst Review
 
 ## 1. Review Metadata

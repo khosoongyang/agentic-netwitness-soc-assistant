@@ -1,3 +1,12 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/incident_report_template.md.j2
+   Purpose: Renders the complete final incident report from verified stage context.
+   Main functionality: Lays out incident facts, findings, timeline, MITRE, evidence, actions, and limitations.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: final_incident_report text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting generation, before analyst review and final approval.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: final_incident_report, Incident Report, [FYP-EXPORT]. #}
 # {{ report_title | default("Final Incident Report") }}
 
 ## Document Control

@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: datetime, json, os, pathlib, re, sqlite3, streamlit.
+# =============================================================================
+# File: chroma_viewer.py
+# Purpose: This module provides the Streamlit inspection interface for browsing ChromaDB collections and stored incident context.
+# Main functionality: _openai_ef, get_chroma_client, connect_chroma, get_collection, sqlite_load, sqlite_count.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: datetime, json, os, pathlib, re, sqlite3, streamlit.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _openai_ef, get_chroma_client, connect_chroma, get_collection, sqlite_load, sqlite_count, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 chroma_viewer.py  —  SOC Pipeline ChromaDB Viewer
 ══════════════════════════════════════════════════
@@ -32,6 +54,18 @@ try:
 except ImportError:
     CHROMA_OK = False
 
+
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_openai_ef` — implements the openai ef operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include app.py:_pl_chroma_col, app.py:chroma_connect, chroma_viewer.py:get_collection; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `OpenAIEmbeddingFunction`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _openai_ef():
     """OpenAI embedding function — must match the one app.py uses to create
@@ -188,10 +222,26 @@ hr { border-color: #0E1E2E; margin: 0.8rem 0; }
 # ══════════════════════════════════════════════════════════════════════════════
 # SESSION STATE & HELPERS
 # ══════════════════════════════════════════════════════════════════════════════
+# [FYP-FUNCTION] `get_chroma_client` — retrieves get chroma client data for the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include chroma_viewer.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: no nested function/service calls.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def get_chroma_client():
     if "cv_chroma_client" not in st.session_state:
         st.session_state.cv_chroma_client = None
     return st.session_state.cv_chroma_client
+
+# [FYP-FUNCTION] `connect_chroma` — implements the connect chroma operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include chroma_viewer.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `PersistentClient`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def connect_chroma(path: str = CHROMA_PATH):
     try:
@@ -200,6 +250,14 @@ def connect_chroma(path: str = CHROMA_PATH):
         return client, ""
     except Exception as e:
         return None, str(e)
+
+# [FYP-FUNCTION] `get_collection` — retrieves get collection data for the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `client`, `stage`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include chroma_viewer.py:<module>, soc_investigation_agent_revised/chroma_compat.py:open_persistent_collection; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_openai_ef`, `get_or_create_collection`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def get_collection(client, stage: str):
     try:
@@ -210,6 +268,14 @@ def get_collection(client, stage: str):
         )
     except Exception:
         return None
+
+# [FYP-FUNCTION] `sqlite_load` — implements the sqlite load operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `stage`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include chroma_viewer.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `close`, `connect`, `dict`, `execute`, `exists`, `fetchall`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def sqlite_load(stage: str, limit: int = 500) -> list[dict]:
     if not PIPELINE_DB_FILE.exists():
@@ -224,6 +290,14 @@ def sqlite_load(stage: str, limit: int = 500) -> list[dict]:
         return [dict(r) for r in rows]
     except Exception:
         return []
+
+# [FYP-FUNCTION] `sqlite_count` — implements the sqlite count operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `stage`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include chroma_viewer.py:<module>; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `close`, `connect`, `execute`, `exists`, `fetchone`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def sqlite_count(stage: str) -> int:
     if not PIPELINE_DB_FILE.exists():

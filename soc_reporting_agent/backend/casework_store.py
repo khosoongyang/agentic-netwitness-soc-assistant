@@ -1,3 +1,87 @@
+# ==============================================================================
+# [FYP-FILE] soc_reporting_agent/backend/casework_store.py
+# File: soc_reporting_agent/backend/casework_store.py
+# Important dependencies: __future__, backend, datetime, json, pathlib, services, sqlite3, typing.
+# ==============================================================================
+# Purpose:
+#   Legacy/local SQLite implementation of the Aegis "casework store" -- the
+#   persistence layer for SOC alerts, incident tickets, per-stage agent
+#   results (parsing / triage / threat-intel / investigation / reporting),
+#   analyst approvals, incident-grouping (correlation) recommendations,
+#   activity/audit log entries, and agent run telemetry.
+#
+#   [FYP-EVALUATOR] As of this review this module is NOT wired into the live
+#   Flask app. backend/store_factory.py -> get_casework_store() always
+#   constructs backend.postgres_casework_store.PostgresCaseworkStore; SQLite
+#   is explicitly disabled as a runtime fallback ("PostgreSQL is the only
+#   runtime database. SQLite fallback is intentionally disabled so data loss
+#   or split-brain workflow state cannot be hidden." -- see
+#   store_factory.get_casework_store()). This file remains as (a) the module
+#   exercised directly by soc_reporting_agent/scripts/
+#   test_evidence_gap_branch_and_reporting_wrapper.py for local/offline
+#   testing, and (b) a readable reference for the schema/logic that
+#   postgres_casework_store.py mirrors almost method-for-method.
+#
+# Main functionalities:
+#   - normalise_alert(): map a raw RSA NetWitness alert/incident export into
+#     the canonical alert dict shape stored in the `alerts` table.
+#   - CaseworkStore: SQLite-backed class exposing schema init/migration,
+#     alert CRUD, ticket CRUD, alert<->ticket linking, the incident-grouping
+#     (correlation) recommendation workflow, ticket merge/split/archive,
+#     activity/audit logging, per-stage agent output attachment
+#     (attach_agent_result), agent run start/finish tracking, and the
+#     analyst approval gates that unlock each workflow stage.
+#
+# Inputs:
+#   - db_path: Path to a local SQLite file (CaseworkStore.__init__).
+#   - raw_alert dicts (NetWitness alert/incident JSON) passed to
+#     normalise_alert() / upsert_alert().
+#   - Per-stage agent result dicts passed to attach_agent_result() (shaped
+#     like the JSON outputs of soc_triage_agent / soc_investigation_agent_
+#     revised / soc_reporting_agent pipeline stages).
+#
+# Outputs:
+#   - Rows written to a local SQLite database file. Tables: counters, alerts,
+#     tickets, ticket_alerts, incidents, correlation_recommendations,
+#     activity, agent_runs.
+#   - Plain dict/list return values (JSON-serialisable) representing tickets,
+#     alerts, activity entries, correlation recommendations, and agent runs.
+#   - JSON files written under an "inputs" directory by prepare_agent_inputs()
+#     for the downstream pipeline agents to read.
+#
+# Workflow position:
+#   Storage layer underneath the SOC ticket workflow defined in
+#   backend/stage_workflow.py (WORKFLOW_STAGES below mirrors that module's
+#   stage ordering). In the live app this layer is played by
+#   postgres_casework_store.PostgresCaseworkStore instead; see that file's
+#   header for the same role over PostgreSQL.
+#
+# Called by:
+#   - soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py
+#     (imports CaseworkStore directly to exercise the evidence-gap decision
+#     and reporting flow against a throwaway SQLite file in a temp dir).
+#   - No confirmed caller inside the live backend/app.py request path was
+#     found; app.py obtains its store from
+#     backend.store_factory.get_casework_store(), which returns
+#     PostgresCaseworkStore, not CaseworkStore. A repo-wide grep for
+#     "backend.casework_store" / "CaseworkStore" found no other importers.
+#
+# Calls:
+#   - backend.stage_workflow (stage_definition, output_valid, can_approve,
+#     approval_fields, completed_result, FAILED) for workflow-stage rules
+#     and approval-gate eligibility checks.
+#   - services.parser_context_guard.extract_alert_identity() to derive a
+#     stable alert identity (alert_id / hostname / username) from raw
+#     NetWitness payloads.
+#   - Python stdlib: sqlite3, json, uuid, datetime, pathlib.
+#
+# Key evaluator search terms:
+#   CaseworkStore, normalise_alert, init_db, ensure_schema_migrations,
+#   attach_agent_result, record_approval, record_evidence_gap_decision,
+#   prepare_agent_inputs, correlation_recommendations, WORKFLOW_STAGES,
+#   SQLite fallback, legacy casework store, same interface as
+#   PostgresCaseworkStore.
+# ==============================================================================
 from __future__ import annotations
 
 """Legacy SQLite casework store.
@@ -18,6 +102,11 @@ from backend import stage_workflow
 from services.parser_context_guard import extract_alert_identity
 
 
+# [FYP-SECTION] Workflow stage ordering.
+# [FYP-STATE] Mirrors backend.stage_workflow's canonical stage list. A
+# ticket's `current_stage` column (see tickets table below) always holds one
+# of these string values; stage_workflow.py is the single source of truth
+# for what each stage requires before it can advance.
 WORKFLOW_STAGES = [
     "parsing_normalisation",
     "triage",
@@ -33,14 +122,31 @@ WORKFLOW_STAGES = [
 ]
 
 
+# [FYP-SECTION] Small serialisation / normalisation helpers shared by every
+# method below. None of these touch the database directly.
+
+# [FYP-FUNCTION] Current UTC Timestamp
+# Returns the current time as an ISO-8601 string (UTC). Used for every
+# created_at / updated_at / linked_at / started_at column written by this
+# module. No params, no side effects. Called by nearly every method below.
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# [FYP-FUNCTION] Serialise Value To JSON Text
+# Wraps json.dumps() for values stored in *_json TEXT columns (SQLite has no
+# native JSON type). None becomes "{}" so NOT NULL *_json columns are always
+# populated. Called by upsert_alert, create_ticket_from_alert, update_ticket,
+# append_activity, create_correlation_recommendation, etc.
 def _json(value: Any) -> str:
     return json.dumps(value if value is not None else {}, ensure_ascii=False)
 
 
+# [FYP-FUNCTION] Deserialise JSON Text Column
+# Inverse of _json(): parses a *_json TEXT column back into a dict/list,
+# falling back to `default` on empty value or parse failure so a malformed
+# row never raises for callers reading tickets/alerts. Called by every
+# _row_*() mapper below.
 def _loads(value: Any, default: Any) -> Any:
     if value in (None, ""):
         return default
@@ -50,10 +156,21 @@ def _loads(value: Any, default: Any) -> Any:
         return default
 
 
+# [FYP-FUNCTION] Normalise Status/Enum String
+# Lower-cases and replaces spaces/hyphens with underscores so status and
+# stage comparisons ("To Parse" vs "to_parse" vs "to-parse") are consistent
+# regardless of how the value was originally typed/stored. Used throughout
+# filtering (list_tickets, dashboard_summary) and decision-branch matching
+# (attach_agent_result, record_evidence_gap_decision).
 def _norm_status(value: Any) -> str:
     return str(value or "").strip().lower().replace(" ", "_").replace("-", "_")
 
 
+# [FYP-FUNCTION] First Non-Empty Value
+# Returns the first argument that is not None/""/[]/{}. Small alternative to
+# chained `or` that also treats empty containers as "missing". Used to pick
+# severity/confidence fields out of an agent's result payload with multiple
+# possible key names.
 def _first(*values: Any, default: Any = "") -> Any:
     for value in values:
         if value not in (None, "", [], {}):
@@ -61,6 +178,11 @@ def _first(*values: Any, default: Any = "") -> Any:
     return default
 
 
+# [FYP-FUNCTION] Derive Severity Label From Numeric Risk Score
+# [FYP-DECISION] Maps a NetWitness risk_score (0-100) to a Critical/High/
+# Medium/Low label using fixed thresholds (>=90 Critical, >=70 High, >=40
+# Medium, else Low) when no explicit severity/priority field is present on
+# the raw alert. Called by normalise_alert() as the default for `severity`.
 def _severity_from_score(score: Any) -> str:
     try:
         val = float(score)
@@ -75,6 +197,38 @@ def _severity_from_score(score: Any) -> str:
     return "Low"
 
 
+# [FYP-SECTION] Alert normalisation.
+# [FYP-INPUT] Maps a heterogeneous raw RSA NetWitness alert/incident export
+# (which may be a bare alert, an {"incident": ..., "alerts": [...]} bundle,
+# or something in between, depending on how the analyst captured/exported
+# it) onto the single canonical alert dict shape this module persists in the
+# `alerts` table and hands to downstream pipeline agents.
+
+# [FYP-FUNCTION] Normalise Raw NetWitness Alert
+# [FYP-INPUT] raw: dict -- arbitrary raw alert/incident JSON as captured
+# from RSA NetWitness (may be empty/partial; every field access below is
+# defensive).
+# [FYP-PROCESS] Pulls the primary alert out of raw["alerts"]/raw["alert"]/
+# raw itself, then uses services.parser_context_guard.extract_alert_identity
+# plus a large set of fallback key names (pick()) to resolve alert_id,
+# title, severity, first/last seen timestamps, hostname, username and IOCs.
+# Falls back to a generated "ALERT-<timestamp>" id and severity derived from
+# risk_score via _severity_from_score() when no explicit values are present.
+# [FYP-OUTPUT] Returns the canonical alert dict written to the `alerts`
+# table by upsert_alert() (alert_id, alert_name, source, severity, status,
+# first_seen, last_seen, hostname, username, iocs, risk_score,
+# netwitness_url, raw).
+# [FYP-CALLS] services.parser_context_guard.extract_alert_identity.
+# [FYP-USED-BY] upsert_alert(); mirrored (identical logic) by
+# postgres_casework_store.normalise_alert().
+# [FYP-FUNCTION] `normalise_alert` — transforms normalise alert input into the stable representation required by downstream reporting backend and API processing.
+# [FYP-INPUT] Parameters: `raw`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/casework_store.py:upsert_alert, soc_reporting_agent/backend/postgres_casework_store.py:upsert_alert; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_severity_from_score`, `append`, `extract_alert_identity`, `get`, `isinstance`, `next`, `now`, `now_iso`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def normalise_alert(raw: dict[str, Any]) -> dict[str, Any]:
     raw = raw or {}
     identity = extract_alert_identity(raw)
@@ -85,6 +239,17 @@ def normalise_alert(raw: dict[str, Any]) -> dict[str, Any]:
     headers = primary.get("originalHeaders") if isinstance(primary.get("originalHeaders"), dict) else {}
     original = primary.get("originalAlert") if isinstance(primary.get("originalAlert"), dict) else {}
     meta = incident.get("alertMeta") if isinstance(incident.get("alertMeta"), dict) else {}
+
+    # Local closure: returns the first non-empty value/list-item among the
+    # candidates, in priority order. Same "first usable field" role as the
+    # module-level _first() helper, but also unwraps lists.
+    # [FYP-FUNCTION] `pick` — implements the pick operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `default`, `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/casework_store.py:normalise_alert, soc_reporting_agent/backend/postgres_casework_store.py:normalise_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `isinstance`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def pick(*values: Any, default: Any = "") -> Any:
         for value in values:
@@ -151,16 +316,90 @@ def normalise_alert(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# [FYP-CLASS] CaseworkStore
+# [FYP-DATABASE] SQLite-backed implementation of the SOC casework store.
+# Owns a single SQLite file (self.db_path) and exposes every read/write
+# operation the Aegis dashboard/backend needs against alerts, tickets,
+# ticket<->alert links, incidents, correlation recommendations, the activity
+# log, and agent run telemetry.
+#
+# Implements the SAME method names and return shapes as
+# postgres_casework_store.PostgresCaseworkStore (upsert_alert, get_alert,
+# list_alerts, create_ticket_from_alert, ticket_for_alert, link_alert,
+# unlink_alert, mark_downstream_refresh_required,
+# mark_context_refresh_required, create/get/list/confirm/reject/edit
+# _correlation_recommendation, move_alert_to_ticket,
+# split_alert_to_new_ticket, archive_duplicate_ticket, merge_tickets,
+# list_tickets, get_ticket, update_ticket, append_activity, activity,
+# dashboard_summary, prepare_agent_inputs, record_agent_run_start/finish,
+# list_agent_runs, latest_agent_run, attach_agent_result,
+# record_evidence_gap_decision, record_approval, record_soc_review,
+# reports_for_ticket) so the two classes are interchangeable from a caller's
+# point of view -- backend/store_factory.py is the seam that picks between
+# them (in practice it always picks PostgresCaseworkStore; see that file).
+# Differences from the Postgres version: this class also owns
+# ensure_schema_migrations() (incremental ALTER TABLE for older SQLite
+# files) and seed_demo_data_if_empty() (auto-seeds demo tickets on a blank
+# database); the Postgres version instead has healthcheck(),
+# next_triage_unc(), per-stage result audit tables (_insert_result /
+# _insert_approval) and a denormalised workflow_state table that this class
+# does not write.
+# [FYP-CLASS] `CaseworkStore` — owns CaseworkStore state or behaviour for the reporting backend and API component.
+# [FYP-PROCESS] Important methods: __init__, connect, init_db, ensure_schema_migrations, _next_ticket_id, _next_incident_id, seed_demo_data_if_empty, upsert_alert.
+# [FYP-USED-BY] Static constructor/type references include soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_decision_buttons_and_branches.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class CaseworkStore:
+    # [FYP-FUNCTION] Construct Store / Open Database File
+    # [FYP-INPUT] db_path: Path -- filesystem location of the SQLite database
+    # file (parent directories are created if missing).
+    # [FYP-PROCESS] Stores db_path, ensures the parent directory exists, then
+    # calls init_db() to create tables (if missing), run migrations, and seed
+    # demo data on a first run.
+    # [FYP-DATABASE] Side effect: creates/opens the SQLite file at db_path and
+    # may write demo rows into it (see seed_demo_data_if_empty).
+    # [FYP-USED-BY] scripts/test_evidence_gap_branch_and_reporting_wrapper.py.
     def __init__(self, db_path: Path):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.init_db()
 
+    # [FYP-FUNCTION] Open SQLite Connection
+    # Opens a new sqlite3 connection to self.db_path with a 30s busy timeout and
+    # row_factory=sqlite3.Row (so result rows support both index and column-name
+    # access, e.g. row["ticket_id"]). Every DB-touching method below opens and
+    # closes its own short-lived connection via `with self.connect() as con:`
+    # rather than holding one open long-term.
     def connect(self) -> sqlite3.Connection:
         con = sqlite3.connect(str(self.db_path), timeout=30)
         con.row_factory = sqlite3.Row
         return con
+
+    # [FYP-EVALUATOR] [FYP-FUNCTION] Initialise Database Schema
+    # [FYP-DATABASE] Creates the full SQLite schema if it does not already
+    # exist (idempotent: every statement is CREATE TABLE IF NOT EXISTS /
+    # INSERT OR IGNORE), then calls ensure_schema_migrations() to add any
+    # columns/tables introduced after a database file was first created, then
+    # seed_demo_data_if_empty() to populate a brand-new database with sample
+    # tickets.
+    # Tables created: counters (ticket/incident id sequence), alerts, tickets
+    # (the core case record -- one row per SOC ticket, with one *_json column
+    # per pipeline stage's result), ticket_alerts (many-to-many link between
+    # tickets and alerts, with correlation metadata), incidents (grouping
+    # record above tickets), correlation_recommendations (pending/approved/
+    # rejected analyst review queue for incident-grouping suggestions),
+    # activity (audit log, one row per ticket action), agent_runs (per-stage
+    # execution telemetry: status/progress/duration/AI usage/errors).
+    # [FYP-CALLS] ensure_schema_migrations(), seed_demo_data_if_empty().
+    # [FYP-USED-BY] __init__().
+    # [FYP-FUNCTION] `init_db` — implements the init db operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/casework_store.py:__init__, soc_reporting_agent/backend/postgres_casework_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `commit`, `connect`, `ensure_schema_migrations`, `executescript`, `seed_demo_data_if_empty`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def init_db(self) -> None:
         with self.connect() as con:
@@ -312,6 +551,15 @@ class CaseworkStore:
         self.ensure_schema_migrations()
         self.seed_demo_data_if_empty()
 
+    # [FYP-FUNCTION] Apply Incremental Schema Migrations
+    # [FYP-DATABASE] Runs ALTER TABLE ADD COLUMN for any column introduced by a
+    # later version of this module that an older on-disk database file may be
+    # missing (tickets, ticket_alerts, correlation_recommendations), creates the
+    # incidents/correlation_recommendations/agent_runs tables if an older schema
+    # predates them, and backfills a fresh incident_id (via _next_incident_id)
+    # plus an `incidents` row for any pre-existing ticket that has none. See the
+    # existing docstring below for the original author's summary.
+    # [FYP-USED-BY] init_db().
     def ensure_schema_migrations(self) -> None:
         """Add workflow columns when an older runtime database already exists."""
         required = {
@@ -427,18 +675,36 @@ class CaseworkStore:
                 )
             con.commit()
 
+    # [FYP-SECTION] Sequential ID generation (ticket/incident counters).
+    # [FYP-FUNCTION] Allocate Next Ticket ID
+    # [FYP-DATABASE] Reads and increments the 'ticket' row in the counters
+    # table, returns a formatted id "TKT-<year>-<00000>". Called by
+    # create_ticket_from_alert() while holding the same connection/transaction
+    # so the counter increment and ticket insert are atomic.
     def _next_ticket_id(self, con: sqlite3.Connection) -> str:
         row = con.execute("SELECT value FROM counters WHERE name='ticket'").fetchone()
         value = int(row["value"] if row else 0) + 1
         con.execute("INSERT OR REPLACE INTO counters(name, value) VALUES('ticket', ?)", (value,))
         return f"TKT-{datetime.now(timezone.utc).year}-{value:05d}"
 
+    # [FYP-FUNCTION] Allocate Next Incident ID
+    # [FYP-DATABASE] Same pattern as _next_ticket_id() but for the 'incident'
+    # counter, formatted "INC-<year>-<00000>". Called by
+    # create_ticket_from_alert() and ensure_schema_migrations() (backfill path).
     def _next_incident_id(self, con: sqlite3.Connection) -> str:
         row = con.execute("SELECT value FROM counters WHERE name='incident'").fetchone()
         value = int(row["value"] if row else 0) + 1
         con.execute("INSERT OR REPLACE INTO counters(name, value) VALUES('incident', ?)", (value,))
         return f"INC-{datetime.now(timezone.utc).year}-{value:05d}"
 
+    # [FYP-FUNCTION] Seed Demo Data On Empty Database
+    # [FYP-DATABASE] If the tickets table is empty, inserts four hard-coded demo
+    # NetWitness alerts and wires them into two demo tickets (one multi-alert
+    # "malware chain" ticket, one single-alert ticket) purely so a fresh local
+    # SQLite file has something to display. No-op once any ticket exists.
+    # [FYP-CALLS] upsert_alert, create_ticket_from_alert, link_alert,
+    # append_activity.
+    # [FYP-USED-BY] init_db().
     def seed_demo_data_if_empty(self) -> None:
         with self.connect() as con:
             count = con.execute("SELECT COUNT(*) AS c FROM tickets").fetchone()["c"]
@@ -458,6 +724,16 @@ class CaseworkStore:
         self.append_activity(ticket["ticket_id"], "System", "workflow_ready", "completed", "Ticket is ready for Parsing and Normalisation.", {"next_stage": "parsing_normalisation"})
         self.create_ticket_from_alert("ALERT-2025-77867", owner="Unassigned", status="To Triage")
 
+# [FYP-SECTION] Alert storage (CRUD against the `alerts` table).
+
+    # [FYP-FUNCTION] Insert Or Update Alert
+    # [FYP-INPUT] raw_alert: dict -- raw NetWitness alert/incident JSON.
+    # [FYP-PROCESS] Runs it through normalise_alert(), then INSERT ... ON
+    # CONFLICT(alert_id) DO UPDATE so re-ingesting the same alert_id refreshes
+    # its fields instead of duplicating a row.
+    # [FYP-DATABASE] Writes one row to `alerts`.
+    # [FYP-OUTPUT] Returns the stored alert as a dict (re-read via get_alert so
+    # the returned shape matches every other read path).
     def upsert_alert(self, raw_alert: dict[str, Any]) -> dict[str, Any]:
         alert = normalise_alert(raw_alert)
         with self.connect() as con:
@@ -488,11 +764,21 @@ class CaseworkStore:
             con.commit()
         return self.get_alert(alert["alert_id"]) or alert
 
+    # [FYP-FUNCTION] Load Single Alert By Id
+    # [FYP-DATABASE] SELECT * FROM alerts WHERE alert_id=?. Returns None if not
+    # found, else the row mapped through _row_alert() (includes the ticket it is
+    # currently linked to, if any).
     def get_alert(self, alert_id: str) -> dict[str, Any] | None:
         with self.connect() as con:
             row = con.execute("SELECT * FROM alerts WHERE alert_id=?", (alert_id,)).fetchone()
         return self._row_alert(row) if row else None
 
+    # [FYP-FUNCTION] List/Search Alerts
+    # [FYP-INPUT] filters: dict -- optional severity, status, q (free-text over
+    # alert_id/alert_name/hostname), hostname, limit (default 200).
+    # [FYP-DATABASE] Builds a dynamic WHERE clause from the supplied filters,
+    # orders by most recently seen/updated first.
+    # [FYP-OUTPUT] list of alert dicts via _row_alert().
     def list_alerts(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         filters = filters or {}
         clauses: list[str] = []
@@ -516,6 +802,30 @@ class CaseworkStore:
         with self.connect() as con:
             rows = con.execute(sql, values).fetchall()
         return [self._row_alert(row) for row in rows]
+
+# [FYP-SECTION] Ticket creation and alert<->ticket linking.
+
+    # [FYP-EVALUATOR] [FYP-FUNCTION] Create Ticket From Alert
+    # [FYP-INPUT] alert_id: str (must already exist via upsert_alert), owner:
+    # str (default "Unassigned"), status: str | None (default "To Parse").
+    # [FYP-DECISION] If a ticket already contains this alert (ticket_for_alert),
+    # returns that existing ticket instead of creating a duplicate.
+    # [FYP-DATABASE] Allocates a new ticket_id and incident_id, inserts one row
+    # into `tickets` (every *_result_json column starts as "{}"), one row into
+    # `incidents`, and one row into `ticket_alerts` marking this alert as the
+    # "Primary alert" for the new ticket (INSERT OR REPLACE, confirmed by
+    # "System" immediately since it created the ticket).
+    # [FYP-STATE] New ticket starts at current_stage="parsing_normalisation".
+    # [FYP-OUTPUT] The newly created ticket (get_ticket()).
+    # [FYP-CALLS] get_alert, ticket_for_alert, _next_ticket_id,
+    # _next_incident_id, append_activity.
+    # [FYP-FUNCTION] `create_ticket_from_alert` — constructs create ticket from alert output for the next reporting backend and API consumer or analyst-facing view.
+    # [FYP-INPUT] Parameters: `alert_id`, `owner`, `status`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_netwitness_sync, soc_reporting_agent/backend/app.py:api_ticket_from_alert, soc_reporting_agent/backend/casework_store.py:seed_demo_data_if_empty; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `KeyError`, `_json`, `_next_incident_id`, `_next_ticket_id`, `append_activity`, `commit`, `connect`, `execute`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
     def create_ticket_from_alert(self, alert_id: str, owner: str = "Unassigned", status: str | None = None) -> dict[str, Any]:
         alert = self.get_alert(alert_id)
@@ -562,10 +872,38 @@ class CaseworkStore:
         self.append_activity(ticket_id, "System", "ticket_created", "completed", f"Created ticket from NetWitness alert {alert_id}.", {"alert_id": alert_id})
         return self.get_ticket(ticket_id) or {}
 
+    # [FYP-FUNCTION] Find Ticket Containing Alert
+    # [FYP-DATABASE] SELECT ticket_id FROM ticket_alerts WHERE alert_id=?,
+    # most-recently-linked row wins. Returns None if the alert is not linked to
+    # any ticket, else the full ticket via get_ticket().
     def ticket_for_alert(self, alert_id: str) -> dict[str, Any] | None:
         with self.connect() as con:
             row = con.execute("SELECT ticket_id FROM ticket_alerts WHERE alert_id=? ORDER BY linked_at DESC LIMIT 1", (alert_id,)).fetchone()
         return self.get_ticket(row["ticket_id"]) if row else None
+
+    # [FYP-FUNCTION] Link Alert To Ticket
+    # [FYP-INPUT] ticket_id, alert_id (both must already exist); relationship
+    # label; linked_by/link_source/correlation_score/link_reason describing how
+    # the link was created (manual UI action, incident_grouping recommendation,
+    # analyst_override, etc.); confirmed_by optional explicit confirming
+    # analyst.
+    # [FYP-PROCESS] Merges the alert's IOCs/hostname/username into the ticket's
+    # affected_assets/affected_users/iocs (deduplicated). If link_source implies
+    # an analyst-driven link and confirmed_by was not supplied, treats linked_by
+    # as the confirming analyst.
+    # [FYP-DATABASE] INSERT OR REPLACE into ticket_alerts; UPDATE tickets
+    # (affected_assets_json/affected_users_json/iocs_json/updated_at).
+    # [FYP-FLOW] Also calls mark_context_refresh_required() so downstream
+    # stage results (triage/investigation/reporting) are flagged stale, and
+    # append_activity() logs the link.
+    # [FYP-OUTPUT] Updated ticket via get_ticket().
+    # [FYP-FUNCTION] `link_alert` — implements the link alert operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `ticket_id`, `alert_id`, `relationship`, `linked_by`, `link_source`, `correlation_score`, `link_reason`, `confirmed_by`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_ticket_link_alert, soc_reporting_agent/backend/casework_store.py:confirm_correlation_recommendation, soc_reporting_agent/backend/casework_store.py:edit_correlation_recommendation; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `KeyError`, `_json`, `append_activity`, `commit`, `connect`, `dumps`, `execute`, `extend`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
     def link_alert(
         self,
@@ -618,6 +956,11 @@ class CaseworkStore:
         self.mark_context_refresh_required(ticket_id, reason=f"Alert {alert_id} was linked to this ticket.", actor=actor)
         return self.get_ticket(ticket_id) or {}
 
+    # [FYP-FUNCTION] Unlink Alert From Ticket
+    # [FYP-DATABASE] DELETE FROM ticket_alerts WHERE ticket_id=? AND alert_id=?;
+    # touches tickets.updated_at. Logs an "alert_removed" activity entry. Note:
+    # unlike link_alert, this does not recompute affected_assets/affected_users/
+    # iocs on the ticket (they are not retracted).
     def unlink_alert(self, ticket_id: str, alert_id: str, analyst: str = "SOC Analyst", reason: str = "Removed from incident ticket") -> dict[str, Any]:
         with self.connect() as con:
             con.execute("DELETE FROM ticket_alerts WHERE ticket_id=? AND alert_id=?", (ticket_id, alert_id))
@@ -625,6 +968,26 @@ class CaseworkStore:
             con.commit()
         self.append_activity(ticket_id, analyst, "alert_removed", "completed", f"Removed alert {alert_id} from this ticket. {reason}", {"alert_id": alert_id, "reason": reason})
         return self.get_ticket(ticket_id) or {}
+
+    # [FYP-FUNCTION] Flag Downstream Stage Outputs As Stale (targeted rerun)
+    # [FYP-INPUT] ticket_id, agent_name (the stage that was just re-run), reason.
+    # [FYP-PROCESS] Looks up which later-stage result fields become
+    # questionable when `agent_name` re-runs (e.g. re-running "parsing" stales
+    # triage/threat_intel/investigation/reporting results; "reporting" stales
+    # nothing after it) via the affected_map, and stamps each non-empty affected
+    # result dict with needs_refresh / context_refresh_required /
+    # context_refresh_reason / updated_at.
+    # [FYP-DATABASE] Delegates the actual write to update_ticket() (only if any
+    # field changed).
+    # [FYP-STATE] Does NOT touch the re-run target's own result field, only
+    # results that come after it in the pipeline.
+    # [FYP-FUNCTION] `mark_downstream_refresh_required` — implements the mark downstream refresh required operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `ticket_id`, `agent_name`, `reason`, `actor`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `_norm_status`, `dict`, `get`, `get_ticket`, `now_iso`, `replace`, `update`, `update_ticket`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def mark_downstream_refresh_required(self, ticket_id: str, agent_name: str, reason: str, actor: str = "System") -> None:
         """Mark outputs after a re-run as stale without marking the re-run target itself."""
@@ -647,6 +1010,24 @@ class CaseworkStore:
         if fields:
             self.update_ticket(ticket_id, fields, actor=actor, action="downstream_refresh_required", message=reason)
 
+    # [FYP-FUNCTION] Flag Triage/Investigation/Reporting As Stale (grouping
+    # change)
+    # [FYP-INPUT] ticket_id, reason, actor.
+    # [FYP-PROCESS] Used when the ticket's alert membership changes (link/
+    # unlink/merge) rather than when a specific agent re-runs. Stamps
+    # context_refresh_required/context_refresh_reason/updated_at onto whichever
+    # of triage_result / investigation_result / reporting_result are already
+    # populated, and sets ticket status to "Context Changed".
+    # [FYP-DATABASE] Delegates to update_ticket().
+    # [FYP-USED-BY] link_alert(), merge_tickets().
+    # [FYP-FUNCTION] `mark_context_refresh_required` — implements the mark context refresh required operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `ticket_id`, `reason`, `actor`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/casework_store.py:link_alert, soc_reporting_agent/backend/casework_store.py:merge_tickets, soc_reporting_agent/backend/postgres_casework_store.py:link_alert; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `dict`, `get`, `get_ticket`, `now_iso`, `update`, `update_ticket`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def mark_context_refresh_required(self, ticket_id: str, reason: str, actor: str = "System") -> None:
         """Mark downstream outputs as potentially stale when ticket grouping changes."""
         ticket = self.get_ticket(ticket_id) or {}
@@ -667,6 +1048,16 @@ class CaseworkStore:
             fields["status"] = "Context Changed"
             self.update_ticket(ticket_id, fields, actor=actor, action="context_refresh_required", message=reason)
 
+# [FYP-SECTION] Incident-grouping / correlation recommendations -- the
+# analyst review queue of "should alert X be linked to ticket Y?" style
+# suggestions raised by the correlation/investigation agents.
+
+    # [FYP-FUNCTION] Map Correlation Recommendation Row -> Dict
+    # [FYP-DATABASE] Deserialises payload_json as the base dict, then overlays
+    # the individual typed columns (recommendation_id, status, score, etc.) on
+    # top so the typed columns always win over any stale copy inside the JSON
+    # blob. Uses `"col" in row.keys()` guards so this still works against rows
+    # read from a database file that predates a given migrated-in column.
     def _row_correlation_recommendation(self, row: sqlite3.Row) -> dict[str, Any]:
         payload = _loads(row["payload_json"], {})
         payload.update({
@@ -695,6 +1086,26 @@ class CaseworkStore:
             "archive_after_approval": bool(payload.get("archive_after_approval") or (row["requires_archive_approval"] if "requires_archive_approval" in row.keys() else False)),
         })
         return payload
+
+    # [FYP-FUNCTION] Create Correlation Recommendation
+    # [FYP-INPUT] recommendation: dict describing a proposed alert-to-ticket (or
+    # ticket merge/archive) link; recognised keys include recommendation_type,
+    # source_alert_id, target_ticket_id, confidence, score, matched_fields,
+    # reason, requires_archive_approval/archive_after_approval.
+    # [FYP-VALIDATION] De-dupes: if a pending recommendation already exists for
+    # the same (source_alert_id, target_ticket_id, recommendation_type), returns
+    # that existing row instead of inserting a duplicate.
+    # [FYP-DATABASE] INSERT INTO correlation_recommendations.
+    # [FYP-FLOW] Logs a "correlation_recommended" (pending) activity entry
+    # against the target ticket, best-effort (exceptions swallowed).
+    # [FYP-OUTPUT] The stored recommendation.
+    # [FYP-FUNCTION] `create_correlation_recommendation` — constructs create correlation recommendation output for the next reporting backend and API consumer or analyst-facing view.
+    # [FYP-INPUT] Parameters: `recommendation`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+    # [FYP-CALLS] Calls: `_json`, `_row_correlation_recommendation`, `append_activity`, `commit`, `connect`, `dict`, `execute`, `fetchone`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def create_correlation_recommendation(self, recommendation: dict[str, Any]) -> dict[str, Any]:
         rec = dict(recommendation or {})
@@ -756,11 +1167,18 @@ class CaseworkStore:
                 pass
         return self.get_correlation_recommendation(rec_id) or rec
 
+    # [FYP-FUNCTION] Load Correlation Recommendation By Id
+    # [FYP-DATABASE] SELECT * FROM correlation_recommendations WHERE
+    # recommendation_id=?.
     def get_correlation_recommendation(self, recommendation_id: str) -> dict[str, Any] | None:
         with self.connect() as con:
             row = con.execute("SELECT * FROM correlation_recommendations WHERE recommendation_id=?", (recommendation_id,)).fetchone()
         return self._row_correlation_recommendation(row) if row else None
 
+    # [FYP-FUNCTION] List/Filter Correlation Recommendations
+    # [FYP-INPUT] filters: dict -- ticket_id (matches as either source or
+    # target), status, limit (default 100).
+    # [FYP-DATABASE] Orders pending recommendations first, then most recent.
     def list_correlation_recommendations(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         filters = filters or {}
         clauses: list[str] = []
@@ -779,6 +1197,30 @@ class CaseworkStore:
         with self.connect() as con:
             rows = con.execute(sql, values).fetchall()
         return [self._row_correlation_recommendation(row) for row in rows]
+
+    # [FYP-DECISION] [FYP-APPROVAL] [FYP-FUNCTION] Confirm Correlation
+    # Recommendation (analyst approves the suggested grouping)
+    # [FYP-INPUT] recommendation_id, analyst, comments.
+    # [FYP-PROCESS] Branches on recommendation_type: merge/archive-duplicate
+    # types call merge_tickets(..., archive_duplicate=True); alert-link types
+    # call link_alert() with link_source="incident_grouping" and, if
+    # archive_after_approval was set, also archive_duplicate_ticket() for the
+    # source ticket.
+    # [FYP-VALIDATION] Raises KeyError if the recommendation id is unknown,
+    # ValueError if the recommendation is missing a usable target_ticket_id or
+    # neither a source_alert_id nor source_ticket_id.
+    # [FYP-DATABASE] UPDATE correlation_recommendations SET status='confirmed',
+    # ... (column list is built dynamically depending on whether the
+    # archive_status column exists, for backward compatibility with older
+    # database files).
+    # [FYP-OUTPUT] {"recommendation": ..., "ticket": ...}.
+    # [FYP-FUNCTION] `confirm_correlation_recommendation` — implements the confirm correlation recommendation operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `recommendation_id`, `analyst`, `comments`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_confirm_correlation_recommendation; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `KeyError`, `ValueError`, `_json`, `_norm_status`, `append`, `append_activity`, `archive_duplicate_ticket`, `commit`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
     def confirm_correlation_recommendation(self, recommendation_id: str, analyst: str = "SOC Analyst", comments: str = "") -> dict[str, Any]:
         rec = self.get_correlation_recommendation(recommendation_id)
@@ -847,6 +1289,10 @@ class CaseworkStore:
         self.append_activity(target_ticket, analyst, "correlation_confirmed", "completed", f"Confirmed incident grouping recommendation {recommendation_id}; grouping changes were applied after analyst approval.", {"recommendation_id": recommendation_id, "alert_id": source_alert, "source_ticket_id": source_ticket, "comments": comments})
         return {"recommendation": self.get_correlation_recommendation(recommendation_id), "ticket": ticket}
 
+    # [FYP-DECISION] [FYP-FUNCTION] Reject Correlation Recommendation
+    # [FYP-DATABASE] UPDATE correlation_recommendations SET status='rejected',
+    # reviewed_by/reviewed_at/analyst_comments/payload_json. Logs a
+    # "correlation_rejected" activity entry against the target ticket.
     def reject_correlation_recommendation(self, recommendation_id: str, analyst: str = "SOC Analyst", comments: str = "") -> dict[str, Any]:
         rec = self.get_correlation_recommendation(recommendation_id)
         if not rec:
@@ -863,6 +1309,24 @@ class CaseworkStore:
         if rec.get("target_ticket_id"):
             self.append_activity(rec["target_ticket_id"], analyst, "correlation_rejected", "completed", f"Rejected incident grouping recommendation {recommendation_id} for alert {rec.get('source_alert_id')}.", {"recommendation_id": recommendation_id, "comments": comments})
         return self.get_correlation_recommendation(recommendation_id) or {}
+
+    # [FYP-DECISION] [FYP-FUNCTION] Edit Correlation Recommendation Target
+    # [FYP-INPUT] recommendation_id, target_ticket_id (analyst-chosen
+    # replacement target), analyst, comments.
+    # [FYP-VALIDATION] Raises KeyError if the recommendation or the new target
+    # ticket does not exist.
+    # [FYP-DATABASE] UPDATE correlation_recommendations (status='edited',
+    # target_ticket_id, target_incident_id, review fields).
+    # [FYP-FLOW] Then links the recommendation's source alert to the new target
+    # via link_alert(link_source="analyst_override").
+    # [FYP-OUTPUT] {"recommendation": ..., "ticket": ...}.
+    # [FYP-FUNCTION] `edit_correlation_recommendation` — implements the edit correlation recommendation operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `recommendation_id`, `target_ticket_id`, `analyst`, `comments`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_edit_correlation_recommendation; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `KeyError`, `_json`, `commit`, `connect`, `dict`, `execute`, `get`, `get_correlation_recommendation`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
     def edit_correlation_recommendation(self, recommendation_id: str, target_ticket_id: str, analyst: str = "SOC Analyst", comments: str = "") -> dict[str, Any]:
         rec = self.get_correlation_recommendation(recommendation_id)
@@ -892,6 +1356,17 @@ class CaseworkStore:
         )
         return {"recommendation": self.get_correlation_recommendation(recommendation_id), "ticket": ticket}
 
+# [FYP-SECTION] Ticket merge / split / archive -- duplicate-ticket handling
+# driven by analyst decisions (directly, or via
+# confirm_correlation_recommendation above).
+
+    # [FYP-FUNCTION] Move Alert To A Different Ticket
+    # [FYP-VALIDATION] Raises KeyError if target ticket missing, ValueError if
+    # the alert is already linked to that exact target ticket.
+    # [FYP-DATABASE] If the alert is currently linked elsewhere, DELETE that
+    # ticket_alerts row first (and log alert_moved_out on the source ticket),
+    # then delegates to link_alert() for the new link (link_source=
+    # "analyst_override").
     def move_alert_to_ticket(self, alert_id: str, target_ticket_id: str, analyst: str = "SOC Analyst", reason: str = "Manual alert move") -> dict[str, Any]:
         target = self.get_ticket(target_ticket_id)
         if not target:
@@ -906,6 +1381,14 @@ class CaseworkStore:
             self.append_activity(source["ticket_id"], analyst, "alert_moved_out", "completed", f"Moved alert {alert_id} out of this ticket into {target_ticket_id}.", {"alert_id": alert_id, "target_ticket_id": target_ticket_id, "reason": reason})
         return self.link_alert(target_ticket_id, alert_id, relationship="Moved correlated alert", linked_by=analyst, link_source="analyst_override", link_reason=reason, confirmed_by=analyst)
 
+    # [FYP-FUNCTION] Split Alert Into New Ticket
+    # [FYP-VALIDATION] Raises KeyError if the source ticket does not exist.
+    # [FYP-DATABASE] DELETE the ticket_alerts row for (ticket_id, alert_id),
+    # then create_ticket_from_alert() to spin up a brand-new ticket for that
+    # alert (owner inherited from the source ticket).
+    # [FYP-FLOW] Logs "alert_split_out" on the source ticket and
+    # "ticket_created_from_split" on the new ticket.
+    # [FYP-OUTPUT] The newly created ticket.
     def split_alert_to_new_ticket(self, ticket_id: str, alert_id: str, analyst: str = "SOC Analyst", reason: str = "Split alert into a separate incident") -> dict[str, Any]:
         source_ticket = self.get_ticket(ticket_id)
         if not source_ticket:
@@ -918,6 +1401,15 @@ class CaseworkStore:
         self.append_activity(new_ticket["ticket_id"], analyst, "ticket_created_from_split", "completed", f"Created this ticket by splitting alert {alert_id} from {ticket_id}.", {"source_ticket_id": ticket_id, "alert_id": alert_id, "reason": reason})
         return new_ticket
 
+    # [FYP-FUNCTION] Archive Ticket As Duplicate
+    # [FYP-VALIDATION] Raises KeyError if either source or target ticket is
+    # missing.
+    # [FYP-DATABASE] Via update_ticket(): sets the source ticket's
+    # status="Archived Duplicate", current_stage="case_closure",
+    # archive_status="archived_duplicate", merged_into_ticket_id=target,
+    # archived_by/archived_at/archive_reason. The row is kept (auditable), not
+    # deleted.
+    # [FYP-FLOW] Logs "duplicate_ticket_archived" on the target ticket.
     def archive_duplicate_ticket(self, source_ticket_id: str, target_ticket_id: str, analyst: str = "SOC Analyst", reason: str = "Archived as duplicate after analyst approval") -> dict[str, Any]:
         source = self.get_ticket(source_ticket_id)
         target = self.get_ticket(target_ticket_id)
@@ -944,6 +1436,30 @@ class CaseworkStore:
         self.append_activity(target_ticket_id, analyst, "duplicate_ticket_archived", "completed", f"Archived duplicate ticket {source_ticket_id}; original record remains auditable.", {"source_ticket_id": source_ticket_id, "reason": reason})
         return archived
 
+    # [FYP-EVALUATOR] [FYP-FUNCTION] Merge Two Tickets
+    # [FYP-INPUT] source_ticket_id, target_ticket_id, analyst, reason,
+    # archive_duplicate (default True).
+    # [FYP-VALIDATION] ValueError if source == target; KeyError if either ticket
+    # is missing.
+    # [FYP-PROCESS] Re-links every alert currently on the source ticket onto the
+    # target ticket (move_alert_to_ticket for each), unions affected_assets /
+    # affected_users / iocs onto the target, then either archives the source
+    # ticket (archive_duplicate_ticket) or simply closes it
+    # (status="Closed").
+    # [FYP-DATABASE] Multiple update_ticket()/link_alert() calls as above.
+    # [FYP-FLOW] Calls mark_context_refresh_required() on the target so its
+    # investigation/reporting results are flagged for re-run.
+    # [FYP-OUTPUT] The merged (target) ticket.
+    # [FYP-USED-BY] confirm_correlation_recommendation() for
+    # merge_and_archive_duplicate_ticket-type recommendations.
+    # [FYP-FUNCTION] `merge_tickets` — transforms merge tickets input into the stable representation required by downstream reporting backend and API processing.
+    # [FYP-INPUT] Parameters: `source_ticket_id`, `target_ticket_id`, `analyst`, `reason`, `archive_duplicate`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_ticket_merge, soc_reporting_agent/backend/casework_store.py:confirm_correlation_recommendation; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `KeyError`, `ValueError`, `archive_duplicate_ticket`, `fromkeys`, `get`, `get_ticket`, `list`, `mark_context_refresh_required`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
     def merge_tickets(self, source_ticket_id: str, target_ticket_id: str, analyst: str = "SOC Analyst", reason: str = "Manual ticket merge", archive_duplicate: bool = True) -> dict[str, Any]:
         if source_ticket_id == target_ticket_id:
             raise ValueError("Source and target ticket cannot be the same")
@@ -967,6 +1483,26 @@ class CaseworkStore:
             self.update_ticket(source_ticket_id, {"status": "Closed", "current_stage": "case_closure"}, actor=analyst, action="ticket_merged_out", message=f"Merged into ticket {target_ticket_id}. {reason}")
         self.mark_context_refresh_required(target_ticket_id, reason=f"Ticket {source_ticket_id} was merged into this incident. Re-run Investigation before final Reporting if needed.", actor=analyst)
         return self.get_ticket(target_ticket_id) or updated
+
+# [FYP-SECTION] Core ticket read / update -- the case record itself.
+
+    # [FYP-FUNCTION] List/Search Tickets
+    # [FYP-INPUT] filters: dict -- status, stage (current_stage), severity,
+    # owner ("me" => hardcoded "soong yang", "unassigned" => blank/unassigned/
+    # none, or an explicit owner name), q (free text over ticket_id/title),
+    # open_only (excludes closed/archived-duplicate tickets), limit (default
+    # 200).
+    # [FYP-DATABASE] Dynamic WHERE clause; ORDER BY updated_at DESC.
+    # [FYP-OUTPUT] list of ticket summaries via _row_ticket(include_children=
+    # False) (no related_alerts/activity_log/correlation data attached, for
+    # list-view performance).
+    # [FYP-FUNCTION] `list_tickets` — implements the list tickets operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `filters`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_case, soc_reporting_agent/backend/app.py:api_dashboard, soc_reporting_agent/backend/app.py:api_tickets; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_norm_status`, `_row_ticket`, `append`, `connect`, `execute`, `extend`, `fetchall`, `get`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def list_tickets(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         filters = filters or {}
@@ -1005,10 +1541,45 @@ class CaseworkStore:
             rows = con.execute(sql, values).fetchall()
         return [self._row_ticket(row, include_children=False) for row in rows]
 
+    # [FYP-EVALUATOR] [FYP-FUNCTION] Load Single Ticket ("load case")
+    # [FYP-DATABASE] SELECT * FROM tickets WHERE ticket_id=?.
+    # [FYP-OUTPUT] None if not found, else the full ticket record via
+    # _row_ticket(include_children=True) -- includes related_alerts,
+    # activity_log, correlation_recommendations, pending_correlation_count and
+    # correlation_history. This is the canonical "load a case" entry point;
+    # nearly every other method in this class calls get_ticket() to re-read the
+    # row it just wrote so callers always see a consistent, fully-hydrated
+    # shape.
     def get_ticket(self, ticket_id: str) -> dict[str, Any] | None:
         with self.connect() as con:
             row = con.execute("SELECT * FROM tickets WHERE ticket_id=?", (ticket_id,)).fetchone()
         return self._row_ticket(row, include_children=True) if row else None
+
+    # [FYP-EVALUATOR] [FYP-FUNCTION] Partial Update Ticket ("save case")
+    # [FYP-INPUT] ticket_id; fields: dict of any subset of the allowed keys
+    # (title, severity, confidence, status, owner, current_stage,
+    # affected_assets, affected_users, iocs, and every <stage>_result key,
+    # archive_status, merged_into_ticket_id, archived_by, archived_at,
+    # archive_reason); actor/action/message describe who/what/why for the
+    # activity log entry.
+    # [FYP-PROCESS] Only columns present in `fields` are updated (an allow-list,
+    # so callers cannot write arbitrary columns); *_result values are
+    # JSON-encoded via _json(). Setting status to "Closed" also stamps
+    # closed_at.
+    # [FYP-DATABASE] UPDATE tickets SET ... WHERE ticket_id=?, always bumping
+    # updated_at.
+    # [FYP-FLOW] Always calls append_activity() so every mutation is audited.
+    # This is the single write path almost every other method in this class
+    # (and attach_agent_result / record_approval / record_evidence_gap_decision)
+    # funnels through.
+    # [FYP-OUTPUT] The updated ticket via get_ticket().
+    # [FYP-FUNCTION] `update_ticket` — persists or updates update ticket state used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `ticket_id`, `fields`, `actor`, `action`, `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:_refresh_ticket_after_incident_grouping_review, soc_reporting_agent/backend/app.py:_sync_ticket_report_manifest, soc_reporting_agent/backend/app.py:api_ticket_assign; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_json`, `append`, `append_activity`, `commit`, `connect`, `endswith`, `execute`, `get`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def update_ticket(self, ticket_id: str, fields: dict[str, Any], actor: str = "System", action: str = "ticket_updated", message: str | None = None) -> dict[str, Any]:
         allowed = {
@@ -1059,6 +1630,15 @@ class CaseworkStore:
         self.append_activity(ticket_id, actor, action, "completed", message or f"{actor} updated ticket.", fields)
         return self.get_ticket(ticket_id) or {}
 
+# [FYP-SECTION] Activity / audit log -- one row per action taken against a
+# ticket, everything from ticket_created to individual approval decisions.
+
+    # [FYP-FUNCTION] Append Activity Log Entry
+    # [FYP-INPUT] ticket_id, actor, action, status, message, payload (arbitrary
+    # extra context, JSON-encoded).
+    # [FYP-DATABASE] INSERT INTO activity(...); also bumps tickets.updated_at
+    # for the same ticket so "recently updated" ordering reflects activity too.
+    # [FYP-USED-BY] Called by nearly every mutating method in this class.
     def append_activity(self, ticket_id: str, actor: str, action: str, status: str, message: str, payload: Any | None = None) -> dict[str, Any]:
         ts = now_iso()
         with self.connect() as con:
@@ -1071,10 +1651,35 @@ class CaseworkStore:
             activity_id = cur.lastrowid
         return {"id": activity_id, "ticket_id": ticket_id, "actor": actor, "action": action, "status": status, "message": message, "payload": payload or {}, "created_at": ts}
 
+    # [FYP-FUNCTION] List Activity For Ticket
+    # [FYP-DATABASE] SELECT * FROM activity WHERE ticket_id=? ORDER BY id DESC
+    # LIMIT ?. Returns newest-first via _row_activity().
     def activity(self, ticket_id: str, limit: int = 100) -> list[dict[str, Any]]:
         with self.connect() as con:
             rows = con.execute("SELECT * FROM activity WHERE ticket_id=? ORDER BY id DESC LIMIT ?", (ticket_id, limit)).fetchall()
         return [self._row_activity(row) for row in rows]
+
+# [FYP-SECTION] Dashboard aggregation -- summary counters for the SOC
+# analyst landing page.
+
+    # [FYP-FUNCTION] Compute Dashboard Summary Counters
+    # [FYP-INPUT] owner: str | None -- if given, scopes all counts to that
+    # analyst's tickets (case-insensitive match on the `owner` column).
+    # [FYP-PROCESS] Pulls up to 500 tickets/alerts and up to 1000 pending
+    # correlation recommendations, then derives counts: pending_correlation,
+    # new_alerts, open_tickets, critical_cases, pending_approval (tickets sitting
+    # at any approval-gate stage), unassigned_cases, multi_alert_cases,
+    # closed_cases, and a per-stage breakdown (stage_counts) matching
+    # WORKFLOW_STAGES.
+    # [FYP-OUTPUT] dict consumed by the dashboard UI's summary tiles.
+    # [FYP-CALLS] list_tickets, list_alerts, list_correlation_recommendations.
+    # [FYP-FUNCTION] `dashboard_summary` — implements the dashboard summary operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `owner`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_case, soc_reporting_agent/backend/app.py:api_dashboard, soc_reporting_agent/backend/app.py:api_tickets; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_norm_status`, `get`, `int`, `len`, `list_alerts`, `list_correlation_recommendations`, `list_tickets`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def dashboard_summary(self, owner: str | None = None) -> dict[str, Any]:
         tickets = self.list_tickets({"limit": 500})
@@ -1107,6 +1712,46 @@ class CaseworkStore:
             },
             "scope": {"owner": owner or None, "ticket_count": len(tickets)},
         }
+
+# [FYP-SECTION] Agent input staging -- writes the JSON files that the
+# pipeline agent subprocesses (parsing/triage/threat-intel/investigation/
+# reporting, run out-of-process) read as their inputs.
+
+    # [FYP-FUNCTION] Prepare Agent Input Files For A Ticket
+    # [FYP-INPUT] ticket_id; inputs_dir: Path -- directory the next agent run
+    # will read from.
+    # [FYP-VALIDATION] Raises KeyError if the ticket does not exist.
+    # [FYP-PROCESS] Takes the ticket's primary linked alert's raw payload and
+    # layers on compatibility fields (alert_id/alert_name/severity/hostname/
+    # username/iocs) ONLY where missing, plus a "_ticket_context" and
+    # "_grouped_incident_context" block describing the ticket/incident and any
+    # other linked alerts -- without overwriting the alert's own original
+    # fields (see inline comments in the code: overwriting caused stale/wrong
+    # parser context to leak across tickets previously).
+    # [FYP-OUTPUT] Writes raw_alert.json, ticket_context.json,
+    # grouped_incident_context.json (into inputs_dir); raw_input_alert.json and
+    # input_identity.json (into outputs/<ticket_id>/parsing, isolated per
+    # ticket); processed_alert.json/enriched_alert.json (from the parsing/
+    # threat-intel stage results, when stage_workflow.output_valid() says
+    # they're current); and one JSON file per completed stage result
+    # (parser_result.json, triage_result.json, threat_intel_result.json,
+    # orchestration_decision.json, investigation_result.json,
+    # approval_result.json, investigation_approval_result.json,
+    # final_report.json, soc_review_result.json) -- stale/invalid stage outputs
+    # are deleted rather than written (path.unlink()) so a re-run cannot pick up
+    # outdated files.
+    # [FYP-CALLS] stage_workflow.output_valid, stage_workflow.stage_definition,
+    # services.parser_context_guard.extract_alert_identity.
+    # [FYP-USED-BY] backend/app.py before launching each pipeline agent
+    # subprocess (confirmed caller in the Postgres-backed live app; this SQLite
+    # copy mirrors the same method for local/offline use).
+    # [FYP-FUNCTION] `prepare_agent_inputs` — implements the prepare agent inputs operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `ticket_id`, `inputs_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:start_background_run; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `KeyError`, `_norm_status`, `any`, `dict`, `dumps`, `exists`, `extract_alert_identity`, `get`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
     def prepare_agent_inputs(self, ticket_id: str, inputs_dir: Path) -> dict[str, Any]:
         ticket = self.get_ticket(ticket_id)
@@ -1211,6 +1856,18 @@ class CaseworkStore:
         return raw_alert
 
 
+# [FYP-SECTION] Agent run tracking -- per-stage execution telemetry
+# (status/progress/duration/AI usage/errors), independent of the stage's
+# result payload stored on the ticket itself.
+
+    # [FYP-FUNCTION] Record Agent Run Start
+    # [FYP-INPUT] run_id (caller-generated, e.g. uuid); ticket_id (optional);
+    # agent_name; run_type ("run" or "rerun"); triggered_by; rerun_of_run_id;
+    # output_path; payload (arbitrary extra context).
+    # [FYP-DATABASE] INSERT OR REPLACE INTO agent_runs with status="running",
+    # progress=0, is_rerun=1 when run_type=="rerun".
+    # [FYP-FLOW] Also logs a "<agent>_<run_type>_started" activity entry on the
+    # ticket, if any.
     def record_agent_run_start(
         self,
         run_id: str,
@@ -1256,6 +1913,25 @@ class CaseworkStore:
                 f"{agent_name.replace('_', ' ').title()} {run_type} started.",
                 {"run_id": run_id, "agent": agent_name, "run_type": run_type, "rerun_of_run_id": rerun_of_run_id},
             )
+
+    # [FYP-FUNCTION] Record Agent Run Finish
+    # [FYP-INPUT] run_id, status (e.g. "completed"/"failed"/"execution_error"),
+    # progress, output_path, error_code, error_message, output_summary (may
+    # carry ai_used/ai_model/fallback_used flags), payload.
+    # [FYP-PROCESS] Computes duration_seconds from the run's stored started_at
+    # to now (best-effort; swallows parse errors).
+    # [FYP-DATABASE] UPDATE agent_runs SET status/progress/completed_at/
+    # duration_seconds/output_path/error_code/error_message/ai_used/ai_model/
+    # fallback_used/payload_json WHERE run_id=?.
+    # [FYP-FLOW] Logs a "<agent>_run_finished" activity entry on the run's
+    # ticket (if any), including the error message.
+    # [FYP-FUNCTION] `record_agent_run_finish` — persists or updates record agent run finish state used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `run_id`, `status`, `progress`, `output_path`, `error_code`, `error_message`, `output_summary`, `payload`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:worker; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_json`, `append_activity`, `bool`, `commit`, `connect`, `execute`, `fetchone`, `fromisoformat`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def record_agent_run_finish(
         self,
@@ -1308,6 +1984,9 @@ class CaseworkStore:
                 {"run_id": run_id, "output_path": output_path, "error": error_message},
             )
 
+    # [FYP-FUNCTION] List Agent Runs For Ticket
+    # [FYP-DATABASE] SELECT * FROM agent_runs WHERE ticket_id=? [AND
+    # agent_name=?] ORDER BY started_at DESC LIMIT ?.
     def list_agent_runs(self, ticket_id: str, agent_name: str | None = None, limit: int = 25) -> list[dict[str, Any]]:
         clauses = ["ticket_id=?"]
         values: list[Any] = [ticket_id]
@@ -1322,10 +2001,17 @@ class CaseworkStore:
             ).fetchall()
         return [self._row_agent_run(row) for row in rows]
 
+    # [FYP-FUNCTION] Latest Agent Run For Ticket+Agent
+    # Thin wrapper over list_agent_runs(..., limit=1); returns None if no runs
+    # recorded yet.
     def latest_agent_run(self, ticket_id: str, agent_name: str) -> dict[str, Any] | None:
         runs = self.list_agent_runs(ticket_id, agent_name, limit=1)
         return runs[0] if runs else None
 
+    # [FYP-FUNCTION] Map Agent Run Row -> Dict
+    # [FYP-DATABASE] Converts sqlite3.Row to a plain dict, coercing integer
+    # 0/1/NULL columns (is_rerun, ai_used, fallback_used) to bool/None and
+    # deserialising payload_json via _loads().
     def _row_agent_run(self, row: sqlite3.Row | None) -> dict[str, Any]:
         if not row:
             return {}
@@ -1351,6 +2037,49 @@ class CaseworkStore:
             "fallback_used": None if row["fallback_used"] is None else bool(row["fallback_used"]),
             "payload": _loads(row["payload_json"], {}),
         }
+
+# [FYP-SECTION] Stage output attachment -- the core write path every
+# pipeline agent's JSON result flows through on its way into the ticket
+# record, and the point where the workflow decides which stage/status the
+# ticket moves to next.
+
+    # [FYP-EVALUATOR] [FYP-FUNCTION] Attach Agent Result To Ticket
+    # [FYP-INPUT] ticket_id, agent: str (one of parsing/parsing_normalisation,
+    # triage, orchestration, correlation, threat_intel/threat_intelligence,
+    # investigation, reporting), data: dict -- that stage's raw JSON result.
+    # [FYP-PROCESS] If `agent` matches a known workflow stage
+    # (stage_workflow.stage_definition), wraps `data` via
+    # stage_workflow.completed_result() first (success flag derived from
+    # workflow_status/status not being a FAILED value). Then, per agent type:
+    # [FYP-DECISION] parsing -> extracts hosts/users/iocs from
+    # processed_alert/normalised_alert and merges them onto the ticket's
+    # affected_assets/affected_users/iocs; advances current_stage to "triage"
+    # (or stays on "parsing_normalisation" with status "Parsing Failed" if the
+    # stage reported failure). triage -> derives severity/confidence, clears
+    # correlation_result, advances to "triage_approval" (or stays with "Triage
+    # Failed"). orchestration/correlation -> stores the result as-is (
+    # correlation also flips the stage to "incident_grouping_review" if
+    # recommendation_count is truthy). threat_intel/threat_intelligence ->
+    # advances to "threat_intel_approval" (or stays with failure status).
+    # investigation -> clears correlation_result, advances to
+    # "investigation_approval" (or stays with "Investigation Failed").
+    # reporting -> advances to "reporting_approval" (or stays with "Reporting
+    # Failed").
+    # [FYP-DATABASE] Delegates the actual row write to update_ticket() (with
+    # actor set to the agent's title-cased name, action="<agent>_updated").
+    # [FYP-STATE] This function is the single place that advances
+    # tickets.current_stage / tickets.status in response to a completed pipeline
+    # stage run (as opposed to an analyst approval decision, which is handled by
+    # record_approval / record_evidence_gap_decision below).
+    # [FYP-USED-BY] backend/app.py after each pipeline agent subprocess
+    # completes (confirmed in the Postgres-backed live app; mirrored here).
+    # [FYP-FUNCTION] `attach_agent_result` — implements the attach agent result operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `ticket_id`, `agent`, `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:worker, soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:make_ticket; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_first`, `_norm_status`, `completed_result`, `fromkeys`, `get`, `get_ticket`, `list`, `replace`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def attach_agent_result(self, ticket_id: str, agent: str, data: dict[str, Any]) -> dict[str, Any]:
         data = data or {}
@@ -1433,6 +2162,34 @@ class CaseworkStore:
         message = f"{agent.replace('_', ' ').title()} appended output to the ticket."
         return self.update_ticket(ticket_id, fields, actor=f"{agent.replace('_', ' ').title()}", action=f"{agent_norm}_updated", message=message)
 
+# [FYP-SECTION] Approval gates -- human-in-the-loop stage transitions. A
+# ticket only advances past an approval_gate stage (see
+# backend/stage_workflow.py) when an analyst explicitly records a decision
+# here.
+
+    # [FYP-APPROVAL] [FYP-DECISION] [FYP-FUNCTION] Record Investigation
+    # Evidence-Gap Decision (see existing docstring below for the original
+    # author's explanation of why this exists).
+    # [FYP-INPUT] ticket_id, decision (normalised to "continue_to_reporting" or
+    # "return_to_triage"; any other value raises ValueError), comments, analyst.
+    # [FYP-VALIDATION] Raises KeyError if the ticket does not exist.
+    # [FYP-DATABASE] Writes investigation_approval_result; on
+    # "return_to_triage" also rewrites triage_result with
+    # current_stage="triage_requery_requested" and
+    # investigation_throwback=True so the Triage Agent re-runs with the
+    # requested NetWitness re-query context.
+    # [FYP-STAGE-LOCK] "return_to_triage" moves current_stage back to "triage"
+    # (the only place in this module that moves a ticket backwards in the
+    # pipeline).
+    # [FYP-CALLS] update_ticket().
+    # [FYP-FUNCTION] `record_evidence_gap_decision` — persists or updates record evidence gap decision state used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `ticket_id`, `decision`, `comments`, `analyst`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_ticket_evidence_gap_decision, soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_decision_buttons_and_branches; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `KeyError`, `ValueError`, `_norm_status`, `dict`, `get`, `get_ticket`, `isinstance`, `now_iso`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
     def record_evidence_gap_decision(self, ticket_id: str, decision: str, comments: str = "", analyst: str = "SOC Analyst") -> dict[str, Any]:
         """Record the explicit analyst branch for Investigation evidence gaps.
 
@@ -1497,6 +2254,29 @@ class CaseworkStore:
             action = "evidence_gap_return_to_triage"
         return self.update_ticket(ticket_id, fields, actor=analyst, action=action, message=message)
 
+    # [FYP-APPROVAL] [FYP-STAGE-LOCK] [FYP-FUNCTION] Record Analyst Approval
+    # [FYP-INPUT] ticket_id, decision (only "approved"/"approve" is accepted;
+    # anything else raises ValueError -- rejection/rework is handled by the
+    # stage-specific flows above, not by this generic gate), comments, analyst,
+    # gate (approval_gate name; defaults to the ticket's current_stage).
+    # [FYP-VALIDATION] Raises KeyError if ticket missing; ValueError if the
+    # resolved stage has no approval_gate, or if
+    # stage_workflow.can_approve(ticket, stage) says the gate is not yet
+    # satisfiable (e.g. required upstream output missing/stale).
+    # [FYP-DATABASE] Delegates the field set to
+    # stage_workflow.approval_fields(ticket, stage, payload), then writes via
+    # update_ticket().
+    # [FYP-CALLS] stage_workflow.stage_definition, stage_workflow.can_approve,
+    # stage_workflow.approval_fields.
+    # [FYP-USED-BY] record_soc_review() (below) for the final review gate.
+    # [FYP-FUNCTION] `record_approval` — persists or updates record approval state used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `ticket_id`, `decision`, `comments`, `analyst`, `gate`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:api_approval, soc_reporting_agent/backend/app.py:api_ticket_approve, soc_reporting_agent/backend/app.py:api_ticket_more_evidence; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `KeyError`, `ValueError`, `_norm_status`, `approval_fields`, `can_approve`, `get`, `get_ticket`, `now_iso`.
+    # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
+
     def record_approval(self, ticket_id: str, decision: str, comments: str = "", analyst: str = "SOC Analyst", gate: str | None = None) -> dict[str, Any]:
         ticket = self.get_ticket(ticket_id)
         if not ticket:
@@ -1521,10 +2301,23 @@ class CaseworkStore:
         fields = stage_workflow.approval_fields(ticket, stage, payload)
         return self.update_ticket(ticket_id, fields, actor=analyst, action=f"approval_{decision_norm}", message=f"{analyst} recorded {payload['approval_gate']} decision: {decision_norm}.")
 
+    # [FYP-APPROVAL] [FYP-FUNCTION] Record SOC Analyst Final Review
+    # Thin wrapper over record_approval(..., gate="reporting_approval") that
+    # maps a "confirmed"/"approved"/"approve" decision to "approved" before
+    # delegating (this workflow control only supports approval, not rejection).
     def record_soc_review(self, ticket_id: str, decision: str = "confirmed", comments: str = "", analyst: str = "SOC Analyst") -> dict[str, Any]:
         mapped = "approved" if _norm_status(decision) in {"confirmed", "approved", "approve"} else decision
         return self.record_approval(ticket_id, mapped, comments=comments, analyst=analyst, gate="reporting_approval")
 
+# [FYP-SECTION] Report availability lookup.
+
+    # [FYP-FUNCTION] Summarise Available Reports For Ticket
+    # [FYP-VALIDATION] Raises KeyError if ticket missing.
+    # [FYP-OUTPUT] The ticket's reporting_result plus a fixed list of four
+    # report "slots" (executive_summary, technical_findings, soc_analyst_review,
+    # final_incident_report), each marked "available" once any reporting_result
+    # exists or "not_ready" otherwise. Does not distinguish which specific
+    # sections are actually populated inside reporting_result.
     def reports_for_ticket(self, ticket_id: str) -> dict[str, Any]:
         ticket = self.get_ticket(ticket_id)
         if not ticket:
@@ -1540,6 +2333,14 @@ class CaseworkStore:
             ],
         }
 
+# [FYP-SECTION] Row -> dict mappers. Deserialise *_json TEXT columns and
+# assemble the nested/derived fields (linked_ticket, related_alerts,
+# activity_log, correlation_recommendations, alert_count) that callers see
+# on top of the raw table columns.
+
+    # [FYP-FUNCTION] Map Alert Row -> Dict
+    # [FYP-DATABASE] Also runs a lookup query (ticket_alerts) to attach
+    # linked_ticket (most recent ticket_id this alert is linked to, or None).
     def _row_alert(self, row: sqlite3.Row) -> dict[str, Any]:
         with self.connect() as con:
             linked = con.execute("SELECT ticket_id FROM ticket_alerts WHERE alert_id=? ORDER BY linked_at DESC LIMIT 1", (row["alert_id"],)).fetchone()
@@ -1560,6 +2361,7 @@ class CaseworkStore:
             "updated_at": row["updated_at"],
         }
 
+    # [FYP-FUNCTION] Map Activity Row -> Dict
     def _row_activity(self, row: sqlite3.Row) -> dict[str, Any]:
         return {
             "id": row["id"],
@@ -1571,6 +2373,29 @@ class CaseworkStore:
             "payload": _loads(row["payload_json"], {}),
             "created_at": row["created_at"],
         }
+
+    # [FYP-FUNCTION] Map Ticket Row -> Dict
+    # [FYP-INPUT] row: sqlite3.Row; include_children: bool -- when False (list
+    # views), only the flat ticket columns plus alert_count are returned; when
+    # True (get_ticket), also attaches related_alerts (joined with
+    # ticket_alerts for link metadata), activity_log, correlation_recommendations,
+    # pending_correlation_count, and correlation_history (non-pending
+    # recommendations).
+    # [FYP-DATABASE] Runs a COUNT query against ticket_alerts, and (when
+    # include_children) a JOIN query against ticket_alerts+alerts plus calls to
+    # activity() and list_correlation_recommendations().
+    # [FYP-USED-BY] get_ticket(), list_tickets().
+    # Uses `"col" in row.keys()` guards on newer columns (incident_id,
+    # correlation_result_json, archive_status, merged_into_ticket_id,
+    # archived_by, archived_at, archive_reason) so it still works against a row
+    # read before ensure_schema_migrations() has run on an old database file.
+    # [FYP-FUNCTION] `_row_ticket` — implements the row ticket operation used by the surrounding reporting backend and API workflow.
+    # [FYP-INPUT] Parameters: `row`, `include_children`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis reporting backend and API workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/casework_store.py:get_ticket, soc_reporting_agent/backend/casework_store.py:list_tickets, soc_reporting_agent/backend/postgres_casework_store.py:get_ticket; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `_loads`, `_norm_status`, `_row_alert`, `activity`, `append`, `connect`, `execute`, `fetchall`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def _row_ticket(self, row: sqlite3.Row, include_children: bool = False) -> dict[str, Any]:
         ticket = {

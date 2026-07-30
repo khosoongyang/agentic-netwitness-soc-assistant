@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, json, pathlib, reporting, shutil, sys, zipfile.
+# =============================================================================
+# File: soc_reporting_agent/scripts/test_structured_report_review_exports.py
+# Purpose: This module implements test and validation behaviour for test structured report review exports.
+# Main functionality: write, main.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis test and validation component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, json, pathlib, reporting, shutil, sys, zipfile.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: write, main, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -27,10 +49,30 @@ GENERATED = TEST_ROOT / "generated"
 RESULTS = TEST_ROOT / "test_results.json"
 
 
+# =============================================================================
+# [FYP-SECTION] TEST SETUP, FIXTURES, AND ASSERTIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `write` — implements the write operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `path`, `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include reporting_approval.py:build_export_all_zip, soc_investigation_agent_revised/main.py:write_markdown_report, soc_investigation_agent_revised/sync_engine.py:_commit_disk; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `mkdir`, `write_text`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `ZipFile`, `append`, `bool`, `build_report_manifest`, `confirm_section`, `decode`, `dumps`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def main() -> int:
     if TEST_ROOT.exists():

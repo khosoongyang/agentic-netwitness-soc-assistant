@@ -1,3 +1,48 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: chroma_compat, dotenv, ingest_pipeline, json, langchain_core, langchain_openai, mitre_mapper, os.
+# =============================================================================
+# File: soc_investigation_agent_revised/orchestrator.py
+# Purpose: [FYP-ENTRY-POINT] The Investigation stage's own internal
+#   orchestrator — runs a playbook-driven, milestone-by-milestone
+#   investigation over a correlated alert group and produces the final
+#   structured incident analysis (attack narrative, business impact,
+#   MITRE mapping via mitre_mapper.py).
+# Main functionalities:
+#   1. [FYP-EVALUATOR] orchestrate_incident(): the main synchronous entry
+#      point — loads a playbook (YAML), seeds suspicious indicators,
+#      walks each playbook milestone checking sufficiency
+#      (check_milestone_sufficiency()) against retrieved evidence (RAG via
+#      vector_engine.py), and calls generate_final_analysis() to produce
+#      the final report.
+#   2. analyze_alert_group_p1()/compile_final_report()/analyze_alert_group():
+#      an async, two-pass variant of the same pipeline (Pass 1 = per-step
+#      milestone execution trace, Pass 2 = final report compilation).
+#   3. [FYP-EVALUATOR] generate_final_analysis(): builds the
+#      FinalIncidentAnalysis (attack_chain_summary, business impact
+#      checklist, recommended actions) and calls into mitre_mapper.py for
+#      the MITRE ATT&CK mapping table embedded in the report.
+#   4. classify_policies_for_investigation()/PolicyVectorIndex/get_policy_manager():
+#      policy-compliance auditing layer (policy_engine.py integration) —
+#      classifies which SOC policies are relevant to this investigation.
+#   5. get_llm()/get_chain_p1()/get_chain_p2(): LangChain ChatOpenAI-backed
+#      LLM chain construction, lazily cached.
+# Inputs: a correlated alert group (from correlation_engine.py) and a
+#   playbook YAML path (soc_investigation_agent_revised/playbooks/*.yaml).
+# Outputs: FinalIncidentAnalysis (Pydantic model) — the structured incident
+#   report consumed by the reporting stage / final_analysis_report.md.
+# Workflow position: Investigation stage, THE main orchestration entry
+#   point once evidence correlation (correlation_engine.py) has grouped
+#   alerts into an incident.
+# Called by [FYP-USED-BY]: verify via grep — likely main.py and/or
+#   soc_workflow.py's subprocess invocation of this subsystem.
+# Calls [FYP-CALLS]: ingest_pipeline, vector_engine (RAG/ChromaDB),
+#   mitre_mapper (MITRE ATT&CK mapping), policy_engine (compliance
+#   auditing), chroma_compat, langchain_openai.
+# Key evaluator search terms: orchestrate_incident, generate_final_analysis,
+#   check_milestone_sufficiency, FinalIncidentAnalysis, [FYP-EVALUATOR]
+# =============================================================================
+
 import os
 import sys
 import json
@@ -18,6 +63,16 @@ from chroma_compat import open_persistent_collection
 load_dotenv()
 
 # --- ANSI COLOR CODES ---
+# =============================================================================
+# [FYP-SECTION] INVESTIGATION EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-CLASS] `Color` — owns Color state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class Color:
     CYAN = '\033[96m'
     GREEN = '\033[92m'
@@ -26,15 +81,59 @@ class Color:
     MAGENTA = '\033[95m'
     RESET = '\033[0m'
 
+# [FYP-FUNCTION] `log_info` — implements the log info operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_incident_report, soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/main.py:select_playbook_automatically; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `print`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def log_info(message: str): print(f"{Color.CYAN}[*] {message}{Color.RESET}", file=sys.stderr)
+# [FYP-FUNCTION] `log_success` — implements the log success operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_incident_report, soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/main.py:write_markdown_report; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `print`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def log_success(message: str): print(f"{Color.GREEN}[+] {message}{Color.RESET}", file=sys.stderr)
+# [FYP-FUNCTION] `log_warning` — implements the log warning operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/main.py:select_playbook_automatically, soc_investigation_agent_revised/orchestrator.py:__init__; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `print`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def log_warning(message: str): print(f"{Color.YELLOW}[~] {message}{Color.RESET}", file=sys.stderr)
+# [FYP-FUNCTION] `log_error` — implements the log error operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/orchestrator.py:analyze_alert_group_p1, soc_investigation_agent_revised/orchestrator.py:check_milestone_sufficiency; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `print`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def log_error(message: str): print(f"{Color.RED}[!] ERROR: {message}{Color.RESET}", file=sys.stderr)
 
 # --- PYDANTIC SCHEMAS FOR STRUCTURED OUTPUT ---
 
+# [FYP-CLASS] `SuspiciousSeeds` — owns SuspiciousSeeds state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class SuspiciousSeeds(BaseModel):
     seeds: List[str] = Field(description="A list of suspicious IOCs/tokens to query for, excluding generic benign items.")
+
+# [FYP-CLASS] `MilestoneCheck` — owns MilestoneCheck state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/orchestrator.py:check_milestone_sufficiency.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 class MilestoneCheck(BaseModel):
     milestone_met: bool = Field(description="True if the active playbook step can be fully answered with the current incident timeline, otherwise False.")
@@ -42,16 +141,34 @@ class MilestoneCheck(BaseModel):
     extracted_data: Optional[str] = Field(description="The extracted data for this step if the milestone is met, otherwise null.")
     suggested_pivots: List[str] = Field(default_factory=list, description="List of suspected IOCs/keys/pivots to query ChromaDB for to gather more context. Return concrete indicators (values), not descriptions.")
 
+# [FYP-CLASS] `MilestoneExecution` — owns MilestoneExecution state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:generate_local_standalone_report, soc_investigation_agent_revised/orchestrator.py:analyze_alert_group_p1, soc_investigation_agent_revised/orchestrator.py:orchestrate_incident.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class MilestoneExecution(BaseModel):
     step_id: str
     instruction: str
     status: Literal["MET", "NOT_MET", "SKIPPED"]
     findings: str
+# [FYP-CLASS] `BusinessImpactChecklist` — owns BusinessImpactChecklist state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class BusinessImpactChecklist(BaseModel):
     critical_system: str = Field(description="Is a critical or significant system impacted? (yes/no/unknown)")
     essential_service: str = Field(description="Is an important or essential service affected? (yes/no/unknown)")
     data_sensitivity: str = Field(description="Is personal, confidential, or sensitive data involved? (yes/no/unknown)")
     operational_impact: str = Field(description="Is there outage, degradation, or loss of business function? (yes/no/unknown)")
+
+# [FYP-CLASS] `FinalIncidentAnalysis` — owns FinalIncidentAnalysis state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:generate_local_standalone_report, soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 class FinalIncidentAnalysis(BaseModel):
     incident_id: str
@@ -68,10 +185,22 @@ class FinalIncidentAnalysis(BaseModel):
     mitre_attack_table: Optional[str] = Field(default=None, description="Markdown summary table mapping incident timeline events to MITRE ATT&CK TTPs at the incident level.")
     policy_audit_logs: List[PolicyAuditRecord] = Field(default_factory=list, description="The list of PolicyAuditRecord generated during policy-based verification checks.")
 
+# [FYP-CLASS] `Pass1StepResult` — owns Pass1StepResult state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class Pass1StepResult(BaseModel):
     step_id: str
     status: Literal["MET", "NOT_MET"]
     findings: str
+
+# [FYP-CLASS] `Pass1Result` — owns Pass1Result state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 class Pass1Result(BaseModel):
     execution_trace: List[Pass1StepResult] = Field(description="The step-by-step trace of how the playbook was executed.")
@@ -82,6 +211,14 @@ class Pass1Result(BaseModel):
 _llm = None
 _chain_p1 = None
 _chain_p2 = None
+
+# [FYP-FUNCTION] `_structured_method` — implements the structured method operation used by the surrounding investigation workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:check_milestone_sufficiency, soc_investigation_agent_revised/orchestrator.py:classify_policies_for_investigation, soc_investigation_agent_revised/orchestrator.py:filter_suspicious_seeds; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `getenv`, `join`, `lower`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _structured_method() -> str:
     """APP-COMPAT (soc_workflow): DeepSeek's OpenAI-compatible endpoint rejects
@@ -100,6 +237,20 @@ def _structured_method() -> str:
 
 
 def get_llm():
+    """
+    [FYP-FUNCTION] Lazily construct (and cache in module-global `_llm`) the
+    single shared ChatOpenAI client used by every LLM call in this file
+    (classify_policies_for_investigation, filter_suspicious_seeds,
+    check_milestone_sufficiency, generate_final_analysis, get_chain_p1/p2).
+
+    Reads OPENAI_API_KEY / OPENAI_MODEL / OPENAI_BASE_URL (or
+    OPENAI_API_BASE) from the environment (see APP-COMPAT comment below) so
+    soc_workflow.py can point this agent at whatever provider/model it is
+    configured with (e.g. DeepSeek) instead of the gpt-4o-mini default used
+    for standalone/offline runs.
+
+    [FYP-USED-BY]: every LLM-calling function in this module.
+    """
     global _llm
     if _llm is None:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -116,11 +267,38 @@ def get_llm():
         _llm = ChatOpenAI(**kwargs)
     return _llm
 
+# [FYP-CLASS] `PolicyClassificationResult` — owns PolicyClassificationResult state or behaviour for the investigation component.
+# [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
+# [FYP-USED-BY] No direct caller confidently identified; the class may be instantiated dynamically or by an entry point.
+# [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
+# [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
+
 class PolicyClassificationResult(BaseModel):
     relevant_sections: List[str] = Field(description="List of section keys/headers that are relevant to the Investigation Agent.")
 
 def classify_policies_for_investigation(sections: Dict[str, str]) -> List[str]:
-    """Uses a one-time LLM call to classify policy sections relevant to the Investigation Agent."""
+    """
+    [FYP-FUNCTION] One-time LLM classification of which parsed policy
+    sections (from policy_engine.PolicyManager.policies, keyed by section
+    header) are relevant to THIS agent's job (severity/confidence scoring,
+    business-impact checklist, containment/escalation rules, playbooks) as
+    opposed to administrative boilerplate (Purpose, Scope, audit-log
+    requirements, etc.).
+
+    [FYP-RAG] The returned section keys become the whitelist that
+    PolicyVectorIndex.populate() embeds into the 'soc_policies' ChromaDB
+    collection — i.e. this function decides WHAT goes into the RAG index,
+    not what gets retrieved from it per-incident.
+
+    Only sends each section's first 4 lines to the LLM (a preview), keeping
+    the call cheap; on any LLM failure falls back to a hardcoded appendix
+    whitelist so the pipeline still runs.
+
+    [FYP-USED-BY]: get_policy_manager() — called once, then its result is
+    cached to disk (policies/investigation_sections_cache.json) keyed by the
+    policy file's mtime, so this LLM call only re-runs when the policy
+    document actually changes.
+    """
     log_info("[LLM CALL] Running one-time AI Policy Parser to classify relevant sections...")
     
     sections_summary = []
@@ -160,9 +338,32 @@ def classify_policies_for_investigation(sections: Dict[str, str]) -> List[str]:
 
 class PolicyVectorIndex:
     """
-    ChromaDB vector store mapping policy sections into embeddings to support semantic retrieval.
-    Uses the 'soc_policies' collection.
+    [FYP-CLASS] [FYP-RAG] ChromaDB-backed vector store embedding cybersecurity
+    policy sections (soc_investigation_agent_revised/policies/soc_policies.md,
+    parsed by policy_engine.PolicyManager) to support semantic retrieval of
+    the policy text relevant to a given incident's timeline. Uses the
+    'soc_policies' collection (OpenAI text-embedding-3-small), separate from
+    the alert-evidence collection managed by vector_engine.py.
+
+    Lifecycle: populate() is called once per process (via get_policy_manager())
+    to (re)index only the LLM-whitelisted sections (see
+    classify_policies_for_investigation()); retrieve() is then called per
+    incident inside generate_final_analysis()/compile_final_report() to pull
+    the 2 sections most semantically similar to the incident timeline, which
+    are appended to the "always-present" core appendices (A/C/F/escalation
+    rule) before being handed to the LLM as grounding context.
+
+    [FYP-USED-BY]: get_policy_manager() (construction + populate()),
+    generate_final_analysis()/compile_final_report() (retrieve()).
     """
+    # [FYP-FUNCTION] `__init__` — implements the init operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `OpenAIEmbeddingFunction`, `PersistentClient`, `get`, `log_warning`, `open_persistent_collection`.
+    # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
     def __init__(self, db_path: str = "ChromaDatabase"):
         import chromadb
         from chromadb.utils import embedding_functions
@@ -183,8 +384,26 @@ class PolicyVectorIndex:
                 "function; existing vectors were preserved."
             )
 
+    # [FYP-FUNCTION] `populate` — implements the populate operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `sections`, `relevant_keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:get_policy_manager; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `any`, `append`, `delete_collection`, `get_or_create_collection`, `items`, `len`, `log_success`, `lower`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
     def populate(self, sections: Dict[str, str], relevant_keys: List[str]):
-        """Populates the collection with only the whitelisted/classified sections."""
+        """
+        [FYP-RAG] Rebuilds the 'soc_policies' collection from scratch (drops
+        then recreates it) containing only the sections whose keys fuzzy-match
+        (substring, either direction) one of `relevant_keys` — the LLM-
+        classified whitelist from classify_policies_for_investigation().
+        Each document is truncated to 12000 chars before embedding.
+
+        [FYP-USED-BY]: get_policy_manager(), only when the vector store is
+        empty or the classification cache was just (re)computed — otherwise
+        the existing persisted collection is reused across runs.
+        """
         try:
             self.client.delete_collection("soc_policies")
         except Exception:
@@ -213,8 +432,26 @@ class PolicyVectorIndex:
             self.collection.upsert(ids=ids, documents=documents, metadatas=metadatas)
             log_success(f"PolicyVectorIndex: Successfully populated with {len(ids)} relevant sections.")
 
+    # [FYP-FUNCTION] `retrieve` — implements the retrieve operation used by the surrounding investigation workflow.
+    # [FYP-INPUT] Parameters: `query_text`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+    # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
+    # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
+    # [FYP-CALLS] Calls: `append`, `log_error`, `query`.
+    # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
     def retrieve(self, query_text: str, limit: int = 2) -> List[str]:
-        """Queries the policy store to semantically retrieve relevant sections."""
+        """
+        [FYP-RAG] Embeds `query_text` (in practice, the incident's
+        chronological timeline string from build_timeline_text()) and
+        returns the `limit` most semantically similar policy section
+        documents from the 'soc_policies' collection. This is the dynamic
+        half of the policy context assembled in generate_final_analysis()/
+        compile_final_report() — supplementing the always-included core
+        appendices (A, C, F, general escalation rule) with whichever
+        additional policy sections are contextually relevant to what
+        actually happened in this incident.
+        """
         try:
             results = self.collection.query(
                 query_texts=[query_text],
@@ -233,6 +470,31 @@ _policy_mgr = None
 _policy_vector_index = None
 
 def get_policy_manager():
+    """
+    [FYP-FUNCTION] [FYP-RAG] Lazily construct and cache (module-globals
+    _policy_mgr, _policy_vector_index) the pair of objects that back all
+    policy-grounded reasoning in this file: a policy_engine.PolicyManager
+    (parses policies/soc_policies.md into a section dict) and a
+    PolicyVectorIndex (embeds a whitelisted subset of those sections for
+    semantic retrieval).
+
+    [FYP-PROCESS] On first call:
+      1. Parse the policy markdown via PolicyManager.
+      2. Determine which sections are relevant to this agent — either by
+         reading policies/investigation_sections_cache.json (if its cached
+         mtime still matches the policy file's current mtime) or, on a
+         cache miss, by calling classify_policies_for_investigation() (one
+         LLM call) and writing the result back to that cache file.
+      3. Populate the ChromaDB vector store (PolicyVectorIndex.populate())
+         only if it's empty or the classification was just recomputed;
+         otherwise reuse whatever is already persisted on disk, avoiding
+         redundant embedding calls across repeated runs.
+
+    Subsequent calls just return the cached globals — this function is the
+    single lazy-init choke point for the whole policy subsystem.
+
+    [FYP-USED-BY]: generate_final_analysis(), compile_final_report().
+    """
     global _policy_mgr, _policy_vector_index
     policy_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "policies", "soc_policies.md")
     
@@ -285,6 +547,22 @@ def get_policy_manager():
     return _policy_mgr, _policy_vector_index
 
 def get_chain_p1():
+    """
+    [FYP-FUNCTION] Lazily builds and caches (module-global _chain_p1) the
+    LangChain "Pass 1" chain: a single structured-output LLM call that,
+    given the full playbook step list and the current incident timeline,
+    evaluates EVERY playbook step in one shot (MET/NOT_MET + findings per
+    step, via the Pass1Result schema) and proposes concrete indicator
+    values to pivot on for any NOT_MET steps.
+
+    This is the async two-pass pipeline's cheaper alternative to
+    orchestrate_incident()'s synchronous one-LLM-call-per-milestone loop
+    (check_milestone_sufficiency()) — trading per-step precision for a
+    single consolidated call, which is what main.py's async batch pipeline
+    (analyze_alert_group_p1()) actually uses in production.
+
+    [FYP-USED-BY]: analyze_alert_group_p1().
+    """
     global _chain_p1
     if _chain_p1 is None:
         system_prompt_p1 = (
@@ -303,6 +581,19 @@ def get_chain_p1():
         _chain_p1 = prompt_p1 | get_llm().with_structured_output(Pass1Result, method=_structured_method())
     return _chain_p1
 def get_chain_p2():
+    """
+    [FYP-FUNCTION] Lazily builds and caches (module-global _chain_p2) the
+    LangChain "Pass 2" chain: the single structured-output LLM call that
+    re-evaluates the playbook against the (possibly pivot-enriched) timeline
+    and produces the complete FinalIncidentAnalysis — severity/confidence
+    + justifications, business impact checklist, incident_summary narrative,
+    recommended_containment, and the chronological mitre_mappings list —
+    all strictly grounded in the {policies} context block injected at call
+    time (the core appendices + PolicyVectorIndex.retrieve() results).
+
+    [FYP-USED-BY]: compile_final_report(), which is the async pipeline's
+    counterpart to orchestrate_incident()'s generate_final_analysis().
+    """
     global _chain_p2
     if _chain_p2 is None:
         system_prompt_p2 = (
@@ -329,7 +620,20 @@ def get_chain_p2():
 # --- MICRO-TASK IMPLEMENTATIONS ---
 
 def filter_suspicious_seeds(raw_tokens: List[str]) -> List[str]:
-    """Micro-Task 1: Stateless LLM filtering to strip benign infrastructure noise from seeds."""
+    """
+    [FYP-FUNCTION] Micro-Task 1: stateless LLM call that strips benign
+    infrastructure noise (localhost, DNS resolvers, generic Windows/MS
+    domains, svchost.exe/cmd.exe, empty/"Unknown" values) out of a raw token
+    list, leaving only tokens worth using as ChromaDB pivot/search seeds.
+
+    Only called on the subset of tokens prepare_seeds() couldn't already
+    confidently classify as high-fidelity (public IPs and external domains);
+    private IPs, hashes, emails, and hostnames/usernames bypass this LLM
+    call entirely. On LLM failure, falls back to a small hardcoded benign
+    set so filtering degrades gracefully rather than failing outright.
+
+    [FYP-USED-BY]: prepare_seeds().
+    """
     if not raw_tokens:
         return []
     
@@ -358,7 +662,27 @@ def filter_suspicious_seeds(raw_tokens: List[str]) -> List[str]:
         return [t for t in raw_tokens if t not in benign]
 
 def check_milestone_sufficiency(timeline_str: str, instruction: str, step_id: str) -> MilestoneCheck:
-    """Micro-Task 2: Stateless LLM checking to verify if timeline evidence meets playbook step criteria."""
+    """
+    [FYP-FUNCTION] [FYP-EVALUATOR] [FYP-DECISION] Micro-Task 2: stateless
+    per-milestone LLM call that decides whether the current chronological
+    incident timeline (build_timeline_text() output, growing as more
+    correlated alerts are pivoted-in) contains enough evidence to answer a
+    single playbook step's instruction.
+
+    Returns a MilestoneCheck: milestone_met (True/False), reasoning, the
+    extracted_data answer when met, and — when NOT met — suggested_pivots
+    (concrete indicator values, not descriptions) that orchestrate_incident()
+    uses to query vector_engine.correlate_rrf() for more evidence before
+    retrying this same step.
+
+    This MET/NOT_MET verdict is exactly what ends up in each
+    MilestoneExecution row of execution_trace, which is in turn the table
+    soc_workflow.py's detect_evidence_gaps() parses to decide whether an
+    automatic investigation re-run is warranted.
+
+    [FYP-USED-BY]: orchestrate_incident() (called once per playbook node,
+    with retries on newly-pivoted evidence).
+    """
     log_info(f"[LLM CALL] Invoking Micro-Task 2: Milestone Sufficiency Check for step {step_id}...")
     
     system_prompt = (
@@ -389,7 +713,43 @@ def check_milestone_sufficiency(timeline_str: str, instruction: str, step_id: st
         )
 
 def generate_final_analysis(incident_id: str, playbook_name: str, timeline_str: str, execution_trace: List[MilestoneExecution], correlated_alerts: Optional[List[dict]] = None) -> FinalIncidentAnalysis:
-    """Final Structural Reporting: Invoked exactly once at the end of the analysis phase."""
+    """
+    [FYP-FUNCTION] [FYP-EVALUATOR] Final structured reporting: invoked
+    exactly once at the end of orchestrate_incident()'s milestone-checkpoint
+    loop to turn the completed execution_trace + timeline into the
+    FinalIncidentAnalysis report (severity/confidence + justifications,
+    business_impact_checklist, incident_summary narrative,
+    recommended_containment, mitre_mappings / mitre_attack_table).
+
+    [FYP-PROCESS] / [FYP-RAG]:
+      1. get_policy_manager() supplies the policy grounding context: 4
+         "core" appendices (A severity, C business impact, F confidence,
+         general escalation rule) are always included; PolicyVectorIndex.
+         retrieve() adds up to 2 more sections semantically similar to
+         `timeline_str` — deduplicated against the core set.
+      2. One structured-output LLM call (get_llm()) produces the report
+         against the FinalIncidentAnalysis Pydantic schema, grounded in
+         that combined policy context.
+      3. [FYP-DECISION] policy_engine.run_policy_compliance_rules() is then
+         run as a deterministic, non-LLM post-check over the LLM's own
+         output (severity/confidence/checklist/summary) — it can override
+         recommended_containment (e.g. force ransomware/guest-OS containment
+         language) when escalation_required, and always attaches the
+         Appendix M policy_audit_logs trail.
+      4. [FYP-CALLS] mitre_mapper.py renders the mitre_attack_table markdown
+         locally (0 extra LLM calls) from the LLM-produced mitre_mappings;
+         if the LLM didn't populate mappings, falls back to
+         mitre_mapper.map_incident_mitre_ttps() over the raw
+         correlated_alerts/timeline instead.
+
+    On any LLM failure, returns a conservative fallback FinalIncidentAnalysis
+    (severity=High, confidence=Low) rather than raising, so a single bad LLM
+    call never crashes the whole investigation run.
+
+    [FYP-USED-BY]: orchestrate_incident() (the synchronous single-pass path;
+    contrast with compile_final_report(), the async two-pass path's
+    equivalent, used by main.py in production).
+    """
     log_info(f"[LLM CALL] Invoking Final Structural Reporting for incident {incident_id}...")
     
     policy_mgr, policy_vector_index = get_policy_manager()
@@ -502,7 +862,23 @@ def generate_final_analysis(incident_id: str, playbook_name: str, timeline_str: 
 # --- CONSTRUCT TIMELINE TEXT ---
 
 def build_timeline_text(correlated_alerts: List[dict]) -> str:
-    """Formats list of correlated alerts into a chronological summary string."""
+    """
+    [FYP-FUNCTION] Sorts `correlated_alerts` (dicts with id/document/metadata,
+    as produced by ingest_pipeline.process_log_file() and
+    vector_engine.correlate_rrf()) chronologically by
+    metadata["timestamp_epoch"] and renders them into a single
+    "[timestamp] Alert Entry #N (id): document" per-line text block.
+
+    This is THE incident timeline representation fed to every LLM call in
+    this file (check_milestone_sufficiency, generate_final_analysis,
+    get_chain_p1/p2's prompts, PolicyVectorIndex.retrieve() query text) — it
+    is rebuilt from scratch every time correlated_alerts grows (each
+    successful pivot hop in orchestrate_incident()), so the LLM always sees
+    the full up-to-date evidence set in strict time order.
+
+    [FYP-USED-BY]: orchestrate_incident(), analyze_alert_group_p1(),
+    compile_final_report().
+    """
     lines = []
     sorted_alerts = sorted(correlated_alerts, key=lambda x: x["metadata"]["timestamp_epoch"])
     
@@ -519,13 +895,45 @@ def build_timeline_text(correlated_alerts: List[dict]) -> str:
 IP_PAT = re.compile(r'^(\d{1,3}\.\d{1,3}\.\d{1,3}\.)\d{1,3}$')
 
 def broaden_indicators(indicators: List[str]) -> List[str]:
-    """Returns the indicators list directly without broadening (subnet/domain expansion disabled)."""
+    """
+    [FYP-FUNCTION] No-op passthrough — returns `indicators` unchanged.
+
+    Kept as a named seam (rather than removed) because it is called at
+    every indicator-expansion point in orchestrate_incident() (initial
+    seeds, newly-discovered alert indicators, and LLM-suggested pivots from
+    check_milestone_sufficiency()). Subnet/domain broadening (e.g.
+    expanding a /24 or a parent domain) was intentionally disabled here to
+    avoid pulling in unrelated alerts that merely share an IP range —
+    precision over recall for the pivot search.
+    """
     return list(indicators)
 
 # --- SEED PREPARATION AND FILTER WHITELISTING ---
 
 def prepare_seeds(raw_tokens: List[str]) -> List[str]:
-    """Protects high-fidelity indicators (private IPs, subnets, hashes, emails, names) from LLM filter."""
+    """
+    [FYP-FUNCTION] Splits `raw_tokens` into a "high_fidelity" bucket that
+    bypasses the LLM filter entirely and a "to_filter" bucket that gets
+    sent through filter_suspicious_seeds() (Micro-Task 1).
+
+    Classification rules (deterministic, no LLM):
+      - Private/RFC1918 IPs (10.x, 192.168.x, 172.16-31.x) and any
+        subnet-prefix token (ending in '.') -> high_fidelity.
+      - Public IPs -> to_filter (too noisy/generic to trust blindly).
+      - 32/64-char hex strings (MD5/SHA256 hashes) -> high_fidelity.
+      - Tokens containing '@' and '.' (emails) -> high_fidelity.
+      - Tokens with no '.' at all (bare hostnames/usernames) ->
+        high_fidelity.
+      - Everything else (external domains) -> to_filter.
+
+    Returns the deduplicated union of high_fidelity + whatever
+    filter_suspicious_seeds() didn't strip out — this is the final
+    "active_seeds" list orchestrate_incident() queries ChromaDB with via
+    vector_engine.correlate_rrf().
+
+    [FYP-USED-BY]: orchestrate_incident() (both the initial seed set and
+    every subsequently-discovered alert's indicators).
+    """
     high_fidelity = []
     to_filter = []
     
@@ -572,7 +980,40 @@ def prepare_seeds(raw_tokens: List[str]) -> List[str]:
 # --- HYBRID ORCHESTRATOR CORRELATION FLOW ---
 
 def orchestrate_incident(seed_alert_path: str, playbook_path: str) -> dict:
-    """Orchestrates ingestion, transitive-closure metadata pivoting, milestone checks, and final reporting."""
+    """
+    [FYP-FUNCTION] Investigation Orchestration — Main Synchronous Entry Point
+    [FYP-ENTRY-POINT] [FYP-EVALUATOR] [FYP-FLOW]
+
+    Orchestrates ingestion, transitive-closure metadata pivoting, milestone
+    checks, and final reporting.
+
+    [FYP-PROCESS] High-level flow:
+      1. Ingest the seed alert (ingest_pipeline.process_log_file) and
+         extract initial seed indicators (IPs/hashes/emails/domains/
+         username/hostname).
+      2. broaden_indicators()/prepare_seeds() expand and clean the seed set
+         — this is the "transitive-closure metadata pivoting" step that
+         pulls in related evidence, not just the literal seed alert.
+      3. Walk the playbook (YAML at playbook_path) milestone by milestone,
+         using check_milestone_sufficiency() to decide whether enough
+         evidence has been gathered for each step (MET/NOT_MET/SKIPPED) —
+         this MET/NOT_MET table is exactly what soc_workflow.py's
+         detect_evidence_gaps() later parses to decide on an automatic
+         re-run.
+      4. generate_final_analysis() [FYP-CALLS] produces the final
+         structured report, including the MITRE ATT&CK mapping via
+         mitre_mapper.py.
+
+    Parameters: seed_alert_path (path to the triggering alert JSON),
+    playbook_path (path to a playbook YAML, e.g.
+    soc_investigation_agent_revised/playbooks/phishing.yaml).
+
+    Returns: dict — the final incident analysis result.
+
+    [FYP-USED-BY]: this subsystem's main.py / the Investigation stage
+    subprocess soc_workflow.py invokes — verify exact call site via grep
+    before demoing.
+    """
     # 1. Process Seed Alert
     seed_log = ingest_pipeline.process_log_file(seed_alert_path)
     seed_id = seed_log["id"]
@@ -767,8 +1208,37 @@ def orchestrate_incident(seed_alert_path: str, playbook_path: str) -> dict:
 
 async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: str) -> dict:
     """
-    Pass 1: Consolidated playbook check + lightweight trace extraction + pivot extraction (1 LLM call).
-    Returns a dict with {"execution_trace": List[MilestoneExecution], "suggested_pivots": List[str]}.
+    [FYP-FUNCTION] Pass 1 of the async two-pass pipeline: a single
+    consolidated structured-output LLM call (get_chain_p1()) that evaluates
+    every playbook step against the current timeline AND extracts pivot
+    candidates in one shot — the async/production analogue of
+    orchestrate_incident()'s per-step check_milestone_sufficiency() loop,
+    trading one call per milestone for one call total.
+
+    [FYP-PROCESS]:
+      1. Load the playbook YAML and flatten its steps into a numbered
+         instruction list.
+      2. build_timeline_text(correlated_alerts) for the current evidence
+         set (already-correlated alerts, e.g. from CorrelationEngine's
+         Tier 1/2 grouping — NOT the transitive-closure pivoting
+         orchestrate_incident() does itself).
+      3. Invoke chain_p1.ainvoke() against the Pass1Result schema.
+      4. Map each lightweight Pass1StepResult back to a full
+         MilestoneExecution by re-attaching that step's instruction text
+         from the playbook (Pass1StepResult itself omits it to keep the
+         LLM's output smaller/cheaper).
+
+    On LLM failure, returns an all-NOT_MET execution_trace with no
+    suggested_pivots so main.py's caller can still proceed to Pass 2 with a
+    error-annotated trace rather than crashing.
+
+    Returns: {"execution_trace": List[MilestoneExecution],
+    "suggested_pivots": List[str]}.
+
+    [FYP-USED-BY]: main.py's generate_incident_report() closure inside
+    main_async() — the production entry point for dynamic/multi-alert
+    incidents (as opposed to the 0-LLM-call standalone-alert shortcut,
+    generate_local_standalone_report()).
     """
     with open(playbook_path, "r", encoding="utf-8") as f:
         playbook_dict = yaml.safe_load(f)
@@ -828,7 +1298,40 @@ async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: s
 
 async def compile_final_report(correlated_alerts: List[dict], playbook_path: str, p1_trace: List[MilestoneExecution]) -> FinalIncidentAnalysis:
     """
-    Pass 2: Re-runs playbook step checks and generates updated report using enriched timeline.
+    [FYP-FUNCTION] [FYP-EVALUATOR] Pass 2 of the async two-pass pipeline —
+    the production-path counterpart to generate_final_analysis(). Called by
+    main.py after `correlated_alerts` has possibly been enriched with extra
+    alerts pulled in via analyze_alert_group_p1()'s suggested_pivots (main.py
+    queries vector_engine.correlate_rrf() with those pivots between Pass 1
+    and Pass 2), so this pass sees a superset of the Pass 1 evidence.
+
+    [FYP-PROCESS] / [FYP-RAG]: identical policy-grounding strategy to
+    generate_final_analysis() — get_policy_manager() supplies 4 core
+    appendices (A/C/F/general escalation rule) plus up to 2 dynamically
+    retrieved sections (PolicyVectorIndex.retrieve() against the rebuilt
+    timeline) — then a single structured-output LLM call (get_chain_p2())
+    re-evaluates the full playbook (not just the NOT_MET steps from Pass 1)
+    against the enriched timeline and `p1_trace` context, producing the
+    complete FinalIncidentAnalysis.
+
+    [FYP-DECISION] Same post-processing as generate_final_analysis():
+    policy_engine.run_policy_compliance_rules() deterministically checks the
+    LLM's severity/confidence/checklist/summary, can override
+    recommended_containment on escalation, and always attaches the
+    Appendix M policy_audit_logs. mitre_mapper.py then renders
+    mitre_attack_table locally from the LLM's mitre_mappings (or falls back
+    to map_incident_mitre_ttps() over the raw alerts if the LLM didn't
+    populate mappings).
+
+    On LLM failure, returns a conservative fallback FinalIncidentAnalysis
+    (severity=High, confidence=Low, execution_trace=p1_trace unchanged)
+    rather than raising.
+
+    [FYP-USED-BY]: main.py's generate_incident_report() closure — this is
+    the actual report-generation call soc_workflow.py's subprocess
+    invocation of `python main.py` triggers for any incident with more than
+    one correlated alert or external DB relations (see
+    generate_local_standalone_report() for the single-alert shortcut).
     """
     with open(playbook_path, "r", encoding="utf-8") as f:
         playbook_dict = yaml.safe_load(f)
@@ -930,6 +1433,12 @@ async def compile_final_report(correlated_alerts: List[dict], playbook_path: str
         return fallback_report
 
 def analyze_alert_group(correlated_alerts: List[dict], playbook_path: str) -> dict:
-    """Legacy synchronous wrapper for two-pass evaluation."""
+    """
+    [FYP-FUNCTION] Deprecated/dead stub — unconditionally raises
+    NotImplementedError. Superseded by the async pair
+    analyze_alert_group_p1() + compile_final_report(), which main.py calls
+    directly. Left in place only as a documented placeholder; grep found no
+    live callers — verify before removing.
+    """
     raise NotImplementedError("Legacy analyze_alert_group is deprecated.")
 

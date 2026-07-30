@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, json, os, pathlib, sys, tempfile.
+# =============================================================================
+# File: eval_harness.py
+# Purpose: This module runs repeatable evaluation scenarios and records pipeline quality results.
+# Main functionality: _triage_result, _c_tactic, _c_verdict, _c_diamond, _c_sop, _c_sidecar.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, json, os, pathlib, sys, tempfile.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _triage_result, _c_tactic, _c_verdict, _c_diamond, _c_sop, _c_sidecar, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 eval_harness.py — offline golden-set evaluation for the SOC agent/skill pipeline.
 
@@ -41,6 +63,18 @@ _GOLDEN = _ROOT / "tests" / "golden_incidents.json"
 
 # ── triage_result synthesis (deterministic, from the golden's `triage` block) ─
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_triage_result` — implements the triage result operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `case`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:run_evals, tests/test_investigation_stage.py:_run_to_investigation_processing, tests/test_investigation_stage.py:test_build_case_view_never_calls_investigation_stage_functions; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `get`, `lower`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _triage_result(case: dict) -> dict | None:
     t = case.get("triage")
     if not t:
@@ -59,6 +93,14 @@ def _triage_result(case: dict) -> dict | None:
 
 # ── per-check evaluators: return (ok: bool|None, detail: str). None = skipped ──
 
+# [FYP-FUNCTION] `_c_tactic` — implements the c tactic operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `inc`, `tri`, `exp`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `get`, `infer_tactics`, `lower`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _c_tactic(inc, tri, exp):
     from tactic_inference import infer_tactics
     r = infer_tactics(inc)
@@ -73,6 +115,14 @@ def _c_tactic(inc, tri, exp):
     return True, f"available={r.get('available')} tactic={r.get('tactic')!r}"
 
 
+# [FYP-FUNCTION] `_c_verdict` — implements the c verdict operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `inc`, `tri`, `exp`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `aggregate_verdict`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _c_verdict(inc, tri, exp):
     from triage_verdict import aggregate_verdict
     v = aggregate_verdict(inc, tri)
@@ -81,6 +131,14 @@ def _c_verdict(inc, tri, exp):
         return False, f"level={lvl} not in {exp['level_in']}"
     return True, f"level={lvl}"
 
+
+# [FYP-FUNCTION] `_c_diamond` — implements the c diamond operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `inc`, `tri`, `exp`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `build_diamond`, `get`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _c_diamond(inc, tri, exp):
     from diamond_model import build_diamond
@@ -92,6 +150,14 @@ def _c_diamond(inc, tri, exp):
         return False, f"completeness={comp} < {exp['completeness_min']}"
     return True, f"available={d.get('available')} completeness={comp}"
 
+
+# [FYP-FUNCTION] `_c_sop` — implements the c sop operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `inc`, `tri`, `exp`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `build_incident_sop`, `get`, `lower`, `str`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _c_sop(inc, tri, exp):
     from reporting_sop import build_incident_sop
@@ -112,6 +178,14 @@ def _c_sop(inc, tri, exp):
     return True, f"valid={val} scenario={s.get('meta', {}).get('scenario')!r}"
 
 
+# [FYP-FUNCTION] `_c_sidecar` — implements the c sidecar operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `inc`, `tri`, `exp`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `build_skills_context`, `get`, `set`, `sorted`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _c_sidecar(inc, tri, exp):
     from skills_sidecar import build_skills_context
     b = build_skills_context(inc, tri)
@@ -127,6 +201,14 @@ def _c_sidecar(inc, tri, exp):
 # lazily-loaded investigation-agent selector (endpoint-vs-phishing router)
 _SELECTOR = "unloaded"
 
+
+# [FYP-FUNCTION] `_selector` — implements the selector operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_playbook; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exec_module`, `insert`, `module_from_spec`, `spec_from_file_location`, `str`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _selector():
     global _SELECTOR
@@ -145,6 +227,14 @@ def _selector():
         _SELECTOR = (None, str(exc)[:80])
     return _SELECTOR
 
+
+# [FYP-FUNCTION] `_c_playbook` — implements the c playbook operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `inc`, `tri`, `exp`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
+# [FYP-CALLS] Calls: `NamedTemporaryFile`, `_selector`, `basename`, `build_investigation_alert`, `chdir`, `close`, `dump`, `getcwd`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _c_playbook(inc, tri, exp):
     if tri is None:
@@ -180,6 +270,14 @@ _CHECKS = {
 }
 
 
+# [FYP-FUNCTION] `run_evals` — orchestrates the run evals entry point and its ordered SOC analysis support operations.
+# [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `_triage_result`, `all`, `append`, `fn`, `get`, `items`, `loads`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
 def run_evals(path: Path = _GOLDEN):
     """Run every golden case. Returns (results, all_passed). results is a list of
     (case_name, check_name, status, detail) where status ∈ PASS|FAIL|SKIP."""
@@ -202,6 +300,14 @@ def run_evals(path: Path = _GOLDEN):
     all_passed = all(s != "FAIL" for _, _, s, _ in results)
     return results, all_passed
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered SOC analysis support operations.
+# [FYP-INPUT] Parameters: `argv`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `print`, `run_evals`, `sum`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def main(argv=None) -> int:
     argv = argv if argv is not None else sys.argv[1:]

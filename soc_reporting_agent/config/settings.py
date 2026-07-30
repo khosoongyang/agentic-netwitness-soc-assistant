@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: os, pathlib.
+# =============================================================================
+# File: soc_reporting_agent/config/settings.py
+# Purpose: This module loads reporting-service paths and runtime configuration from environment variables.
+# Main functionality: configured_llm_providers, selected_model_for_provider, selected_llm_model.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis reporting configuration component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: os, pathlib.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: configured_llm_providers, selected_model_for_provider, selected_llm_model, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from pathlib import Path
 import os
 
@@ -54,6 +76,18 @@ REQUIRED_KB_FILES = [
 ]
 
 
+# =============================================================================
+# [FYP-SECTION] REPORTING CONFIGURATION EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `configured_llm_providers` — implements the configured llm providers operation used by the surrounding reporting configuration workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting configuration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `lower`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def configured_llm_providers() -> list[str]:
     """Return provider order for LLM calls.
 
@@ -70,6 +104,14 @@ def configured_llm_providers() -> list[str]:
     return providers or ["mock"]
 
 
+# [FYP-FUNCTION] `selected_model_for_provider` — implements the selected model for provider operation used by the surrounding reporting configuration workflow.
+# [FYP-INPUT] Parameters: `provider`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting configuration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/config/settings.py:selected_llm_model, soc_reporting_agent/reporting/llm_narrative.py:invoke_llm, soc_reporting_agent/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `lower`, `strip`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def selected_model_for_provider(provider: str) -> str:
     provider = (provider or "").strip().lower()
     if provider == "openai":
@@ -80,6 +122,14 @@ def selected_model_for_provider(provider: str) -> str:
         return f"mock-{LLM_MOCK_MODE}"
     return LLM_MODEL or OLLAMA_MODEL
 
+
+# [FYP-FUNCTION] `selected_llm_model` — implements the selected llm model operation used by the surrounding reporting configuration workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis reporting configuration workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/reporting/llm_narrative.py:selected_model; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `selected_model_for_provider`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def selected_llm_model() -> str:
     """Return the model that should be used for the active primary provider.

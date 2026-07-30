@@ -1,3 +1,30 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# [FYP-SECTION] EXECUTABLE / BEHAVIOURAL CONFIGURATION
+# =============================================================================
+# File: config.yaml
+# Purpose: This file records triage and retrieval configuration values mirrored by the application.
+# Main functionality: Supplies runtime, dependency, security, workflow, or
+#   playbook values consumed by the application/framework named below.
+# Inputs: Maintainer-controlled configuration values; no live secret values
+#   are documented or introduced by this overview.
+# Outputs: Configuration read by the framework, installer, CI job, or Aegis
+#   component; it does not independently execute a workflow stage.
+# Workflow position: Supporting configuration for SOC analysis support.
+# Important dependencies: The consuming application/framework and the exact
+#   keys or steps declared in this file.
+# Error and fallback behaviour: Invalid values fail in the consuming parser,
+#   installer, workflow, or framework; fallback behaviour belongs to that caller.
+# Key evaluator search terms: config.yaml, [FYP-CONFIG], [FYP-FILE].
+# =============================================================================
+# [FYP-CONFIG] Purpose: reference configuration for the SOC Triage Agent —
+# ChromaDB store, embedding model, foundation LLM, sklearn model paths,
+# retrieval tuning, and the MITRE tactics / severity level enumerations.
+# Verified via Grep: no app module loads this path at runtime (no
+# yaml.safe_load("config.yaml") call found). Its triage.mitre_tactics and
+# severity_levels values are instead mirrored as hardcoded constants in
+# soc_triage_agent/soc_triage_agent.py (see MITRE_TACTICS ~line 275 and the
+# CRITICAL/HIGH/MEDIUM/LOW literals used for classification/icons).
 # ============================================================
 #  SOC Triage Agent — Configuration
 #  Edit this file to match your environment

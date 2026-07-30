@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, json, os, pathlib, shutil, sys.
+# =============================================================================
+# File: soc_reporting_agent/scripts/test_merged_report_context.py
+# Purpose: This module implements test and validation behaviour for test merged report context.
+# Main functionality: write_json, reset_fixture, seed_inputs, test_merged_context, main.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis test and validation component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, json, os, pathlib, shutil, sys.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: write_json, reset_fixture, seed_inputs, test_merged_context, main, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -15,10 +37,30 @@ INPUTS = BASE / "inputs"
 OUTPUTS = BASE / "outputs"
 
 
+# =============================================================================
+# [FYP-SECTION] TEST SETUP, FIXTURES, AND ASSERTIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `write_json` — persists or updates write json state used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `path`, `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_reporting_agent/adapters/run_reporting.py:_copy_report_artifacts, soc_reporting_agent/adapters/run_reporting.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `mkdir`, `write_text`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def write_json(path: Path, data: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
+
+# [FYP-FUNCTION] `reset_fixture` — persists or updates reset fixture state used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_merged_report_context.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `exists`, `mkdir`, `rmtree`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def reset_fixture() -> None:
     if BASE.exists():
@@ -26,6 +68,14 @@ def reset_fixture() -> None:
     INPUTS.mkdir(parents=True, exist_ok=True)
     OUTPUTS.mkdir(parents=True, exist_ok=True)
 
+
+# [FYP-FUNCTION] `seed_inputs` — implements the seed inputs operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_merged_report_context.py:main, soc_reporting_agent/scripts/test_reporting_appendix_context.py:main, soc_reporting_agent/scripts/test_reporting_appendix_context.py:test_failed_subprocess_not_completed; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `write_json`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def seed_inputs() -> None:
     evidence = [
@@ -147,6 +197,14 @@ def seed_inputs() -> None:
     write_json(INPUTS / "approval_result.json", {"approval_status": "approved", "decision": "approved", "analyst": "Soong Yang", "approval_gate": "investigation_evidence_gap_decision"})
 
 
+# [FYP-FUNCTION] `test_merged_context` — verifies merged context behaviour and protects the related test and validation code path.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_merged_report_context.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Path`, `all`, `build_context`, `count`, `enhance_export_context`, `join`, `len`, `load_reporting_inputs`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def test_merged_context() -> None:
     os.environ["REPORTING_USE_LLM"] = "false"
     from reporting.input_loader import load_reporting_inputs
@@ -219,6 +277,14 @@ def test_merged_context() -> None:
     assert "No MITRE ATT&CK mapping was provided" not in final_text, final_text
     assert all(final_text.count(item) <= 1 for item in ["Not linked", "Evidence link unavailable", "Unavailable from source telemetry"]), final_text
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `dumps`, `print`, `reset_fixture`, `seed_inputs`, `str`, `sum`, `test_merged_context`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def main() -> int:
     reset_fixture()

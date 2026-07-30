@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, collections, json, re, sqlite3, typing.
+# =============================================================================
+# File: endpoint_profile.py
+# Purpose: This module summarises endpoint, user, and process evidence used during investigation.
+# Main functionality: _classify_entity_name, _looks_ipv6, _ip_tag, profile_entity, format_profile.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis SOC analysis support component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, collections, json, re, sqlite3, typing.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: _classify_entity_name, _looks_ipv6, _ip_tag, profile_entity, format_profile, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 """
 endpoint_profile.py — deep endpoint entity analysis over the incident corpus.
 
@@ -43,6 +65,18 @@ _HOSTNAME_PATTERNS = (
 _NOISE_IPS = {"127.0.0.1", "8.8.8.8", "8.8.4.4", "1.1.1.1"}
 
 
+# =============================================================================
+# [FYP-SECTION] SOC ANALYSIS SUPPORT EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `_classify_entity_name` — implements the classify entity name operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `name`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include endpoint_profile.py:profile_entity; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_looks_ipv6`, `any`, `match`, `search`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _classify_entity_name(name: str) -> str:
     if any(p.search(name) for p in _HOSTNAME_PATTERNS):
         return "likely Windows hostname"
@@ -51,9 +85,25 @@ def _classify_entity_name(name: str) -> str:
     return "user-or-host entity (name pattern inconclusive)"
 
 
+# [FYP-FUNCTION] `_looks_ipv6` — implements the looks ipv6 operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `v`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include endpoint_profile.py:_classify_entity_name, endpoint_profile.py:_ip_tag; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `all`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def _looks_ipv6(v: str) -> bool:
     return ":" in v and all(c in "0123456789abcdefABCDEF:" for c in v)
 
+
+# [FYP-FUNCTION] `_ip_tag` — implements the ip tag operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `ip`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include endpoint_profile.py:profile_entity; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `_looks_ipv6`, `endswith`, `lower`, `startswith`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _ip_tag(ip: str) -> str:
     """Short noise/infrastructure tag for an IP, empty when it's interesting."""
@@ -65,6 +115,14 @@ def _ip_tag(ip: str) -> str:
         return " (IPv6 link-local — noise)"
     return ""
 
+
+# [FYP-FUNCTION] `profile_entity` — implements the profile entity operation used by the surrounding SOC analysis support workflow.
+# [FYP-INPUT] Parameters: `db_path`, `entity`, `exclude_id`, `max_rows`, `lateral_ips`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include incident_expansion.py:expand_incident_map; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `Counter`, `_classify_entity_name`, `_ip_tag`, `append`, `close`, `compile`, `connect`, `dict`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def profile_entity(db_path: str, entity: str, exclude_id: str = "",
                    max_rows: int = 3000, lateral_ips: int = 2) -> dict | None:
@@ -158,6 +216,14 @@ def profile_entity(db_path: str, entity: str, exclude_id: str = "",
     finally:
         con.close()
 
+
+# [FYP-FUNCTION] `format_profile` — constructs format profile output for the next SOC analysis support consumer or analyst-facing view.
+# [FYP-INPUT] Parameters: `p`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include incident_expansion.py:expand_incident_map; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `append`, `items`, `join`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def format_profile(p: dict) -> str:
     """Plain-text profile block for the entity map / LLM prompt."""

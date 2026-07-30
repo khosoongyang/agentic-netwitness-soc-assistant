@@ -1,3 +1,25 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, backend, json, pathlib, sys.
+# =============================================================================
+# File: soc_reporting_agent/scripts/test_reporting_gate_with_limited_investigation.py
+# Purpose: This module implements test and validation behaviour for test reporting gate with limited investigation.
+# Main functionality: ticket_with, run_case, main.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis test and validation component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, backend, json, pathlib, sys.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: ticket_with, run_case, main, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
 from __future__ import annotations
 
 import json
@@ -22,11 +44,31 @@ BASE_TICKET = {
 }
 
 
+# =============================================================================
+# [FYP-SECTION] TEST SETUP, FIXTURES, AND ASSERTIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `ticket_with` — implements the ticket with operation used by the surrounding test and validation workflow.
+# [FYP-INPUT] Parameters: `inv`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_reporting_gate_with_limited_investigation.py:run_case; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dict`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
 def ticket_with(inv: dict) -> dict:
     t = dict(BASE_TICKET)
     t["investigation_result"] = inv
     return t
 
+
+# [FYP-FUNCTION] `run_case` — orchestrates the run case entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: `name`, `inv`, `expected_allowed`, `expected_label_contains`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_reporting_context_resolution.py:main, soc_reporting_agent/scripts/test_reporting_gate_with_limited_investigation.py:main; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `can_run_agent`, `get`, `is_investigation_usable_for_reporting`, `lower`, `next_agent`, `str`, `ticket_with`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def run_case(name: str, inv: dict, expected_allowed: bool, expected_label_contains: str | None = None) -> dict:
     ticket = ticket_with(inv)
@@ -46,6 +88,14 @@ def run_case(name: str, inv: dict, expected_allowed: bool, expected_label_contai
         "usable_for_reporting": usable,
     }
 
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered test and validation operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `dumps`, `mkdir`, `print`, `run_case`, `sum`, `write_text`.
+# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def main() -> int:
     cases = [
