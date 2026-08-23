@@ -139,7 +139,7 @@ def _asset_signal(incident: dict, triage_result: dict | None) -> dict | None:
     stub (excluded from scoring but still shown) if assess_incident() itself
     raises — either way aggregate_verdict() never crashes on this signal."""
     try:
-        from asset_criticality import assess_incident
+        from agents.investigation.tools.asset_criticality import assess_incident
     except Exception:
         return None
     cls = ((triage_result or {}).get("ticket") or {}).get("classification")
@@ -173,7 +173,7 @@ def _ioc_signal(incident: dict, triage_result: dict | None,
         corr = ioc_correlation_result
     else:
         try:
-            from ioc_correlation import correlate_iocs
+            from agents.investigation.tools.ioc_correlation import correlate_iocs
         except Exception:
             return None
         try:

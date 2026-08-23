@@ -110,7 +110,7 @@ def _safe(fn, *args, **kwargs) -> Any:
 def _collect_diamond(incident: dict, triage_result: dict | None,
                      ti_result: dict | None) -> dict | None:
     try:
-        from diamond_model import build_diamond
+        from agents.investigation.tools.diamond_model import build_diamond
     except Exception:
         return None
     d = _safe(build_diamond, incident, triage_result, ti_result)
@@ -130,7 +130,7 @@ def _collect_diamond(incident: dict, triage_result: dict | None,
 def _collect_verdict(incident: dict, triage_result: dict | None,
                      ti_result: dict | None) -> dict | None:
     try:
-        from triage_verdict import aggregate_verdict
+        from agents.investigation.tools.triage_verdict import aggregate_verdict
     except Exception:
         return None
     v = _safe(aggregate_verdict, incident, triage_result, ti_result)
@@ -149,7 +149,7 @@ def _collect_verdict(incident: dict, triage_result: dict | None,
 
 def _collect_correlation(incident: dict, triage_result: dict | None) -> dict | None:
     try:
-        from ioc_correlation import correlate_iocs
+        from agents.investigation.tools.ioc_correlation import correlate_iocs
     except Exception:
         return None
     c = _safe(correlate_iocs, incident, triage_result)
@@ -168,7 +168,7 @@ def _collect_correlation(incident: dict, triage_result: dict | None) -> dict | N
 
 def _collect_asset(incident: dict, triage_result: dict | None) -> dict | None:
     try:
-        from asset_criticality import assess_incident
+        from agents.investigation.tools.asset_criticality import assess_incident
     except Exception:
         return None
     cls = None
@@ -192,7 +192,7 @@ def _collect_asset(incident: dict, triage_result: dict | None) -> dict | None:
 def _collect_mitigation(incident: dict, triage_result: dict | None,
                         ti_result: dict | None, asset: dict | None) -> dict | None:
     try:
-        from mitigation_mapping import build_mitigation_coverage
+        from agents.investigation.tools.mitigation_mapping import build_mitigation_coverage
     except Exception:
         return None
     m = _safe(build_mitigation_coverage, incident, triage_result, ti_result, asset)
@@ -233,7 +233,7 @@ def _collect_compliance(incident: dict, triage_result: dict | None,
                         investigation_result: dict | None,
                         ti_result: dict | None) -> dict | None:
     try:
-        from compliance_evidence import build_compliance_evidence
+        from agents.investigation.tools.compliance_evidence import build_compliance_evidence
     except Exception:
         return None
     e = _safe(build_compliance_evidence, incident, triage_result,
@@ -255,7 +255,7 @@ def _collect_final_verdict(incident: dict, triage_result: dict | None,
                            investigation_result: dict | None,
                            ti_result: dict | None) -> dict | None:
     try:
-        from final_verdict import build_final_verdict
+        from agents.investigation.tools.final_verdict import build_final_verdict
     except Exception:
         return None
     v = _safe(build_final_verdict, incident, triage_result,
@@ -583,7 +583,7 @@ def _build_narrative(diamond, verdict, corr, mitigation, sop=None, compliance=No
     lead = ""
     if final:
         try:
-            from final_verdict import format_final_verdict
+            from agents.investigation.tools.final_verdict import format_final_verdict
             fv = format_final_verdict(final, compact=True)
             if fv:
                 lead = fv + "\n\n"
@@ -606,7 +606,7 @@ def _build_narrative(diamond, verdict, corr, mitigation, sop=None, compliance=No
     # (which Trust Services Criteria controls this incident's response satisfies).
     if compliance:
         try:
-            from compliance_evidence import format_compliance_evidence
+            from agents.investigation.tools.compliance_evidence import format_compliance_evidence
             block = format_compliance_evidence(compliance, compact=True)
             if block:
                 out += "\n\n" + block

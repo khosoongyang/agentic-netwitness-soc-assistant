@@ -253,7 +253,7 @@ def _mitre(incident: dict, triage_result: dict | None) -> dict:
 
 def _asset_tier(incident: dict, triage_result: dict | None) -> str:
     try:
-        from asset_criticality import assess_incident
+        from agents.investigation.tools.asset_criticality import assess_incident
         cls = ((triage_result or {}).get("ticket") or {}).get("classification")
         return str(assess_incident(incident, triage_classification=cls).get("highest_tier", "unclassified"))
     except Exception:
@@ -353,7 +353,7 @@ def build_diamond(incident: dict, triage_result: dict | None = None,
 
     if enrich_pivots and pivots:
         try:
-            from ioc_correlation import correlate_iocs
+            from agents.investigation.tools.ioc_correlation import correlate_iocs
             corr = correlate_iocs(incident, triage_result)
             by_value = {r["value"]: r for r in corr.get("results", [])}
             for p in pivots:

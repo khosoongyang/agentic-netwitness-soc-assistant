@@ -182,7 +182,7 @@ def _mitre(incident: dict, triage_result: dict | None) -> tuple[str, str]:
         # reuse the pre-triage inference so the SOP references a tactic when the
         # incident's own evidence names one (keeps every skill consistent).
         try:
-            from tactic_inference import infer_tactics
+            from agents.investigation.tools.tactic_inference import infer_tactics
             inf = infer_tactics(incident)
             if inf.get("available"):
                 tac = tac or _s(inf.get("tactic"))
@@ -225,7 +225,7 @@ def _pick_playbook(incident: dict, triage_result: dict | None,
 
 def _asset(incident: dict, triage_result: dict | None) -> dict | None:
     try:
-        from asset_criticality import assess_incident
+        from agents.investigation.tools.asset_criticality import assess_incident
     except Exception:
         return None
     cls = _classification(incident, triage_result)
@@ -243,7 +243,7 @@ def _asset(incident: dict, triage_result: dict | None) -> dict | None:
 def _mitigation(incident: dict, triage_result: dict | None,
                 ti_result: dict | None, asset: dict | None) -> dict | None:
     try:
-        from mitigation_mapping import build_mitigation_coverage
+        from agents.investigation.tools.mitigation_mapping import build_mitigation_coverage
     except Exception:
         return None
     m = _safe(build_mitigation_coverage, incident, triage_result, ti_result, asset)
@@ -260,7 +260,7 @@ def _mitigation(incident: dict, triage_result: dict | None,
 
 def _iocs(incident: dict, triage_result: dict | None) -> list[dict]:
     try:
-        from ioc_correlation import correlate_iocs
+        from agents.investigation.tools.ioc_correlation import correlate_iocs
     except Exception:
         return []
     c = _safe(correlate_iocs, incident, triage_result)

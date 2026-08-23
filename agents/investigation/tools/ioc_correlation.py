@@ -92,7 +92,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-_DB_DIR = Path(__file__).resolve().parent / "soc_db"
+_DB_DIR = Path(__file__).resolve().parents[3] / "soc_db"
 _INCIDENTS_DB = _DB_DIR / "soc_incidents.db"
 _PIPELINE_DB = _DB_DIR / "soc_pipeline.db"
 _TICKETS_DB = _DB_DIR / "soc_tickets.db"

@@ -62,9 +62,9 @@ from typing import Any
 
 from workflow import state_store as wss
 from workflow import engine as sw
-from incident_map import build_incident_map, to_dot as incident_map_to_dot
-from tactic_inference import infer_tactics
-from triage_verdict import aggregate_verdict
+from agents.investigation.tools.incident_map import build_incident_map, to_dot as incident_map_to_dot
+from agents.investigation.tools.tactic_inference import infer_tactics
+from agents.investigation.tools.triage_verdict import aggregate_verdict
 
 
 # ══════════════════════════════════════════════════════════════════════════

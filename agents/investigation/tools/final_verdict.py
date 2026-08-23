@@ -147,7 +147,7 @@ def _triage_base(incident, triage_result, ti_result) -> dict | None:
     caller (_build) simply proceeds without a triage baseline rather than
     crashing the whole post-investigation verdict."""
     try:
-        from triage_verdict import aggregate_verdict
+        from agents.investigation.tools.triage_verdict import aggregate_verdict
     except Exception:
         return None
     try:
@@ -202,7 +202,7 @@ def _diamond_signal(incident, triage_result, ti_result) -> dict:
     an unavailable Diamond result all degrade to the same
     {"level": 0, "available": False} stub rather than crashing this module."""
     try:
-        from diamond_model import build_diamond
+        from agents.investigation.tools.diamond_model import build_diamond
         d = build_diamond(incident, triage_result, ti_result)
     except Exception:
         return {"name": "kill-chain characterisation", "level": 0,
@@ -248,7 +248,7 @@ def _mitre_confirmation(incident, triage_result=None, inv=None) -> dict:
     # 2. Fall back to deterministic inference only when nothing is assigned.
     if not tactic:
         try:
-            from tactic_inference import infer_tactics
+            from agents.investigation.tools.tactic_inference import infer_tactics
             r = infer_tactics(incident)
         except Exception:
             r = None

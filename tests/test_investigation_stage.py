@@ -587,7 +587,7 @@ def test_reporting_receives_persisted_threat_intel_result():
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_ioc_correlation_failure_produces_warning_without_failing_workflow(monkeypatch):
-    import ioc_correlation
+    import agents.investigation.tools.ioc_correlation as ioc_correlation
 
     # [FYP-FUNCTION] `_boom` — implements the boom operation used by the surrounding test and validation workflow.
     # [FYP-INPUT] Parameters: `*a`, `**k`; values come from its direct caller, route, UI event, fixture, or stage handoff.
@@ -618,7 +618,7 @@ def test_ioc_correlation_failure_produces_warning_without_failing_workflow(monke
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_live_ioc_correlation_not_invoked_by_case_view(monkeypatch, tmp_path):
-    import ioc_correlation
+    import agents.investigation.tools.ioc_correlation as ioc_correlation
 
     # [FYP-FUNCTION] `_boom` — implements the boom operation used by the surrounding test and validation workflow.
     # [FYP-INPUT] Parameters: `*a`, `**k`; values come from its direct caller, route, UI event, fixture, or stage handoff.

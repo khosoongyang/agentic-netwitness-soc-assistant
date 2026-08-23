@@ -102,7 +102,7 @@ def _triage_result(case: dict) -> dict | None:
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _c_tactic(inc, tri, exp):
-    from tactic_inference import infer_tactics
+    from agents.investigation.tools.tactic_inference import infer_tactics
     r = infer_tactics(inc)
     if r.get("available") != exp.get("available"):
         return False, f"available={r.get('available')} want {exp.get('available')}"
@@ -124,7 +124,7 @@ def _c_tactic(inc, tri, exp):
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _c_verdict(inc, tri, exp):
-    from triage_verdict import aggregate_verdict
+    from agents.investigation.tools.triage_verdict import aggregate_verdict
     v = aggregate_verdict(inc, tri)
     lvl = v.get("level")
     if lvl not in exp["level_in"]:
@@ -141,7 +141,7 @@ def _c_verdict(inc, tri, exp):
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _c_diamond(inc, tri, exp):
-    from diamond_model import build_diamond
+    from agents.investigation.tools.diamond_model import build_diamond
     d = build_diamond(inc, tri)
     if d.get("available") != exp.get("available", True):
         return False, f"available={d.get('available')}"
@@ -187,7 +187,7 @@ def _c_sop(inc, tri, exp):
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _c_sidecar(inc, tri, exp):
-    from skills_sidecar import build_skills_context
+    from agents.investigation.skills_sidecar import build_skills_context
     b = build_skills_context(inc, tri)
     if b.get("available") != exp.get("available", True):
         return False, f"available={b.get('available')}"

@@ -3410,7 +3410,7 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
     # context-builder already consumes; strictly additive/non-destructive; never
     # raises. Disable with NW_DISABLE_SKILLS_SIDECAR=1.
     try:
-        import skills_sidecar
+        import agents.investigation.skills_sidecar as skills_sidecar
         _bundle = skills_sidecar.build_skills_context(
             incident, triage_result=triage_result,
             investigation_result=investigation_result)
@@ -4014,7 +4014,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     # Triage or the overall workflow — Triage still reaches "Awaiting
     # Approval" normally either way.
     try:
-        from ioc_correlation import correlate_iocs
+        from agents.investigation.tools.ioc_correlation import correlate_iocs
         _corr = correlate_iocs(incident, triage_result)
         _corr_status = "Complete" if _corr.get("available") else "Complete with Warnings"
         wss.save_ioc_correlation_result(inc_id, run_id, status=_corr_status, result=_corr)
