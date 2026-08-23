@@ -478,12 +478,13 @@ def format_final_verdict(v: dict | None, compact: bool = False) -> str:
         lines.append("_Refines the triage-time verdict with investigation "
                      "substantiation. Decision support — does not close the incident._")
     tv = v.get("triage_verdict") or {}
+    delta = str(v.get("delta") or "")
     delta_note = {
         "escalated": f" (⬆ escalated from triage {tv.get('level')})",
         "confirmed": f" (confirmed triage {tv.get('level')})",
         "held (low confidence)": f" (held at triage {tv.get('level')} — low confidence)",
         "unchanged": "",
-    }.get(v.get("delta"), "")
+    }.get(delta, "")
     lines.append(f"**{v['level']}** · **{v['disposition']}** · confidence **{v['confidence']}** "
                  f"· priority {v['priority']}/5{delta_note}")
     lines.append(f"- **Next action:** {v['action']}")

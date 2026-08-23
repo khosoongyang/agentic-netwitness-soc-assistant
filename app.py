@@ -1,3 +1,4 @@
+# pyright: reportGeneralTypeIssues=false
 """
 SOC Platform v4
 ───────────────
@@ -98,6 +99,15 @@ except Exception:
 import re
 import streamlit as st
 import streamlit.components.v1 as components
+
+# Must be the first Streamlit command, before st.secrets is accessed below.
+st.set_page_config(
+    page_title="Aegis",
+    page_icon=None,
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
 import requests
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -112,16 +122,27 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 try:
-    from dotenv import load_dotenv, set_key, find_dotenv
+    from dotenv import load_dotenv, set_key, find_dotenv  # pyright: ignore[reportAssignmentType]
     DOTENV_OK = True
 except ImportError:
     DOTENV_OK = False
+
+    def load_dotenv(*args, **kwargs):
+        return False
+
+    def set_key(*args, **kwargs):
+        return None
+
+    def find_dotenv(*args, **kwargs):
+        return ""
 
 try:
     import chromadb
     from chromadb.utils import embedding_functions as _chroma_embedding_functions
     CHROMA_OK = True
 except ImportError:
+    chromadb = None
+    _chroma_embedding_functions = None
     CHROMA_OK = False
 
 
@@ -136,6 +157,8 @@ def _openai_ef():
     anywhere a ChromaDB collection is created/opened in this file, so that
     embeddings are computed consistently across collections.
     [FYP-RAG] Embedding step feeding ChromaDB semantic search."""
+    if _chroma_embedding_functions is None:
+        raise RuntimeError("chromadb is not installed")
     return _chroma_embedding_functions.OpenAIEmbeddingFunction(
         api_key=os.environ.get("OPENAI_API_KEY", ""),
         model_name="text-embedding-3-small",
@@ -159,6 +182,16 @@ def _bridge_cloud_secrets() -> None:
     st.secrets is unavailable (e.g. no secrets.toml locally).
     [FYP-EVALUATOR] Called once at import time (line below the def) —
     this is why credentials "just work" on both local and cloud deploys."""
+    # Accessing st.secrets with no configured file makes Streamlit emit a
+    # noisy "No secrets found" message before raising. Avoid the access
+    # altogether on local runs that have no secrets file/directory.
+    _secret_paths = (
+        Path.home() / ".streamlit" / "secrets.toml",
+        Path.cwd() / ".streamlit" / "secrets.toml",
+    )
+    if not any(_path.exists() for _path in _secret_paths):
+        return
+
     try:
         for _k, _v in st.secrets.items():
             if isinstance(_v, (str, int, float, bool)) and _k not in os.environ:
@@ -209,7 +242,7 @@ def _maybe_reload_agent_modules():
                     mm = _sys.modules.get(name)
                     if mm is not None:
                         importlib.reload(mm)
-                _sys.modules[mod_name].__loaded_mtime__ = mtime
+                setattr(_sys.modules[mod_name], "__loaded_mtime__", mtime)
     except Exception:
         pass
 
@@ -238,13 +271,13 @@ import triage_ticket_editing
 # actual multi-stage pipeline logic.
 try:
     from soc_workflow import (
-        run_until_triage_approval as wf_run_until_triage_approval,
+        run_until_triage_approval as wf_run_until_triage_approval,  # pyright: ignore[reportAssignmentType]
         generate_triage_ai_summary as wf_generate_triage_ai_summary,
         generate_stage_ai_summary as wf_generate_stage_ai_summary,
         limit_ai_summary_sentences as wf_limit_ai_summary_sentences,
         render_triage_thinking_plain as wf_render_triage_thinking_plain,
         render_agent_thinking_plain as wf_render_agent_thinking_plain,
-        run_stage_chain           as wf_run_stage_chain,
+        run_stage_chain           as wf_run_stage_chain,  # pyright: ignore[reportAssignmentType]
     )
     # NOTE: needs_investigation/handoff_to_investigation/run_investigation/
     # handoff_to_reporting/run_reporting used to also be imported here
@@ -256,6 +289,12 @@ try:
     WORKFLOW_OK = True
 except Exception:
     WORKFLOW_OK = False
+
+    def wf_run_until_triage_approval(*args, **kwargs):
+        raise RuntimeError("The SOC workflow module is unavailable")
+
+    def wf_run_stage_chain(*args, **kwargs):
+        raise RuntimeError("The SOC workflow module is unavailable")
 
 
 # [FYP-SECTION] BACKGROUND WORKFLOW ENGINE (daemon thread pipeline runner)
@@ -1481,15 +1520,6 @@ def nw_login(host: str, username: str, password: str) -> tuple[bool, str, str]:
 # [FYP-SECTION] PAGE CONFIG — Streamlit tab title/icon/layout, must run before
 # any other st.* call in the script.
 # ══════════════════════════════════════════════════════════════════════════════
-st.set_page_config(
-    page_title="Aegis",
-    page_icon=None,
-    layout="wide",
-    # Nothing calls st.sidebar anymore (top nav bar replaced it) — collapsed
-    # defensively so Streamlit doesn't reserve an empty sidebar strip.
-    initial_sidebar_state="collapsed",
-)
-
 # ══════════════════════════════════════════════════════════════════════════════
 # [FYP-SECTION] CSS — the Aegis design-system global stylesheet, injected once
 # via st.markdown(unsafe_allow_html=True). Everything downstream that targets
@@ -3275,7 +3305,7 @@ def maybe_auto_fetch():
         # caps how stale the cache can ever get at a known worst case.
         last_full  = st.session_state.last_full_fetch
         needs_full = last_full is None or (now - last_full) >= FULL_RESYNC_INTERVAL
-        since = None if needs_full else incremental_since(last)
+        since = None if needs_full or last is None else incremental_since(last)
 
         # Budgets kept from the synchronous era as the worker's wall-clock cap.
         _budget = 45 if since is not None else 120
@@ -3337,10 +3367,12 @@ def chroma_connect(path: str = "./chroma_db") -> tuple[bool, str]:
     if not CHROMA_OK:
         return False, "chromadb not installed — run: pip install chromadb"
     try:
+        if chromadb is None:
+            return False, "chromadb not installed — run: pip install chromadb"
         client = chromadb.PersistentClient(path=path)
         col    = client.get_or_create_collection(
             name="soc_incidents", metadata={"hnsw:space": "cosine"},
-            embedding_function=_openai_ef(),
+            embedding_function=_openai_ef(),  # pyright: ignore[reportArgumentType]
         )
         st.session_state.chroma_client = client
         st.session_state.chroma_col    = col
@@ -4131,7 +4163,7 @@ def _render_case_table(rows: list, *, key_prefix: str, heading: str = "Open case
 
             _border_col  = _SEV_BORDER.get(sev.upper(), "#43d28c")
             _stage_key   = stage_map.get(inc_id)
-            _stage_label = _STAGE_LABEL_SHORT.get(_stage_key, "Not triaged")
+            _stage_label = _STAGE_LABEL_SHORT.get(_stage_key or "", "Not triaged")
             _action, _action_detail = _next_action_for(inc_id, status, stage_map)
             _unassigned = assignee in ("Unassigned", "", None)
             _row_key = f"{key_prefix}_{inc_id}"
@@ -5162,6 +5194,9 @@ elif active_page == "My Workspace":
                         return
 
                     try:
+                        if not _header_run_id:
+                            st.warning("Could not re-run: workflow run ID is unavailable.")
+                            return
                         wss.rerun_stage(
                             _sel_id, _header_run_id, _header_selected_stage)
                     except ApprovalConflictError as _exc:
@@ -6252,6 +6287,7 @@ elif active_page == "My Workspace":
                                             **_zip_result, "identity": _zip_identity}
                                         st.rerun()
                             else:
+                                _prepared_export = _prepared
                                 # [FYP-FUNCTION] `_record_export_all_download` — persists or updates record export all download state used by the surrounding Streamlit application and dashboard workflow.
                                 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
                                 # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
@@ -6264,10 +6300,10 @@ elif active_page == "My Workspace":
                                     wss.record_activity(
                                         _sel_id, _rep_run_id, "reporting",
                                         "export_all_download_initiated", actor=_rep_analyst,
-                                        metadata={"zip_sha256": _prepared.get("sha256"),
-                                                 "report_set_id": _prepared.get("report_set_id"),
+                                        metadata={"zip_sha256": _prepared_export.get("sha256"),
+                                                 "report_set_id": _prepared_export.get("report_set_id"),
                                                  "reporting_stage_attempt":
-                                                     _prepared.get("reporting_stage_attempt")})
+                                                     _prepared_export.get("reporting_stage_attempt")})
                                 st.download_button(
                                     "Download Export All Reports",
                                     data=_prepared["bytes"], file_name=_prepared["filename"],

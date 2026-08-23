@@ -109,10 +109,11 @@ import sys
 import json
 import base64
 import requests
+import urllib3
 from dotenv import load_dotenv
 
 # Suppress SSL verification warnings
-requests.packages.urllib3.disable_warnings()
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 load_dotenv()
 
@@ -692,15 +693,21 @@ def get_comprehensive_incident_payload(incident_id: str, host: str | None = None
             print(f"[APIRetrieval] Fetching live FETCH API telemetry for incident {inc_clean}...")
             inc_details = fetch_incident_via_fetch_api(live_host, live_token, inc_clean)
             active_token = get_auth_token(host=live_host, token=live_token)
+            if not active_token:
+                raise RuntimeError("Unable to obtain a NetWitness authentication token")
             headers = {"NetWitness-Token": active_token, "Accept": "application/json"}
             if not inc_details:
                 inc_details = fetch_incident_details(live_host, headers, inc_clean)
                 active_token = get_auth_token(host=live_host, token=active_token)
+                if not active_token:
+                    raise RuntimeError("Unable to refresh the NetWitness authentication token")
                 headers["NetWitness-Token"] = active_token
             
             raw_alerts = fetch_alerts_via_fetch_api(live_host, active_token, inc_clean, count=1000)
             if not raw_alerts:
                 active_token = get_auth_token(host=live_host, token=active_token)
+                if not active_token:
+                    raise RuntimeError("Unable to refresh the NetWitness authentication token")
                 headers["NetWitness-Token"] = active_token
                 raw_alerts, _ = fetch_all_alerts_and_endpoint_events(live_host, headers, inc_clean)
             

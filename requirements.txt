@@ -22,7 +22,8 @@
 # `pip install -r requirements.txt` (local dev, Streamlit Community Cloud
 # deploy) and by .github/workflows/code-scan.yml's pip-audit CVE scan step.
 # ── Core app (app.py) ─────────────────────────────────────────────
-streamlit>=1.35.0
+streamlit==1.45.1
+protobuf==3.20.3
 requests>=2.31.0
 protobuf==3.20.3
 python-dotenv>=1.0.0

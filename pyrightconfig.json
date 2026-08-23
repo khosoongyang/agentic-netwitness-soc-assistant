@@ -1,0 +1,5 @@
+{
+  "extraPaths": [
+    "./soc_reporting_agent"
+  ]
+}

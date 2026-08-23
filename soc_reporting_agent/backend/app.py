@@ -558,8 +558,9 @@ def clean_display_text(value: Any, max_len: int = 1400) -> str:
     if isinstance(value, dict):
         # Prefer obvious human text fields from nested objects.
         for k in ("analyst_summary", "summary", "message", "reason", "error", "status"):
-            if isinstance(value.get(k), str) and value.get(k).strip() and not looks_like_raw_json_text(value.get(k)):
-                return clean_display_text(value.get(k), max_len=max_len)
+            candidate = value.get(k)
+            if isinstance(candidate, str) and candidate.strip() and not looks_like_raw_json_text(candidate):
+                return clean_display_text(candidate, max_len=max_len)
         return ""
     if isinstance(value, list):
         items = [clean_display_text(v, max_len=300) for v in value]
@@ -3937,7 +3938,8 @@ def build_agent_analyst_text(agent_key: str, payload: dict[str, Any] | None = No
     findings = payload.get("findings") or payload.get("key_findings") or payload.get("technical_findings") or payload.get("analysis_findings")
     missing = payload.get("missing_evidence") or payload.get("missing_fields") or payload.get("required_missing_fields") or payload.get("missing_report_fields")
     if agent_key == "triage":
-        nw = payload.get("netwitness_evidence") if isinstance(payload.get("netwitness_evidence"), dict) else {}
+        nw_value = payload.get("netwitness_evidence")
+        nw: dict[str, Any] = nw_value if isinstance(nw_value, dict) else {}
         nw_items = [
             f"NetWitness Owner: {display_status(payload.get('netwitness_owner_agent') or 'triage_agent')}",
             f"NetWitness Status: {display_status(nw.get('status'))}" if nw.get("status") else "",
@@ -3974,8 +3976,10 @@ def build_agent_analyst_text(agent_key: str, payload: dict[str, Any] | None = No
     if agent_key == "reporting":
         sections = ["Executive Summary", "Technical Findings", "SOC Triage Review", "SOC Analyst Review", "Final Incident Report"]
         manifest = payload.get("report_manifest") if isinstance(payload.get("report_manifest"), dict) else load_manifest(OUTPUTS_DIR)
-        if manifest.get("sections"):
-            sections = [v.get("title") or k for k, v in manifest.get("sections", {}).items()]
+        manifest = manifest or {}
+        manifest_sections = manifest.get("sections")
+        if isinstance(manifest_sections, dict):
+            sections = [v.get("title") or k for k, v in manifest_sections.items() if isinstance(v, dict)]
         parts = [
             _lines("REPORTING SUMMARY", summary or "The Reporting Agent generated editable report sections for SOC analyst review."),
             _lines("REPORTING STATUS", f"Report Status: {display_status(payload.get('report_status') or payload.get('status') or 'not_ready')}\nValidation / Context Status: {display_status(payload.get('validation_status') or payload.get('data_consistency_status') or 'unknown')}") ,
