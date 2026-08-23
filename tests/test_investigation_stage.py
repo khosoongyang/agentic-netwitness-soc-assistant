@@ -205,7 +205,7 @@ def test_worker_id_alone_is_not_sufficient_after_lease_expiry():
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_workflow_state_store_has_no_threading_import():
-    tree = ast.parse((ROOT / "workflow_state_store.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "workflow" / "state_store.py").read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             assert not any(a.name == "threading" for a in node.names), \
@@ -224,7 +224,7 @@ def test_workflow_state_store_has_no_threading_import():
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_soc_workflow_has_no_streamlit_import():
-    tree = ast.parse((ROOT / "soc_workflow.py").read_text(encoding="utf-8"))
+    tree = ast.parse((ROOT / "workflow" / "engine.py").read_text(encoding="utf-8"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             assert not any(a.name == "streamlit" for a in node.names), \

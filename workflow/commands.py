@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-import workflow_state_store as wss
+from workflow import state_store as wss
 
 
 STAGES = ("parsing", "triage", "threat_intel", "investigation", "reporting")
@@ -168,7 +168,7 @@ def _fresh_worker(
     allow_retry: bool,
     parsing_only: bool,
 ) -> dict[str, Any]:
-    from soc_workflow import run_until_triage_approval
+    from workflow.engine import run_until_triage_approval
 
     return run_until_triage_approval(
         incident,
@@ -178,7 +178,7 @@ def _fresh_worker(
 
 
 def _stage_chain(case_id: str, run_id: str) -> None:
-    from soc_workflow import run_stage_chain
+    from workflow.engine import run_stage_chain
 
     run_stage_chain(case_id, run_id)
 

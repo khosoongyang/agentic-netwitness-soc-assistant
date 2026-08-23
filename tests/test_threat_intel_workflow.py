@@ -393,14 +393,14 @@ def test_triage_approval_retained_after_investigation_approval():
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_approval_functions_do_not_start_threads_or_import_soc_workflow():
-    src = (ROOT / "workflow_state_store.py").read_text(encoding="utf-8")
+    src = (ROOT / "workflow" / "state_store.py").read_text(encoding="utf-8")
     assert "threading.Thread" not in src
     tree = ast.parse(src)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            assert not any(a.name == "soc_workflow" for a in node.names)
+            assert not any(a.name in ("soc_workflow", "workflow.engine") for a in node.names)
         if isinstance(node, ast.ImportFrom):
-            assert node.module != "soc_workflow"
+            assert node.module not in ("soc_workflow", "workflow.engine")
 
 
 # [FYP-FUNCTION] `test_worker_never_touches_streamlit` — verifies worker never touches streamlit behaviour and protects the related test and validation code path.
@@ -412,7 +412,7 @@ def test_approval_functions_do_not_start_threads_or_import_soc_workflow():
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_worker_never_touches_streamlit():
-    src = (ROOT / "soc_workflow.py").read_text(encoding="utf-8")
+    src = (ROOT / "workflow" / "engine.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):

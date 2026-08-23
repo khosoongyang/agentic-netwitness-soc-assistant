@@ -315,14 +315,14 @@ def test_flask_workspace_preserves_ai_summary_with_native_stage_output():
 
 
 def test_successful_downstream_stages_generate_ai_summary_before_persisting():
-    """[FYP-FUNCTION] Source-level guard on soc_workflow.py's stage-runner
-    functions: reads soc_workflow.py's raw source and asserts each
+    """[FYP-FUNCTION] Source-level guard on workflow/engine.py's stage-runner
+    functions: reads workflow/engine.py's raw source and asserts each
     downstream stage (Threat Intelligence Enrichment, Investigation,
     Reporting) still calls generate_stage_ai_summary() with its own result
     dict as soon as that stage completes successfully, so an AI summary is
     always generated and available before the result is persisted/shown.
     """
-    source = (ROOT / "soc_workflow.py").read_text(encoding="utf-8")
+    source = (ROOT / "workflow" / "engine.py").read_text(encoding="utf-8")
     assert (
         'generate_stage_ai_summary(\n'
         '                    "Threat Intelligence Enrichment", ti_result'
