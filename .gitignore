@@ -61,6 +61,7 @@ agents/investigation/ChromaDatabase/
 runtime/uploads/*
 !runtime/uploads/.gitkeep
 runtime/chroma/
+runtime/workflow_last_run.json
 
 # NOTE: soc_db/, chroma_db/, *.db, incident_reports/, triaged_alerts/ are
 # intentionally TRACKED — they are the offline demo payload the cloud app

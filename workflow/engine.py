@@ -36,7 +36,7 @@
 #      run_reporting_stage(), run_stage_chain(), main().
 #
 # Inputs:
-#   An incident dict (from sample_incident.json / a fetched NetWitness
+#   An incident dict (from demo/sample_incident.json / a fetched NetWitness
 #   incident / app.py's session state), plus files dropped by upstream
 #   stages (triaged_alerts/, soc_reporting_agent/inputs/*.json).
 #
@@ -115,9 +115,9 @@ six stage tables that app.py renders in its Pipeline DB tab:
 
 Usage (headless)
 ----------------
-  python soc_workflow.py --incident-file sample_incident.json
-  python soc_workflow.py --incident-file sample_incident.json --mock-triage
-  python soc_workflow.py --incident-file sample_incident.json --skip-investigation
+  python soc_workflow.py --incident-file demo/sample_incident.json
+  python soc_workflow.py --incident-file demo/sample_incident.json --mock-triage
+  python soc_workflow.py --incident-file demo/sample_incident.json --skip-investigation
 """
 
 from __future__ import annotations
@@ -4792,7 +4792,7 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
 def main() -> int:
     """
     [FYP-FUNCTION] [FYP-ENTRY-POINT] Headless CLI Entry Point
-    [FYP-EVALUATOR]: `python soc_workflow.py --incident-file sample_incident.json`
+    [FYP-EVALUATOR]: `python soc_workflow.py --incident-file demo/sample_incident.json`
     — the standalone, no-UI way to exercise Parsing -> Triage without
     launching app.py at all. Useful for a quick evaluator smoke test or for
     CI-style regression checks against a canned incident file.
@@ -4898,11 +4898,13 @@ def main() -> int:
         for k, v in ctx["errors"].items():
             print(f"    {k}: {str(v)[:200]}")
     # Dump the full run context (minus the raw incident, already on disk via
-    # the incident file itself) for post-hoc inspection/debugging.
-    out_path = ROOT / "workflow_last_run.json"
+    # the incident file itself) for post-hoc inspection/debugging. Lives
+    # under runtime/ (gitignored, regenerated each CLI run) rather than the
+    # repo root - it's a debug artifact, not source.
+    out_path = ROOT / "runtime" / "workflow_last_run.json"
     slim = {k: v for k, v in ctx.items() if k != "incident"}
     _write_json(out_path, slim)
-    print(f"  full context written to {out_path.name}")
+    print(f"  full context written to {out_path.relative_to(ROOT)}")
     return 1 if ctx["errors"].get("triage") else 0
 
 

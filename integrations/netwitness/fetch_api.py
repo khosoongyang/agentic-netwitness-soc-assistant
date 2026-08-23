@@ -110,6 +110,7 @@ from __future__ import annotations
 import os
 import sys
 import json
+from pathlib import Path
 import base64
 import requests
 import urllib3
@@ -680,15 +681,25 @@ def process_respond_api_telemetry(incident: dict, alerts: list) -> dict:
 # [FYP-CALLS] Calls: `exists`, `fetch_alerts_via_fetch_api`, `fetch_all_alerts_and_endpoint_events`, `fetch_incident_details`, `fetch_incident_via_fetch_api`, `get_auth_token`, `getenv`, `isinstance`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
 def get_comprehensive_incident_payload(incident_id: str, host: str | None = None, token: str | None = None) -> dict:
     """Retrieve comprehensive incident + raw alerts telemetry payload.
-    Checks disk for matching JSON exports first (e.g. incident_<id>_respond_api_export.json).
+    Checks disk for matching JSON exports first (e.g. incident_<id>_respond_api_export.json)
+    - in the canonical demo/ directory (repo-root-anchored, independent of
+    process cwd), then falling back to the bare, cwd-relative filenames for
+    backward compatibility with any exports dropped directly into a run's
+    working directory.
     If not found and live host+token are provided, fetches raw alerts via NetWitness FETCH API.
     """
     inc_clean = str(incident_id or "").strip()
-    
+
     # 1. Disk Export Lookup
     candidate_files = [
+        str(_REPO_ROOT / "demo" / f"incident_{inc_clean}_respond_api_export.json"),
+        str(_REPO_ROOT / "demo" / f"incident_{inc_clean}.json"),
+        str(_REPO_ROOT / "demo" / f"{inc_clean}.json"),
         f"incident_{inc_clean}_respond_api_export.json",
         f"incident_{inc_clean}.json",
         f"{inc_clean}.json",
