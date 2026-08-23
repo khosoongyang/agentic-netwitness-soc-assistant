@@ -214,7 +214,7 @@ def _selector():
     global _SELECTOR
     if _SELECTOR != "unloaded":
         return _SELECTOR
-    agent = _ROOT / "soc_investigation_agent_revised"
+    agent = _ROOT / "agents" / "investigation"
     try:
         import importlib.util
         if str(agent) not in sys.path:

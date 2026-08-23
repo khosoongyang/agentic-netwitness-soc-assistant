@@ -49,7 +49,7 @@ graphify-out/
 soc_reporting_agent/outputs/
 soc_reporting_agent/logs/
 soc_reporting_agent/runtime/
-soc_investigation_agent_revised/ChromaDatabase/
+agents/investigation/ChromaDatabase/
 runtime/uploads/*
 !runtime/uploads/.gitkeep
 runtime/chroma/

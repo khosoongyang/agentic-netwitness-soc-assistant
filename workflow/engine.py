@@ -149,7 +149,7 @@ ROOT       = Path(__file__).resolve().parent.parent
 # indicators) + final_analysis_report.md with the same `| step_x | … |
 # MET/NOT_MET |` trace table the feedback loop parses. The previous agent
 # remains on disk untouched — rollback = point this back.
-INV_DIR    = ROOT / "soc_investigation_agent_revised"
+INV_DIR    = ROOT / "agents" / "investigation"
 REP_DIR    = ROOT / "soc_reporting_agent"
 SOC_DB_DIR = ROOT / "soc_db"
 SOC_DB_DIR.mkdir(exist_ok=True)

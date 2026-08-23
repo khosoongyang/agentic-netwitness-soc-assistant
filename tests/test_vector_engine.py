@@ -48,7 +48,8 @@ import pytest
 
 VECTOR_ENGINE_PATH = (
     Path(__file__).resolve().parent.parent
-    / "soc_investigation_agent_revised"
+    / "agents"
+    / "investigation"
     / "vector_engine.py"
 )
 

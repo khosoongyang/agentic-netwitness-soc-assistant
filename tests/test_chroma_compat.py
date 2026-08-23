@@ -33,7 +33,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from soc_investigation_agent_revised.chroma_compat import (
+from agents.investigation.chroma_compat import (
     open_persistent_collection,
 )
 
