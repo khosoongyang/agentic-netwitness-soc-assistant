@@ -46,7 +46,7 @@ class NetWitnessService:
                     ),
                     token=os.environ.get("NW_TOKEN") or os.environ.get("NETWITNESS_TOKEN", ""),
                     auth_style=os.environ.get("NW_AUTH_STYLE", "NetWitness-Token"),
-                    verify_tls=_env_bool("NETWITNESS_VERIFY_SSL", False),
+                    verify_tls=_env_bool("NETWITNESS_VERIFY_SSL", True),
                     ca_certificate=os.environ.get("NW_CERT_PATH", ""),
                 )
                 self._config.validate()
@@ -60,7 +60,7 @@ class NetWitnessService:
             password=str(values.get("password") or ""),
             token=token,
             auth_style=str(values.get("auth_style") or "NetWitness-Token"),
-            verify_tls=bool(values.get("verify_tls", False)),
+            verify_tls=bool(values.get("verify_tls", True)),
             ca_certificate=str(values.get("ca_certificate") or ""),
         )
         config.validate()

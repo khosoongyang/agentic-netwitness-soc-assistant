@@ -88,11 +88,14 @@
 #   requests calls. Verified via grep — no other in-repo caller found.
 #
 # Calls [FYP-CALLS]:
-#   requests — HTTP GET/POST to the NetWitness Respond REST API. Every
-#   call passes verify=False (SSL verification disabled module-wide via
-#   requests.packages.urllib3.disable_warnings() below) — consistent with
-#   targeting an internal appliance with a self-signed certificate;
-#   documented here, not altered by these doc-only edits. python-dotenv
+#   requests — HTTP GET/POST to the NetWitness Respond REST API. TLS
+#   verification defaults to ON; set NETWITNESS_VERIFY_SSL=false (or point
+#   NW_CERT_PATH at the appliance's CA bundle to verify against it properly
+#   instead) only for a trusted internal appliance with a self-signed
+#   certificate, in development/demo use — same env vars as
+#   integrations/netwitness/auth.py's NetWitnessConfig, so both NetWitness
+#   clients share one configuration surface (Phase 10 hardening; this
+#   module previously hardcoded verify=False unconditionally). python-dotenv
 #   (load_dotenv) loads the NW_*/NETWITNESS_* variables from a local .env
 #   file. stdlib: os, sys, json, base64.
 #
@@ -112,10 +115,28 @@ import requests
 import urllib3
 from dotenv import load_dotenv
 
-# Suppress SSL verification warnings
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 load_dotenv()
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    return default if value is None else value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# TLS verification: secure by default. Set NETWITNESS_VERIFY_SSL=false only
+# for a trusted internal NetWitness appliance with a self-signed
+# certificate (development/demo use) - or, better, point NW_CERT_PATH at
+# that appliance's CA bundle to verify against it properly instead of
+# disabling verification. Same env var names as
+# integrations/netwitness/auth.py's NetWitnessConfig.
+_NW_CA_CERTIFICATE = os.environ.get("NW_CERT_PATH", "").strip()
+TLS_VERIFY: bool | str = _NW_CA_CERTIFICATE or _env_bool("NETWITNESS_VERIFY_SSL", True)
+
+if TLS_VERIFY is False:
+    # Only silence the warning when insecure mode was explicitly chosen -
+    # not unconditionally for the whole process (which would also hide
+    # warnings from unrelated HTTPS calls elsewhere in the same process).
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 # =============================================================================
@@ -171,7 +192,7 @@ def authenticate_netwitness(host: str, username: str, password: str) -> str:
     RuntimeError (with up to 200 chars of the response body for
     diagnosis) — this function does NOT swallow auth failures; callers
     (get_auth_token()) are the ones that catch and degrade to None.
-    [FYP-CALLS] requests.post (verify=False, timeout=15s) — the one and
+    [FYP-CALLS] requests.post (verify=TLS_VERIFY, timeout=15s) — the one and
     only credential-bearing HTTP call in this module.
     [FYP-USED-BY] get_auth_token() (this file), which wraps this in a
     try/except so a login failure degrades to a logged warning + None
@@ -184,7 +205,7 @@ def authenticate_netwitness(host: str, username: str, password: str) -> str:
     data = {"username": username, "password": password}
 
     print(f"[NetWitness Respond API] Authenticating at {login_url} (user: {username})...")
-    response = requests.post(login_url, data=data, headers=headers, verify=False, timeout=15)
+    response = requests.post(login_url, data=data, headers=headers, verify=TLS_VERIFY, timeout=15)
 
     if response.status_code == 200:
         res_data = response.json()
@@ -310,7 +331,7 @@ def fetch_incident_details(host: str, headers: dict, incident_id: str, auto_refr
     """Fetch Incident details from NetWitness Respond API (/rest/api/incidents/{incident_id})."""
     url = f"{host}/rest/api/incidents/{incident_id}"
     print(f"[NetWitness Respond API] Fetching Incident metadata from {url}...")
-    res = requests.get(url, headers=headers, verify=False, timeout=15)
+    res = requests.get(url, headers=headers, verify=TLS_VERIFY, timeout=15)
     if res.status_code == 200:
         return res.json()
 
@@ -344,7 +365,7 @@ def fetch_incident_via_fetch_api(host: str, token: str, incident_id: str, auto_r
     }
     body = json.dumps({"meta_name": "id", "meta_value": incident_id, "numberOfRecords": "1"})
     print(f"[NetWitness FETCH API] Requesting incident details via {url}...")
-    res = requests.get(url, headers=headers, data=body, verify=False, timeout=15)
+    res = requests.get(url, headers=headers, data=body, verify=TLS_VERIFY, timeout=15)
     if res.status_code == 200:
         items = res.json()
         if isinstance(items, list) and len(items) > 0:
@@ -385,7 +406,7 @@ def fetch_alerts_via_fetch_api(host: str, token: str, incident_id: str, count: i
         "includeFields": "null",
     })
     print(f"[NetWitness FETCH API] Requesting {count} comprehensive raw alerts via {url}...")
-    res = requests.get(url, headers=headers, data=body, verify=False, timeout=30)
+    res = requests.get(url, headers=headers, data=body, verify=TLS_VERIFY, timeout=30)
     if res.status_code == 200:
         items = res.json()
         if isinstance(items, list):
@@ -426,7 +447,7 @@ def fetch_all_alerts_and_endpoint_events(host: str, headers: dict, incident_id: 
             alerts_url,
             headers=curr_headers,
             params={"pageSize": page_size, "pageNumber": page},
-            verify=False,
+            verify=TLS_VERIFY,
             timeout=25,
         )
         if res.status_code != 200:

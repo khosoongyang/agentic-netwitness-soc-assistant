@@ -31,6 +31,13 @@ def create_app(test_config: dict | None = None) -> Flask:
         static_folder=str(FRONTEND_DIR),
         static_url_path="/frontend",
     )
+    # Global request-body cap (Phase 10 hardening): most routes already
+    # enforce their own tighter limit (uploads: 5MB, chat: 8000 chars,
+    # report blocks: 500 x 200KB each) before touching the body, but a few
+    # simple JSON routes (e.g. settings) have none - this bounds worst-case
+    # memory use for any route without one, well above normal request
+    # sizes so it never rejects legitimate use.
+    app.config.setdefault("MAX_CONTENT_LENGTH", 20 * 1024 * 1024)
     if test_config:
         app.config.update(test_config)
     app.register_blueprint(api_blueprint)

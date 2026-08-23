@@ -1,14 +1,18 @@
 # ─────────────────────────────────────────────────────────────────────
 # .gitignore for the Aegis Flask application.
 #
-# UNLIKE a normal repo, this one MUST commit its demo data (soc_db/,
-# chroma_db/, *.db) — the cloud app has NO NetWitness/VPN access and
-# can serve those stored incidents instead. So the databases are intentionally
-# TRACKED here. Only secrets and throwaway cruft are ignored.
+# UNLIKE a normal repo, this one intentionally commits its demo data
+# (soc_db/, chroma_db/, *.db) so the app has something to show without a
+# live NetWitness/VPN connection - useful for offline development and
+# demos. (This is no longer because of a Streamlit Cloud deployment -
+# that path was removed entirely in Phase 7; the demo-data rationale on
+# its own still applies and is kept.) Only secrets and throwaway cruft
+# are ignored.
 #
-# ⚠️  The stored incidents may contain internal hostnames/users/IPs. If that
-#     data is sensitive, deploy from a PRIVATE GitHub repo or scrub the DB
-#     first. See DEPLOY.md.
+# ⚠️  The stored incidents may contain internal hostnames/users/IPs. If
+#     this data is not entirely synthetic, treat it as sensitive: do not
+#     push this repository to a public remote without first verifying/
+#     scrubbing it, or deploy from a PRIVATE repo. See DEPLOY.md.
 # ─────────────────────────────────────────────────────────────────────
 
 # ── SECRETS — never commit; use local environment variables ──
@@ -32,12 +36,16 @@ __pycache__/
 *.pyo
 *.pyd
 .ipynb_checkpoints/
+.pytest_cache/
 .venv/
 venv/
 env/
 .DS_Store
 Thumbs.db
 *.bak
+*.log
+# Office lock files (created while a Word/Excel/PowerPoint document is open)
+~$*
 
 # ── Redundant packaged agent copies ────────────────────────────────────────
 *.zip

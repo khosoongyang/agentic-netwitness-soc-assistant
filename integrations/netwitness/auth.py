@@ -31,7 +31,7 @@ class NetWitnessConfig:
     password: str = ""
     token: str = ""
     auth_style: str = "NetWitness-Token"
-    verify_tls: bool = False
+    verify_tls: bool = True
     ca_certificate: str = ""
     timeout: int = 30
 
