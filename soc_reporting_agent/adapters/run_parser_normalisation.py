@@ -33,10 +33,19 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
+# Phase 8: the canonical parser moved to agents/parsing/ (repo-root package),
+# outside soc_reporting_agent/. soc_reporting_agent/ also has its own agents/
+# package (the donor reporting_agent.py) - the repo root must be forced to
+# the very front of sys.path (not merely appended if absent), or
+# `import agents.parsing` would resolve to soc_reporting_agent/agents/
+# instead (whichever "agents" sys.path reaches first wins).
+REPO_ROOT = str(PROJECT_ROOT.parent)
+sys.path = [p for p in sys.path if p != REPO_ROOT]
+sys.path.insert(0, REPO_ROOT)
 
 from adapters.common import INPUTS_DIR, OUTPUTS_DIR, RUNTIME_DIR, now_iso, read_json, write_json
-from services.parser_context_guard import extract_alert_identity, validate_parser_identity
-from services.parser_normaliser import run_parser_normalisation_for_dashboard
+from agents.parsing.parser_context_guard import extract_alert_identity, validate_parser_identity
+from agents.parsing.parser_normaliser import run_parser_normalisation_for_dashboard
 
 
 # =============================================================================

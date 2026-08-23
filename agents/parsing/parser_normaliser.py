@@ -120,7 +120,7 @@ from urllib.parse import urlparse
 # [FYP-CALLS] Only external (non-stdlib) dependency of this file: PowerShell
 # -EncodedCommand base64 decoding + heuristic analysis, used later when
 # building process/command-line context (see normalise_event()).
-from utils.powershell_decoder import analyse_powershell_command_lines
+from agents.parsing.powershell_decoder import analyse_powershell_command_lines
 
 
 # =============================================================================

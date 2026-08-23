@@ -998,16 +998,12 @@ def run_parsing(incident: dict, run_id: str) -> dict:
         processed_alert/missing_important_fields/...), with ai_summary/
         ai_thinking merged in on a "completed" status.
 
-    [FYP-CALLS]: soc_reporting_agent/services/parser_normaliser.
-    run_parser_normalisation_for_dashboard() (imported lazily, with
-    REP_DIR added to sys.path first), generate_parsing_ai_summary().
+    [FYP-CALLS]: agents.parsing.parser_normaliser.
+    run_parser_normalisation_for_dashboard(), generate_parsing_ai_summary().
     [FYP-USED-BY]: run_until_triage_approval() (this module) — the only
     caller (skipped entirely when use_mock_triage=True).
     """
-    rep_dir = str(REP_DIR)
-    if rep_dir not in sys.path:
-        sys.path.insert(0, rep_dir)
-    from services.parser_normaliser import run_parser_normalisation_for_dashboard
+    from agents.parsing.parser_normaliser import run_parser_normalisation_for_dashboard
 
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
     output_dir = REP_DIR / "outputs" / _safe(inc_id) / _safe(run_id) / "parsing"
