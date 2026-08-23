@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from backend import ticket_workflow
+from agents.reporting.backend import ticket_workflow
 
 OUT = ROOT / "testdata" / "workflow_gating" / "test_results.json"
 

@@ -78,7 +78,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from backend import stage_workflow
+# Relative, not `from backend import stage_workflow`: this package's name
+# collides with the canonical Aegis backend/ package - see
+# reporting_context_resolver.py's identical comment.
+from . import stage_workflow
 
 
 # [FYP-SECTION] Decision vocabulary -----------------------------------------

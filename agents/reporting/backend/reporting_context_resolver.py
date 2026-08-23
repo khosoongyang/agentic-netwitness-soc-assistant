@@ -81,7 +81,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from backend import ticket_workflow
+# Relative, not `from backend import ticket_workflow`: this package's name
+# collides with the canonical Aegis backend/ package. Once sys.modules
+# caches whichever "backend" a given process resolves first (which one
+# depends on unpredictable import order across a full pytest session), a
+# bare import here can silently pick up the wrong one. A relative import
+# is unambiguous regardless of sys.path state or import order.
+from . import ticket_workflow
 
 
 # [FYP-CONFIG] Known legacy filenames used by the filesystem-based

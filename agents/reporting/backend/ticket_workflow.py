@@ -88,7 +88,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend import stage_workflow
+# Relative, not `from backend import stage_workflow`: see
+# reporting_context_resolver.py's identical comment - this package's name
+# collides with the canonical Aegis backend/ package, and sys.modules
+# caching makes a bare import here order-dependent and unreliable.
+from . import stage_workflow
 
 
 # [FYP-SECTION] Status vocabulary (duplicated from orchestration_service.py
@@ -769,7 +773,7 @@ def next_agent(ticket: dict[str, Any]) -> dict[str, Any]:
     actually called, by which point both modules are fully loaded.
     Called by: decorate_ticket() below.
     """
-    from backend.orchestration_service import build_orchestration_decision
+    from .orchestration_service import build_orchestration_decision
 
     decision = build_orchestration_decision(ticket)
     return {

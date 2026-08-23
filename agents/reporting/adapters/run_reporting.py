@@ -45,7 +45,7 @@ sys.path = [p for p in sys.path if p != REPO_ROOT_BOOTSTRAP]
 sys.path.insert(0, REPO_ROOT_BOOTSTRAP)
 
 from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exists, latest_file, now_iso, read_json, run_script, write_json
-from backend.reporting_context_resolver import ensure_reporting_inputs
+from agents.reporting.backend.reporting_context_resolver import ensure_reporting_inputs
 
 
 # =============================================================================

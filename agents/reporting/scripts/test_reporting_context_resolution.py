@@ -32,12 +32,12 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.reporting_context_resolver import (  # noqa: E402
+from agents.reporting.backend.reporting_context_resolver import (  # noqa: E402
     ensure_reporting_inputs,
     resolve_investigation_approval_context,
     resolve_investigation_context,
 )
-from backend import ticket_workflow  # noqa: E402
+from agents.reporting.backend import ticket_workflow  # noqa: E402
 
 
 # =============================================================================
