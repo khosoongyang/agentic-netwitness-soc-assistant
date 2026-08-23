@@ -160,7 +160,7 @@ def _c_diamond(inc, tri, exp):
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _c_sop(inc, tri, exp):
-    from reporting_sop import build_incident_sop
+    from agents.reporting.reporting_sop import build_incident_sop
     s = build_incident_sop(inc, tri)
     if not s.get("available"):
         return False, "sop unavailable"

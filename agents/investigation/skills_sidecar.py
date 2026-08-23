@@ -212,7 +212,7 @@ def _collect_mitigation(incident: dict, triage_result: dict | None,
 def _collect_sop(incident: dict, triage_result: dict | None,
                  investigation_result: dict | None, ti_result: dict | None) -> dict | None:
     try:
-        from reporting_sop import build_incident_sop
+        from agents.reporting.reporting_sop import build_incident_sop
     except Exception:
         return None
     s = _safe(build_incident_sop, incident, triage_result, investigation_result, ti_result)
@@ -598,7 +598,7 @@ def _build_narrative(diamond, verdict, corr, mitigation, sop=None, compliance=No
     # executes next (compact form so it enriches the report without bloating it).
     if sop:
         try:
-            from reporting_sop import format_sop
+            from agents.reporting.reporting_sop import format_sop
             out += "\n\n" + format_sop(sop, compact=True)
         except Exception:
             pass
