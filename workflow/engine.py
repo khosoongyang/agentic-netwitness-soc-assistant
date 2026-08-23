@@ -2259,7 +2259,7 @@ def run_threat_intel(incident_id: str, run_id: str,
     [FYP-USED-BY]: resume_after_triage_approval() (this module) — the sole
     caller; not called by app.py directly.
     """
-    import threat_intel
+    from agents.threat_intelligence import threat_intel
 
     ticket = triage_result.get("ticket") or {}
     meta   = triage_result.get("metakeys_payload") or {}
