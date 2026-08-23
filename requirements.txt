@@ -18,14 +18,16 @@
 # Key evaluator search terms: requirements.txt, [FYP-CONFIG], [FYP-FILE].
 # =============================================================================
 # [FYP-CONFIG] Purpose: pinned Python dependencies for the root Flask app and
-# its bundled triage/investigation/reporting agents. Consumed by
-# `pip install -r requirements.txt` for local development and by
-# .github/workflows/code-scan.yml's pip-audit CVE scan step.
+# its bundled parsing/triage/threat-intelligence/investigation/reporting
+# agents (agents/). Consumed by `pip install -r requirements.txt` for local
+# development and by .github/workflows/code-scan.yml's pip-audit CVE scan
+# step. This is the sole canonical dependency file - the former separate
+# soc_reporting_agent/requirements.txt (for the donor Flask app removed in
+# Phase 9) was merged in here and deleted.
 # ── Core app (app.py) ─────────────────────────────────────────────
 flask>=3.0.0
 protobuf==3.20.3
 requests>=2.31.0
-protobuf==3.20.3
 python-dotenv>=1.0.0
 
 # ChromaDB — MUST stay in sync across every environment that opens the
@@ -34,20 +36,33 @@ python-dotenv>=1.0.0
 # then crashes with "no such column: collections.topic".
 chromadb==1.5.9
 
-# ── Triage agent (soc_triage_agent/) ──────────────────────────────
+# ── Triage agent (agents/triage/) ──────────────────────────────────
 langchain-core>=0.3.0
 langchain-openai>=0.3.0
 openai>=1.90.0
 
-# ── Investigation agent (soc_investigation_agent/) ────────────────
+# ── Investigation agent (agents/investigation/) ────────────────────
 pyyaml>=6.0.0
 pydantic>=2.0.0
 
-# ── Reporting agent (soc_reporting_agent/) + document exports ─────
+# ── Reporting agent (agents/reporting/) + document exports ─────────
 jinja2>=3.1.0
 python-docx>=1.1.2
 reportlab>=4.2.0
 # PDF validation (page count, text-extraction checks for leftover Markdown
 # table syntax) for the Reporting candidate-manifest pipeline — see
-# soc_reporting_agent/reporting/report_validator.py.
+# agents/reporting/reporting/report_validator.py.
 pypdf>=4.0.0
+# Optional local-LLM fallback path (settings.LLM_PROVIDER=ollama) - lazily
+# imported by agents/reporting/reporting/llm_narrative.py; the reporting
+# agent runs fine without either installed as long as that provider isn't
+# selected.
+langchain-ollama>=0.2.0
+langchain-community>=0.3.0
+# Optional report-result mirroring to Postgres, disabled by default
+# (settings.USE_POSTGRES) - lazily imported by
+# agents/reporting/reporting/output_writer.py:try_store_postgres().
+psycopg2-binary>=2.9.9
+
+# ── Testing ─────────────────────────────────────────────────────────
+pytest>=8.0.0
