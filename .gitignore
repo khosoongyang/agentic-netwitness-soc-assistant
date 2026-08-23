@@ -46,9 +46,9 @@ Thumbs.db
 graphify-out/
 
 # ── Regenerated at runtime (not needed in the repo) ────────────────────────
-soc_reporting_agent/outputs/
-soc_reporting_agent/logs/
-soc_reporting_agent/runtime/
+agents/reporting/outputs/
+agents/reporting/logs/
+agents/reporting/runtime/
 agents/investigation/ChromaDatabase/
 runtime/uploads/*
 !runtime/uploads/.gitkeep

@@ -55,7 +55,7 @@ def pytest_configure(config: pytest.Config) -> None:
     # all actual data remains in the system temporary directory.
     bridge_link = (
         PROJECT_ROOT
-        / "soc_reporting_agent"
+        / "agents" / "reporting"
         / "outputs"
         / f".pytest-{root.name}"
     )
@@ -65,19 +65,19 @@ def pytest_configure(config: pytest.Config) -> None:
     merged_fixture = root / "merged_report_context"
 
     _copy_directory(
-        PROJECT_ROOT / "soc_reporting_agent" / "inputs",
+        PROJECT_ROOT / "agents" / "reporting" / "inputs",
         reporting_inputs_target,
     )
     reporting_outputs_target.mkdir(parents=True)
     _copy_directory(
-        PROJECT_ROOT / "soc_reporting_agent" / "testdata" / "merged_report_context",
+        PROJECT_ROOT / "agents" / "reporting" / "testdata" / "merged_report_context",
         merged_fixture,
     )
 
     paths = {
         "REPORTING_INPUT_DIR": reporting_inputs,
         "REPORTING_OUTPUT_DIR": reporting_outputs,
-        "REPORTING_TEMPLATE_DIR": PROJECT_ROOT / "soc_reporting_agent" / "report_templates",
+        "REPORTING_TEMPLATE_DIR": PROJECT_ROOT / "agents" / "reporting" / "report_templates",
         "REPORTING_KB_DIR": PROJECT_ROOT / "knowledge_base" / "reporting",
         "REPORTING_LLM_CACHE_DIR": root / "reporting_cache",
         "REPORTING_CHROMA_DB_PATH": root / "reporting_chroma",
@@ -124,7 +124,7 @@ def _isolate_mutable_test_state(
 
     module = request.module
     module_path = Path(getattr(module, "__file__", "")).resolve()
-    script_dir = PROJECT_ROOT / "soc_reporting_agent" / "scripts"
+    script_dir = PROJECT_ROOT / "agents" / "reporting" / "scripts"
 
     if module_path == script_dir / "test_evidence_gap_branch_and_reporting_wrapper.py":
         monkeypatch.setattr(module, "INPUTS_DIR", isolation.reporting_inputs)

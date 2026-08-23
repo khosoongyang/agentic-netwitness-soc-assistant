@@ -25,10 +25,11 @@ import os
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Repository root — Phase 8 moved schemas/ and knowledge_base/ to canonical,
-# domain-owned top-level locations shared across agents. Update this if
-# soc_reporting_agent's own nesting depth changes (e.g. a future move under
-# agents/reporting/).
-REPO_ROOT = Path(__file__).resolve().parents[2]
+# domain-owned top-level locations shared across agents, and later moved
+# this package itself from soc_reporting_agent/ to agents/reporting/ (one
+# extra nesting level under the repo root — update this again if that
+# depth ever changes).
+REPO_ROOT = Path(__file__).resolve().parents[3]
 INPUT_DIR = Path(os.getenv("REPORTING_INPUT_DIR", PROJECT_ROOT / "inputs"))
 OUTPUT_DIR = Path(os.getenv("REPORTING_OUTPUT_DIR", PROJECT_ROOT / "outputs"))
 TEMPLATE_DIR = Path(os.getenv("REPORTING_TEMPLATE_DIR", PROJECT_ROOT / "report_templates"))

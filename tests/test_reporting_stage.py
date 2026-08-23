@@ -148,7 +148,7 @@ def _build_candidate_set(incident_id: str, run_id: str, attempt: int, trusted_ro
     editable_reports.build_report_manifest() would produce, then call the
     real finalize_candidate_manifest()."""
     import sys
-    rep_dir = str(Path(__file__).resolve().parent.parent / "soc_reporting_agent")
+    rep_dir = str(Path(__file__).resolve().parent.parent / "agents" / "reporting")
     if rep_dir not in sys.path:
         sys.path.insert(0, rep_dir)
     from reporting import editable_reports as er
@@ -503,7 +503,7 @@ def test_finalize_candidate_manifest_refuses_to_overwrite_differing_content(
     manifest_path, candidate = _build_candidate_set("INC-2", "run-a", 1, _isolated_artifact_root)
 
     import sys
-    rep_dir = str(Path(__file__).resolve().parent.parent / "soc_reporting_agent")
+    rep_dir = str(Path(__file__).resolve().parent.parent / "agents" / "reporting")
     if rep_dir not in sys.path:
         sys.path.insert(0, rep_dir)
     from reporting import editable_reports as er
@@ -530,7 +530,7 @@ def test_finalize_candidate_manifest_idempotent_on_identical_repeat_call(_isolat
     manifest_path, candidate = _build_candidate_set("INC-3", "run-a", 1, _isolated_artifact_root)
 
     import sys
-    rep_dir = str(Path(__file__).resolve().parent.parent / "soc_reporting_agent")
+    rep_dir = str(Path(__file__).resolve().parent.parent / "agents" / "reporting")
     if rep_dir not in sys.path:
         sys.path.insert(0, rep_dir)
     from reporting import editable_reports as er
@@ -554,7 +554,7 @@ def test_final_incident_report_export_populates_section_exports(_isolated_artifa
     sections.final_incident_report.exports (previously left {}), and use
     the renamed final_incident_report.* filename."""
     import sys
-    rep_dir = str(Path(__file__).resolve().parent.parent / "soc_reporting_agent")
+    rep_dir = str(Path(__file__).resolve().parent.parent / "agents" / "reporting")
     if rep_dir not in sys.path:
         sys.path.insert(0, rep_dir)
     from reporting import editable_reports as er

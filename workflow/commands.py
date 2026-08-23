@@ -361,7 +361,7 @@ def approve_stage(
                 str(case_id), run_id, approved_by=analyst.strip(), comments=comments
             )
         else:
-            from reporting_approval import approve_reporting_candidate
+            from agents.reporting.reporting_approval import approve_reporting_candidate
 
             result = approve_reporting_candidate(
                 str(case_id), run_id, analyst=analyst.strip(), comments=comments

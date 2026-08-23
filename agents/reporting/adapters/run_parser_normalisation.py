@@ -33,13 +33,14 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-# Phase 8: the canonical parser moved to agents/parsing/ (repo-root package),
-# outside soc_reporting_agent/. soc_reporting_agent/ also has its own agents/
-# package (the donor reporting_agent.py) - the repo root must be forced to
-# the very front of sys.path (not merely appended if absent), or
-# `import agents.parsing` would resolve to soc_reporting_agent/agents/
+# Phase 8: the canonical parser lives in agents/parsing/ (repo-root
+# package) and this adapter now itself lives under agents/reporting/,
+# which also has its own agents/ package (the donor reporting_agent.py, at
+# agents/reporting/agents/) - the repo root must be forced to the very
+# front of sys.path (not merely appended if absent), or
+# `import agents.parsing` would resolve to agents/reporting/agents/
 # instead (whichever "agents" sys.path reaches first wins).
-REPO_ROOT = str(PROJECT_ROOT.parent)
+REPO_ROOT = str(PROJECT_ROOT.parent.parent)
 sys.path = [p for p in sys.path if p != REPO_ROOT]
 sys.path.insert(0, REPO_ROOT)
 

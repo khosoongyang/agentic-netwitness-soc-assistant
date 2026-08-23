@@ -53,8 +53,8 @@ paths = [
   # Generated agent/report artifacts (synthetic incident data)
   '''incident_reports/''',
   '''triaged_alerts/''',
-  '''soc_reporting_agent/outputs/''',
-  '''soc_reporting_agent/testdata/''',
+  '''agents/reporting/outputs/''',
+  '''agents/reporting/testdata/''',
   '''tests/golden_incidents\.json''',
 ]
 
