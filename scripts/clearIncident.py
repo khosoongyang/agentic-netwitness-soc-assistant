@@ -68,7 +68,7 @@ if os.path.exists("soc_db/last_workflow_result.json"):
     os.remove("soc_db/last_workflow_result.json")
 
 # 5. Clear disk output directories (Removes Parsed JSON files)
-for root_dir in ["outputs", "soc_reporting_agent/outputs"]:
+for root_dir in ["outputs", "agents/reporting/outputs"]:
     if os.path.exists(root_dir):
         for item in os.listdir(root_dir):
             if inc_id in item or inc_num in item:

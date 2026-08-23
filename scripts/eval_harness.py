@@ -57,7 +57,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent
+_ROOT = Path(__file__).resolve().parent.parent
 _GOLDEN = _ROOT / "tests" / "golden_incidents.json"
 
 
