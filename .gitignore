@@ -51,6 +51,8 @@ soc_reporting_agent/outputs/
 soc_reporting_agent/logs/
 soc_reporting_agent/runtime/
 soc_investigation_agent_revised/ChromaDatabase/
+runtime/uploads/*
+!runtime/uploads/.gitkeep
 
 # NOTE: soc_db/, chroma_db/, *.db, incident_reports/, triaged_alerts/ are
 # intentionally TRACKED — they are the offline demo payload the cloud app

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aegis</title>
+  <link rel="stylesheet" href="/frontend/css/app.css">
+  <link rel="stylesheet" href="/frontend/css/layout.css">
+  <link rel="stylesheet" href="/frontend/css/components.css">
+  <script src="/frontend/js/app.js" type="module"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/?view=overview" data-nav="overview" aria-label="Aegis overview">
+        <span class="brand-mark">A</span>
+        <span><strong>Aegis</strong><small>SOC Investigation Platform</small></span>
+      </a>
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <a href="/?view=overview" data-nav="overview">Overview</a>
+        <a href="/?view=cases" data-nav="cases">Cases</a>
+        <a href="/?view=integrations" data-nav="integrations">Integrations</a>
+      </nav>
+      <span class="read-only-badge">Workflow migration</span>
+    </header>
+    <main id="app-content" class="page" aria-live="polite">
+      <div class="state-panel"><span class="spinner" aria-hidden="true"></span>Loading Aegis…</div>
+    </main>
+    <footer>Canonical Aegis application · workflow actions use durable backend state.</footer>
+  </div>
+</body>
+</html>

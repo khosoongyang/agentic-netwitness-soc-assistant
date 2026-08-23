@@ -279,16 +279,16 @@ def test_summary_backfill_merges_without_overwriting_native_stage_output(
 
 # [FYP-USED-BY]
 def test_workspace_summary_card_never_falls_back_to_native_stage_summary():
-    """[FYP-FUNCTION] Source-level guard on app.py's My Workspace stage
-    card rendering (not a runtime/behavioral test): reads app.py's raw
-    source and asserts it still contains the literal statements that wire
-    up the AI-summary-first display contract — assigning
+    """[FYP-FUNCTION] Source-level guard on the preserved Streamlit app's My
+    Workspace stage card rendering (not a runtime/behavioral test): reads the
+    legacy app's raw source and asserts it still contains the literal
+    statements that wire up the AI-summary-first display contract — assigning
     `_stage_summary = _stage_ai_summary`, re-applying
     `wf_limit_ai_summary_sentences()` to any previously saved AI summary,
     and calling `wss.save_stage_ai_summary(`. Catches an accidental
     regression to showing the native stage summary instead of the AI one.
     """
-    source = (ROOT / "app.py").read_text(encoding="utf-8")
+    source = (ROOT / "scripts" / "legacy_streamlit_app.py").read_text(encoding="utf-8")
     assert "_stage_summary = _stage_ai_summary" in source
     assert "wf_limit_ai_summary_sentences(_saved_ai_summary)" in source
     assert "wss.save_stage_ai_summary(" in source

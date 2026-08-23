@@ -1,0 +1,166 @@
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  min-height: 4.5rem;
+  padding: 0.75rem clamp(1rem, 4vw, 3.5rem);
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  border-bottom: 1px solid var(--border-soft);
+  background: rgb(5 11 20 / 94%);
+  backdrop-filter: blur(12px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+}
+
+.brand-mark {
+  width: 2.25rem;
+  height: 2.25rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid #3972aa;
+  border-radius: 0.55rem;
+  color: #a9d2ff;
+  background: #10243b;
+  font-weight: 800;
+}
+
+.brand strong,
+.brand small {
+  display: block;
+}
+
+.brand small {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.primary-nav {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.primary-nav a {
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.45rem;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.primary-nav a:hover,
+.primary-nav a.active {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.read-only-badge {
+  margin-left: auto;
+}
+
+.page {
+  width: min(90rem, 100%);
+  margin: 0 auto;
+  padding: clamp(1.25rem, 4vw, 3rem);
+}
+
+.page-header {
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.page-header p {
+  margin-top: 0.35rem;
+  color: var(--muted);
+}
+
+.metrics-grid,
+.overview-grid,
+.case-context-grid,
+.stage-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.metrics-grid {
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+  margin-bottom: 1rem;
+}
+
+.overview-grid {
+  grid-template-columns: minmax(18rem, 0.8fr) minmax(28rem, 1.5fr);
+}
+
+.case-context-grid {
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+}
+
+.stage-grid {
+  grid-template-columns: repeat(5, minmax(9rem, 1fr));
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(18rem, 0.75fr) minmax(28rem, 1.5fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.integration-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(18rem, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+footer {
+  padding: 1rem clamp(1rem, 4vw, 3.5rem);
+  border-top: 1px solid var(--border-soft);
+  color: #64768d;
+  font-size: 0.72rem;
+}
+
+@media (max-width: 900px) {
+  .overview-grid,
+  .workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .integration-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .stage-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .topbar {
+    flex-wrap: wrap;
+    gap: 0.65rem 1rem;
+  }
+
+  .read-only-badge {
+    margin-left: 0;
+  }
+
+  .stage-grid {
+    grid-template-columns: 1fr;
+  }
+}
