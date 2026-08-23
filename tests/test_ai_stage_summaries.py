@@ -67,13 +67,18 @@ ROOT = Path(__file__).resolve().parent.parent
 
 def _install_fake_openai(monkeypatch, response: str, calls: list[dict]) -> None:
     """[FYP-FUNCTION] Test helper (not itself a test). Injects a fake
-    backend/backend.openai_client module pair into sys.modules whose
+    integrations.openai.client module into sys.modules whose
     invoke_openai_text() always returns the given `response` string and
     appends its call kwargs (prompt, system, model, max_output_tokens, ...)
     to `calls`, so generate_stage_ai_summary()/generate_parsing_ai_summary()
-    can be exercised without a real OpenAI API key or network call."""
-    backend = types.ModuleType("backend")
-    openai_client = types.ModuleType("backend.openai_client")
+    can be exercised without a real OpenAI API key or network call.
+
+    Only the integrations.openai / integrations.openai.client sys.modules
+    entries are faked (not the real, already-imported top-level
+    `integrations` package itself, which integrations.netwitness also lives
+    under) - monkeypatch.setitem restores both automatically after the test."""
+    openai_pkg = types.ModuleType("integrations.openai")
+    openai_client = types.ModuleType("integrations.openai.client")
 
     # [FYP-FUNCTION] `_invoke` — implements the invoke operation used by the surrounding test and validation workflow.
     # [FYP-INPUT] Parameters: `prompt`, `**kwargs`; values come from its direct caller, route, UI event, fixture, or stage handoff.
@@ -88,9 +93,9 @@ def _install_fake_openai(monkeypatch, response: str, calls: list[dict]) -> None:
         return response
 
     openai_client.invoke_openai_text = _invoke
-    backend.openai_client = openai_client
-    monkeypatch.setitem(sys.modules, "backend", backend)
-    monkeypatch.setitem(sys.modules, "backend.openai_client", openai_client)
+    openai_pkg.client = openai_client
+    monkeypatch.setitem(sys.modules, "integrations.openai", openai_pkg)
+    monkeypatch.setitem(sys.modules, "integrations.openai.client", openai_client)
 
 
 def _sentence_count(text: str) -> int:

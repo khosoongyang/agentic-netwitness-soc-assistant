@@ -33,6 +33,16 @@ from typing import Any
 PROJECT_ROOT_BOOTSTRAP = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT_BOOTSTRAP) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT_BOOTSTRAP))
+# Phase 8: template_document_exporter.py (lazily imported by
+# reporting.editable_reports for PDF conversion) now reaches
+# integrations.openai.client and agents.reporting.export_cache - both
+# repo-root packages, outside this subprocess's own PROJECT_ROOT_BOOTSTRAP.
+# Also guards against agents/reporting/agents/ (the donor reporting_agent.py)
+# shadowing the real top-level agents/ package the same way Batch C's
+# run_parser_normalisation.py fix does.
+REPO_ROOT_BOOTSTRAP = str(PROJECT_ROOT_BOOTSTRAP.parent.parent)
+sys.path = [p for p in sys.path if p != REPO_ROOT_BOOTSTRAP]
+sys.path.insert(0, REPO_ROOT_BOOTSTRAP)
 
 from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exists, latest_file, now_iso, read_json, run_script, write_json
 from backend.reporting_context_resolver import ensure_reporting_inputs

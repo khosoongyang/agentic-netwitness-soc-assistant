@@ -32,7 +32,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from backend.export_cache import collect_ticket_export_status, load_metadata
+from agents.reporting.export_cache import collect_ticket_export_status, load_metadata
 from reporting.template_document_exporter import generate_agent_export
 
 TEST_ROOT = PROJECT_ROOT / "testdata" / "export_cache"

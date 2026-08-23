@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 
-from backend.openai_client import extract_json_object
+from integrations.openai.client import extract_json_object
 
 
 # =============================================================================

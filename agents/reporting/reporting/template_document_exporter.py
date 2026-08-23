@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from backend.openai_client import extract_json_object, invoke_openai_text
+from integrations.openai.client import extract_json_object, invoke_openai_text
 import shutil
 import subprocess
 import tempfile
@@ -43,7 +43,7 @@ from reporting.structured_report import (
     parse_pipe_table,
     repair_pipe_tables_in_blocks,
 )
-from backend.export_cache import calculate_source_hash, is_cache_ready, mark_export_status
+from agents.reporting.export_cache import calculate_source_hash, is_cache_ready, mark_export_status
 
 try:
     from docx import Document

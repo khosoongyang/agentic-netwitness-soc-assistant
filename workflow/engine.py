@@ -1266,13 +1266,10 @@ def generate_stage_ai_summary(
     visible "AI summary unavailable — LLM call failed: ..." string rather
     than propagating — a summary-generation failure must never fail the
     stage itself.
-    [FYP-CALLS]: _stage_ai_summary_context(), soc_reporting_agent/backend/
-    openai_client.invoke_openai_text(), limit_ai_summary_sentences().
+    [FYP-CALLS]: _stage_ai_summary_context(),
+    integrations.openai.client.invoke_openai_text(), limit_ai_summary_sentences().
     """
-    rep_dir = str(REP_DIR)
-    if rep_dir not in sys.path:
-        sys.path.insert(0, rep_dir)
-    from backend.openai_client import invoke_openai_text
+    from integrations.openai.client import invoke_openai_text
 
     selected_model = model or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
     context = _stage_ai_summary_context(stage, stage_result)
@@ -1307,12 +1304,9 @@ def generate_stage_ai_summary(
 def generate_parsing_ai_summary(parsing_result: dict, model: str | None = None) -> dict:
     """[FYP-FUNCTION] [FYP-FALLBACK] Ask OpenAI for a plain-English summary of what the Parsing &
     Normalisation stage extracted, based on its processed_alert output.
-    Reuses the existing OpenAI helper (soc_reporting_agent/backend/openai_client.py,
+    Reuses the existing OpenAI helper (integrations/openai/client.py,
     already used by the reporting stage) — no separate LLM client is introduced."""
-    rep_dir = str(REP_DIR)
-    if rep_dir not in sys.path:
-        sys.path.insert(0, rep_dir)
-    from backend.openai_client import invoke_openai_text
+    from integrations.openai.client import invoke_openai_text
 
     processed_alert = parsing_result.get("processed_alert") or {}
     context = json.dumps(processed_alert, indent=2, default=str)[:4000]
@@ -2073,10 +2067,7 @@ def generate_triage_ai_summary(triage_result: dict, model: str | None = None) ->
     "AI summary unavailable" string, mirroring generate_parsing_ai_summary()
     / generate_stage_ai_summary() — a summary failure never fails Triage.
     """
-    rep_dir = str(REP_DIR)
-    if rep_dir not in sys.path:
-        sys.path.insert(0, rep_dir)
-    from backend.openai_client import invoke_openai_text
+    from integrations.openai.client import invoke_openai_text
 
     ticket = triage_result.get("ticket") or {}
     meta   = triage_result.get("metakeys_payload") or {}
