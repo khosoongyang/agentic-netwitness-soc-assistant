@@ -9,7 +9,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from alert_triage import normalize_to_incident, validate_alert
+from agents.triage.alert_triage import normalize_to_incident, validate_alert
 from integrations.netwitness.incidents import incident_identity
 
 from .sync_service import upsert_incidents
