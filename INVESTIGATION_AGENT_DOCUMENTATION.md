@@ -69,7 +69,7 @@ The primary implementation of the revised investigation agent lives in the `soc_
 
 ### 2.2 `orchestrator.py` — Multi-Pass Analysis & LLM Orchestration
 - **File Location:** [`soc_investigation_agent_revised/orchestrator.py`](file:///c:/C300%20FYPIntegrated-4/soc_investigation_agent_revised/orchestrator.py)
-- **Primary Function:** Implements structured LLM calls (via LangChain and OpenAI/DeepSeek endpoints), micro-tasks, multi-pass playbook evaluation, and policy integration.
+- **Primary Function:** Implements structured LLM calls through OpenAI, micro-tasks, multi-pass playbook evaluation, and policy integration.
 
 #### Key Pydantic Models & Data Schemas:
 - **`MilestoneExecution`**: Standardized schema for playbook step execution (`step_id`, `instruction`, `status`: MET/NOT_MET/SKIPPED, `findings`).
@@ -243,4 +243,3 @@ When an incident contains multiple merged alerts or dynamic pivots:
 | **MITRE ATT&CK TTP Mapping** | `mitre_mapper.py` | `map_incident_mitre_ttps()`, `generate_markdown_table()` | Sub-technique resolution ($T1566.002, T1569.002$), chronological Markdown table generation. |
 | **Policy Compliance & Audit Logs** | `policy_engine.py` | `run_policy_compliance_rules()`, `PolicyAuditRecord` | Appendix H (Ransomware) & I (VM) containment overrides, Appendix M audit log generation (DP-07 to DP-15). |
 | **Ingestion & Data Normalization** | `ingest_pipeline.py` | `process_log_file()`, `scan_indicators()`, `serialize_json_to_narrative()` | Regex indicator extraction, field mapping via `log_config.yaml`, narrative serialization. |
-

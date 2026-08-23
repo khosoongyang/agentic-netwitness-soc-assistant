@@ -221,19 +221,14 @@ _chain_p2 = None
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _structured_method() -> str:
-    """APP-COMPAT (soc_workflow): DeepSeek's OpenAI-compatible endpoint rejects
-    response_format=json_schema ('400 - This response_format type is unavailable
-    now') and needs function_calling instead. Pick the method that works for the
-    configured endpoint/model. Override via OPENAI_STRUCTURED_METHOD."""
+    """Choose the OpenAI structured-output method.
+
+    OPENAI_STRUCTURED_METHOD remains available for SDK/model compatibility.
+    """
     override = os.getenv("OPENAI_STRUCTURED_METHOD", "").strip()
     if override:
         return override
-    hint = " ".join((
-        os.getenv("OPENAI_MODEL", ""),
-        os.getenv("OPENAI_BASE_URL", ""),
-        os.getenv("OPENAI_API_BASE", ""),
-    )).lower()
-    return "function_calling" if "deepseek" in hint else "json_schema"
+    return "json_schema"
 
 
 def get_llm():
@@ -243,27 +238,16 @@ def get_llm():
     (classify_policies_for_investigation, filter_suspicious_seeds,
     check_milestone_sufficiency, generate_final_analysis, get_chain_p1/p2).
 
-    Reads OPENAI_API_KEY / OPENAI_MODEL / OPENAI_BASE_URL (or
-    OPENAI_API_BASE) from the environment (see APP-COMPAT comment below) so
-    soc_workflow.py can point this agent at whatever provider/model it is
-    configured with (e.g. DeepSeek) instead of the gpt-4o-mini default used
-    for standalone/offline runs.
+    Reads OPENAI_API_KEY / OPENAI_MODEL from the environment and uses the
+    official OpenAI endpoint.
 
     [FYP-USED-BY]: every LLM-calling function in this module.
     """
     global _llm
     if _llm is None:
         api_key = os.getenv("OPENAI_API_KEY")
-        # APP-COMPAT (soc_workflow): honor the endpoint + model handed to us via env
-        # (OPENAI_BASE_URL / OPENAI_API_BASE + OPENAI_MODEL) so this agent talks to
-        # the app's configured LLM (e.g. DeepSeek/Cisco) instead of hardcoded
-        # gpt-4o-mini on the default OpenAI endpoint. Falls back to the original
-        # default when nothing is configured (offline / standalone runs).
         model = os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
-        base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("OPENAI_API_BASE") or None
         kwargs = {"model": model, "temperature": 0, "openai_api_key": api_key}
-        if base_url:
-            kwargs["base_url"] = base_url
         _llm = ChatOpenAI(**kwargs)
     return _llm
 
@@ -1441,4 +1425,3 @@ def analyze_alert_group(correlated_alerts: List[dict], playbook_path: str) -> di
     live callers — verify before removing.
     """
     raise NotImplementedError("Legacy analyze_alert_group is deprecated.")
-

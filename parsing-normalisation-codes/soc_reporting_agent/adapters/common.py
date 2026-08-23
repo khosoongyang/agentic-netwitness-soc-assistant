@@ -210,9 +210,7 @@ def run_script(script: Path, timeout: int = 300, extra_env: dict[str, str] | Non
 
 def openai_env_config(prefix: str = "") -> dict[str, str]:
     model = os.getenv(f"{prefix}OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or os.getenv("REPORTING_LLM_MODEL") or "gpt-4o-mini"
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     return {
         "OPENAI_MODEL": model,
-        "OPENAI_BASE_URL": base_url,
         "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
     }

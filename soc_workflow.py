@@ -59,7 +59,7 @@
 #   main() are CLI-only entry points, not called by app.py.
 #
 # Calls:
-#   soc_triage_agent (TriageAgent, CiscoLLMConfig), soc_investigation_agent_revised/
+#   soc_triage_agent (TriageAgent, OpenAILLMConfig), soc_investigation_agent_revised/
 #   (via subprocess/file-queue), soc_reporting_agent/ (via its own adapter),
 #   workflow_state_store.py (wss), workflow_validation.py (wv), nw_alerts.py
 #   (_merge_alert_digest), soc_db/soc_pipeline.db (sqlite3).
@@ -576,65 +576,17 @@ def _first(*values, default=None):
     return default
 
 
-def _normalise_llm_url(url: str) -> str:
-    """[FYP-FUNCTION] Ensure the base URL ends with /v1 (same rule as app.py's get_cisco_cfg).
-    Some OpenAI-compatible gateways answer 401 — not 404 — for unknown
-    routes, so a missing /v1 looks exactly like a bad token. This bit the
-    first live run."""
-    url = (url or "").strip().rstrip("/")
-    if url and not url.endswith("/v1"):
-        url += "/v1"
-    return url
-
-
-def _maybe_b64_decode(value: str) -> str:
-    """[FYP-FUNCTION] [FYP-FALLBACK] app.py's sidebar save writes CISCO_LLM_KEY to .env base64-encoded
-    ("to avoid special char issues"). Decode when the value is valid base64;
-    hand-edited raw tokens (e.g. "sk-...") fail validation and pass through."""
-    import base64
-    try:
-        decoded = base64.b64decode(value.encode(), validate=True).decode("utf-8")
-        return decoded if decoded.isprintable() else value
-    except Exception:
-        return value
-
-
 def _openai_compat_env() -> dict[str, str]:
-    """
-    [FYP-FUNCTION] [FYP-FALLBACK] LLM env for the investigation/reporting subprocesses.
-
-    Preference order:
-      1. A real OPENAI_API_KEY in the environment — use OpenAI as-is.
-      2. Fall back to a custom OpenAI-compatible endpoint configured via
-         CISCO_LLM_URL/KEY/MODEL, reusing the triage agent's credentials.
-      3. Neither present — return {} and the agents use their non-LLM paths.
-
-    [FYP-USED-BY]: run_investigation(), run_reporting() (this module) — the
-    returned dict is passed as `extra_env` so the subprocess inherits LLM
-    credentials without them needing to already be in the parent's real
-    os.environ (e.g. when only the Cisco gateway vars are set).
-    """
-    if os.environ.get("OPENAI_API_KEY", "").strip():
-        return {}
-    cisco_url   = _normalise_llm_url(os.environ.get("CISCO_LLM_URL", ""))
-    cisco_key   = _maybe_b64_decode(os.environ.get("CISCO_LLM_KEY", "").strip())
-    cisco_model = os.environ.get("CISCO_LLM_MODEL", "").strip()
-    if not (cisco_url and cisco_key):
-        return {}
-    return {
-        "OPENAI_API_KEY":  cisco_key,
-        "OPENAI_BASE_URL": cisco_url,   # read by the openai SDK
-        "OPENAI_API_BASE": cisco_url,   # read by langchain-openai
-        "OPENAI_MODEL":    cisco_model or "tgi",
-    }
+    """Return no endpoint overrides; subprocesses inherit OpenAI settings."""
+    return {}
 
 
 def _llm_seed() -> str:
     """[FYP-FUNCTION] One fixed seed for every LLM call in the pipeline — same policy as the
-    triage agent (CISCO_LLM_SEED, default 42) so repeat runs are reproducible.
+    triage agent (OPENAI_SEED, default 42) so repeat runs are reproducible.
     [FYP-USED-BY]: run_investigation(), run_reporting() — passed to the
     subprocess as OPENAI_SEED/REPORTING_LLM_SEED alongside _openai_compat_env()."""
-    return os.environ.get("CISCO_LLM_SEED", "").strip() or "42"
+    return os.environ.get("OPENAI_SEED", "").strip() or "42"
 
 
 def _safe(s: str) -> str:
@@ -1012,13 +964,13 @@ def run_triage(incident: dict, progress_fn=None,
         success, or an "error" key on failure.
 
     [FYP-CALLS]: soc_triage_agent.TriageAgent.triage() (a fresh
-    TriageAgent instance per call, configured via CiscoLLMConfig).
+    TriageAgent instance per call, configured via OpenAILLMConfig).
     [FYP-USED-BY]: run_until_triage_approval() (this module) — the only
     caller; not called by app.py directly (only indirectly through
     run_until_triage_approval).
     """
-    from soc_triage_agent import CiscoLLMConfig, TriageAgent
-    agent = TriageAgent(cfg=CiscoLLMConfig(), progress_fn=progress_fn)
+    from soc_triage_agent import OpenAILLMConfig, TriageAgent
+    agent = TriageAgent(cfg=OpenAILLMConfig(), progress_fn=progress_fn)
     return agent.triage(incident, force=force, parsed_context=parsed_context)
 
 
@@ -3225,7 +3177,7 @@ def run_investigation(incident_id: str, timeout: int = 600,
             "INVESTIGATION_SINGLE_INCIDENT": "1",
             # Single-alert incidents are the norm now — never fall back to the
             # zero-LLM heuristic report; always run the real Pass1/Pass2
-            # analysis (costs ~a cent on DeepSeek, quality is the point).
+            # analysis (quality is prioritized over marginal token cost).
             "INVESTIGATION_FORCE_LLM": "1"}
     if line_cb or watchdog_cb:
         run = _run_subprocess_streaming([sys.executable, "main.py"], cwd=INV_DIR,

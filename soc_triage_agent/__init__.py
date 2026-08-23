@@ -26,11 +26,11 @@ soc_triage_agent package
 The implementation lives in soc_triage_agent.py inside this folder.
 This re-export keeps app.py's original import working unchanged:
 
-    from soc_triage_agent import CiscoLLMConfig, soc_triage_chat_respond, ...
+    from soc_triage_agent import OpenAILLMConfig, soc_triage_chat_respond, ...
 """
 
 from .soc_triage_agent import (
-    CiscoLLMConfig,
+    OpenAILLMConfig,
     build_llm,
     TriageAgent,
     soc_triage_chat_respond,
@@ -41,7 +41,7 @@ from .soc_triage_agent import (
 )
 
 __all__ = [
-    "CiscoLLMConfig",
+    "OpenAILLMConfig",
     "build_llm",
     "TriageAgent",
     "soc_triage_chat_respond",

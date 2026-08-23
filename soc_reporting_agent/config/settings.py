@@ -30,12 +30,11 @@ TEMPLATE_DIR = Path(os.getenv("REPORTING_TEMPLATE_DIR", PROJECT_ROOT / "report_t
 KNOWLEDGE_BASE_DIR = Path(os.getenv("REPORTING_KB_DIR", PROJECT_ROOT / "knowledge_base"))
 
 USE_LLM = os.getenv("REPORTING_USE_LLM", "false").lower() == "true"
-LLM_PROVIDER = os.getenv("REPORTING_LLM_PROVIDER", "ollama").strip().lower()
+LLM_PROVIDER = os.getenv("REPORTING_LLM_PROVIDER", "openai").strip().lower()
 LLM_MODEL = os.getenv("REPORTING_LLM_MODEL", "gpt-4o-mini").strip()
 OLLAMA_MODEL = os.getenv("REPORTING_OLLAMA_MODEL", "llama3.2:3b").strip()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", os.getenv("REPORTING_OLLAMA_BASE_URL", "http://localhost:11434")).strip().rstrip("/")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "").strip() or None
 
 # LLM reliability controls. These are deliberately conservative for SOC reporting.
 LLM_TIMEOUT_SECONDS = int(os.getenv("REPORTING_LLM_TIMEOUT", os.getenv("REPORTING_LLM_TIMEOUT_SECONDS", os.getenv("REPORTING_OLLAMA_TIMEOUT_SECONDS", "120"))))
@@ -97,11 +96,12 @@ def configured_llm_providers() -> list[str]:
     """
     primary = (LLM_PROVIDER or "").strip().lower()
     providers: list[str] = []
-    if primary:
+    allowed = {"openai", "ollama", "mock"}
+    if primary in allowed:
         providers.append(primary)
-    if LLM_ENABLE_PROVIDER_FALLBACK and LLM_FALLBACK_PROVIDER and LLM_FALLBACK_PROVIDER not in providers:
+    if LLM_ENABLE_PROVIDER_FALLBACK and LLM_FALLBACK_PROVIDER in allowed and LLM_FALLBACK_PROVIDER not in providers:
         providers.append(LLM_FALLBACK_PROVIDER)
-    return providers or ["mock"]
+    return providers or ["openai"]
 
 
 # [FYP-FUNCTION] `selected_model_for_provider` — implements the selected model for provider operation used by the surrounding reporting configuration workflow.

@@ -329,7 +329,7 @@ def run_script(script: Path, timeout: int = 300, extra_env: dict[str, str] | Non
 
 
 def openai_env_config(prefix: str = "") -> dict[str, str]:
-    """[FYP-FUNCTION] Build the OPENAI_MODEL/OPENAI_BASE_URL/OPENAI_API_KEY
+    """[FYP-FUNCTION] Build the OPENAI_MODEL/OPENAI_API_KEY
     env vars to hand to a child process via run_script()'s extra_env.
 
     [FYP-CONFIG] Model resolution order: f"{prefix}OPENAI_MODEL" env var (lets
@@ -339,9 +339,7 @@ def openai_env_config(prefix: str = "") -> dict[str, str]:
     OPENAI_MODEL -> REPORTING_LLM_MODEL -> default.
     """
     model = os.getenv(f"{prefix}OPENAI_MODEL") or os.getenv("OPENAI_MODEL") or os.getenv("REPORTING_LLM_MODEL") or "gpt-4o-mini"
-    base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
     return {
         "OPENAI_MODEL": model,
-        "OPENAI_BASE_URL": base_url,
         "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
     }

@@ -4,7 +4,7 @@
 # =============================================================================
 # File: soc_triage_agent/soc_triage_agent.py
 # Purpose: This module performs LLM-assisted SOC triage, tool routing, ticket construction, and chatbot responses.
-# Main functionality: CiscoLLMConfig, _provider_supports_json_mode, build_llm, _normalize_mitre_tactic, _normalize_mitre_technique, _ticket_db_init.
+# Main functionality: OpenAILLMConfig, _provider_supports_json_mode, build_llm, _normalize_mitre_tactic, _normalize_mitre_technique, _ticket_db_init.
 # Inputs: Function parameters, configured environment values, persisted artifacts,
 #   or framework callbacks identified by the documented entry points below.
 # Outputs: Return values and documented file, database, workflow-state, or UI
@@ -17,7 +17,7 @@
 #   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
 # Error and fallback behaviour: Local try/except and fallback paths are marked
 #   per function; otherwise failures propagate to the documented caller.
-# Key evaluator search terms: CiscoLLMConfig, _provider_supports_json_mode, build_llm, _normalize_mitre_tactic, _normalize_mitre_technique, _ticket_db_init, [FYP-FUNCTION], [FYP-EVALUATOR].
+# Key evaluator search terms: OpenAILLMConfig, _provider_supports_json_mode, build_llm, _normalize_mitre_tactic, _normalize_mitre_technique, _ticket_db_init, [FYP-FUNCTION], [FYP-EVALUATOR].
 # =============================================================================
 
 """
@@ -33,7 +33,7 @@ Each call: ChatPromptTemplate → ChatOpenAI → StrOutputParser → _extract_js
 Repair call fires if required keys are missing from the JSON.
 
 Public API (app.py imports):
-  CiscoLLMConfig, build_llm, TriageAgent,
+  OpenAILLMConfig, build_llm, TriageAgent,
   soc_triage_chat_respond, _TRIAGE_TRIGGER,
   render_triage_trace, format_ticket_display
 """
@@ -66,34 +66,22 @@ from langchain_openai import ChatOpenAI
 # [FYP-SECTION] TRIAGE EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
 # =============================================================================
 
-# [FYP-CLASS] `CiscoLLMConfig` — owns CiscoLLMConfig state or behaviour for the triage component.
+# [FYP-CLASS] `OpenAILLMConfig` — owns OpenAILLMConfig state or behaviour for the triage component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include app.py:get_cisco_cfg, soc_triage_agent/soc_triage_agent.py:__init__, soc_triage_agent/soc_triage_agent.py:deep_triage_supplement.
+# [FYP-USED-BY] Static constructor/type references include app.py:get_openai_cfg, soc_triage_agent/soc_triage_agent.py:__init__, soc_triage_agent/soc_triage_agent.py:deep_triage_supplement.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
 @dataclass
-class CiscoLLMConfig:
-    """LLM connection config for the triage agent.
-
-    OPENAI_* env vars are the primary source; CISCO_LLM_* remain as an
-    optional override for pointing the agent at a different OpenAI-compatible
-    endpoint without touching OPENAI_API_KEY (used elsewhere by the reporting
-    agent).
-    """
-    base_url: str = field(
-        default_factory=lambda: os.environ.get("CISCO_LLM_URL", "").strip()
-        or os.environ.get("OPENAI_BASE_URL", "").strip()
-        or "https://api.openai.com/v1"
-    )
+class OpenAILLMConfig:
+    """OpenAI connection config shared by triage and Ask Aegis."""
+    base_url: str = "https://api.openai.com/v1"
     api_key: str = field(
-        default_factory=lambda: os.environ.get("CISCO_LLM_KEY", "").strip()
-        or os.environ.get("OPENAI_API_KEY", "").strip()
+        default_factory=lambda: os.environ.get("OPENAI_API_KEY", "").strip()
         or "changeme"
     )
     model: str = field(
-        default_factory=lambda: os.environ.get("CISCO_LLM_MODEL", "").strip()
-        or os.environ.get("OPENAI_MODEL", "").strip()
+        default_factory=lambda: os.environ.get("OPENAI_MODEL", "").strip()
         or "gpt-4o-mini"
     )
     # temperature=0 -> greedy decoding, so the same incident produces the same
@@ -102,8 +90,8 @@ class CiscoLLMConfig:
     # reproducibility.
     temperature: float = 0.0
     seed:        int | None = field(
-        default_factory=lambda: int(os.environ["CISCO_LLM_SEED"])
-        if os.environ.get("CISCO_LLM_SEED") else 42
+        default_factory=lambda: int(os.environ["OPENAI_SEED"])
+        if os.environ.get("OPENAI_SEED") else 42
     )
     # Reasoning models spend most of their budget on chain-of-thought BEFORE
     # the final JSON. If max_tokens is too small the response is cut off
@@ -129,8 +117,7 @@ def _provider_supports_json_mode(base_url: str) -> bool:
         return True
     if forced == "never":
         return False
-    url = (base_url or "").lower()
-    return "openai.com" in url or "deepseek" in url
+    return True
 
 
 # [FYP-FUNCTION] `build_llm` — constructs build llm output for the next triage consumer or analyst-facing view.
@@ -141,7 +128,7 @@ def _provider_supports_json_mode(base_url: str) -> bool:
 # [FYP-CALLS] Calls: `ChatOpenAI`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def build_llm(cfg: CiscoLLMConfig, json_mode: bool = False) -> ChatOpenAI:
+def build_llm(cfg: OpenAILLMConfig, json_mode: bool = False) -> ChatOpenAI:
     extra: dict = {}
     if cfg.seed is not None:
         # seed is a first-class ChatOpenAI param in current langchain-openai;
@@ -1054,7 +1041,7 @@ class TriageAgent:
 
     Parameters
     ----------
-    cfg               : CiscoLLMConfig
+    cfg               : OpenAILLMConfig
     progress_fn       : callable(event, label, text) — live UI callbacks
     thinking_container: Streamlit st.empty() for token streaming
     """
@@ -1064,16 +1051,16 @@ class TriageAgent:
     # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
     # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
-    # [FYP-CALLS] Calls: `CiscoLLMConfig`, `_provider_supports_json_mode`, `build_llm`.
+    # [FYP-CALLS] Calls: `OpenAILLMConfig`, `_provider_supports_json_mode`, `build_llm`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
     def __init__(
         self,
-        cfg: CiscoLLMConfig | None = None,
+        cfg: OpenAILLMConfig | None = None,
         progress_fn=None,
         thinking_container=None,
     ) -> None:
-        self.cfg               = cfg or CiscoLLMConfig()
+        self.cfg               = cfg or OpenAILLMConfig()
         # Triage phases always end in a JSON object — request forced-JSON
         # decoding on providers that support it (parse drift -> zero).
         self.llm               = build_llm(
@@ -1788,11 +1775,11 @@ def _format_case_context_for_prompt(case_context: dict) -> str:
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
 # [FYP-USED-BY] Static symbol references include soc_workflow.py:investigate_with_feedback; dynamic framework calls may add callers.
-# [FYP-CALLS] Calls: `CiscoLLMConfig`, `HumanMessage`, `StrOutputParser`, `SystemMessage`, `_extract_json`, `_provider_supports_json_mode`, `_repair_json`, `_stream_or_invoke`.
+# [FYP-CALLS] Calls: `OpenAILLMConfig`, `HumanMessage`, `StrOutputParser`, `SystemMessage`, `_extract_json`, `_provider_supports_json_mode`, `_repair_json`, `_stream_or_invoke`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def deep_triage_supplement(incident: dict, gaps: list,
-                           cfg: CiscoLLMConfig | None = None,
+                           cfg: OpenAILLMConfig | None = None,
                            thinking_container=None) -> dict:
     """Second-pass triage for the investigation feedback loop.
 
@@ -1806,7 +1793,7 @@ def deep_triage_supplement(incident: dict, gaps: list,
     Returns gap_findings, confidence_per_gap, extracted_values, actionable_queries,
     mitre_tactic, classification, incident_category, and deep_dive_summary.
     """
-    cfg = cfg or CiscoLLMConfig()
+    cfg = cfg or OpenAILLMConfig()
     llm = build_llm(cfg, json_mode=_provider_supports_json_mode(cfg.base_url))
     gap_lines = "\n".join(f"- {str(g)[:200]}" for g in list(gaps)[:8])
 
@@ -1900,13 +1887,13 @@ def deep_triage_supplement(incident: dict, gaps: list,
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
 # [FYP-USED-BY] Static symbol references include app.py:chat_respond; dynamic framework calls may add callers.
-# [FYP-CALLS] Calls: `CiscoLLMConfig`, `TriageAgent`, `_build_qa_chain`, `_format_case_context_for_prompt`, `bool`, `build_llm`, `dumps`, `format_ticket_display`.
+# [FYP-CALLS] Calls: `OpenAILLMConfig`, `TriageAgent`, `_build_qa_chain`, `_format_case_context_for_prompt`, `bool`, `build_llm`, `dumps`, `format_ticket_display`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def soc_triage_chat_respond(
     user_msg:           str,
     incident:           dict | None = None,
-    llm_config:         CiscoLLMConfig | None = None,
+    llm_config:         OpenAILLMConfig | None = None,
     progress_fn                      = None,
     thinking_container               = None,
     result_sink:        dict | None  = None,
@@ -1929,7 +1916,7 @@ def soc_triage_chat_respond(
     (Parsing through Reporting) instead of just a truncated raw incident.
     Defaults to None, so any existing caller that doesn't pass it keeps
     today's exact fallback behaviour."""
-    cfg = llm_config or CiscoLLMConfig()
+    cfg = llm_config or OpenAILLMConfig()
 
     if incident and _TRIAGE_TRIGGER.search(user_msg):
         agent  = TriageAgent(

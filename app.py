@@ -61,7 +61,7 @@ SOC Platform v4
 #   state that a later block / background thread acts on).
 # Calls: soc_workflow.py (run_until_triage_approval, run_stage_chain, stage
 #   AI-summary helpers — the actual multi-agent orchestration), soc_triage_agent
-#   (CiscoLLMConfig, soc_triage_chat_respond, render_triage_trace), case_view.py
+#   (OpenAILLMConfig, soc_triage_chat_respond, render_triage_trace), case_view.py
 #   (cv — per-case rendering helpers), workflow_state_store.py (wss — persisted
 #   per-incident workflow state/approval status), reporting_approval.py,
 #   report_editing.py, triage_ticket_editing.py, nw_alerts.py (NetWitness
@@ -215,7 +215,7 @@ def _maybe_reload_agent_modules():
 
 _maybe_reload_agent_modules()
 
-from soc_triage_agent import (CiscoLLMConfig, soc_triage_chat_respond,
+from soc_triage_agent import (OpenAILLMConfig, soc_triage_chat_respond,
                               _TRIAGE_TRIGGER, render_triage_trace,
                               format_ticket_display)
 import workflow_state_store as wss
@@ -1220,43 +1220,17 @@ def _render_reports_workspace(incident_id: str, run_id: str, rep_cv: dict,
         st.divider()
 
 
-# [FYP-SECTION] LLM CONFIG (CISCO/OPENAI-COMPATIBLE ENDPOINT) + .ENV CREDENTIAL PERSISTENCE
-def _normalise_llm_url(url: str) -> str:
-    """[FYP-FUNCTION] Normalise an LLM Base URL for the OpenAI-Compatible Client.
-    Ensure the base URL is safe for ChatOpenAI.
-    - Strips trailing slashes
-    - Removes any embedded model path (e.g. /models/some-model/...)
-    - Guarantees the URL ends with /v1
-    """
-    from urllib.parse import urlparse
-    url = url.strip().rstrip("/")
-    parsed = urlparse(url)
-    # If someone pasted a model-specific URL, reduce it to just host + /v1
-    if "/models/" in parsed.path:
-        url = f"{parsed.scheme}://{parsed.netloc}/v1"
-    elif not parsed.path.endswith("/v1"):
-        url = url + "/v1"
-    return url
-
-def get_cisco_cfg() -> CiscoLLMConfig:
-    """[FYP-FUNCTION] Build LLM Client Config from Session State (Sidebar Override) or Env Vars.
-    Build CiscoLLMConfig from session state at call time so that
-    credentials entered in the sidebar are always picked up. Falls back to
-    the OPENAI_* env vars (already configured for the reporting agent) when
-    no custom endpoint has been entered in the sidebar.
-    [FYP-CONFIG] Precedence: st.session_state["cisco_url"/"cisco_key"/
-    "cisco_model"] (sidebar UI entry) > OPENAI_BASE_URL/OPENAI_API_KEY/
-    OPENAI_MODEL env vars > hardcoded defaults (api.openai.com, gpt-4o-mini).
+def get_openai_cfg() -> OpenAILLMConfig:
+    """[FYP-FUNCTION] Build the OpenAI client config from session or env.
+    [FYP-CONFIG] Sidebar key/model override OPENAI_API_KEY/OPENAI_MODEL; the
+    endpoint is fixed to the official OpenAI API.
     [FYP-USED-BY] Any code path that needs to talk to the configured LLM
     from within app.py (e.g. Ask Aegis chat_respond below); the triage/
     investigation/reporting agent packages have their own equivalent env
     var reads.
     """
-    raw_url = st.session_state.get("cisco_url", "").strip()
-    url     = (_normalise_llm_url(raw_url) if raw_url
-               else os.environ.get("OPENAI_BASE_URL", "").strip() or "https://api.openai.com/v1")
-    return CiscoLLMConfig(
-        base_url    = url,
+    return OpenAILLMConfig(
+        base_url    = "https://api.openai.com/v1",
         api_key     = (st.session_state.get("cisco_key", "").strip()
                        or os.environ.get("OPENAI_API_KEY", "").strip() or "changeme"),
         model       = (st.session_state.get("cisco_model", "").strip()
@@ -1299,10 +1273,9 @@ def env_load() -> dict:
         "username":      _clean(os.environ.get("NW_USERNAME",   "")),
         "password":      _clean(os.environ.get("NW_PASSWORD",   "")),
         "nw_cert_path":  _clean(os.environ.get("NW_CERT_PATH",  "")),
-        # Cisco LLM
-        "cisco_url":     _clean(os.environ.get("CISCO_LLM_URL",   "")),
-        "cisco_key":     _clean(os.environ.get("CISCO_LLM_KEY",   "")),
-        "cisco_model":   _clean(os.environ.get("CISCO_LLM_MODEL", "")),
+        "cisco_url":     "https://api.openai.com/v1",
+        "cisco_key":     _clean(os.environ.get("OPENAI_API_KEY", "")),
+        "cisco_model":   _clean(os.environ.get("OPENAI_MODEL", "")),
     }
 
 def env_save(host: str, username: str, password: str) -> None:
@@ -1361,25 +1334,22 @@ def nw_cert_env_clear() -> None:
     except Exception:
         pass
 
-# [FYP-FUNCTION] `cisco_env_save` — implements the cisco env save operation used by the surrounding Streamlit application and dashboard workflow.
-# [FYP-INPUT] Parameters: `url`, `key`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-FUNCTION] `openai_env_save` — persists OpenAI settings used by the Streamlit application and dashboard workflow.
+# [FYP-INPUT] Parameters: `key`, `model`; values come from the sidebar settings form.
 # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
 # [FYP-USED-BY] Static symbol references include app.py:<module>; dynamic framework calls may add callers.
-# [FYP-CALLS] Calls: `b64encode`, `decode`, `encode`, `set_key`, `str`, `strip`, `touch`.
+# [FYP-CALLS] Calls: `set_key`, `str`, `strip`, `touch`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
-def cisco_env_save(url: str, key: str, model: str) -> None:
-    """Persist Cisco LLM credentials to .env."""
+def openai_env_save(key: str, model: str) -> None:
+    """Persist OpenAI credentials to .env."""
     if not DOTENV_OK:
         return
     try:
         ENV_FILE.touch(exist_ok=True)
-        set_key(str(ENV_FILE), "CISCO_LLM_URL",   url.strip())
-        set_key(str(ENV_FILE), "CISCO_LLM_MODEL", model.strip())
-        # base64-encode key to avoid special char issues
-        set_key(str(ENV_FILE), "CISCO_LLM_KEY",
-                base64.b64encode(key.strip().encode()).decode("ascii"))
+        set_key(str(ENV_FILE), "OPENAI_MODEL", model.strip())
+        set_key(str(ENV_FILE), "OPENAI_API_KEY", key.strip())
     except Exception:
         pass
 
@@ -1402,7 +1372,7 @@ def env_clear() -> None:
     except Exception:
         pass
 
-# [FYP-FUNCTION] `cisco_env_clear` — implements the cisco env clear operation used by the surrounding Streamlit application and dashboard workflow.
+# [FYP-FUNCTION] `openai_env_clear` — clears persisted OpenAI settings.
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis Streamlit application and dashboard workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
@@ -1410,14 +1380,13 @@ def env_clear() -> None:
 # [FYP-CALLS] Calls: `exists`, `set_key`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
-def cisco_env_clear() -> None:
+def openai_env_clear() -> None:
     if not DOTENV_OK:
         return
     try:
         if ENV_FILE.exists():
-            set_key(str(ENV_FILE), "CISCO_LLM_URL",   "")
-            set_key(str(ENV_FILE), "CISCO_LLM_KEY",   "")
-            set_key(str(ENV_FILE), "CISCO_LLM_MODEL", "")
+            set_key(str(ENV_FILE), "OPENAI_API_KEY", "")
+            set_key(str(ENV_FILE), "OPENAI_MODEL", "")
     except Exception:
         pass
 
@@ -1993,12 +1962,6 @@ if _env["password"]:
     except Exception:
         pass
 # Decode base64 Cisco API key
-if _env.get("cisco_key"):
-    try:
-        _env["cisco_key"] = base64.b64decode(_env["cisco_key"].encode()).decode("utf-8")
-    except Exception:
-        pass
-
 DEFAULTS = {
     "nw_host":          _env["host"],
     "nw_username":      _env["username"],
@@ -2040,7 +2003,7 @@ DEFAULTS = {
                           "exports": {}, "reporting_data": None},
     },
     "agent_board_sel": None,
-    # ── Cisco Foundation LLM ─────────────────────────────────
+    # ── OpenAI Foundation LLM ────────────────────────────────
     "cisco_url":         _env.get("cisco_url",   ""),
     "cisco_key":         _env.get("cisco_key",   ""),
     "cisco_model":       _env.get("cisco_model", ""),
@@ -3450,14 +3413,14 @@ def chat_respond(user_msg: str, incident: Optional[dict] = None,
     that Q&A path in every completed workflow stage instead of just the
     raw incident.
     ─────────────────────────────────────────────────────────
-    [FYP-CALLS] get_cisco_cfg() for the LLM client config, then delegates
+    [FYP-CALLS] get_openai_cfg() for the LLM client config, then delegates
     everything else (prompting, tool routing, ticket generation) to
     soc_triage_chat_respond(). [FYP-USED-BY] The "Ask Aegis" chat box —
     both the standalone Ask a Question page and the My Workspace case-chat
     panel — pass case_context from case_view.build_aegis_context() when a
     case is selected so answers are grounded in that case's full pipeline
     history, not just the raw incident payload."""
-    return soc_triage_chat_respond(user_msg, incident, llm_config=get_cisco_cfg(),
+    return soc_triage_chat_respond(user_msg, incident, llm_config=get_openai_cfg(),
                                    parsed_context=parsed_context,
                                    case_context=case_context)
 
@@ -9414,12 +9377,7 @@ elif active_page == "Settings":
                 unsafe_allow_html=True,
             )
 
-        cisco_url_in = st.text_input(
-            "Endpoint URL",
-            value=st.session_state.cisco_url,
-            placeholder="https://api.openai.com/v1",
-            key="sb_cisco_url",
-        )
+        cisco_url_in = "https://api.openai.com/v1"
         cisco_key_in = st.text_input(
             "OpenAI API Key",
             value="",
@@ -9437,9 +9395,7 @@ elif active_page == "Settings":
         cl1, cl2, cl3 = st.columns(3)
 
         if cl1.button("Apply", use_container_width=True, key="cisco_apply"):
-            if not cisco_url_in.strip():
-                st.error("Enter the endpoint URL.")
-            elif not cisco_key_in.strip():
+            if not cisco_key_in.strip():
                 st.error("Enter your OpenAI API key.")
             else:
                 st.session_state.cisco_url       = cisco_url_in.strip()
@@ -9452,33 +9408,29 @@ elif active_page == "Settings":
                 st.rerun()
 
         if cl2.button("Save", use_container_width=True, key="cisco_save"):
-            if cisco_url_in.strip() and cisco_key_in.strip():
+            if cisco_key_in.strip():
                 st.session_state.cisco_url       = cisco_url_in.strip()
                 st.session_state.cisco_key       = cisco_key_in.strip()
                 st.session_state.cisco_model     = (
                     cisco_model_in.strip() or "gpt-4o-mini"
                 )
                 st.session_state.cisco_connected = True
-                cisco_env_save(
-                    cisco_url_in.strip(),
-                    cisco_key_in.strip(),
-                    st.session_state.cisco_model,
-                )
+                openai_env_save(cisco_key_in.strip(), st.session_state.cisco_model)
                 st.success("Saved to .env")
                 st.rerun()
             else:
-                st.warning("Enter URL and OpenAI API key first.")
+                st.warning("Enter an OpenAI API key first.")
 
         with cl3:
             if _confirm_action(
                     "cisco_clear", "✕ Clear",
-                    "This clears your saved LLM endpoint URL, key, and model name.",
+                    "This clears your saved OpenAI key and model name.",
                     confirm_label="Clear LLM settings"):
                 st.session_state.cisco_url       = ""
                 st.session_state.cisco_key       = ""
                 st.session_state.cisco_model     = ""
                 st.session_state.cisco_connected = False
-                cisco_env_clear()
+                openai_env_clear()
                 st.rerun()
 
 

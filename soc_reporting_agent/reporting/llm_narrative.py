@@ -85,7 +85,7 @@ from __future__ import annotations
 #   - config.settings: USE_LLM, LLM_PROVIDER, LLM_MODEL, LLM_MOCK_MODE,
 #     LLM_MAX_RETRIES, LLM_CACHE_ENABLED, LLM_CACHE_DIR, LLM_TEMPERATURE,
 #     LLM_NUM_PREDICT, LLM_TIMEOUT_SECONDS, LLM_SEED, OPENAI_API_KEY,
-#     OPENAI_BASE_URL, OLLAMA_MODEL, OLLAMA_BASE_URL,
+#     OLLAMA_MODEL, OLLAMA_BASE_URL,
 #     configured_llm_providers(), selected_model_for_provider(),
 #     selected_llm_model().
 #   - reporting.compact_renderer.is_placeholder() — used to detect
@@ -1093,8 +1093,6 @@ def _invoke_openai(prompt: str, model: str | None = None) -> str:
 
     selected = model or settings.LLM_MODEL
     client_kwargs: dict[str, Any] = {"api_key": settings.OPENAI_API_KEY, "timeout": settings.LLM_TIMEOUT_SECONDS}
-    if settings.OPENAI_BASE_URL:
-        client_kwargs["base_url"] = settings.OPENAI_BASE_URL
     client = OpenAI(**client_kwargs)
 
     # REPORTING_OPENAI_API=chat forces chat-completions (set by the SOC

@@ -27,7 +27,7 @@
 #
 # Inputs:
 #   - Environment variables (read by name only -- values are never logged or
-#     echoed by this module): OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL.
+#     echoed by this module): OPENAI_API_KEY, OPENAI_MODEL.
 #   - invoke_openai_text(prompt, system=..., model=..., temperature=...,
 #     max_output_tokens=..., timeout=..., text_format=...): caller-supplied
 #     prompt/parameters (source: reporting/template_document_exporter.py and
@@ -127,8 +127,7 @@ def build_client(timeout: float | int | None = None):
     Params: timeout -- optional per-client request timeout in seconds.
     Returns: an `openai.OpenAI` client instance.
     Reads (by name only, never echoed): OPENAI_API_KEY (required, validated
-    via is_placeholder_key), OPENAI_BASE_URL (optional, for a custom/proxy
-    endpoint), max_retries is fixed at 1 (this subsystem handles its own
+    via is_placeholder_key); max_retries is fixed at 1 (this subsystem handles its own
     fallback/retry logic in invoke_openai_text rather than relying on SDK
     auto-retry).
     [FYP-ERROR] Raises RuntimeError if OPENAI_API_KEY is missing/placeholder,
@@ -146,9 +145,6 @@ def build_client(timeout: float | int | None = None):
         raise RuntimeError(f"openai package is not installed or too old: {exc}") from exc
 
     kwargs: dict[str, Any] = {"api_key": api_key, "max_retries": 1}
-    base_url = os.getenv("OPENAI_BASE_URL", "").strip()
-    if base_url:
-        kwargs["base_url"] = base_url
     if timeout:
         kwargs["timeout"] = float(timeout)
     return OpenAI(**kwargs)
