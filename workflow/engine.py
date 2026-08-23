@@ -969,7 +969,7 @@ def run_triage(incident: dict, progress_fn=None,
     caller; not called by app.py directly (only indirectly through
     run_until_triage_approval).
     """
-    from soc_triage_agent import OpenAILLMConfig, TriageAgent
+    from agents.triage import OpenAILLMConfig, TriageAgent
     agent = TriageAgent(cfg=OpenAILLMConfig(), progress_fn=progress_fn)
     return agent.triage(incident, force=force, parsed_context=parsed_context)
 
@@ -2901,7 +2901,7 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
         try:
             _emit("triage_deep_dive_start",
                   f"Triage deep-dive: mining the incident for {gap_ids}")
-            from soc_triage_agent import deep_triage_supplement
+            from agents.triage import deep_triage_supplement
             supp = deep_triage_supplement(incident, gaps)
             answered = sum(1 for v in (supp.get("gap_findings") or {}).values()
                            if "not present" not in str(v).lower())

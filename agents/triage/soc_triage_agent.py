@@ -354,7 +354,7 @@ def _normalize_mitre_technique(value) -> str:
 
 # This module now lives in the soc_triage_agent/ subfolder, and all SQLite
 # databases were consolidated into <project root>/soc_db/ — hence parent.parent.
-_SOC_DB_DIR = Path(__file__).resolve().parent.parent / "soc_db"
+_SOC_DB_DIR = Path(__file__).resolve().parents[2] / "soc_db"
 _SOC_DB_DIR.mkdir(parents=True, exist_ok=True)
 _TICKET_DB   = _SOC_DB_DIR / "soc_tickets.db"
 _TICKET_LOCK = threading.Lock()
