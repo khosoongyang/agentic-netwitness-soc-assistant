@@ -139,7 +139,7 @@ from typing import Any
 
 from workflow import state_store as wss
 import workflow_validation as wv
-from nw_alerts import _merge_alert_digest
+from integrations.netwitness.alerts import _merge_alert_digest
 
 ROOT       = Path(__file__).resolve().parent.parent
 # Swapped 2026-07-22: the team's revised investigation agent (adds
@@ -3734,7 +3734,7 @@ def enrich_incident_with_apiretrieval_fetch(incident: dict, host: str | None = N
     """Enrich incident with comprehensive raw alerts via APIRetrieval FETCH API or disk exports."""
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
     try:
-        import APIRetrieval
+        import integrations.netwitness.fetch_api as APIRetrieval
         payload = APIRetrieval.get_comprehensive_incident_payload(inc_id, host=host, token=token)
         if isinstance(payload, dict) and payload:
             inc_data = payload.get("incident") if isinstance(payload.get("incident"), dict) else {}

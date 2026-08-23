@@ -52,7 +52,7 @@ import requests
 import pytest
 from unittest.mock import patch, MagicMock
 
-import APIRetrieval
+import integrations.netwitness.fetch_api as APIRetrieval
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -358,9 +358,9 @@ class TestAPIRetrievalComprehensivePayload:
         monkeypatch.setenv("NW_USERNAME", "admin")
         monkeypatch.setenv("NW_PASSWORD", "secret")
 
-        with patch("APIRetrieval.fetch_incident_via_fetch_api", return_value={"id": "INC-LIVE-1", "title": "Live Test"}), \
-             patch("APIRetrieval.fetch_alerts_via_fetch_api", return_value=[{"id": "ALERT-LIVE"}]), \
-             patch("APIRetrieval.get_auth_token", return_value="TOKEN_LIVE"):
+        with patch("integrations.netwitness.fetch_api.fetch_incident_via_fetch_api", return_value={"id": "INC-LIVE-1", "title": "Live Test"}), \
+             patch("integrations.netwitness.fetch_api.fetch_alerts_via_fetch_api", return_value=[{"id": "ALERT-LIVE"}]), \
+             patch("integrations.netwitness.fetch_api.get_auth_token", return_value="TOKEN_LIVE"):
 
             payload = APIRetrieval.get_comprehensive_incident_payload("INC-LIVE-1")
             assert payload["incident"]["id"] == "INC-LIVE-1"
