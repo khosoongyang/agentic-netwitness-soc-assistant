@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-import workflow_state_store as wss
+from workflow import state_store as wss
 from workflow import commands
 
 

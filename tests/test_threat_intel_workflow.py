@@ -41,9 +41,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-import workflow_state_store as wss
-import soc_workflow as sw
-import threat_intel as ti
+from workflow import state_store as wss
+from workflow import engine as sw
+from agents.threat_intelligence import threat_intel as ti
 
 
 ROOT = Path(__file__).resolve().parent.parent

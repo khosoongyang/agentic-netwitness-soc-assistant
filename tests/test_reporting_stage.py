@@ -28,9 +28,9 @@ from pathlib import Path
 
 import pytest
 
-import workflow_state_store as wss
-import soc_workflow as sw
-import reporting_approval as ra
+from workflow import state_store as wss
+from workflow import engine as sw
+from agents.reporting import reporting_approval as ra
 import case_view as cv
 
 

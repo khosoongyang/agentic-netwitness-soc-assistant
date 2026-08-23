@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 import case_view
-import workflow_state_store as wss
+from workflow import state_store as wss
 
 
 ROOT = Path(__file__).resolve().parents[1]

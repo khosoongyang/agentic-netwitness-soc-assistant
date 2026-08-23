@@ -11,7 +11,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any, Callable
 
-import workflow_state_store as wss
+from workflow import state_store as wss
 
 from ..errors import CaseNotFoundError, DataStoreUnavailableError, InvalidQueryError
 

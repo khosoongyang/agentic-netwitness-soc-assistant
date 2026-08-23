@@ -12,7 +12,7 @@ import pytest
 from flask import Flask
 from flask.testing import FlaskClient
 
-import workflow_state_store as wss
+from workflow import state_store as wss
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

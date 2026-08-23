@@ -6,10 +6,10 @@ import json
 from typing import Any
 
 import case_view
-import report_editing
-import reporting_approval
-import triage_ticket_editing
-import workflow_state_store as wss
+from agents.reporting import report_editing
+from agents.reporting import reporting_approval
+from agents.reporting import triage_ticket_editing
+from workflow import state_store as wss
 
 from ..errors import CaseNotFoundError
 

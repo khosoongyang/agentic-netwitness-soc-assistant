@@ -32,8 +32,8 @@ from __future__ import annotations
 
 import pytest
 
-import soc_workflow as sw
-import workflow_state_store as wss
+from workflow import engine as sw
+from workflow import state_store as wss
 
 
 # ══════════════════════════════════════════════════════════════════════════

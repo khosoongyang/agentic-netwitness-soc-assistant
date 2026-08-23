@@ -40,8 +40,8 @@ from pathlib import Path
 
 import pytest
 
-import workflow_state_store as wss
-import soc_workflow as sw
+from workflow import state_store as wss
+from workflow import engine as sw
 import case_view as cv
 
 

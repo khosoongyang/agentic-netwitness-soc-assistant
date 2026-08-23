@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-import workflow_state_store as state_store
+from workflow import state_store
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

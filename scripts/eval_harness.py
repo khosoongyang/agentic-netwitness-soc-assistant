@@ -242,7 +242,7 @@ def _c_playbook(inc, tri, exp):
     mod, agent = _selector()
     if mod is None:
         return None, f"selector unavailable ({agent}) -> skipped"
-    import soc_workflow as wf
+    from workflow import engine as wf
     alert = wf.build_investigation_alert(tri, inc)
     cwd = os.getcwd()
     try:

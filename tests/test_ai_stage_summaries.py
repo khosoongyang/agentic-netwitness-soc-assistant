@@ -54,8 +54,8 @@ from pathlib import Path
 
 import pytest
 
-import soc_workflow as sw
-import workflow_state_store as wss
+from workflow import engine as sw
+from workflow import state_store as wss
 
 
 ROOT = Path(__file__).resolve().parent.parent

@@ -6,7 +6,7 @@ import json
 import os
 from typing import Any, Callable
 
-import workflow_state_store as wss
+from workflow import state_store as wss
 
 from ..errors import CaseNotFoundError
 from .case_service import _get_case_row
@@ -19,7 +19,7 @@ class ChatServiceError(RuntimeError):
 
 
 def _default_responder(message: str, incident: dict | None, parsed: dict | None, context: dict | None) -> str:
-    from soc_triage_agent import OpenAILLMConfig, soc_triage_chat_respond
+    from agents.triage import OpenAILLMConfig, soc_triage_chat_respond
 
     config = OpenAILLMConfig(
         base_url="https://api.openai.com/v1",

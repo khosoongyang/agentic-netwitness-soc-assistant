@@ -37,7 +37,7 @@ Key evaluator search terms: render_agent_thinking_plain, Thinking Process,
 """
 from __future__ import annotations
 
-import soc_workflow as sw
+from workflow import engine as sw
 
 
 # ══════════════════════════════════════════════════════════════════════════

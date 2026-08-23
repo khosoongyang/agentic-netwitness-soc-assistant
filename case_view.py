@@ -60,8 +60,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
-import workflow_state_store as wss
-import soc_workflow as sw
+from workflow import state_store as wss
+from workflow import engine as sw
 from incident_map import build_incident_map, to_dot as incident_map_to_dot
 from tactic_inference import infer_tactics
 from triage_verdict import aggregate_verdict

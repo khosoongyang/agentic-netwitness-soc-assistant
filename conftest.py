@@ -115,8 +115,8 @@ def _isolate_mutable_test_state(
     """Redirect mutable module globals for every collected test."""
     isolation = request.config._aegis_test_isolation  # type: ignore[attr-defined]
 
-    import soc_workflow
-    import workflow_state_store
+    from workflow import engine as soc_workflow
+    from workflow import state_store as workflow_state_store
 
     monkeypatch.setattr(workflow_state_store, "DB_FILE", tmp_path / "workflow.db")
     monkeypatch.setattr(soc_workflow, "PIPELINE_DB_FILE", tmp_path / "pipeline.db")

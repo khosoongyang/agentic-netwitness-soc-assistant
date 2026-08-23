@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
-import workflow_state_store as state_store
+from workflow import state_store
 from integrations.netwitness.incidents import incident_identity, normalise_severity
 
 
