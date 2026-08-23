@@ -68,7 +68,7 @@ class ChatbotService:
             parsed = json.loads(state.get("parsing_result_json") or "{}")
         except (TypeError, ValueError):
             parsed = {}
-        from case_view import build_aegis_context
+        from .case_view_service import build_aegis_context
         context = build_aegis_context(case_id, state.get("run_id"))
         if not context.get("available"):
             raise ChatServiceError("CHAT_CONTEXT_FAILED", "Trusted case context is unavailable.", 409)

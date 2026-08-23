@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-import case_view
+import backend.services.case_view_service as case_view
 from workflow import state_store as wss
 
 

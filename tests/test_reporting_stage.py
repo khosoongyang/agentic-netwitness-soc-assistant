@@ -31,7 +31,7 @@ import pytest
 from workflow import state_store as wss
 from workflow import engine as sw
 from agents.reporting import reporting_approval as ra
-import case_view as cv
+import backend.services.case_view_service as cv
 
 
 # =============================================================================

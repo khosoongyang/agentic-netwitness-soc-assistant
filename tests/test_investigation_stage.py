@@ -42,7 +42,7 @@ import pytest
 
 from workflow import state_store as wss
 from workflow import engine as sw
-import case_view as cv
+import backend.services.case_view_service as cv
 
 
 ROOT = Path(__file__).resolve().parent.parent

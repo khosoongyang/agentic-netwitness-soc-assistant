@@ -247,7 +247,7 @@ def get_case_detail(
     workspace: dict[str, Any] | None = None
     if row.get("run_id"):
         if case_view_builder is None:
-            from case_view import build_case_view
+            from .case_view_service import build_case_view
             case_view_builder = build_case_view
         workspace = case_view_builder(str(case_id), row.get("run_id"))
     return {
@@ -310,7 +310,7 @@ def _safe_stage_result(stage_key: str, raw: Any) -> dict[str, Any] | None:
     result = _json_object(raw)
     if not result:
         return None
-    from case_view import _sanitize_for_display, sanitize_investigation_result_for_display
+    from .case_view_service import _sanitize_for_display, sanitize_investigation_result_for_display
     if stage_key == "investigation":
         return sanitize_investigation_result_for_display(result)
     sanitized = _sanitize_for_display(result)

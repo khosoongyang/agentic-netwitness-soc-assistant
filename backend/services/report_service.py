@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import case_view
+from . import case_view_service as case_view
 from agents.reporting import report_editing
 from agents.reporting import reporting_approval
 from agents.reporting import triage_ticket_editing
