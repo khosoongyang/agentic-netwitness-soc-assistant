@@ -2,8 +2,8 @@
 [FYP-FILE]
 # Important dependencies: __future__, json, pathlib, pytest, re, soc_workflow, sys, types.
 File: tests/test_ai_stage_summaries.py
-Purpose: Verifies the short "AI summary" orientation layer shown on each
-    stage card in app.py's My Workspace — soc_workflow.py's
+Purpose: Verifies the short "AI summary" orientation layer exposed to the
+    Flask workspace — soc_workflow.py's
     limit_ai_summary_sentences() hard cap, generate_stage_ai_summary()
     (Threat Intelligence/Investigation/Reporting) and
     generate_parsing_ai_summary() (Parsing), plus
@@ -14,20 +14,19 @@ Main functionalities: Injects a fake backend.openai_client module so no
     real OpenAI call is made, calls the summary-generation functions with
     representative stage result dicts, and asserts the returned/persisted
     ai_summary text, the prompt/system text sent to the (fake) model, and
-    that app.py/soc_workflow.py's source wires this AI summary layer in
-    ahead of/alongside the native per-stage summary rather than replacing
-    it.
+    that the Flask case service preserves this AI summary alongside the
+    native per-stage summary rather than replacing it.
 Inputs: A monkeypatched sys.modules["backend.openai_client"] whose
     invoke_openai_text() returns a scripted string and records every call;
     representative stage_result dicts for Parsing/Triage/Threat
     Intelligence/Investigation/Reporting; an isolated tmp_path SQLite DB
-    (wss.DB_FILE) for the persistence test. Two tests instead read the raw
-    source text of app.py and soc_workflow.py from ROOT.
+    (wss.DB_FILE) for the persistence test. One test reads the raw source
+    text of soc_workflow.py from ROOT.
 Outputs: Assertions on the ai_summary/ai_thinking strings returned by the
     generate_* functions, on the recorded fake-OpenAI call kwargs (prompt
     content, system instructions, max_output_tokens), on the merged JSON
     persisted via save_stage_ai_summary(), and on literal substrings
-    present in app.py/soc_workflow.py source.
+    returned by the Flask case service and present in soc_workflow.py source.
 Workflow position: Presentation/orientation layer over the real per-stage
     results produced by soc_workflow.py's run_* stage functions (see
     tests/test_threat_intel_workflow.py, tests/test_investigation_stage.py,
@@ -46,6 +45,8 @@ Key evaluator search terms: ai_summary, limit_ai_summary_sentences,
 from __future__ import annotations
 
 import json
+import importlib
+import importlib.util
 import re
 import sys
 import types
@@ -278,20 +279,39 @@ def test_summary_backfill_merges_without_overwriting_native_stage_output(
 
 
 # [FYP-USED-BY]
-def test_workspace_summary_card_never_falls_back_to_native_stage_summary():
-    """[FYP-FUNCTION] Source-level guard on the preserved Streamlit app's My
-    Workspace stage card rendering (not a runtime/behavioral test): reads the
-    legacy app's raw source and asserts it still contains the literal
-    statements that wire up the AI-summary-first display contract — assigning
-    `_stage_summary = _stage_ai_summary`, re-applying
-    `wf_limit_ai_summary_sentences()` to any previously saved AI summary,
-    and calling `wss.save_stage_ai_summary(`. Catches an accidental
-    regression to showing the native stage summary instead of the AI one.
+def test_flask_workspace_preserves_ai_summary_with_native_stage_output():
+    """The canonical case API returns the persisted orientation summary and
+    full native result together; removing the legacy renderer must not drop
+    either value.
     """
-    source = (ROOT / "scripts" / "legacy_streamlit_app.py").read_text(encoding="utf-8")
-    assert "_stage_summary = _stage_ai_summary" in source
-    assert "wf_limit_ai_summary_sentences(_saved_ai_summary)" in source
-    assert "wss.save_stage_ai_summary(" in source
+    package_name = "_aegis_summary_backend"
+    package_dir = ROOT / "backend"
+    spec = importlib.util.spec_from_file_location(
+        package_name,
+        package_dir / "__init__.py",
+        submodule_search_locations=[str(package_dir)],
+    )
+    assert spec and spec.loader
+    package = importlib.util.module_from_spec(spec)
+    sys.modules[package_name] = package
+    spec.loader.exec_module(package)
+    case_service = importlib.import_module(f"{package_name}.services.case_service")
+
+    native_summary = "Full native triage output remains intact."
+    ai_summary = "Short first sentence. Short second sentence."
+    stages = case_service.build_workflow_stages({
+        "parsing_status": "Complete",
+        "parsing_result_json": "{}",
+        "triage_status": "Approved",
+        "triage_result_json": json.dumps({
+            "summary": native_summary,
+            "ai_summary": ai_summary,
+        }),
+    })
+
+    triage = next(stage for stage in stages if stage["key"] == "triage")
+    assert triage["result"]["summary"] == native_summary
+    assert triage["result"]["ai_summary"] == ai_summary
 
 
 def test_successful_downstream_stages_generate_ai_summary_before_persisting():

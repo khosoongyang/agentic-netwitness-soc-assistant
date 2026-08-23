@@ -686,28 +686,8 @@ def _repair_json(raw_text: str, required_keys: list[str], llm: ChatOpenAI) -> di
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _stream_or_invoke(text_chain, thinking_container=None) -> str:
-    """Stream tokens into a Streamlit container, or plain invoke if not provided."""
-    if thinking_container is None:
-        return text_chain.invoke({})
-
-    full_text = ""
-    _STYLE = (
-        "background:#02040A;border-left:3px solid #1A3550;"
-        "padding:8px 14px;font-family:monospace;font-size:0.62rem;"
-        "color:#5A7A99;border-radius:0 4px 4px 0;margin:3px 0;"
-        "word-break:break-word;line-height:1.7;white-space:pre-wrap"
-    )
-    try:
-        for chunk in text_chain.stream({}):
-            full_text += chunk if isinstance(chunk, str) else str(chunk)
-            display = full_text if len(full_text) <= 600 else "…" + full_text[-600:]
-            thinking_container.markdown(
-                f'<div style="{_STYLE}">💭 {display}▌</div>',
-                unsafe_allow_html=True,
-            )
-    except Exception:
-        full_text = text_chain.invoke({})
-    return full_text
+    """Invoke the chain; the optional argument remains for API compatibility."""
+    return text_chain.invoke({})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1043,7 +1023,7 @@ class TriageAgent:
     ----------
     cfg               : OpenAILLMConfig
     progress_fn       : callable(event, label, text) — live UI callbacks
-    thinking_container: Streamlit st.empty() for token streaming
+    thinking_container: deprecated presentation callback; ignored
     """
 
     # [FYP-FUNCTION] `__init__` — implements the init operation used by the surrounding triage workflow.

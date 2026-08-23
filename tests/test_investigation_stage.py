@@ -228,7 +228,7 @@ def test_soc_workflow_has_no_streamlit_import():
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             assert not any(a.name == "streamlit" for a in node.names), \
-                "soc_workflow.py (the background worker) must not import streamlit"
+                "soc_workflow.py (the background worker) must remain UI-framework independent"
         if isinstance(node, ast.ImportFrom):
             assert node.module != "streamlit"
 

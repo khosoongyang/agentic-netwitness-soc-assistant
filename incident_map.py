@@ -42,7 +42,7 @@ narration over the graph) build on the dict this module returns.
 
 Usage:
     imap = build_incident_map(incident)            # incident dict from API/DB
-    dot  = to_dot(imap)                            # for st.graphviz_chart
+    dot  = to_dot(imap)                            # for a Graphviz renderer
     txt  = summarize_map(imap)                     # plain-text for agents
 """
 
@@ -393,7 +393,7 @@ def _dot_escape(s: str) -> str:
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def to_dot(imap: dict, max_fanout: int = 20) -> str:
-    """DOT source for st.graphviz_chart. High-fanout node groups (e.g. one
+    """DOT source for a Graphviz renderer. High-fanout node groups (e.g. one
     source IP → 700 destinations) are capped at `max_fanout` with an
     aggregate "+N more" node so the graph stays readable."""
     nodes = {n["id"]: n for n in imap["nodes"]}

@@ -28,6 +28,7 @@ _ENV_KEYS = (
     "REPORTING_CHROMA_DB_PATH",
     "SOC_RUN_OUTPUT_DIR",
     "SOC_OUTPUT_DIR",
+    "AEGIS_CHROMA_DB_PATH",
 )
 
 
@@ -82,6 +83,7 @@ def pytest_configure(config: pytest.Config) -> None:
         "REPORTING_CHROMA_DB_PATH": root / "reporting_chroma",
         "SOC_RUN_OUTPUT_DIR": root / "run_outputs",
         "SOC_OUTPUT_DIR": root / "run_outputs",
+        "AEGIS_CHROMA_DB_PATH": root / "aegis_chroma",
     }
     for path in paths.values():
         if not path.exists() and PROJECT_ROOT not in path.parents:

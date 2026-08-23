@@ -74,10 +74,7 @@ REPORT_DESCRIPTIONS: dict[str, str] = {
         "incident report template."),
 }
 
-# Reuses the existing pill() tone vocabulary from ui_components.py
-# (.ag-critical/.ag-high/.ag-medium/.ag-low/.ag-info) rather than inventing
-# new colors, so status badges stay visually consistent with the rest of
-# the app (severity pills, stage pills, etc).
+# Stable semantic tones consumed by the frontend status badges.
 STATUS_TONES = {
     "Not generated": "critical",
     "Regeneration required": "critical",

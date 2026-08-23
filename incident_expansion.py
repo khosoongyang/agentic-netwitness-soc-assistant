@@ -124,7 +124,7 @@ class LocalCorpusSource:
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:gp_is_reachable, chroma_viewer.py:sqlite_count, chroma_viewer.py:sqlite_load; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include the canonical pipeline inspection service; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `close`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

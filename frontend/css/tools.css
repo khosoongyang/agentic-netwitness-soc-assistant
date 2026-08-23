@@ -1,0 +1,11 @@
+.pipeline-grid { margin-bottom: 1rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: .7rem; }
+.pipeline-card { padding: .9rem; display: grid; gap: .35rem; border: 1px solid var(--border-soft); border-radius: .55rem; color: var(--text); background: var(--surface); text-align: left; cursor: pointer; }
+.pipeline-card span, .pipeline-card small { color: var(--muted); }
+.pipeline-list { display: grid; gap: .7rem; }
+.pipeline-list article { padding: .8rem; border: 1px solid var(--border-soft); border-radius: .5rem; }
+.pipeline-list article > div:first-child { display: flex; justify-content: space-between; gap: 1rem; }
+.pipeline-list p { margin-top: .35rem; color: var(--muted); }
+.search-results { padding: 0; list-style: none; }
+.search-results button { width: 100%; margin: .35rem 0; padding: .8rem; display: grid; grid-template-columns: 1fr auto; border: 1px solid var(--border-soft); border-radius: .5rem; color: var(--text); background: var(--surface); text-align: left; cursor: pointer; }
+.search-results p { grid-column: 1 / -1; margin-top: .4rem; color: var(--muted); }
+.action-button[href] { display: inline-flex; align-items: center; text-decoration: none; }

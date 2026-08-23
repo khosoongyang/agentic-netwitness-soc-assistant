@@ -879,7 +879,7 @@ def build_entity_graph(incident: dict, data_availability: dict) -> dict:
     (none recorded) instead.
 
     [FYP-USED-BY]: internal only — build_case_view() (Entity Graph tab).
-    app.py renders the returned nodes/edges via st.graphviz_chart(),
+    the frontend renders the returned nodes/edges via its graph view,
     importing incident_map.to_dot directly (as `_cv_to_dot`) rather than
     through this module's own `incident_map_to_dot` re-export at the top
     of this file — that re-export is currently unused, left available for
@@ -1378,17 +1378,14 @@ def build_reporting(state: dict, incident_id: str, run_id: str) -> dict:
 
 def reporting_blocks_to_render_ops(blocks: list[dict[str, Any]] | Any) -> list[dict[str, Any]]:
     """
-    [FYP-FUNCTION] [FYP-USED-BY]: app.py, `cv.reporting_blocks_to_render_
-    ops(...)` (confirmed via grep, ~line 901) — feeds a loop that dispatches
-    each returned op to ui_components.queue_table() (op="table") or the
-    equivalent st.* call for heading/bullet_list/page_break/markdown.
+    [FYP-FUNCTION] Converts structured report blocks into rendering operations
+    for UI or export adapters.
 
     Pure mapping from structured report blocks (see
     soc_reporting_agent/reporting/structured_report.py) to a small,
-    UI-framework-agnostic instruction list — kept separate from the actual
-    st.* calls in app.py so it's independently unit-testable: a
+    UI-framework-agnostic instruction list that is independently unit-testable: a
     {"type":"table",...} block MUST produce a {"op":"table",...}
-    instruction (rendered via ui_components.queue_table()), never a
+    instruction (rendered as a structured table), never a
     {"op":"markdown", text containing raw "|" pipe syntax} instruction."""
     ops: list[dict[str, Any]] = []
     if not isinstance(blocks, list):
@@ -1464,7 +1461,7 @@ def build_output(state: dict) -> dict:
 # ══════════════════════════════════════════════════════════════════════════
 # build_case_view() below is shaped for the case-detail UI (full sanitized
 # investigation result, entity graph, hash-verified report manifest
-# previews) and is fine to recompute once per Streamlit page render. A chat
+# previews) and is fine to recompute once per workspace request. A chat
 # turn happens once per message SEND, so this section deliberately skips
 # build_output()/build_reporting()'s file I/O and full-size payloads and
 # enforces a hard character budget instead (see _MAX_CONTEXT_CHARS) — a

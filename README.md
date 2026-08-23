@@ -1,59 +1,42 @@
-# 🛡️ SOC Platform v2
+# Aegis SOC Investigation Platform
 
-## Quick Start
+Aegis uses a Flask backend with an HTML, CSS and vanilla JavaScript frontend.
+The canonical local entry point is the root `app.py`.
+
+## Quick start
 
 ```bash
 pip install -r requirements.txt
-streamlit run app.py
+python app.py
 ```
 
-## Features
+Open <http://127.0.0.1:5000>. The health check is available at
+<http://127.0.0.1:5000/api/health>.
 
-### NetWitness Integration
-- **Import token manually** — paste your access token, it's verified against `/rest/api/version`
-- **Login with credentials** — username/password auth via `/rest/api/auth/userpass` to get a token automatically
-- **Auto token refresh** — on every page render, the app checks if the token is within 5 min of expiry and re-authenticates using stored credentials
-- **Force refresh button** — manual refresh on demand
-- **Token lifetime bar** — visual countdown in the sidebar (turns yellow < 20%, red < 5%)
+Copy `.env.example` to `.env` when local credentials are required. Never
+commit real API keys, passwords, tokens or certificate material.
 
-### Incidents
-- Fetched from `/rest/api/incidents` with severity filtering
-- Color-coded cards (CRITICAL / HIGH / MEDIUM / LOW)
-- One-click **💬 Chat** to open chat with incident as context
-- One-click **🔍 Detail** to inspect full JSON
+## Application surfaces
 
-### Chat (LangChain stub)
-- Incident context banner when launched from an incident card
-- Wire LangChain inside `chat_respond()` — all context is passed in
-- ChromaDB collection accessible via `st.session_state.chroma_collection`
+- Overview and case archive with filtering, sorting and exports
+- Case workspace for parsing, triage, threat intelligence, investigation and
+  reporting workflow stages
+- Durable analyst approvals, rejections, reruns and interrupted-run recovery
+- NetWitness authentication, incident retrieval and synchronization
+- JSON, CSV, text and log incident imports
+- Global and case-scoped Ask Aegis
+- Triage-ticket and report review, editing, confirmation and DOCX/PDF export
+- Settings, semantic search and guarded pipeline administration
 
-### ChromaDB
-- Persistent local vector store at `./chroma_db` (configurable)
-- **Sync Incidents** — upsert all fetched incidents as text embeddings
-- **Semantic Search** — cosine similarity search across incident corpus
-- **Wipe / Export** — collection management tools
+NetWitness can remain unconfigured for offline/cached-case use. Chroma data is
+read from `runtime/chroma/` by default and can be configured with
+`AEGIS_CHROMA_DB_PATH`.
 
-## Wiring LangChain
+## Tests
 
-Open `app.py` and replace the body of `chat_respond()`:
-
-```python
-from langchain_community.vectorstores import Chroma
-from langchain_anthropic import ChatAnthropic
-from langchain.chains import RetrievalQA
-
-vectorstore = Chroma(
-    client=st.session_state.chroma_client,
-    collection_name="soc_incidents",
-    embedding_function=your_embedder,
-)
-llm = ChatAnthropic(model="claude-sonnet-4-20250514")
-chain = RetrievalQA.from_chain_type(llm=llm, retriever=vectorstore.as_retriever())
-return chain.invoke(user_msg)["result"]
+```bash
+.venv/bin/python -m pytest -q
 ```
 
-## NetWitness API Notes
-- Token header: `NetWitness-Token`
-- Auth endpoint: `POST /rest/api/auth/userpass`
-- Incidents: `GET /rest/api/incidents?limit=100`
-- Self-signed certs: SSL verification is disabled by default (`verify=False`)
+The test infrastructure redirects mutable databases, reporting artifacts and
+vector data to temporary directories so a run does not modify tracked data.

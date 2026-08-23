@@ -1,6 +1,8 @@
 """Read-only case and workflow API routes."""
 
-from flask import Blueprint, current_app, jsonify, request
+import io
+
+from flask import Blueprint, current_app, jsonify, request, send_file
 
 from ..errors import InvalidQueryError
 from ..services import case_service
@@ -33,6 +35,12 @@ def cases():
     ))
 
 
+@cases_blueprint.get("/export")
+def export_cases():
+    data, filename = case_service.export_cases_csv(database_path=current_app.config.get("AEGIS_CASE_DB_PATH"))
+    return send_file(io.BytesIO(data), mimetype="text/csv", as_attachment=True, download_name=filename)
+
+
 @cases_blueprint.get("/<case_id>")
 def case_detail(case_id: str):
     return jsonify(case_service.get_case_detail(
@@ -48,3 +56,9 @@ def case_workflow(case_id: str):
         case_id,
         database_path=current_app.config.get("AEGIS_CASE_DB_PATH"),
     ))
+
+
+@cases_blueprint.get("/<case_id>/raw")
+def case_raw(case_id: str):
+    return jsonify(case_service.get_case_raw(
+        case_id, database_path=current_app.config.get("AEGIS_CASE_DB_PATH")))

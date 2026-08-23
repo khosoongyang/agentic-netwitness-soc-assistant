@@ -11,9 +11,9 @@
 #   pipeline stages (Parsing, Triage, Investigation, Reporting), persists
 #   every stage transition to the pipeline database, and implements the
 #   in-process evidence-gap feedback loop that can trigger an automatic
-#   Investigation re-run without any human click. app.py (the Streamlit
-#   dashboard) imports functions from this module directly and calls them
-#   from its own session-state-driven, human-gated flow; this file itself
+#   Investigation re-run without any human click. The Flask workflow adapter
+#   imports functions from this module directly and invokes them through the
+#   durable, human-gated flow; this file itself
 #   also exposes a `main()` CLI entry point that runs the whole chain
 #   headlessly (`python soc_workflow.py --incident-file ...`).
 #
@@ -735,7 +735,7 @@ def _data_availability(incident: dict) -> dict:
 
 def load_raw_incident_for_run(incident_id: str, run_id: str) -> dict | None:
     """[FYP-FUNCTION] [FYP-STATE] The ONLY source of the full raw incident (with alertMeta) for the
-    durable Threat Intelligence path — never st.session_state. Returns
+    durable Threat Intelligence path — never browser-session state. Returns
     None (not a guess) if the row's run_id doesn't match or the file is
     missing/invalid/mismatched.
 
@@ -3862,7 +3862,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
 
     # Persist the full raw incident (with alertMeta) for this run BEFORE
     # anything else — this is the only durable source of it for the
-    # Threat Intelligence stage's resume path (never st.session_state).
+    # Threat Intelligence stage's resume path (never browser-session state).
     # Alongside it, stamp REAL fetch-outcome metadata (not merely
     # bool(incident.get("alerts"))) — an empty-but-successfully-fetched
     # alert list is genuinely different from a fetch that failed or was
@@ -4083,11 +4083,11 @@ def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
     Durable resume entry point for Threat Intelligence. Takes ONLY
     incident_id/run_id — reloads workflow state, the parsing result, the
     full raw incident, and the triage result from SQLite/disk. Safe to
-    call from a fresh process, a new Streamlit session, or after a
+    call from a fresh process, a new application session, or after a
     restart, as long as soc_incidents.db still shows this run_id as
     current and threat_intel_status == 'Processing' (set atomically by
     workflow_state_store.approve_triage() or .retry_threat_intel()). NO
-    st.* calls; safe to run in a background thread.
+    UI calls; safe to run in a background thread.
 
     [FYP-STAGE-LOCK]: claim_stage(..., expect_status="Processing") is the
     atomic ownership check — if another worker already claimed this stage
@@ -4227,7 +4227,7 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
     function ALSO acquires the global "investigation_workspace" lock
     (workflow_state_store.acquire_global_lock) before calling
     investigate_with_feedback() — with a bounded backoff wait (not "give up
-    and hope a future poll retries it": Streamlit's polling fragment only
+    and hope a future poll retries it": the frontend polling loop only
     refreshes the DISPLAY, it never calls run_stage_chain() on its own).
     The SAME worker stays alive, continuously renewing its own stage lease
     AND (once acquired) the global lock, for up to
@@ -4744,7 +4744,7 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
     [FYP-ERROR] [FYP-FALLBACK]: every StageClaimError from the three stage
     functions is caught locally and treated as "someone else is already
     handling this — stop quietly," not a caller-visible error. This
-    function itself never raises: "Pure backend function: no Streamlit
+    function itself never raises: "Pure backend function: no UI-framework
     import, no UI dependency, safe to call from a thread, a script, or a
     future queue consumer."
 

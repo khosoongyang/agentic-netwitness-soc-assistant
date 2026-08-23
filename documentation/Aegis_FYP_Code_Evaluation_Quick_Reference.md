@@ -1,5 +1,10 @@
 # 1. Aegis FYP Code Evaluation Quick Reference Guide
 
+> Historical snapshot: this generated guide describes the pre-cutover
+> architecture as it existed on 2026-07-30. Legacy UI paths and commands below
+> are not active instructions. See `README.md` and `documentation/Phase_7_Streamlit_Cutover.md`
+> for the supported Flask application.
+
 **Project:** Aegis - Agentic SOC Automation  
 **Team:** Kho Soong Yang; Shahrul Gunawan S/O Iqbal Suppiah; Teo Rui Xuan  
 **Version:** 1.0  

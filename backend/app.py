@@ -9,9 +9,14 @@ from flask import Flask, send_from_directory
 from .errors import install_error_handlers
 from .routes import api_blueprint
 from .routes.cases import cases_blueprint
+from .routes.chatbot import chatbot_blueprint
 from .routes.dashboard import dashboard_blueprint
+from .routes.admin_pipeline import pipeline_blueprint
 from .routes.imports import imports_blueprint
 from .routes.netwitness import netwitness_blueprint
+from .routes.reports import reports_blueprint
+from .routes.search import search_blueprint
+from .routes.settings import settings_blueprint
 from .routes.workflow import workflow_blueprint
 
 
@@ -34,6 +39,11 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(workflow_blueprint)
     app.register_blueprint(netwitness_blueprint)
     app.register_blueprint(imports_blueprint)
+    app.register_blueprint(chatbot_blueprint)
+    app.register_blueprint(reports_blueprint)
+    app.register_blueprint(settings_blueprint)
+    app.register_blueprint(search_blueprint)
+    app.register_blueprint(pipeline_blueprint)
     install_error_handlers(app)
 
     @app.get("/")

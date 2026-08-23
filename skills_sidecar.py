@@ -27,7 +27,7 @@ agent's written incident report.
 WHY THIS EXISTS
     The project has ~16 standalone deterministic skills (Diamond Model, internal
     IOC correlation, the unified triage verdict, asset criticality, mitigation
-    coverage, …). Until now they only rendered in the Streamlit Map panels — the
+    coverage, …). They originally rendered only in legacy Map panels — the
     investigation and reporting LLM agents never saw them, so the *written* report
     contained none of that analysis. This module closes that gap.
 

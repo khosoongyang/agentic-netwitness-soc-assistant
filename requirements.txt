@@ -17,13 +17,12 @@
 #   installer, workflow, or framework; fallback behaviour belongs to that caller.
 # Key evaluator search terms: requirements.txt, [FYP-CONFIG], [FYP-FILE].
 # =============================================================================
-# [FYP-CONFIG] Purpose: pinned Python dependencies for the root Streamlit
-# app and its bundled triage/investigation/reporting agents. Consumed by
-# `pip install -r requirements.txt` (local dev, Streamlit Community Cloud
-# deploy) and by .github/workflows/code-scan.yml's pip-audit CVE scan step.
+# [FYP-CONFIG] Purpose: pinned Python dependencies for the root Flask app and
+# its bundled triage/investigation/reporting agents. Consumed by
+# `pip install -r requirements.txt` for local development and by
+# .github/workflows/code-scan.yml's pip-audit CVE scan step.
 # ── Core app (app.py) ─────────────────────────────────────────────
 flask>=3.0.0
-streamlit==1.45.1
 protobuf==3.20.3
 requests>=2.31.0
 protobuf==3.20.3
@@ -52,10 +51,3 @@ reportlab>=4.2.0
 # table syntax) for the Reporting candidate-manifest pipeline — see
 # soc_reporting_agent/reporting/report_validator.py.
 pypdf>=4.0.0
-
-# ── Deploy-only: Streamlit Community Cloud (Linux) ────────────────
-# chromadb needs sqlite3 >= 3.35; Streamlit Cloud's Debian image ships an
-# older one. pysqlite3-binary supplies a newer bundled sqlite that app.py
-# swaps in at startup. Linux-only marker so a local Windows/macOS
-# `pip install -r requirements.txt` skips it (no Windows wheel exists).
-pysqlite3-binary>=0.5.0; platform_system == "Linux"

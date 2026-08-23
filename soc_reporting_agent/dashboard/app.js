@@ -2,7 +2,7 @@
  * [FYP-FILE] Aegis SOC Dashboard - client-side application (plain JS, no framework/bundler).
  * Single-file SPA: owns routing (location.hash), all HTML rendering (template-string based),
  * and every call to the Flask backend (see the `api()` helper below and the [FYP-API] tags
- * on each call site). This file is independent from the main Streamlit UI used elsewhere
+ * on each call site). This donor dashboard is independent from the canonical Aegis UI
  * in the project - it talks to the same backend but renders its own DOM.
  * File: soc_reporting_agent/dashboard/app.js
  * Inputs: DOM events, URL hash state, analyst form values, and JSON/blob responses from backend/app.py.

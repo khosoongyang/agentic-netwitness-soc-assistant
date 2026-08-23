@@ -287,7 +287,7 @@ def resolve_approved_report_file(incident_id: str, run_id: str, report_type: str
     workflow_approvals record), never from whatever reporting_result_json
     currently holds (which may belong to a later, not-yet-approved
     rerun). Returns (bytes, sha256) or None if unavailable/unverifiable —
-    never raises, since this is called on every Streamlit rerender just to
+    never raises, since this is called on every report view request just to
     decide whether to show a download button."""
     try:
         latest = wss.get_latest_approved_reporting_set(incident_id, run_id)

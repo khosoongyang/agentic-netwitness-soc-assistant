@@ -40,7 +40,6 @@ description = "Template placeholders, generated demo data, and binary payloads (
 # File paths (regex, matched against the repo-relative path) to skip.
 paths = [
   # Secret TEMPLATES — intentionally contain fake 'sk-xxxx' style placeholders
-  '''\.streamlit/secrets\.toml\.example''',
   '''\.env\.example''',
   # On-prem/VPN TLS material — gitignored, but belt-and-suspenders if ever committed
   '''\.pem$''',

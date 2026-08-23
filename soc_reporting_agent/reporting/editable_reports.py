@@ -82,10 +82,10 @@
 #     finalize_candidate_manifest()'s hashing/atomic-write contract in its
 #     own docstrings (decides, per report, whether the candidate set is safe
 #     to publish)
-#   - report_editing.py (repo root) -- main Streamlit app's analyst-edit
+#   - report_editing.py (repo root) -- canonical app's analyst-edit
 #     layer for the four core reports; uses incident_report_dir(),
 #     render_blocks_to_docx(), render_blocks_to_pdf()
-#   - triage_ticket_editing.py (repo root) -- same Streamlit app, triage
+#   - triage_ticket_editing.py (repo root) -- same application, triage
 #     ticket export; uses render_blocks_to_docx(), render_blocks_to_pdf()
 #   - tests/test_reporting_stage.py,
 #     soc_reporting_agent/tests/test_structured_report_tables.py,
@@ -1663,7 +1663,7 @@ def render_blocks_to_docx(path: Path, title: str, blocks: list[dict[str, Any]],
 
     Public entry point for rendering an arbitrary block list straight to a
     .docx file, with no dependency on report_manifest.json / draft-confirm
-    status — used by callers (e.g. the main Streamlit app's analyst-edit
+    status — used by callers (e.g. the canonical app's analyst-edit
     layer) that maintain their own block content outside this module's
     manifest but still want the exact same document styling/layout. Thin
     wrapper around the private renderer used by export_section_docx().

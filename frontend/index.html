@@ -7,6 +7,9 @@
   <link rel="stylesheet" href="/frontend/css/app.css">
   <link rel="stylesheet" href="/frontend/css/layout.css">
   <link rel="stylesheet" href="/frontend/css/components.css">
+  <link rel="stylesheet" href="/frontend/css/chat.css">
+  <link rel="stylesheet" href="/frontend/css/reports.css">
+  <link rel="stylesheet" href="/frontend/css/tools.css">
   <script src="/frontend/js/app.js" type="module"></script>
 </head>
 <body>
@@ -19,9 +22,13 @@
       <nav class="primary-nav" aria-label="Primary navigation">
         <a href="/?view=overview" data-nav="overview">Overview</a>
         <a href="/?view=cases" data-nav="cases">Cases</a>
+        <a href="/?view=chat" data-nav="chat">Ask Aegis</a>
+        <a href="/?view=search" data-nav="search">Search</a>
+        <a href="/?view=pipeline" data-nav="pipeline">Pipeline</a>
         <a href="/?view=integrations" data-nav="integrations">Integrations</a>
+        <a href="/?view=settings" data-nav="settings">Settings</a>
       </nav>
-      <span class="read-only-badge">Workflow migration</span>
+      <span class="read-only-badge">Flask application</span>
     </header>
     <main id="app-content" class="page" aria-live="polite">
       <div class="state-panel"><span class="spinner" aria-hidden="true"></span>Loading Aegis…</div>

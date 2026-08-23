@@ -252,7 +252,7 @@ class BaseVectorIndex(ABC):
     # [FYP-INPUT] Parameters: `query_text`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:chroma_search, app.py:pipeline_chroma_search, chroma_viewer.py:<module>; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include canonical search and pipeline services; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -763,7 +763,7 @@ class ChromaIncidentVectorStore(BaseVectorIndex):
     # [FYP-INPUT] Parameters: `query_text`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include app.py:chroma_search, app.py:pipeline_chroma_search, chroma_viewer.py:<module>; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include canonical search and pipeline services; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `len`, `range`, `to_thread`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -851,7 +851,7 @@ class InMemoryMockVectorIndex(BaseVectorIndex):
     # [FYP-INPUT] Parameters: `query_text`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include app.py:chroma_search, app.py:pipeline_chroma_search, chroma_viewer.py:<module>; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include canonical search and pipeline services; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `items`, `len`, `lower`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

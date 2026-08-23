@@ -1,21 +1,20 @@
 # ─────────────────────────────────────────────────────────────────────
-# .gitignore for the Streamlit Community Cloud deployment copy.
+# .gitignore for the Aegis Flask application.
 #
 # UNLIKE a normal repo, this one MUST commit its demo data (soc_db/,
 # chroma_db/, *.db) — the cloud app has NO NetWitness/VPN access and
-# serves those stored incidents instead. So the databases are intentionally
+# can serve those stored incidents instead. So the databases are intentionally
 # TRACKED here. Only secrets and throwaway cruft are ignored.
 #
 # ⚠️  The stored incidents may contain internal hostnames/users/IPs. If that
-#     data is sensitive, deploy from a PRIVATE GitHub repo (Streamlit Cloud
-#     supports private repos) or scrub the DB first. See DEPLOY.md.
+#     data is sensitive, deploy from a PRIVATE GitHub repo or scrub the DB
+#     first. See DEPLOY.md.
 # ─────────────────────────────────────────────────────────────────────
 
-# ── SECRETS — never commit (LLM key etc. go in Streamlit Cloud → Secrets) ──
+# ── SECRETS — never commit; use local environment variables ──
 .env
 .env.*
 !.env.example
-.streamlit/secrets.toml
 
 # ── NetWitness TLS material (on-prem/VPN only; sensitive, unused in cloud) ──
 *.pem
@@ -53,6 +52,7 @@ soc_reporting_agent/runtime/
 soc_investigation_agent_revised/ChromaDatabase/
 runtime/uploads/*
 !runtime/uploads/.gitkeep
+runtime/chroma/
 
 # NOTE: soc_db/, chroma_db/, *.db, incident_reports/, triaged_alerts/ are
 # intentionally TRACKED — they are the offline demo payload the cloud app

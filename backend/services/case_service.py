@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import csv
+import io
 import math
 import sqlite3
 from contextlib import closing
@@ -253,6 +255,25 @@ def get_case_detail(
         "workspace": workspace,
         "workflow_available": bool(row.get("run_id") or row.get("workflow_status")),
     }
+
+
+def get_case_raw(case_id: str, *, database_path: str | Path | None = None) -> dict[str, Any]:
+    row = _get_case_row(case_id, database_path)
+    return {"case_id": case_id, "incident": _json_object(row.get("raw_json"))}
+
+
+def export_cases_csv(*, database_path: str | Path | None = None) -> tuple[bytes, str]:
+    with closing(open_readonly_connection(database_path)) as connection:
+        rows = connection.execute(
+            "SELECT id,title,severity,status,assignee,alert_count,created,updated,first_seen,last_seen "
+            "FROM incidents ORDER BY COALESCE(last_seen,updated,created,'') DESC"
+        ).fetchall()
+    stream = io.StringIO()
+    columns = ["id", "title", "severity", "status", "assignee", "alert_count", "created", "updated", "first_seen", "last_seen"]
+    writer = csv.DictWriter(stream, fieldnames=columns)
+    writer.writeheader()
+    writer.writerows(dict(row) for row in rows)
+    return stream.getvalue().encode("utf-8"), "soc_incidents.csv"
 
 
 def _semantic_stage_state(stage: dict[str, Any], raw_status: str) -> str:

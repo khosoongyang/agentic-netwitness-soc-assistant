@@ -27,8 +27,8 @@ name: Code Scan (deps + SAST)
 #   2. Semgrep    — static analysis (Python security rules)
 #
 # Both jobs use `continue-on-error: true`, so findings are SURFACED (visible on the
-# job + in its log) but the overall run stays green — they never block a push or the
-# Streamlit Cloud deploy. This is deliberate: some findings are accepted risk (e.g.
+# job + in its log) but the overall run stays green — they never block a push or
+# deployment. This is deliberate: some findings are accepted risk (e.g.
 # protobuf==3.20.3 is pinned for ChromaDB compat, and app.py disables TLS-warning
 # noise for the on-prem NetWitness cert). To turn either into a hard gate later,
 # just delete its `continue-on-error: true` line.

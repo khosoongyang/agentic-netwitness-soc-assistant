@@ -1,9 +1,9 @@
 """
 nw_alerts.py — NetWitness alert-response parsing & distillation (pure helpers).
 
-Extracted verbatim from app.py to start slimming the Streamlit monolith. These
-functions are PURE (stdlib only — no Streamlit, no session state, no globals,
-no network), so they unit-test offline and app.py imports them unchanged.
+Extracted from the original UI monolith. These functions are PURE (stdlib
+only — no UI framework, session state, globals or network), so they unit-test
+offline and the workflow imports them unchanged.
 
 WHAT'S HERE
     _extract_alert_items(payload)   — pull the alert list out of any NW response
@@ -37,8 +37,8 @@ whose bare code alone wasn't enough to diagnose.
 #   Pure, stdlib-only helper functions for parsing NetWitness Respond
 #   "/rest/api/incidents/{id}/alerts" API responses and distilling their
 #   nested event/endpoint data into the incident's alertMeta structure.
-#   Extracted verbatim from app.py to slim the Streamlit monolith and make
-#   the logic independently unit-testable — no Streamlit, session state,
+#   Extracted from the original UI monolith to make the logic independently
+#   unit-testable — no UI framework, session state,
 #   globals, or network calls in this module.
 #
 # Main functionalities:
@@ -91,7 +91,7 @@ whose bare code alone wasn't enough to diagnose.
 #
 # Calls [FYP-CALLS]:
 #   None — pure stdlib (isinstance/dict/list/str operations only); no
-#   network, DB, Streamlit or session-state access anywhere in this file.
+#   network, DB, UI-framework or session-state access anywhere in this file.
 #
 # Key evaluator search terms:
 #   _distill_alerts, _merge_alert_digest, alertMeta, ECAT, NetWitness
@@ -317,8 +317,8 @@ def _alerts_fetch_warning(inc: dict) -> str:
     renders a usable message rather than raising.
     [FYP-CALLS] none — pure string formatting of fields already present on
     `inc`; no DB or network access.
-    [FYP-USED-BY] app.py's incident-detail UI (renders this string as a
-    Streamlit warning when an incident's alerts failed to attach)."""
+    [FYP-USED-BY] the incident-detail UI (renders this string as a warning
+    when an incident's alerts failed to attach)."""
     err = inc.get("alerts_fetch_error") or "unknown"
     diag = inc.get("alerts_fetch_diag") or {}
     msg = f"Alerts fetch failed: **{err}**."

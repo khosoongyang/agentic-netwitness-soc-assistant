@@ -1,0 +1,11 @@
+.chat-context { margin-bottom: 0.8rem; color: var(--muted); font-size: 0.78rem; }
+.chat-messages { min-height: 18rem; max-height: 34rem; padding: 1rem; overflow-y: auto; border: 1px solid var(--border-soft); border-radius: 0.55rem; background: #07101c; }
+.chat-message { max-width: 82%; margin: 0.7rem 0; padding: 0.75rem 0.9rem; border-radius: 0.65rem; white-space: pre-wrap; }
+.chat-message strong { display: block; margin-bottom: 0.35rem; font-size: 0.7rem; color: var(--muted); }
+.chat-message.user { margin-left: auto; background: #15314d; }
+.chat-message.assistant { border: 1px solid var(--border-soft); background: var(--surface-raised); }
+.chat-empty { padding: 5rem 1rem; color: var(--muted); text-align: center; }
+.chat-composer { margin-top: 0.8rem; display: grid; grid-template-columns: 1fr auto; gap: 0.6rem; }
+.chat-composer input { min-height: 2.7rem; padding: 0.6rem 0.8rem; border: 1px solid var(--border); border-radius: 0.45rem; color: var(--text); background: var(--surface); }
+.chat-prompts { margin: 0.7rem 0; display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.chat-prompts button { padding: 0.4rem 0.65rem; border: 1px solid var(--border); border-radius: 999px; color: var(--muted); background: var(--surface); cursor: pointer; }

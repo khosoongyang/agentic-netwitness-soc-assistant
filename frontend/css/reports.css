@@ -1,0 +1,9 @@
+.reports-layout { display: grid; grid-template-columns: minmax(15rem, .55fr) minmax(30rem, 1.6fr); gap: 1rem; }
+.report-list { display: grid; align-content: start; gap: .6rem; }
+.report-card { padding: .85rem; display: grid; gap: .3rem; border: 1px solid var(--border-soft); border-radius: .55rem; color: var(--text); background: var(--surface); text-align: left; cursor: pointer; }
+.report-card span, .report-card small { color: var(--muted); }
+.report-preview { line-height: 1.55; }
+.report-preview h2, .report-preview h3, .report-preview h4 { margin: 1.2rem 0 .5rem; }
+.report-preview p, .report-preview ul { margin: .6rem 0; }
+.block-editor { width: 100%; min-height: 32rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: .45rem; color: var(--text); background: #07101c; font-family: monospace; }
+@media (max-width: 900px) { .reports-layout { grid-template-columns: 1fr; } }

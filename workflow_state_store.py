@@ -187,8 +187,8 @@ def db_connect() -> sqlite3.Connection:
     [FYP-DATABASE]
     Params: none. Returns: sqlite3.Connection to DB_FILE, with
     row_factory=sqlite3.Row (so rows can be read like dicts),
-    check_same_thread=False (required — Streamlit reruns and the background
-    worker thread in app.py/soc_workflow.py share connections across
+    check_same_thread=False (required because Flask requests and background
+    workers can access the database from different
     threads), timeout=15s (waits out short writer locks instead of failing
     immediately with "database is locked").
     Called by: db_init(), get_state(), get_approval_history(),

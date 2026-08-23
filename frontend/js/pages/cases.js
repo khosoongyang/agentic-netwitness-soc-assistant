@@ -28,7 +28,7 @@ export async function renderCases(root, { navigate, route }) {
     const filters = data.filters;
     const pagination = data.pagination;
     root.innerHTML = `
-      <section class="page-header"><div><h1>Cases</h1><p>${formatCount(pagination.total)} cases match the current view.</p></div></section>
+      <section class="page-header"><div><h1>Cases</h1><p>${formatCount(pagination.total)} cases match the current view.</p></div><a class="action-button" href="/api/cases/export">Export all as CSV</a></section>
       <form class="filters" id="case-filters">
         <input name="search" type="search" value="${escapeHTML(filters.search)}" placeholder="Search title, ID, or assignee" aria-label="Search cases">
         <select name="severity" aria-label="Filter by severity">${option("ALL", filters.severity)}${data.facets.severities.map((value) => option(value, filters.severity)).join("")}</select>

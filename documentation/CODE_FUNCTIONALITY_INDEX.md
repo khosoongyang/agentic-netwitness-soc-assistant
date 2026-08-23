@@ -1,5 +1,10 @@
 # Aegis Code Functionality Index
 
+> Historical snapshot: this generated index documents the pre-cutover
+> architecture as it existed on 2026-07-30. Its legacy UI paths and launch
+> commands are retained only for migration traceability. For the supported
+> application, use the root `app.py`, root `backend/` and `frontend/`.
+
 **Repository:** agentic-netwitness-soc-assistant  
 **Branch:** merge-final-evaluation  
 **Generated:** 2026-07-30  

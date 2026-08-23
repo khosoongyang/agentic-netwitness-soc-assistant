@@ -1,5 +1,6 @@
 import { fetchJSON } from "../api.js";
 import { emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, provenanceValue, severityBadge, stateBadge } from "../ui.js";
+import { installChat } from "./chatbot.js";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
@@ -43,19 +44,21 @@ function renderSelectedStage(root, stage, onAction) {
   });
 }
 
-function analystIdentity() {
-  const existing = window.sessionStorage.getItem("aegisAnalyst") || "";
-  const analyst = window.prompt("Analyst name", existing)?.trim() || "";
-  if (analyst) window.sessionStorage.setItem("aegisAnalyst", analyst);
+async function analystIdentity() {
+  const settings = await fetchJSON("/api/settings");
+  const analyst = settings.analyst_name || window.prompt("Analyst name", "")?.trim() || "";
+  if (analyst && !settings.analyst_name) {
+    await fetchJSON("/api/settings", { method: "PUT", body: { analyst_name: analyst, openai_model: settings.openai_model } });
+  }
   return analyst;
 }
 
-function actionRequest(caseId, action, stage) {
+async function actionRequest(caseId, action, stage) {
   const base = `/api/cases/${encodeURIComponent(caseId)}`;
   if (action === "start") return [`${base}/stages/${stage.key}/runs`, {}];
   if (action === "rerun") return [`${base}/stages/${stage.key}/reruns`, {}];
   if (action === "resume") return [`${base}/workflow/resume`, {}];
-  const analyst = analystIdentity();
+  const analyst = await analystIdentity();
   if (!analyst) throw new Error("An analyst name is required.");
   if (action === "approve") {
     const comments = window.prompt("Approval comments (optional)", "") ?? "";
@@ -104,11 +107,20 @@ export async function renderWorkspace(root, { navigate, route }) {
     root.innerHTML = `
       <button class="text-button" id="back-to-cases">← Back to cases</button>
       <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div>${severityBadge(detail.case.severity)}</section>
-      <p class="notice">Workflow actions use the canonical durable state transitions. Report editing and other deferred features remain unavailable.</p>
+      <div class="stage-actions"><button class="action-button" id="open-reports">Review reports &amp; triage ticket</button><button class="action-button" id="load-raw">View raw incident JSON</button></div><div id="raw-incident"></div>
       <section class="panel"><h2>Case context</h2>${caseContext(detail)}</section>
       <section class="panel" id="workflow-panel" style="margin-top:1rem"></section>
-      <section class="workspace-grid"><article class="panel"><h2>Key findings</h2>${findings(detail.workspace)}</article><article class="panel" id="stage-output"></article></section>`;
+      <section class="workspace-grid"><article class="panel"><h2>Key findings</h2>${findings(detail.workspace)}</article><article class="panel" id="stage-output"></article></section>
+      <section class="panel" style="margin-top:1rem"><h2>Case evidence views</h2><div class="evidence-view-grid">${[
+        ["Timeline", detail.workspace?.timeline], ["MITRE ATT&CK", detail.workspace?.mitre],
+        ["Entity graph", detail.workspace?.entity_graph], ["Evidence", detail.workspace?.evidence],
+        ["Activity", detail.workspace?.activity], ["Investigation output", detail.workspace?.output],
+      ].map(([label, value]) => `<details><summary>${escapeHTML(label)}</summary>${jsonPreview(value)}</details>`).join("")}</div></section>
+      <section class="panel" style="margin-top:1rem"><h2>Ask Aegis about this case</h2><div id="case-chat"></div></section>`;
     root.querySelector("#back-to-cases").addEventListener("click", () => navigate("cases"));
+    root.querySelector("#open-reports").addEventListener("click", () => navigate("reports", { case: caseId }));
+    root.querySelector("#load-raw").addEventListener("click", async () => { const output = root.querySelector("#raw-incident"); output.innerHTML = loadingState("Loading raw incident…"); try { const raw = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/raw`); output.innerHTML = jsonPreview(raw.incident); } catch (error) { output.innerHTML = errorState(error); } });
+    installChat(root.querySelector("#case-chat"), { caseId });
     const workflowRoot = root.querySelector("#workflow-panel");
     const outputRoot = root.querySelector("#stage-output");
 
@@ -136,7 +148,7 @@ export async function renderWorkspace(root, { navigate, route }) {
       const actionStatus = outputRoot.querySelector("#action-status");
       outputRoot.querySelectorAll("[data-workflow-action]").forEach((button) => { button.disabled = true; });
       try {
-        const [path, body] = actionRequest(caseId, action, stage);
+        const [path, body] = await actionRequest(caseId, action, stage);
         if (actionStatus) actionStatus.innerHTML = `<p class="notice"><span class="spinner"></span>Submitting ${escapeHTML(action)}…</p>`;
         const result = await fetchJSON(path, { method: "POST", body });
         await refreshWorkflow();
