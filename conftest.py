@@ -78,7 +78,7 @@ def pytest_configure(config: pytest.Config) -> None:
         "REPORTING_INPUT_DIR": reporting_inputs,
         "REPORTING_OUTPUT_DIR": reporting_outputs,
         "REPORTING_TEMPLATE_DIR": PROJECT_ROOT / "soc_reporting_agent" / "report_templates",
-        "REPORTING_KB_DIR": PROJECT_ROOT / "soc_reporting_agent" / "knowledge_base",
+        "REPORTING_KB_DIR": PROJECT_ROOT / "knowledge_base" / "reporting",
         "REPORTING_LLM_CACHE_DIR": root / "reporting_cache",
         "REPORTING_CHROMA_DB_PATH": root / "reporting_chroma",
         "SOC_RUN_OUTPUT_DIR": root / "run_outputs",

@@ -24,10 +24,15 @@ from pathlib import Path
 import os
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# Repository root — Phase 8 moved schemas/ and knowledge_base/ to canonical,
+# domain-owned top-level locations shared across agents. Update this if
+# soc_reporting_agent's own nesting depth changes (e.g. a future move under
+# agents/reporting/).
+REPO_ROOT = Path(__file__).resolve().parents[2]
 INPUT_DIR = Path(os.getenv("REPORTING_INPUT_DIR", PROJECT_ROOT / "inputs"))
 OUTPUT_DIR = Path(os.getenv("REPORTING_OUTPUT_DIR", PROJECT_ROOT / "outputs"))
 TEMPLATE_DIR = Path(os.getenv("REPORTING_TEMPLATE_DIR", PROJECT_ROOT / "report_templates"))
-KNOWLEDGE_BASE_DIR = Path(os.getenv("REPORTING_KB_DIR", PROJECT_ROOT / "knowledge_base"))
+KNOWLEDGE_BASE_DIR = Path(os.getenv("REPORTING_KB_DIR", REPO_ROOT / "knowledge_base" / "reporting"))
 
 USE_LLM = os.getenv("REPORTING_USE_LLM", "false").lower() == "true"
 LLM_PROVIDER = os.getenv("REPORTING_LLM_PROVIDER", "openai").strip().lower()
