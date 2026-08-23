@@ -53,7 +53,7 @@
       "decision_source": "SOC analyst approval context"
     },
     "alert": {
-      "source": "RSA NetWitness SIEM",
+      "source": "NetWitness SIEM",
       "name": "Export Cache Parser Test",
       "timestamp": "Not Provided"
     },
@@ -120,7 +120,7 @@
         "timestamp": "Not Provided",
         "event": "Alert first observed by monitoring source",
         "description": "Alert first observed by monitoring source",
-        "source": "RSA NetWitness SIEM",
+        "source": "NetWitness SIEM",
         "evidence_refs": [
           "enriched_alert"
         ],
@@ -485,7 +485,7 @@
     "appendix_summaries": {
       "raw_alert": {
         "Alert ID": "ALERT-CACHE-V1",
-        "Source": "RSA NetWitness SIEM",
+        "Source": "NetWitness SIEM",
         "Alert Name": "Export Cache Parser Test",
         "First Seen": "Not Provided",
         "Host": "wkstn-cache-001",

@@ -330,7 +330,7 @@
   },
   {
     "type": "paragraph",
-    "text": " | Alert first observed by monitoring source | RSA NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction."
+    "text": " | Alert first observed by monitoring source | NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction."
   },
   {
     "type": "paragraph",

@@ -550,7 +550,7 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "decision_source": _first(approval_result.get("decision_source"), default="SOC analyst approval context"),
     }
     alert = {
-        "source": _first(enriched.get("source"), processed.get("source"), default="RSA NetWitness SIEM"),
+        "source": _first(enriched.get("source"), processed.get("source"), default="NetWitness SIEM"),
         "name": _first(enriched.get("alert_name"), processed.get("alert_name"), title),
         "timestamp": _first(enriched.get("alert_timestamp"), enriched.get("timestamp"), processed.get("timestamp")),
     }

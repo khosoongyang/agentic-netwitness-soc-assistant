@@ -20,7 +20,7 @@
 #   attribute access, if PostgreSQL cannot be reached at import time).
 #
 # Main functionalities:
-#   - normalise_alert(): map a raw RSA NetWitness alert/incident export into
+#   - normalise_alert(): map a raw NetWitness alert/incident export into
 #     the canonical alert dict shape stored in the `alerts` table (logic is
 #     identical to casework_store.normalise_alert()).
 #   - PostgresCaseworkStore: implements THE SAME public method names and
@@ -279,7 +279,7 @@ def _row_keys(row: Any) -> set[str]:
 
 
 # [FYP-SECTION] Alert normalisation.
-# [FYP-INPUT] Maps a heterogeneous raw RSA NetWitness alert/incident export
+# [FYP-INPUT] Maps a heterogeneous raw NetWitness alert/incident export
 # onto the single canonical alert dict shape persisted in the `alerts`
 # table. Logic is identical to casework_store.normalise_alert(); kept as a
 # separate copy here (not imported) so this module has no import-time
@@ -289,7 +289,7 @@ def _row_keys(row: Any) -> set[str]:
 
 # [FYP-FUNCTION] Normalise Raw NetWitness Alert
 # [FYP-INPUT] raw: dict -- arbitrary raw alert/incident JSON as captured
-# from RSA NetWitness (defensive against missing/partial fields).
+# from NetWitness (defensive against missing/partial fields).
 # [FYP-PROCESS] Resolves the primary alert from raw["alerts"]/raw["alert"]/
 # raw itself, then uses services.parser_context_guard.extract_alert_identity
 # plus fallback key names (pick()) to resolve alert_id, title, severity,

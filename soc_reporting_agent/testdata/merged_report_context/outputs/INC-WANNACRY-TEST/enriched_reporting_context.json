@@ -56,7 +56,7 @@
         "approval_status": "Pending analyst approval"
     },
     "alert": {
-        "source": "RSA NetWitness SIEM",
+        "source": "NetWitness SIEM",
         "name": "WannaCry Ransomware Activity - mssecsvc.exe",
         "timestamp": ""
     },
@@ -480,7 +480,7 @@
             "timestamp": "",
             "event": "Alert first observed by monitoring source",
             "description": "Alert first observed by monitoring source",
-            "source": "RSA NetWitness SIEM",
+            "source": "NetWitness SIEM",
             "evidence_refs": [
                 "enriched_alert"
             ],
@@ -952,7 +952,7 @@
     "appendix_summaries": {
         "raw_alert": {
             "Alert ID": "NW-WCRY-445-0001",
-            "Source": "RSA NetWitness SIEM",
+            "Source": "NetWitness SIEM",
             "Alert Name": "WannaCry Ransomware Activity - mssecsvc.exe",
             "First Seen": "",
             "Host": "FINANCE-WKS-017",
@@ -1824,7 +1824,7 @@
                 [
                     "",
                     "Alert first observed by monitoring source",
-                    "RSA NetWitness SIEM",
+                    "NetWitness SIEM",
                     "enriched_alert",
                     "Supports analyst timeline reconstruction."
                 ],

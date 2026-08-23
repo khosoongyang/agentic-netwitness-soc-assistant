@@ -15,7 +15,7 @@ Prepared By: Reporting Agent
 Reviewed By: SOC Analyst, pending
 Report Generation Approved By: Soong Yang
 Created At: 2026-07-03T09:22:16.235255+00:00
-Source System: RSA NetWitness SIEM
+Source System: NetWitness SIEM
 Generation Mode: deterministic_facts_plus_template_export
 RAG Used: True
 RAG Status: Local template export context built
@@ -126,7 +126,7 @@ External Advisory | Medium | Useful for broader threat context, but may not prov
 
 4.1 Environment Context
 Environment Type: SOC-monitored environment
-Alert Source: RSA NetWitness SIEM
+Alert Source: NetWitness SIEM
 Alert Name: WannaCry Ransomware Activity - mssecsvc.exe
 Alert Timestamp: 
 Asset Criticality: See affected assets table
@@ -152,7 +152,7 @@ Escalation Level: SOC analyst review
 
 5. Incident Timeline
 Time | Event | Source | Evidence | Significance
-| Alert first observed by monitoring source | RSA NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction.
+| Alert first observed by monitoring source | NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction.
 | Triage completed and severity/confidence assigned | Triage Agent | triage_result.json | Supports analyst timeline reconstruction.
 | Investigation completed or completed with limitations | Investigation Agent | investigation_result.json | Supports analyst timeline reconstruction.
 | SOC analyst approval decision recorded | SOC Analyst | approval_result.json | Supports analyst timeline reconstruction.
@@ -371,7 +371,7 @@ report_writing_sop.md | Reports must separate evidence-backed facts from gaps. |
 14. Lessons Learnt
 
 14.1 What Worked Well
-Detection: Alert context was available from RSA NetWitness SIEM.
+Detection: Alert context was available from NetWitness SIEM.
 Alert Processing: Reporting Agent consolidated enriched alert, triage, investigation, and approval inputs.
 Threat Intelligence: 9 IOC(s) were available for reporting and evidence linking.
 Triage: Severity and confidence were normalised, with stale or missing fields flagged.
@@ -438,7 +438,7 @@ The appendices below are analyst-facing summaries. Full raw artefacts remain ava
 Appendix A: Raw Alert / Enriched Alert Summary
 Field | Value
 Alert ID | NW-WCRY-445-0001
-Source | RSA NetWitness SIEM
+Source | NetWitness SIEM
 Alert Name | WannaCry Ransomware Activity - mssecsvc.exe
 First Seen |
 Host | FINANCE-WKS-017

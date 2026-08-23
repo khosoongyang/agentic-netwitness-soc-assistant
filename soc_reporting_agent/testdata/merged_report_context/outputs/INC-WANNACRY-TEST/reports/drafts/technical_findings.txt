@@ -87,7 +87,7 @@ Approval status is approved. | Fact | High | approval_result.json | Approval dat
 
 8. Timeline
 Time | Event | Source | Evidence | Significance
-| Alert first observed by monitoring source | RSA NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction.
+| Alert first observed by monitoring source | NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction.
 | Triage completed and severity/confidence assigned | Triage Agent | triage_result.json | Supports analyst timeline reconstruction.
 | Investigation completed or completed with limitations | Investigation Agent | investigation_result.json | Supports analyst timeline reconstruction.
 | SOC analyst approval decision recorded | SOC Analyst | approval_result.json | Supports analyst timeline reconstruction.

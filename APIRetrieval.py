@@ -6,7 +6,7 @@
 # File: APIRetrieval.py (repo root)
 #
 # Purpose:
-#   Retrieves incident + alert telemetry from the RSA NetWitness Respond
+#   Retrieves incident + alert telemetry from the NetWitness Respond
 #   REST API (a self-hosted SIEM/SOAR product — the org's own NetWitness
 #   deployment, not a public/cloud service), with an on-disk export JSON
 #   fallback for offline/repeatable runs. This is the module that talks to

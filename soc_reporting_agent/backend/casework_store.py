@@ -23,7 +23,7 @@
 #   postgres_casework_store.py mirrors almost method-for-method.
 #
 # Main functionalities:
-#   - normalise_alert(): map a raw RSA NetWitness alert/incident export into
+#   - normalise_alert(): map a raw NetWitness alert/incident export into
 #     the canonical alert dict shape stored in the `alerts` table.
 #   - CaseworkStore: SQLite-backed class exposing schema init/migration,
 #     alert CRUD, ticket CRUD, alert<->ticket linking, the incident-grouping
@@ -198,7 +198,7 @@ def _severity_from_score(score: Any) -> str:
 
 
 # [FYP-SECTION] Alert normalisation.
-# [FYP-INPUT] Maps a heterogeneous raw RSA NetWitness alert/incident export
+# [FYP-INPUT] Maps a heterogeneous raw NetWitness alert/incident export
 # (which may be a bare alert, an {"incident": ..., "alerts": [...]} bundle,
 # or something in between, depending on how the analyst captured/exported
 # it) onto the single canonical alert dict shape this module persists in the
@@ -206,7 +206,7 @@ def _severity_from_score(score: Any) -> str:
 
 # [FYP-FUNCTION] Normalise Raw NetWitness Alert
 # [FYP-INPUT] raw: dict -- arbitrary raw alert/incident JSON as captured
-# from RSA NetWitness (may be empty/partial; every field access below is
+# from NetWitness (may be empty/partial; every field access below is
 # defensive).
 # [FYP-PROCESS] Pulls the primary alert out of raw["alerts"]/raw["alert"]/
 # raw itself, then uses services.parser_context_guard.extract_alert_identity

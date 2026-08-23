@@ -74,7 +74,7 @@
       ],
       [
         "Source System",
-        "RSA NetWitness SIEM"
+        "NetWitness SIEM"
       ],
       [
         "Generation Mode",
@@ -520,7 +520,7 @@
       ],
       [
         "Alert Source",
-        "RSA NetWitness SIEM"
+        "NetWitness SIEM"
       ],
       [
         "Alert Name",
@@ -635,7 +635,7 @@
   },
   {
     "type": "paragraph",
-    "text": " | Alert first observed by monitoring source | RSA NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction."
+    "text": " | Alert first observed by monitoring source | NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction."
   },
   {
     "type": "paragraph",
@@ -1466,7 +1466,7 @@
     "rows": [
       [
         "Detection",
-        "Alert context was available from RSA NetWitness SIEM."
+        "Alert context was available from NetWitness SIEM."
       ],
       [
         "Alert Processing",
@@ -1684,7 +1684,7 @@
   },
   {
     "type": "paragraph",
-    "text": "Source | RSA NetWitness SIEM"
+    "text": "Source | NetWitness SIEM"
   },
   {
     "type": "paragraph",

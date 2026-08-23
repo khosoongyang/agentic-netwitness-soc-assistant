@@ -135,7 +135,7 @@ def _alerts_has_more(payload, page: int) -> bool:
     """[FYP-FUNCTION] [FYP-PROCESS] Cross-convention pagination check.
 
     Whether more pages remain, across NW pagination conventions: hasNext
-    (RSA), last=true (Spring Pageable), or totalPages. Checked in that
+    (NetWitness), last=true (Spring Pageable), or totalPages. Checked in that
     order — the first convention present in the payload wins; a payload
     that isn't a dict, or exposes none of the three keys, is treated as
     "no more pages" (returns False) rather than looping forever.

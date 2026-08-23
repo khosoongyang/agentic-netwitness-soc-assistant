@@ -8,7 +8,7 @@
 # Purpose:
 #   This is the CORE PARSING & NORMALISATION implementation for the whole
 #   Aegis platform's Stage 0 ("Parsing" / "NetWitness Alert Loading"). It
-#   takes a raw, messy RSA NetWitness incident/alert export (arbitrary,
+#   takes a raw, messy NetWitness incident/alert export (arbitrary,
 #   deeply-nested JSON with many possible field-name variants) and converts
 #   it into a clean, predictable, SOC/agent-facing schema that every later
 #   stage (Triage, Investigation, Reporting) can rely on.
