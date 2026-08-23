@@ -138,7 +138,7 @@ from pathlib import Path
 from typing import Any
 
 from workflow import state_store as wss
-import workflow_validation as wv
+from workflow import validation as wv
 from integrations.netwitness.alerts import _merge_alert_digest
 
 ROOT       = Path(__file__).resolve().parent.parent
