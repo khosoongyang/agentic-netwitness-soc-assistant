@@ -47,10 +47,10 @@
 # Workflow position:
 #   Runs immediately before the Reporting stage executes, as a preparation/
 #   handoff step. It does not decide WHETHER Reporting may run (that is
-#   stage_workflow.can_run / orchestration_service.build_orchestration_
-#   decision's job) -- it only makes sure the filesystem-based inputs that
-#   Reporting's legacy code path expects are present and reflect the latest
-#   known-good investigation/approval context.
+#   workflow/engine.py's run_reporting_stage()'s job, upstream of this) --
+#   it only makes sure the filesystem-based inputs that Reporting's legacy
+#   code path expects are present and reflect the latest known-good
+#   investigation/approval context.
 #
 # Called by:
 #   - soc_reporting_agent/backend/app.py
