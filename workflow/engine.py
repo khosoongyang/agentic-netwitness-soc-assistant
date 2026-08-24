@@ -18,8 +18,9 @@
 #   headlessly (`python soc_workflow.py --incident-file ...`).
 #
 # Main functionalities:
-#   1. Stage routing: needs_investigation() decides Investigation vs
-#      straight-to-Reporting based on the triage classification.
+#   1. Stage routing: run_stage_chain() unconditionally sequences every
+#      approved-Triage incident through Threat Intel -> Investigation ->
+#      Reporting; there is no classification-based skip.
 #   2. Stage handoffs: handoff_to_investigation(), handoff_to_reporting()
 #      package one stage's output into the next stage's expected input files.
 #   3. Automatic re-run / feedback loop: detect_evidence_gaps() +
@@ -52,11 +53,11 @@
 #   sense — see workflow_state_store.py / app.py session state for that.
 #
 # Called by:
-#   app.py (verified via grep: needs_investigation, investigate_with_feedback,
-#   build_post_investigation_record, pipeline_insert, handoff_to_reporting,
-#   run_reporting are all called from app.py). eval_harness.py calls
-#   build_investigation_alert for a regression test. run_full_workflow()/
-#   main() are CLI-only entry points, not called by app.py.
+#   workflow/commands.py, via the durable stage-chain entry points
+#   (run_until_triage_approval, resume_after_triage_approval,
+#   run_investigation_stage, run_reporting_stage, run_stage_chain).
+#   eval_harness.py calls build_investigation_alert for a regression test.
+#   main() is a CLI-only entry point, not called by the Flask app.
 #
 # Calls:
 #   soc_triage_agent (TriageAgent, OpenAILLMConfig), soc_investigation_agent_revised/
@@ -77,7 +78,7 @@
 #   standalone). See [FYP-ERROR]/[FYP-FALLBACK] tags at individual call sites.
 #
 # Key evaluator search terms:
-#   needs_investigation, detect_evidence_gaps, investigate_with_feedback,
+#   detect_evidence_gaps, investigate_with_feedback,
 #   handoff_to_investigation, handoff_to_reporting, pipeline_insert,
 #   run_stage_chain, run_until_triage_approval, resume_after_triage_approval,
 #   [FYP-FLOW], [FYP-DECISION], [FYP-RERUN], [FYP-STAGE-LOCK]
@@ -155,9 +156,6 @@ SOC_DB_DIR = ROOT / "soc_db"
 SOC_DB_DIR.mkdir(exist_ok=True)
 
 PIPELINE_DB_FILE = SOC_DB_DIR / "soc_pipeline.db"
-
-# Classifications that route an incident to the investigation agent.
-INVESTIGATE_CLASSIFICATIONS = {"critical", "high", "medium"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2122,9 +2120,9 @@ def mock_triage_result(incident: dict) -> dict:
 
     Canned triage output with the same shape as TriageAgent.triage() —
     same top-level keys (mock/metakeys_payload/ticket/trace/error) so every
-    downstream consumer (needs_investigation(), handoff_to_investigation(),
-    handoff_to_reporting(), pipeline_insert(), the AI-summary/thinking
-    renderers) can treat it identically to a real LLM-backed result. Fixed
+    downstream consumer (handoff_to_investigation(), handoff_to_reporting(),
+    pipeline_insert(), the AI-summary/thinking renderers) can treat it
+    identically to a real LLM-backed result. Fixed
     HIGH classification/#99999Z ticket id — deliberately obvious as mock
     data (never mistakeable for a real ticket).
 
@@ -2169,45 +2167,6 @@ def mock_triage_result(incident: dict) -> dict:
                    "matched_metakeys": metakeys, "per_category": {}}],
         "error": None,
     }
-
-
-def needs_investigation(triage_result: dict) -> bool:
-    """
-    [FYP-FUNCTION] Workflow Stage Routing (Triage -> Investigation decision)
-
-    Purpose:
-        The single [FYP-DECISION] point that decides whether an incident is
-        routed to the Investigation stage or goes straight from Triage to
-        Threat Intel/Reporting. This is what an evaluator should be shown
-        for "where is the next stage selected".
-
-    Parameters:
-        triage_result: the completed Triage stage output dict. Reads the
-            classification from either metakeys_payload.classification (LLM
-            path) or ticket.classification (fallback path) — whichever is
-            populated.
-
-    Processing:
-        Lower-cases the classification string and checks membership in
-        INVESTIGATE_CLASSIFICATIONS = {"critical", "high", "medium"}
-        (module-level constant near the top of this file). "low"/"informational"
-        and anything unrecognised return False.
-
-    Returns:
-        bool — True routes the incident into Investigation via
-        handoff_to_investigation()/investigate_with_feedback(); False skips
-        straight to Threat Intel/Reporting.
-
-    [FYP-USED-BY]:
-        app.py (verified via grep) when deciding which stage tab/button to
-        unlock next after Triage completes.
-
-    [FYP-EVALUATOR]: demonstrate this function for "how is the next stage
-    selected" — it is a pure, deterministic function with no side effects.
-    """
-    cls = str(triage_result.get("metakeys_payload", {}).get("classification")
-              or triage_result.get("ticket", {}).get("classification") or "").lower()
-    return cls in INVESTIGATE_CLASSIFICATIONS
 
 
 # ══════════════════════════════════════════════════════════════════════════════
