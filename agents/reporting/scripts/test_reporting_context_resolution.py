@@ -37,7 +37,6 @@ from agents.reporting.backend.reporting_context_resolver import (  # noqa: E402
     resolve_investigation_approval_context,
     resolve_investigation_context,
 )
-from agents.reporting.backend import ticket_workflow  # noqa: E402
 
 
 # =============================================================================

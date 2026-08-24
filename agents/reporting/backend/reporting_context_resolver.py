@@ -62,8 +62,8 @@
 #     called from `_prepare_inputs()` before invoking the reporting scripts.
 #
 # Calls:
-#   - soc_reporting_agent/backend/ticket_workflow.py
-#     (`from backend import ticket_workflow`) --
+#   - agents/reporting/backend/reporting_eligibility.py
+#     (`from . import reporting_eligibility`) --
 #     is_investigation_usable_for_reporting, to decide whether a resolved
 #     investigation result counts as "usable".
 #
@@ -81,13 +81,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-# Relative, not `from backend import ticket_workflow`: this package's name
-# collides with the canonical Aegis backend/ package. Once sys.modules
-# caches whichever "backend" a given process resolves first (which one
-# depends on unpredictable import order across a full pytest session), a
-# bare import here can silently pick up the wrong one. A relative import
-# is unambiguous regardless of sys.path state or import order.
-from . import ticket_workflow
+from . import reporting_eligibility
 
 
 # [FYP-CONFIG] Known legacy filenames used by the filesystem-based
@@ -258,7 +252,7 @@ def resolve_investigation_context(project_root: Path, ticket_id: str | None = No
     Returns: ResolvedContext.
     Resolution order:
       1. ticket["investigation_result"], if present -- usability determined
-         by ticket_workflow.is_investigation_usable_for_reporting.
+         by reporting_eligibility.is_investigation_usable_for_reporting.
       2. Otherwise scan investigation_candidate_paths() in order; return the
          first candidate that IS usable as soon as found.
       3. If none were usable but at least one file existed, return that
@@ -266,12 +260,12 @@ def resolve_investigation_context(project_root: Path, ticket_id: str | None = No
          Reporting is blocked.
       4. If nothing was found anywhere, return an empty/not-found context.
     Called by: ensure_reporting_inputs (this file), backend/app.py.
-    Calls: ticket_workflow.is_investigation_usable_for_reporting,
+    Calls: reporting_eligibility.is_investigation_usable_for_reporting,
     investigation_candidate_paths, _read_json.
     """
     ticket_inv = _ticket_value(ticket, "investigation_result")
     if ticket_inv:
-        usable = ticket_workflow.is_investigation_usable_for_reporting(ticket_inv)
+        usable = reporting_eligibility.is_investigation_usable_for_reporting(ticket_inv)
         return ResolvedContext(
             exists=True,
             usable=usable,
@@ -287,7 +281,7 @@ def resolve_investigation_context(project_root: Path, ticket_id: str | None = No
             continue
         if first_existing is None:
             first_existing = (data, path)
-        if ticket_workflow.is_investigation_usable_for_reporting(data):
+        if reporting_eligibility.is_investigation_usable_for_reporting(data):
             return ResolvedContext(
                 exists=True,
                 usable=True,
