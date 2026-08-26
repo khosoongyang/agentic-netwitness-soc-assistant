@@ -57,6 +57,8 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 
+from .triage_result import validate_triage_agent_output
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1.  LLM CONFIG & BUILDER
@@ -1345,7 +1347,7 @@ class TriageAgent:
                 for phase in ("IOC Checklists", "Risk Rating", "SOC Classification"):
                     self._emit("phase_complete", phase, "cached")
                 cached["cached"] = True
-                return cached
+                return validate_triage_agent_output(cached).model_dump(mode="json")
 
         try:
             # Phase 1 — IOC
@@ -1401,10 +1403,11 @@ class TriageAgent:
             trace.append({"step": "SOC Classification", "status": "ok", "data": cls_data})
 
         except Exception as exc:
-            return {
+            error_result = {
                 "error": str(exc),
                 "metakeys_payload": {}, "ticket": {}, "trace": trace,
             }
+            return validate_triage_agent_output(error_result).model_dump(mode="json")
 
         matched_metakeys = ioc_data["all_metakeys"]
 
@@ -1461,7 +1464,7 @@ class TriageAgent:
             "error":               None,
         }
         _cache_put(fingerprint, inc_id, result)
-        return result
+        return validate_triage_agent_output(result).model_dump(mode="json")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

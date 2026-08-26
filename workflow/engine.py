@@ -1069,6 +1069,16 @@ def mock_triage_result(incident: dict) -> dict:
 
     [FYP-USED-BY]: run_until_triage_approval() (this module) — called
     instead of run_triage() only when use_mock_triage=True.
+
+    Phase 1 (Canonical Triage Result contract migration) correction: this
+    function's own docstring has always promised the exact shape of
+    TriageAgent.triage()'s real success output, but it was missing
+    metakeys_payload/ticket's mitre_tactic/mitre_technique (both always set
+    on a real run, see soc_triage_agent.py:1421-1422,1442-1443) and the
+    top-level used_parsed_context (always a bool on a real run,
+    soc_triage_agent.py:1460). Added below so this mock validates against
+    the same agents.triage.triage_result.TriageAgentSuccessOutput contract
+    a real run does. No previously-relied-upon key was removed or renamed.
     """
     inc_id  = str(incident.get("id") or incident.get("incidentId") or "unknown")
     title   = incident.get("title") or incident.get("name") or "Untitled"
@@ -1083,6 +1093,7 @@ def mock_triage_result(incident: dict) -> dict:
             "ioc_summary": "MOCK: brute-force authentication pattern with "
                            "unusual privileged account activity.",
             "risk_level": "high", "classification": "high",
+            "mitre_tactic": "Credential Access", "mitre_technique": "Brute Force",
         },
         "ticket": {
             "unc": "#99999Z", "incident_id": inc_id, "title": title,
@@ -1094,6 +1105,7 @@ def mock_triage_result(incident: dict) -> dict:
                 "rationale": "MOCK rationale for offline workflow testing.",
             },
             "incident_category": "Internal Hacking (attempted)",
+            "mitre_tactic": "Credential Access", "mitre_technique": "Brute Force",
             "initial_response_time": "<= 30 minutes",
             "summary": "MOCK: repeated failed logons followed by a successful "
                        "privileged logon from the same source address.",
@@ -1104,6 +1116,7 @@ def mock_triage_result(incident: dict) -> dict:
         "trace": [{"step": "IOC Checklist", "status": "ok",
                    "ioc_summary": "MOCK ioc summary", "total_ioc_count": 3,
                    "matched_metakeys": metakeys, "per_category": {}}],
+        "used_parsed_context": False,
         "error": None,
     }
 
