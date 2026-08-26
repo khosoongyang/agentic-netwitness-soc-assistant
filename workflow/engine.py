@@ -2422,11 +2422,27 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
     # coverage) into the reporting agent's report. Uses ONLY fields the reporting
     # context-builder already consumes; strictly additive/non-destructive; never
     # raises. Disable with NW_DISABLE_SKILLS_SIDECAR=1.
+    #
+    # Phase 4 (canonical Investigation Result contract migration -- TI wiring
+    # fix): threat_intel_result is already available in this function's local
+    # scope (persisted a few lines below) and every TI-aware collector
+    # (_collect_diamond/_collect_verdict/_collect_mitigation/_collect_sop/
+    # _collect_compliance/_collect_final_verdict, see skills_sidecar.py)
+    # already accepts a ti_result argument -- it was simply never forwarded,
+    # so those collectors always ran as if Threat Intelligence had never
+    # completed. Every consumer of ti_result uses a None-safe `.get(...)`
+    # or `x and x.get(...)` pattern (verified against diamond_model.py,
+    # triage_verdict.py, mitigation_mapping.py, compliance_evidence.py [does
+    # not read ti_result at all], final_verdict.py), and build_skills_context
+    # itself is called inside this try/except -- so forwarding the real,
+    # persisted result here is a pure data-availability fix with no control
+    # flow change when threat_intel_result is None, same as before.
     try:
         import agents.investigation.skills_sidecar as skills_sidecar
         _bundle = skills_sidecar.build_skills_context(
             incident, triage_result=triage_result,
-            investigation_result=investigation_result)
+            investigation_result=investigation_result,
+            ti_result=threat_intel_result)
         if _bundle.get("available"):
             investigation_result = skills_sidecar.enrich_investigation_result(
                 investigation_result, _bundle)
