@@ -141,6 +141,12 @@ from typing import Any
 from workflow import state_store as wss
 from workflow import validation as wv
 from integrations.netwitness.alerts import _merge_alert_digest
+# Phase 3 (canonical Investigation Result contract migration): the
+# dependency-light Phase 1 contract module -- pydantic/typing only, does NOT
+# import orchestrator.py or its heavy ChromaDB/LLM machinery -- used by
+# run_investigation() to validate investigation_analysis.json (see Phase 2)
+# before trusting it over the legacy Markdown-reconstruction path.
+from agents.investigation.investigation_result import InvestigationAgentOutput
 
 ROOT       = Path(__file__).resolve().parent.parent
 # Swapped 2026-07-22: the team's revised investigation agent (adds
@@ -1665,8 +1671,21 @@ def detect_evidence_gaps(inv: dict) -> list[str]:
     re-run — no human clicks anything for this particular re-run.
 
     Input: inv — the Investigation stage result dict (narrative_report,
-    status, missing_evidence). Output: list of up to 8 gap description
-    strings, or [] if investigation was sufficient.
+    status, missing_evidence, and — since Phase 3 — the structured
+    execution_trace flat-alias set by run_investigation() whenever
+    investigation_analysis.json validated). Output: list of up to 8 gap
+    description strings, or [] if investigation was sufficient.
+
+    [FYP-EVALUATOR] Phase 3 (canonical Investigation Result contract
+    migration): the (step_id, instruction, status) rows this function
+    reasons over now come from the structured execution_trace when
+    run_investigation() populated it (investigation_source ==
+    "structured_json"), instead of regex-parsing the Markdown playbook
+    table. The threshold comparison, NOT_MET interpretation, high-value gap
+    prioritisation, completed_limited/missing_evidence handling, and the
+    8-gap cap are byte-for-byte unchanged — only where the rows come from
+    has changed. When execution_trace is absent (Markdown-fallback path),
+    the original _PLAYBOOK_ROW_RE regex path runs exactly as before.
     """
     try:
         threshold = float(os.environ.get("WORKFLOW_FEEDBACK_THRESHOLD", "0.4"))
@@ -1675,8 +1694,16 @@ def detect_evidence_gaps(inv: dict) -> list[str]:
     threshold = max(0.0, min(threshold, 1.0))  # clamp to [0, 1]
 
     gaps: list[str] = []
-    md = str(inv.get("narrative_report") or "")
-    rows = _PLAYBOOK_ROW_RE.findall(md)
+    structured_trace = inv.get("execution_trace")
+    if structured_trace:
+        rows = [
+            (str(step.get("step_id") or ""), str(step.get("instruction") or ""),
+             str(step.get("status") or ""))
+            for step in structured_trace
+        ]
+    else:
+        md = str(inv.get("narrative_report") or "")
+        rows = _PLAYBOOK_ROW_RE.findall(md)
     if rows:
         not_met = [(sid, instr.strip()) for sid, instr, status in rows
                    if status == "NOT_MET"]
@@ -1991,6 +2018,54 @@ def reconcile_incident_severity(incident_id: str, unc: str, final_severity: str)
             _log("RECONCILE", f"pipeline.db annotate failed for {unc}: {e}")
 
 
+def _load_structured_investigation_analysis(
+    target: Path, cluster_ids: list[str]
+) -> tuple[InvestigationAgentOutput | None, str]:
+    """[FYP-FUNCTION] Phase 3 structured-JSON read path.
+
+    Attempts to load `target/investigation_analysis.json` (written by
+    agents/investigation/main.py's write_investigation_analysis_json(), see
+    Phase 2) and validate it against the canonical Phase 1
+    InvestigationAgentOutput contract. The file is accepted only if it
+    exists, is valid JSON, passes Pydantic validation, AND its own
+    incident_id is a member of `cluster_ids` -- the same
+    incident_data.json-derived alert-cluster identity already established by
+    run_investigation()'s existing folder-selection/freshness logic for
+    `target` (mirrors that check rather than requiring exact equality with
+    the originally-requested incident_id, since a correlated/merged incident's
+    FinalIncidentAnalysis.incident_id may legitimately be a different member
+    of the same cluster -- e.g. the "seed" alert of a multi-alert group).
+
+    Returns (validated_output, "structured_json") when every check passes,
+    or (None, "markdown_fallback") otherwise. Never raises: every failure
+    mode (missing file, malformed JSON, Pydantic validation error, identity
+    mismatch) is logged and treated as "fall back to Markdown reconstruction"
+    so an otherwise-usable investigation run is never failed merely because
+    the new structured artifact is absent or unusable during this migration.
+    """
+    raw = _read_json(target / "investigation_analysis.json", None)
+    if not isinstance(raw, dict):
+        _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
+                              f"missing or unreadable, falling back to "
+                              f"Markdown reconstruction")
+        return None, "markdown_fallback"
+    try:
+        agent_output = InvestigationAgentOutput.model_validate(raw)
+    except Exception as exc:
+        _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
+                              f"failed contract validation, falling back to "
+                              f"Markdown reconstruction: {exc}")
+        return None, "markdown_fallback"
+    if agent_output.incident_id not in cluster_ids:
+        _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
+                              f"incident_id {agent_output.incident_id!r} is not "
+                              f"a member of this folder's alert cluster "
+                              f"{cluster_ids}, falling back to Markdown "
+                              f"reconstruction")
+        return None, "markdown_fallback"
+    return agent_output, "structured_json"
+
+
 def run_investigation(incident_id: str, timeout: int = 600,
                       line_cb=None, triage_classification=None,
                       watchdog_cb=None) -> dict:
@@ -2118,6 +2193,36 @@ def run_investigation(incident_id: str, timeout: int = 600,
         summary = (f"[Correlated cluster {target.name}: "
                    f"{', '.join(cluster_ids)} — this run was triggered by "
                    f"{incident_id}.]\n\n" + summary)
+
+    # Phase 3 (canonical Investigation Result contract migration): prefer the
+    # structured investigation_analysis.json (Phase 2) over Markdown
+    # reconstruction whenever it validates against the canonical
+    # InvestigationAgentOutput contract and belongs to this incident's alert
+    # cluster. Markdown parsing remains the fallback for every failure mode
+    # (missing/malformed/invalid/identity-mismatched file) so an otherwise
+    # usable investigation is never failed merely because the new artifact
+    # is unavailable during this migration.
+    agent_output, investigation_source = _load_structured_investigation_analysis(
+        target, cluster_ids)
+
+    if agent_output is not None:
+        recommended_containment = list(agent_output.recommended_containment)
+        mitre_mappings = [m.model_dump() for m in agent_output.mitre_mappings]
+    else:
+        # Structured, verbatim containment bullets recovered from the
+        # narrative report (see _investigation_recommended_containment_actions)
+        # — the reporting handoff's investigation_result.json needs this under
+        # the Investigation agent's own field name so it is never mistaken for
+        # "no recommendation supplied" and backfilled with generic text.
+        recommended_containment = _investigation_recommended_containment_actions(narrative)
+        # Structured MITRE ATT&CK TTP mappings recovered from the narrative
+        # report (see _investigation_mitre_mappings) under the Investigation
+        # agent's own field name (orchestrator.FinalIncidentAnalysis.
+        # mitre_mappings) — without this, the reporting handoff's section 7.1
+        # never sees the real per-technique timeline_phase/observed_evidence
+        # and falls back to a generic technique-ID scan of unrelated fields.
+        mitre_mappings = _investigation_mitre_mappings(narrative)
+
     result.update({
         "status": "completed" if run["success"] and narrative else "completed_limited",
         "incident_folder": target.name,
@@ -2127,25 +2232,40 @@ def run_investigation(incident_id: str, timeout: int = 600,
         "severity": sev,
         "indicators": data.get("indicators") or [],
         "narrative_report": narrative,
-        # Structured, verbatim containment bullets recovered from the
-        # narrative report (see _investigation_recommended_containment_actions)
-        # — the reporting handoff's investigation_result.json needs this under
-        # the Investigation agent's own field name so it is never mistaken for
-        # "no recommendation supplied" and backfilled with generic text.
-        "recommended_containment": _investigation_recommended_containment_actions(narrative),
-        # Structured MITRE ATT&CK TTP mappings recovered from the narrative
-        # report (see _investigation_mitre_mappings) under the Investigation
-        # agent's own field name (orchestrator.FinalIncidentAnalysis.
-        # mitre_mappings) — without this, the reporting handoff's section 7.1
-        # never sees the real per-technique timeline_phase/observed_evidence
-        # and falls back to a generic technique-ID scan of unrelated fields.
-        "mitre_mappings": _investigation_mitre_mappings(narrative),
+        "recommended_containment": recommended_containment,
+        "mitre_mappings": mitre_mappings,
         "artifacts": {
             "incident_folder": str(target),
             "incident_data": str(target / "incident_data.json"),
             "report_markdown": str(md_path) if md_path.exists() else None,
         },
+        # Canonical envelope marker (Phase 3) -- NOT the orchestration/
+        # approval "workflow stage status" tracked by state_store (that
+        # remains entirely separate, see run_investigation_stage() /
+        # complete_stage()). This only records which source populated this
+        # result's Investigation-agent-owned fields.
+        "workflow": {"investigation_source": investigation_source},
     })
+    if agent_output is not None:
+        # Full canonical Phase 1 contract payload, nested so it can be
+        # consumed directly without reshaping existing flat consumers (see
+        # Phase 3 migration plan, "Compatibility with existing flat
+        # consumers"). Temporary flat-key aliases below duplicate the fields
+        # existing/tested consumers need at the top level; this nested copy
+        # is the single canonical source of the complete agent output.
+        result["investigation_analysis"] = agent_output.model_dump(mode="json")
+        # Temporary flat compatibility aliases (migration compatibility only,
+        # not a second source of truth -- always derived from
+        # result["investigation_analysis"] above). confidence/
+        # severity_justification/confidence_justification/execution_trace had
+        # no flat top-level key before Phase 3 (confidence was previously
+        # dropped before the JSON handoff entirely); they are added here,
+        # additively, only when the structured contract validated, so no
+        # existing consumer reading their absence can regress.
+        result["confidence"] = agent_output.confidence
+        result["severity_justification"] = agent_output.severity_justification
+        result["confidence_justification"] = agent_output.confidence_justification
+        result["execution_trace"] = [step.model_dump() for step in agent_output.execution_trace]
     if result["status"] == "completed_limited":
         result["missing_evidence"] = ["Final analysis report was not generated."]
     _annotate_severity_divergence(result, triage_classification)
