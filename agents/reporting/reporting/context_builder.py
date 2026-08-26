@@ -633,12 +633,11 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     ))
     # Phase 5: investigation_analysis.incident_summary (canonical) is checked
     # right after Reporting's own technical_analysis field, ahead of the
-    # older investigation_summary/summary flat keys -- in current practice
-    # this is a no-op (investigation.get("summary") already reliably carries
-    # the same content via incident_data.json's summary_text, unaffected by
-    # Phase 3's structured/Markdown-fallback branching), kept for explicit
-    # contract-preference consistency with the other canonical fields above.
-    technical_analysis = _first(reporting.get("technical_analysis"), investigation_analysis.get("incident_summary"), investigation.get("investigation_summary"), investigation.get("summary"), default=(
+    # investigation.summary flat key.
+    # Phase 6A: dropped the investigation.get("investigation_summary") term
+    # from this chain -- audited and confirmed dead (no producer in
+    # workflow/engine.py ever writes that exact flat key).
+    technical_analysis = _first(reporting.get("technical_analysis"), investigation_analysis.get("incident_summary"), investigation.get("summary"), default=(
         f"The available triage and investigation context indicates {likely_scenario}. Severity is {severity['label']} and confidence is {confidence['label']}. "
         "The SOC analyst should validate endpoint, identity, network, and NetWitness telemetry before confirming containment, escalation, or closure."
         + limitations_sentence
@@ -817,7 +816,10 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "analyst_review_guidance": analyst_review_guidance,
         "final_assessment": active_narrative["conclusion"],
         "triage_summary": _first(triage.get("summary"), default="Not Provided"),
-        "investigation_summary": _first(investigation_analysis.get("incident_summary"), investigation.get("summary"), investigation.get("investigation_summary"), default="Not Provided"),
+        # Phase 6A: dropped the investigation.get("investigation_summary")
+        # term from this chain -- audited and confirmed dead (no producer
+        # ever writes that exact flat key).
+        "investigation_summary": _first(investigation_analysis.get("incident_summary"), investigation.get("summary"), default="Not Provided"),
         "raw_inputs": inputs,
         "appendix_summaries": appendix_summaries,
         "warnings": warnings,

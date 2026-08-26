@@ -1024,7 +1024,7 @@ def run_parsing(incident: dict, run_id: str) -> dict:
 # cleanup): _split_ai_summary_sections, limit_ai_summary_sentences,
 # _stage_ai_summary_context, generate_stage_ai_summary,
 # generate_parsing_ai_summary, render_triage_thinking_plain,
-# _thinking_fragment, _investigation_trace_rows,
+# _thinking_fragment,
 # _investigation_recommended_containment_actions, _split_mitre_table_row,
 # _investigation_mitre_mappings, _parse_progress_datetime,
 # _format_progress_datetime, _format_elapsed, _render_stage_progress_plain,
@@ -1039,7 +1039,6 @@ from workflow.stage_summaries import (
     generate_parsing_ai_summary,
     render_triage_thinking_plain,
     _thinking_fragment,
-    _investigation_trace_rows,
     _investigation_recommended_containment_actions,
     _split_mitre_table_row,
     _investigation_mitre_mappings,
@@ -2039,14 +2038,34 @@ def _load_structured_investigation_analysis(
     Returns (validated_output, "structured_json") when every check passes,
     or (None, "markdown_fallback") otherwise. Never raises: every failure
     mode (missing file, malformed JSON, Pydantic validation error, identity
-    mismatch) is logged and treated as "fall back to Markdown reconstruction"
-    so an otherwise-usable investigation run is never failed merely because
-    the new structured artifact is absent or unusable during this migration.
+    mismatch) is logged -- each with its own distinct diagnostic message
+    (Phase 6A; previously "missing" and "malformed" shared one "missing or
+    unreadable" message, since both routed through the same _read_json()
+    None-on-any-exception helper) -- and treated as "fall back to Markdown
+    reconstruction" so an otherwise-usable investigation run is never failed
+    merely because the new structured artifact is absent or unusable during
+    this migration. On success, also logs a concise confirmation that the
+    structured path was used (Phase 6A observability; purely additive, does
+    not affect control flow or return value).
     """
-    raw = _read_json(target / "investigation_analysis.json", None)
+    json_path = target / "investigation_analysis.json"
+    if not json_path.exists():
+        _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
+                              f"does not exist, falling back to Markdown "
+                              f"reconstruction")
+        return None, "markdown_fallback"
+    try:
+        raw_text = json_path.read_text(encoding="utf-8")
+        raw = json.loads(raw_text) if raw_text.strip() else None
+    except Exception as exc:
+        _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
+                              f"is malformed or unreadable JSON, falling "
+                              f"back to Markdown reconstruction: {exc}")
+        return None, "markdown_fallback"
     if not isinstance(raw, dict):
         _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
-                              f"missing or unreadable, falling back to "
+                              f"is malformed or unreadable JSON (did not "
+                              f"contain a JSON object), falling back to "
                               f"Markdown reconstruction")
         return None, "markdown_fallback"
     try:
@@ -2063,6 +2082,9 @@ def _load_structured_investigation_analysis(
                               f"{cluster_ids}, falling back to Markdown "
                               f"reconstruction")
         return None, "markdown_fallback"
+    _log("INVESTIGATION", f"{target.name}: using validated structured "
+                          f"investigation_analysis.json (investigation_source="
+                          f"structured_json)")
     return agent_output, "structured_json"
 
 

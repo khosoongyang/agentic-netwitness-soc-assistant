@@ -19,6 +19,15 @@
 #   per function; otherwise failures propagate to the documented caller.
 # Key evaluator search terms: write, main, [FYP-FUNCTION], [FYP-EVALUATOR].
 # =============================================================================
+# [Phase 6A note, Canonical Investigation Result migration audit] Despite its
+# test_*.py filename, this module defines no `test_*` function -- only a
+# `main()` entry point -- so pytest never collects it, and no CI config
+# references it. Its scenarios (structured-report draft/confirm/DOCX/PDF
+# export round-tripping) exercise agents/reporting/reporting/editable_reports.py,
+# which is unrelated to the Investigation Result canonical-contract migration
+# this audit covers. Classified as a standalone/manual validation script and
+# left unchanged; not converted to pytest as part of this phase.
+# =============================================================================
 
 from __future__ import annotations
 

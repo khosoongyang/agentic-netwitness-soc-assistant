@@ -12,10 +12,10 @@ Main functionalities: Calls render_agent_thinking_plain(stage, result,
     Investigation/Reporting) and with workflow_state/activity timelines for
     a completed vs. a currently-processing stage, then asserts the
     rendered plain-text narrative contains the expected derived phrases
-    (indicator counts, risk level/score, MITRE mapping, playbook step
-    MET/NOT_MET status, timestamps, elapsed time, live heartbeat note) and
-    does not leak the raw result payload or agent-module implementation
-    detail language once a stage is complete.
+    (indicator counts, risk level/score, MITRE mapping, severity/summary,
+    timestamps, elapsed time, live heartbeat note) and does not leak the
+    raw result payload or agent-module implementation detail language once
+    a stage is complete.
 Inputs: Hand-built per-stage result dicts, and (for the last two tests)
     workflow_state/activity dicts shaped like the durable rows
     workflow_state_store.py persists. No database or LLM call is involved
@@ -129,13 +129,20 @@ def test_threat_intel_thinking_uses_persisted_risk_and_next_action():
 
 
 # [FYP-EVALUATOR]
-def test_investigation_thinking_uses_sync_and_orchestrator_outputs():
+def test_investigation_thinking_uses_sync_and_severity_outputs():
     """[FYP-FUNCTION] Validates render_agent_thinking_plain("Investigation",
-    ...) names the two collaborating investigation-agent modules
-    (sync_engine.py, orchestrator.py) and parses the Markdown "Playbook
-    Execution Trace" table out of narrative_report, asserting each step's
-    MET/NOT_MET status and the overall severity appear in the rendered
-    narrative.
+    ...) names the collaborating sync_engine.py module and reports the
+    overall severity/summary in the rendered narrative.
+
+    Phase 6A removed the dead `_investigation_trace_rows()` Markdown-table
+    parser (workflow/stage_summaries.py) and its call site in this
+    function's "investigation" branch -- it had zero production callers
+    (render_agent_thinking_plain() itself is only reached by legacy/
+    no-workspace callers, and none of them fed it a narrative_report
+    containing a "## Playbook Execution Trace" table in practice). This
+    test no longer asserts on playbook-step MET/NOT_MET rendering; the
+    rest of the "investigation" branch (sync_engine.py mention, severity/
+    summary conclusion) is unaffected and still covered here.
     """
     result = {
         "incident_id": "INC-42",
@@ -144,24 +151,13 @@ def test_investigation_thinking_uses_sync_and_orchestrator_outputs():
         "cluster_alert_ids": ["INC-42", "INC-43"],
         "severity": "High",
         "summary": "The available evidence supports lateral movement.",
-        "narrative_report": """
-## Playbook Execution Trace
-| Step ID | Instruction | Status | Findings |
-| --- | --- | --- | --- |
-| `step_1` | Identify the affected host | **MET** | Host WS-42 was identified. |
-| `step_2` | Validate a process tree | **NOT_MET** | Process telemetry is missing. |
-
-## Recommended Containment Actions
-""",
     }
 
     text = sw.render_agent_thinking_plain("Investigation", result)
 
     assert "sync_engine.py synchronized" in text
-    assert "orchestrator.py evaluated" in text
-    assert "step_1 MET" in text
-    assert "step_2 NOT_MET" in text
     assert "severity is High" in text
+    assert "The available evidence supports lateral movement." in text
 
 
 def test_reporting_thinking_uses_persisted_manifest_and_quality_checks():

@@ -19,6 +19,19 @@
 #   per function; otherwise failures propagate to the documented caller.
 # Key evaluator search terms: write_json, run_case, case_ticket_limited, case_outputs_completed_with_gaps, case_unknown_needs_more_data, case_failed_blocks, [FYP-FUNCTION], [FYP-EVALUATOR].
 # =============================================================================
+# [Phase 6A note, Canonical Investigation Result migration audit] Despite its
+# test_*.py filename, this module defines no `test_*` function -- only a
+# `main()` invoked via `python scripts/test_reporting_context_resolution.py`
+# -- so pytest never collects it; it is not exercised by the project's
+# `pytest` run or by any CI workflow (confirmed: no CI config references it).
+# Its five scenarios (ticket-completed_limited, outputs-completed_with_gaps,
+# outputs/unknown-needs_more_data, failed-blocks, missing-blocks) were
+# converted into real pytest tests at
+# agents/reporting/tests/test_reporting_context_resolver.py. This script is
+# left unchanged and may still be run standalone for manual/ad-hoc
+# verification; it is no longer this repo's only coverage of the resolver
+# layer for those statuses.
+# =============================================================================
 
 from __future__ import annotations
 

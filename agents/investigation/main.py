@@ -190,7 +190,11 @@ def write_investigation_analysis_json(
     final_analysis_report.md, validating `report` against the
     InvestigationAgentOutput contract before writing so no field is lost or
     silently reshaped. Additive only -- does not change final_analysis_report.md
-    or incident_data.json, and nothing reads this file yet."""
+    or incident_data.json. This file IS read on the live path: workflow/
+    engine.py::_load_structured_investigation_analysis() (called from
+    run_investigation()) loads and validates it against this same
+    InvestigationAgentOutput contract, preferring it over Markdown
+    reconstruction of final_analysis_report.md whenever it validates."""
     output = investigation_result.InvestigationAgentOutput.model_validate(report.model_dump())
     analysis_path = os.path.join(dest_folder, "investigation_analysis.json")
     with open(analysis_path, "w", encoding="utf-8") as f:

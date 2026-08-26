@@ -427,37 +427,6 @@ def _thinking_fragment(value: Any, limit: int = 560) -> str:
     return text[:limit].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
 
 
-def _investigation_trace_rows(narrative_report: str, limit: int = 3) -> list[dict]:
-    """[FYP-FUNCTION] Read orchestrator.py's persisted Playbook Execution Trace table.
-
-    main.py writes FinalIncidentAnalysis.execution_trace to the Markdown
-    report. soc_workflow.run_investigation() then persists that report in
-    investigation_result_json.narrative_report. Reading that exact table
-    keeps the UI tied to the Investigation agent's real milestone decisions.
-    """
-    if "## Playbook Execution Trace" not in str(narrative_report or ""):
-        return []
-    section = narrative_report.split("## Playbook Execution Trace", 1)[1]
-    section = section.split("\n## ", 1)[0]
-    rows: list[dict] = []
-    pattern = re.compile(
-        r"^\|\s*`([^`]+)`\s*\|\s*(.*?)\s*\|\s*\*\*([^*]+)\*\*\s*\|\s*(.*?)\s*\|\s*$"
-    )
-    for line in section.splitlines():
-        match = pattern.match(line.strip())
-        if not match:
-            continue
-        rows.append({
-            "step_id": match.group(1),
-            "instruction": match.group(2),
-            "status": match.group(3),
-            "findings": match.group(4),
-        })
-        if len(rows) >= limit:
-            break
-    return rows
-
-
 def _investigation_recommended_containment_actions(narrative_report: str) -> list[str]:
     """[FYP-FUNCTION] Read orchestrator.py's persisted Recommended Containment Actions bullets.
 
@@ -850,9 +819,9 @@ def render_agent_thinking_plain(
     to the per-stage (parsing/triage/threat_intel/investigation/reporting)
     result-field rendering below, built from each stage's own persisted
     output (e.g. render_triage_thinking_plain() for triage,
-    _investigation_trace_rows()/_thinking_fragment() for investigation).
+    _thinking_fragment() for investigation).
     [FYP-CALLS]: _render_stage_progress_plain(), render_triage_thinking_plain(),
-    _investigation_trace_rows(), _thinking_fragment().
+    _thinking_fragment().
     """
     result = result if isinstance(result, dict) else {}
     key = re.sub(r"[^a-z]+", "_", str(stage or "").strip().lower()).strip("_")
@@ -962,19 +931,6 @@ def render_agent_thinking_plain(
                     "investigation timeline"
                 )
             paragraphs.append(sync_text + ".")
-
-        trace_rows = _investigation_trace_rows(result.get("narrative_report") or "")
-        if trace_rows:
-            decisions = []
-            for row in trace_rows:
-                decisions.append(
-                    f"{row['step_id']} {row['status']}: "
-                    f"{_thinking_fragment(row['findings'], 260)}"
-                )
-            paragraphs.append(
-                "orchestrator.py evaluated the playbook milestones. "
-                + " ".join(decisions)
-            )
 
         severity = result.get("severity")
         summary = _thinking_fragment(result.get("summary"), 620)
