@@ -38,6 +38,7 @@ import vector_engine
 import orchestrator
 import policy_engine
 import mitre_mapper
+import investigation_result
 from correlation_engine import CorrelationEngine
 from sync_engine import (
     RealtimeSyncService,
@@ -181,6 +182,21 @@ def write_markdown_report(dest_folder: str, incident_num_id: str, report: orches
             f.write("| N/A | N/A | N/A | No policy audit logs recorded | N/A | N/A | N/A | N/A |\n")
             
     orchestrator.log_success(f"Case report stored securely inside: {report_path}")
+
+def write_investigation_analysis_json(
+    dest_folder: str, report: orchestrator.FinalIncidentAnalysis
+) -> investigation_result.InvestigationAgentOutput:
+    """Writes the canonical structured investigation_analysis.json alongside
+    final_analysis_report.md, validating `report` against the
+    InvestigationAgentOutput contract before writing so no field is lost or
+    silently reshaped. Additive only -- does not change final_analysis_report.md
+    or incident_data.json, and nothing reads this file yet."""
+    output = investigation_result.InvestigationAgentOutput.model_validate(report.model_dump())
+    analysis_path = os.path.join(dest_folder, "investigation_analysis.json")
+    with open(analysis_path, "w", encoding="utf-8") as f:
+        json.dump(output.model_dump(mode="json"), f, indent=2)
+    orchestrator.log_success(f"Structured investigation analysis stored inside: {analysis_path}")
+    return output
 
 # [FYP-FUNCTION] `select_playbook_automatically` — implements the select playbook automatically operation used by the surrounding investigation workflow.
 # [FYP-INPUT] Parameters: `seed_file_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
@@ -783,6 +799,7 @@ async def main_async():
             
             await engine.sync_update_incident(incident)
             write_markdown_report(dest_dir, inst_id, report)
+            write_investigation_analysis_json(dest_dir, report)
         
     # Stop background realtime sync daemon
     stop_background_sync(sync_service, sync_thread, sync_loop)
