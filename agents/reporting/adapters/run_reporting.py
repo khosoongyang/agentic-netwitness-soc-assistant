@@ -259,7 +259,16 @@ def _resolve_reporting_mode(inv: dict[str, Any], approval: dict[str, Any], wrapp
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _limitations(inv: dict[str, Any]) -> list[Any]:
-    value = inv.get("missing_evidence") or inv.get("limitations") or inv.get("missing_fields") or []
+    # Phase 5 (canonical Investigation Result contract migration): prefer the
+    # Phase 3 feedback-loop's structured, per-step gap descriptions (sourced
+    # from execution_trace) over the older missing_evidence/limitations/
+    # missing_fields strings when the automatic re-investigation loop ran.
+    # Mirrors context_builder.py's evidence_gaps preference; does not touch
+    # _has_limitations()/_resolve_reporting_mode() (eligibility/mode
+    # decisions, left unchanged).
+    feedback_loop = inv.get("feedback_loop")
+    feedback_gaps = feedback_loop.get("gaps") if isinstance(feedback_loop, dict) else None
+    value = feedback_gaps or inv.get("missing_evidence") or inv.get("limitations") or inv.get("missing_fields") or []
     if isinstance(value, list):
         return value
     return [value] if value else []

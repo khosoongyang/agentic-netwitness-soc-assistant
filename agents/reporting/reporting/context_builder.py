@@ -434,6 +434,27 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     enriched = inputs.get("enriched_alert") or {}
     triage = inputs.get("triage_result") or {}
     investigation = inputs.get("investigation_result") or {}
+    # Phase 5 (canonical Investigation Result contract migration): the full
+    # canonical Phase 1 InvestigationAgentOutput payload, nested by
+    # workflow/engine.py::run_investigation() under investigation_result
+    # ["investigation_analysis"] whenever investigation_analysis.json
+    # validated (Phase 2/3). NOT investigation.get("agent") -- that flat key
+    # is a pre-existing STRING label ("Investigation Agent"), unrelated to
+    # this nested contract payload. Absent entirely on pre-migration results
+    # and on the Markdown-fallback path -- every read below falls through to
+    # the existing compatibility chain in that case.
+    investigation_analysis = investigation.get("investigation_analysis")
+    if not isinstance(investigation_analysis, dict):
+        investigation_analysis = {}
+    # The Phase 3 feedback-loop record (automatic re-investigation gap
+    # detection, now sourced from the structured execution_trace when
+    # available) -- a richer, per-step evidence-gap signal than the older
+    # missing_evidence/missing_fields strings, used below as the preferred
+    # source for the evidence-gaps section only (NOT for reporting_mode/
+    # eligibility, which are intentionally left untouched in Phase 5).
+    feedback_loop = investigation.get("feedback_loop")
+    if not isinstance(feedback_loop, dict):
+        feedback_loop = {}
     threat_intel_result = inputs.get("threat_intel_result") or {}
     approval_history = inputs.get("approval_history") or []
     workflow_metadata = inputs.get("workflow_metadata") or {}
@@ -449,8 +470,22 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     incident_id = _first(ticket_context.get("incident_id"), workflow_metadata.get("incident_id"), processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), investigation.get("incident_id"), investigation.get("case_id"), triage.get("case_id"), threat_intel_result.get("incident_id"), default="unknown")
     alert_id = _first(processed.get("alert_id"), enriched.get("alert_id"), triage.get("alert_id"), investigation.get("alert_id"), default="UNKNOWN-ALERT")
     title = _first(processed.get("alert_title"), processed.get("alert_name"), enriched.get("alert_title"), enriched.get("alert_name"), enriched.get("case_title"), enriched.get("title"), triage.get("title"), investigation.get("title"), default="Not Provided")
-    severity_value = _first(investigation.get("severity"), triage.get("severity"), enriched.get("severity"), enriched.get("risk_level"), reporting.get("severity"), default="Not Provided")
-    confidence_value = _first(investigation.get("confidence"), triage.get("confidence"), enriched.get("confidence"), reporting.get("confidence"), default="Not Provided")
+    # Phase 5: prefer the canonical Investigation Agent contract payload
+    # first, then the Phase 3 flat compatibility alias (investigation
+    # .get("severity")/.get("confidence") -- populated by run_investigation()
+    # whenever investigation_analysis.json validated, same value as the
+    # nested payload today, kept as a fallback in case a producer only sets
+    # one of the two), then Triage/enrichment/reporting exactly as before.
+    # confidence in particular was previously ALWAYS absent from Investigation
+    # output (dropped before the JSON handoff), so this chain always fell
+    # through to Triage's pre-investigation estimate -- it now resolves from
+    # Investigation's own post-investigation assessment whenever available.
+    severity_value = _first(investigation_analysis.get("severity"), investigation.get("severity"), triage.get("severity"), enriched.get("severity"), enriched.get("risk_level"), reporting.get("severity"), default="Not Provided")
+    confidence_value = _first(investigation_analysis.get("confidence"), investigation.get("confidence"), triage.get("confidence"), enriched.get("confidence"), reporting.get("confidence"), default="Not Provided")
+    # Classification remains Triage-owned -- the Investigation Agent contract
+    # (agents/investigation/investigation_result.py::InvestigationAgentOutput)
+    # has no classification field, so there is no canonical Investigation
+    # source to prefer here. Left unchanged from before Phase 5.
     classification = _first(investigation.get("classification"), triage.get("classification"), triage.get("incident_category"), reporting.get("classification"), default="Not Provided")
     likely_scenario = _first(investigation.get("likely_scenario"), triage.get("likely_scenario"), reporting.get("likely_scenario"), default="Not Provided")
     investigation_status = str(_first(investigation.get("status"), investigation.get("workflow_decision"), default="not_provided"))
@@ -477,7 +512,15 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     iocs = [_normalise_ioc(x) for x in _list(_first(investigation.get("iocs"), triage.get("iocs"), ticket_context.get("combined_iocs"), enriched.get("iocs"), enriched.get("indicators"), default=[]))]
     evidence = [_normalise_evidence(x, idx + 1) for idx, x in enumerate(_list(_first(investigation.get("evidence"), triage.get("evidence"), enriched.get("evidence"), default=[])))]
     timeline = [_normalise_timeline(x, idx + 1) for idx, x in enumerate(_list(_first(investigation.get("timeline"), triage.get("timeline"), enriched.get("timeline"), default=[])))]
-    evidence_gaps = [_normalise_gap(x) for x in _list(_first(investigation.get("missing_evidence"), investigation.get("missing_fields"), triage.get("missing_evidence"), triage.get("missing_fields"), reporting.get("missing_report_fields"), default=[]))]
+    # Phase 5: prefer the Phase 3 feedback-loop's structured, per-step gap
+    # descriptions (sourced from execution_trace, see workflow/engine.py::
+    # detect_evidence_gaps()) over the older, coarser missing_evidence/
+    # missing_fields strings when the automatic re-investigation loop
+    # actually ran. This only changes what gap text is DISPLAYED -- it does
+    # NOT touch reporting_mode's own with_limitations/standard decision
+    # above, which is left reading investigation.get("missing_evidence")/
+    # .get("missing_fields") exactly as before.
+    evidence_gaps = [_normalise_gap(x) for x in _list(_first(feedback_loop.get("gaps"), investigation.get("missing_evidence"), investigation.get("missing_fields"), triage.get("missing_evidence"), triage.get("missing_fields"), reporting.get("missing_report_fields"), default=[]))]
     missing_required_fields = [g.get("gap", str(g)) for g in evidence_gaps]
     investigation_limitations = evidence_gaps if reporting_mode == "with_limitations" else []
     investigation_completeness_note = (
@@ -504,7 +547,13 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # recommended_containment); they must be checked ahead of recommended_actions
     # so a real, specific containment finding is never mistaken for "not supplied"
     # and backfilled with generic text.
+    # Phase 5: the canonical nested contract payload is checked first; the
+    # flat investigation.get("recommended_containment") alias (populated by
+    # run_investigation() from the same structured data, or previously from
+    # Markdown-regex reconstruction) remains the very next fallback, followed
+    # by every existing compatibility branch, unchanged.
     raw_recommended_containment = _list(_first(
+        investigation_analysis.get("recommended_containment"),
         investigation.get("recommended_containment"),
         investigation.get("containment_recommendations"),
         investigation.get("recommended_actions"),
@@ -582,7 +631,14 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "Any missing assets, users, IOCs, or timestamps should remain marked as not confirmed until validated by a SOC analyst."
         + limitations_sentence
     ))
-    technical_analysis = _first(reporting.get("technical_analysis"), investigation.get("investigation_summary"), investigation.get("summary"), default=(
+    # Phase 5: investigation_analysis.incident_summary (canonical) is checked
+    # right after Reporting's own technical_analysis field, ahead of the
+    # older investigation_summary/summary flat keys -- in current practice
+    # this is a no-op (investigation.get("summary") already reliably carries
+    # the same content via incident_data.json's summary_text, unaffected by
+    # Phase 3's structured/Markdown-fallback branching), kept for explicit
+    # contract-preference consistency with the other canonical fields above.
+    technical_analysis = _first(reporting.get("technical_analysis"), investigation_analysis.get("incident_summary"), investigation.get("investigation_summary"), investigation.get("summary"), default=(
         f"The available triage and investigation context indicates {likely_scenario}. Severity is {severity['label']} and confidence is {confidence['label']}. "
         "The SOC analyst should validate endpoint, identity, network, and NetWitness telemetry before confirming containment, escalation, or closure."
         + limitations_sentence
@@ -733,8 +789,12 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         # fields so genuine, per-technique evidence is never mistaken for "not
         # supplied" and backfilled by export_context_enhancer's generic
         # technique-ID scan.
-        "mitre_mapping": _list(_first(investigation.get("mitre_mappings"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
-        "mitre_attack_mapping": _list(_first(investigation.get("mitre_mappings"), investigation.get("mitre_attack_mapping"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
+        # Phase 5: the canonical nested contract payload (investigation_analysis
+        # .mitre_mappings, structured JSON -- no Markdown parsing) is checked
+        # first; the flat investigation.get("mitre_mappings") alias and every
+        # older field-name spelling remain as fallbacks, unchanged.
+        "mitre_mapping": _list(_first(investigation_analysis.get("mitre_mappings"), investigation.get("mitre_mappings"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
+        "mitre_attack_mapping": _list(_first(investigation_analysis.get("mitre_mappings"), investigation.get("mitre_mappings"), investigation.get("mitre_attack_mapping"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
         "powershell_analysis": powershell_analysis,
         "powershell_command_analysis": powershell_analysis,
         "missing_evidence": evidence_gaps,
@@ -757,7 +817,7 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "analyst_review_guidance": analyst_review_guidance,
         "final_assessment": active_narrative["conclusion"],
         "triage_summary": _first(triage.get("summary"), default="Not Provided"),
-        "investigation_summary": _first(investigation.get("summary"), investigation.get("investigation_summary"), default="Not Provided"),
+        "investigation_summary": _first(investigation_analysis.get("incident_summary"), investigation.get("summary"), investigation.get("investigation_summary"), default="Not Provided"),
         "raw_inputs": inputs,
         "appendix_summaries": appendix_summaries,
         "warnings": warnings,
