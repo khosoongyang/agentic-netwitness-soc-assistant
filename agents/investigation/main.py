@@ -450,8 +450,23 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         "operational_impact": "no"
     }
     
-    severity_val = alert["metadata"].get("severity", "High")
-    
+    # `alert["metadata"]["severity"]` is the Triage pre-investigation signal
+    # ingest_pipeline.py::process_log_file() now forwards from the raw
+    # alert's classification.severity (itself Triage's ticket.classification,
+    # e.g. "HIGH" -- always upper-case per the canonical Triage contract).
+    # This key never existed before that fix, so this line always hit the
+    # "High" default -- the plumbing bug this fixes. Investigation's own
+    # FinalIncidentAnalysis.severity below is Literal["Low","Medium","High",
+    # "Critical"] (title-case only), so the raw metadata value is normalized
+    # against that exact set here rather than passed through verbatim;
+    # anything unrecognized (missing signal, non-Triage log, malformed
+    # value) safely degrades to the same "High" default as before -- the
+    # decision policy/default itself is unchanged, only its input is now
+    # actually wired up.
+    _KNOWN_SEVERITIES = {"low": "Low", "medium": "Medium", "high": "High", "critical": "Critical"}
+    severity_val = _KNOWN_SEVERITIES.get(
+        str(alert["metadata"].get("severity") or "").strip().lower(), "High")
+
     compliance = policy_engine.run_policy_compliance_rules(
         incident_id=alert_id,
         severity=severity_val,

@@ -318,7 +318,7 @@ def process_log_file(filepath: str) -> dict:
     mitre_data = data.get("incident_details", {}).get("mitre_att&ck", {})
     tactic = mitre_data.get("tactic", "Unknown") if mitre_data else "Unknown"
     technique = mitre_data.get("technique", "Unknown") if mitre_data else "Unknown"
-    
+
     # Pack flat metadata fields for ChromaDB
     metadata = {
         "incident_id": incident_id,
@@ -335,7 +335,21 @@ def process_log_file(filepath: str) -> dict:
         "emails": ",".join(indicators["emails"]),
         "domains": ",".join(indicators["domains"])
     }
-    
+
+    # Forward the raw alert's pre-investigation "classification.severity"
+    # signal (workflow/engine.py::build_investigation_alert() writes
+    # ticket.classification there for a Triage-sourced alert) into metadata
+    # so main.py::generate_local_standalone_report() -- which reads
+    # metadata["severity"] -- actually has an input to read. Only set when
+    # the raw alert genuinely carries one: this key was never populated at
+    # all before, so main.py's own `.get("severity", "High")` default must
+    # keep applying unchanged whenever there is no such signal (e.g. a raw,
+    # non-Triage log). This does NOT change Investigation's own final
+    # severity, which stays computed independently later (main.py:783-800).
+    classification_severity = (data.get("classification") or {}).get("severity")
+    if classification_severity:
+        metadata["severity"] = classification_severity
+
     res = {
         "id": incident_id,
         "document": document,

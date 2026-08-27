@@ -1531,7 +1531,19 @@ def build_investigation_alert(triage_result: dict, incident: dict,
         "classification": {
             "alert_type": ticket.get("incident_category"),
             "severity": ticket.get("classification"),
-            "risk_score": ticket.get("risk_rating") or incident.get("riskScore"),
+            # Two distinct concepts previously conflated under one ambiguous
+            # "risk_score" key (`ticket.get("risk_rating") or
+            # incident.get("riskScore")`), which made the field's type
+            # alternate between a dict (Triage's structured risk_rating) and
+            # a scalar (the source-system's numeric riskScore) depending on
+            # which happened to be truthy. No consumer in agents/investigation/
+            # reads "risk_score" off this handoff JSON (verified by repo-wide
+            # grep before this change) -- incident_map.py's own "risk_score"
+            # reads the raw NetWitness `incident` dict directly, not this
+            # file -- so no compatibility alias is needed; both new keys are
+            # additive-only relative to what anything actually consumes.
+            "triage_risk_rating": ticket.get("risk_rating"),
+            "source_risk_score": incident.get("riskScore"),
         },
         "incident_details": {
             "title": payload.get("incident_title") or ticket.get("title"),
