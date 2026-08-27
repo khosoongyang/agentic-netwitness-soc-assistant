@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TriageRiskRating(BaseModel):
@@ -46,7 +46,14 @@ class TriageRiskRating(BaseModel):
     (soc_triage_agent.py:1434-1440). All five sub-fields are always strings
     -- each is populated via `risk_data.get(...) or "—"` (or, for
     `rationale`, `or ""`), so none of them are ever absent or non-string on
-    a successful triage run."""
+    a successful triage run.
+
+    `extra="forbid"`: an unrecognised key here (e.g. a `confidence` score
+    the LLM prompt starts emitting) must fail loudly rather than be
+    silently dropped on re-serialization -- silent dropping would hide
+    producer/schema drift from whoever reads the validated result."""
+
+    model_config = ConfigDict(extra="forbid")
 
     likelihood_initiation: str
     likelihood_occurrence: str
@@ -57,7 +64,10 @@ class TriageRiskRating(BaseModel):
 
 class TriageMetakeysPayload(BaseModel):
     """Mirrors TriageAgent.triage()'s `metakeys_payload` dict exactly
-    (soc_triage_agent.py:1412-1423)."""
+    (soc_triage_agent.py:1412-1423). `extra="forbid"` -- see
+    `TriageRiskRating` for rationale."""
+
+    model_config = ConfigDict(extra="forbid")
 
     incident_id: str
     incident_title: str
@@ -79,7 +89,11 @@ class TriageTicket(BaseModel):
     a different casing from `TriageMetakeysPayload.classification` (the
     lowercase `risk_level`-derived value, e.g. "high") -- both are real,
     independently-set values in the live producer, not a bug this contract
-    should paper over."""
+    should paper over.
+
+    `extra="forbid"` -- see `TriageRiskRating` for rationale."""
+
+    model_config = ConfigDict(extra="forbid")
 
     unc: str
     incident_id: str
@@ -104,7 +118,15 @@ class TriageAgentSuccessOutput(BaseModel):
     soc_triage_agent.py:1456-1462) and a cache-served run (`cached`,
     soc_triage_agent.py:1343-1348), which share the identical field set
     plus one additive marker (see `cached` below).
-    """
+
+    `extra="forbid"` at the top level too -- see `TriageRiskRating` for
+    rationale. Note this does NOT cover `mock_triage_result()`
+    (workflow/engine.py) -- that offline substitute is a *different*,
+    deliberately-mocked producer outside this contract's stated scope (see
+    module docstring), and its own `"mock": True` marker key is stripped
+    before validation at its one call site rather than modelled here."""
+
+    model_config = ConfigDict(extra="forbid")
 
     metakeys_payload: TriageMetakeysPayload
     ticket: TriageTicket
@@ -120,6 +142,15 @@ class TriageAgentSuccessOutput(BaseModel):
     # optional field here rather than stripped before validation -- a
     # previously-valid cache hit must keep validating. Absent (defaults to
     # False) on a freshly-computed run.
+    #
+    # IMPORTANT: pre-Phase-1, a freshly-computed run's returned dict never
+    # contained this key at all (only `cached["cached"] = True` on the
+    # cache-hit path ever set it) -- so `model_dump()` must NOT be called
+    # directly on this model when re-serializing at the external return
+    # boundary, since that always emits `"cached": false` for a fresh run
+    # and would silently change the previously-byte-for-byte-identical
+    # external shape. Use `dump_triage_agent_output()` below instead, which
+    # omits this key exactly when it is `False`.
     cached: bool = False
 
 
@@ -133,7 +164,17 @@ class TriageAgentErrorOutput(BaseModel):
     ticket was ever produced), and -- unlike the success path -- never sets
     `used_parsed_context` at all, so that field has no place on this model.
     `trace` may be non-empty here: an exception raised partway through
-    Phase 2 or 3 still returns whatever steps Phase 1/2 already appended."""
+    Phase 2 or 3 still returns whatever steps Phase 1/2 already appended.
+
+    `extra="forbid"`: the real error branch (soc_triage_agent.py:1406-1409)
+    always constructs exactly these four keys -- no other call site feeds a
+    dict with diagnostic extras into `validate_triage_agent_output()` --
+    so there is no historical/error-path compatibility evidence requiring
+    a looser policy here. Should a genuine need for extra diagnostic
+    fields on the error path emerge later, loosen this deliberately then,
+    with that evidence recorded here."""
+
+    model_config = ConfigDict(extra="forbid")
 
     error: str
     metakeys_payload: dict[str, Any] = Field(default_factory=dict)
@@ -156,6 +197,25 @@ def validate_triage_agent_output(
     return TriageAgentSuccessOutput.model_validate(raw)
 
 
+def dump_triage_agent_output(
+    output: TriageAgentSuccessOutput | TriageAgentErrorOutput,
+) -> dict[str, Any]:
+    """Serialize a validated Triage output back to the exact plain-dict
+    shape `TriageAgent.triage()` returned before this contract existed.
+
+    `model_dump(mode="json")` alone is NOT byte-for-byte safe here: it
+    always emits every field on the model, including `cached: false` for
+    `TriageAgentSuccessOutput`, but pre-Phase-1 a freshly-computed run's
+    dict never had a `"cached"` key at all -- only a cache-hit ever set it
+    (to `True`). This helper omits `"cached"` exactly when it is `False`,
+    so a fresh result's external shape is unchanged and a cache-hit's
+    `"cached": true` is preserved exactly as before."""
+    dumped = output.model_dump(mode="json")
+    if isinstance(output, TriageAgentSuccessOutput) and not output.cached:
+        dumped.pop("cached", None)
+    return dumped
+
+
 __all__ = [
     "TriageRiskRating",
     "TriageMetakeysPayload",
@@ -163,4 +223,5 @@ __all__ = [
     "TriageAgentSuccessOutput",
     "TriageAgentErrorOutput",
     "validate_triage_agent_output",
+    "dump_triage_agent_output",
 ]

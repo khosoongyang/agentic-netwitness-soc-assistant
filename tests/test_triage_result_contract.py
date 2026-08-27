@@ -28,6 +28,7 @@ from agents.triage.triage_result import (
     TriageMetakeysPayload,
     TriageRiskRating,
     TriageTicket,
+    dump_triage_agent_output,
     validate_triage_agent_output,
 )
 
@@ -320,11 +321,32 @@ def test_mock_triage_result_validates_against_success_contract():
     from workflow import engine as sw
 
     mock_result = sw.mock_triage_result({"id": "INC-9999", "title": "Mock incident"})
-    output = validate_triage_agent_output(mock_result)
+    # mock_triage_result()'s own top-level "mock": True is a marker specific
+    # to that offline substitute -- it is not part of the real
+    # TriageAgent.triage() shape this contract models (see triage_result.py
+    # module docstring), so it is stripped before validating against the
+    # canonical contract, the same way a real API contract test excludes a
+    # non-contractual envelope key before schema-validating a payload. With
+    # `extra="forbid"` now enforced, leaving it in would make this
+    # contract-parity check fail for the wrong reason.
+    contract_fields = {k: v for k, v in mock_result.items() if k != "mock"}
+    output = validate_triage_agent_output(contract_fields)
     assert isinstance(output, TriageAgentSuccessOutput)
     assert output.ticket.classification == "HIGH"
     assert output.metakeys_payload.mitre_tactic == "Credential Access"
     assert output.used_parsed_context is False
+
+
+def test_mock_triage_result_round_trips_without_gaining_or_losing_contract_fields():
+    from workflow import engine as sw
+    from agents.triage.triage_result import dump_triage_agent_output
+
+    mock_result = sw.mock_triage_result({"id": "INC-9999", "title": "Mock incident"})
+    contract_fields = {k: v for k, v in mock_result.items() if k != "mock"}
+    output = validate_triage_agent_output(contract_fields)
+    dumped = dump_triage_agent_output(output)
+    assert set(dumped.keys()) == set(contract_fields.keys())
+    assert dumped == contract_fields
 
 
 # =============================================================================
@@ -341,6 +363,115 @@ def test_cached_true_validates_and_defaults_to_false():
     cached = TriageAgentSuccessOutput.model_validate(cached_payload)
     assert cached.cached is True
     assert cached.model_dump(mode="json")["cached"] is True
+
+
+# =============================================================================
+# 14b. `dump_triage_agent_output()` preserves the exact pre-Phase-1 external
+#      dict shape -- a fresh result must NOT gain a "cached" key it never
+#      had, and a cache-hit must keep exposing "cached": true exactly as
+#      before. (Verifies the Phase-1 follow-up fix: plain `model_dump()`
+#      alone would emit "cached": false for every fresh result, which the
+#      real producer's dict never contained pre-Phase-1.)
+# =============================================================================
+
+def test_fresh_result_does_not_gain_a_cached_key():
+    fresh = TriageAgentSuccessOutput.model_validate(_success_output_kwargs())
+    dumped = dump_triage_agent_output(fresh)
+    assert "cached" not in dumped
+
+
+def test_cache_hit_result_keeps_cached_true_key():
+    cached_payload = _success_output_kwargs()
+    cached_payload["cached"] = True
+    cached = TriageAgentSuccessOutput.model_validate(cached_payload)
+    dumped = dump_triage_agent_output(cached)
+    assert dumped["cached"] is True
+
+
+def test_error_output_dump_is_unaffected_by_cached_handling():
+    error_output = TriageAgentErrorOutput.model_validate({"error": "boom"})
+    dumped = dump_triage_agent_output(error_output)
+    assert "cached" not in dumped
+    assert dumped == {"error": "boom", "metakeys_payload": {}, "ticket": {}, "trace": []}
+
+
+def test_triage_agent_assembly_boundary_fresh_dict_has_no_cached_key(monkeypatch, isolated_ticket_db):
+    agent = soc_triage_agent.TriageAgent()
+    _patch_llm_phases(monkeypatch, agent)
+
+    result = agent.triage({"id": "INC-ASSEMBLY-NOCACHE", "title": "No cached key on fresh run"})
+
+    assert "cached" not in result
+
+
+def test_triage_agent_assembly_boundary_cache_hit_dict_has_cached_true(monkeypatch, isolated_ticket_db):
+    agent = soc_triage_agent.TriageAgent()
+    _patch_llm_phases(monkeypatch, agent)
+    incident = {"id": "INC-ASSEMBLY-CACHEKEY", "title": "Cache key test", "cache_marker": "stable"}
+
+    first = agent.triage(incident)
+    second = agent.triage(incident)
+
+    assert "cached" not in first
+    assert second["cached"] is True
+
+
+# =============================================================================
+# 14c. Extra/unexpected fields are rejected (extra="forbid"), not silently
+#      dropped -- at the top level and inside every nested model. Silent
+#      dropping would hide future producer/schema drift (e.g. Triage
+#      starting to emit a `confidence` or `severity` field the prompt was
+#      never meant to produce) from anyone reading the validated result.
+# =============================================================================
+
+def test_top_level_unexpected_field_is_rejected():
+    payload = _success_output_kwargs()
+    payload["confidence"] = "High"
+    with pytest.raises(ValidationError):
+        TriageAgentSuccessOutput.model_validate(payload)
+
+
+def test_top_level_unexpected_severity_field_is_rejected():
+    payload = _success_output_kwargs()
+    payload["severity"] = "Critical"
+    with pytest.raises(ValidationError):
+        TriageAgentSuccessOutput.model_validate(payload)
+
+
+def test_nested_ticket_unexpected_field_is_rejected():
+    payload = _success_output_kwargs()
+    payload["ticket"]["severity"] = "Critical"
+    with pytest.raises(ValidationError):
+        TriageAgentSuccessOutput.model_validate(payload)
+
+
+def test_nested_metakeys_payload_unexpected_field_is_rejected():
+    payload = _success_output_kwargs()
+    payload["metakeys_payload"]["confidence"] = "High"
+    with pytest.raises(ValidationError):
+        TriageAgentSuccessOutput.model_validate(payload)
+
+
+def test_nested_risk_rating_unexpected_field_is_rejected():
+    payload = _success_output_kwargs()
+    payload["ticket"]["risk_rating"]["confidence"] = "High"
+    with pytest.raises(ValidationError):
+        TriageAgentSuccessOutput.model_validate(payload)
+
+
+def test_no_invented_confidence_or_severity_field_can_silently_pass_through():
+    # Before extra="forbid", both of these validated successfully and the
+    # invented field was simply dropped on re-serialization -- indistinguishable
+    # from a producer that never sent it. Now both must raise instead.
+    base = _success_output_kwargs()
+
+    with_confidence = dict(base, confidence="High")
+    with pytest.raises(ValidationError):
+        validate_triage_agent_output(with_confidence)
+
+    with_severity = dict(base, severity="Critical")
+    with pytest.raises(ValidationError):
+        validate_triage_agent_output(with_severity)
 
 
 # =============================================================================
@@ -385,6 +516,55 @@ def test_full_payload_round_trips_through_json():
 
     assert round_tripped == output
     assert round_tripped.model_dump(mode="json") == dumped
+
+
+# =============================================================================
+# Round-trip integrity via dump_triage_agent_output(): raw dict -> validate
+# -> dump -> returned dict must not add, drop, or rename any field, and
+# must not alter classification casing, risk_rating structure, or the
+# scalar MITRE fields -- for every real return shape (fresh success,
+# cached success, error output).
+# =============================================================================
+
+def _assert_clean_round_trip(raw: dict) -> dict:
+    output = validate_triage_agent_output(raw)
+    dumped = dump_triage_agent_output(output)
+    assert set(dumped.keys()) == set(raw.keys()), (
+        f"added={set(dumped) - set(raw)} dropped={set(raw) - set(dumped)}"
+    )
+    return dumped
+
+
+def test_fresh_success_round_trip_adds_or_drops_nothing():
+    raw = _success_output_kwargs()
+    dumped = _assert_clean_round_trip(raw)
+    assert dumped["ticket"]["classification"] == "HIGH"
+    assert dumped["metakeys_payload"]["classification"] == "high"
+    assert dumped["ticket"]["risk_rating"] == _risk_rating_kwargs()
+    assert dumped["ticket"]["mitre_tactic"] == "Credential Access"
+    assert dumped["ticket"]["mitre_technique"] == "Brute Force"
+    assert dumped["metakeys_payload"]["mitre_tactic"] == "Credential Access"
+    assert dumped["metakeys_payload"]["mitre_technique"] == "Brute Force"
+
+
+def test_cached_success_round_trip_adds_or_drops_nothing():
+    raw = _success_output_kwargs()
+    raw["cached"] = True
+    dumped = _assert_clean_round_trip(raw)
+    assert dumped["cached"] is True
+    assert dumped["ticket"]["classification"] == "HIGH"
+    assert dumped["ticket"]["risk_rating"] == _risk_rating_kwargs()
+
+
+def test_error_output_round_trip_adds_or_drops_nothing():
+    raw = {
+        "error": "OpenAI request timed out",
+        "metakeys_payload": {},
+        "ticket": {},
+        "trace": [],
+    }
+    dumped = _assert_clean_round_trip(raw)
+    assert dumped["error"] == "OpenAI request timed out"
 
 
 # =============================================================================
