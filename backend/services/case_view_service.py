@@ -1662,16 +1662,31 @@ def _confirmed_facts_block(state: dict, stages: list[dict]) -> dict:
 
     triage_state = state_by_key.get("triage", "not_started")
     if triage_state == "done":
+        # Phase 3 (canonical Triage Result contract migration) fix: the raw
+        # persisted triage_result_json is TriageAgentSuccessOutput's shape
+        # (metakeys_payload/ticket/trace/used_parsed_context/error[/cached],
+        # plus generate_triage_ai_summary()'s ai_summary/ai_thinking/
+        # ai_summary_model/ai_summary_generated_at) -- it has no top-level
+        # "severity", "confidence", "classification", "confirmed_facts", or
+        # "evidence_gaps" key, ever. The five reads previously here
+        # (tri.get("severity"), tri.get("confidence"), the
+        # `or tri.get("classification")` fallback, tri.get("confirmed_facts"),
+        # tri.get("evidence_gaps")) always resolved to None/[] -- silently
+        # confusing Triage's real classification field with a nonexistent
+        # generic "severity", and inventing a Triage "confidence" that this
+        # agent has never produced (see agents/triage/triage_result.py's own
+        # scope docstring). No consumer depends on those dead keys being
+        # present (grepped: only this module's own renderer in
+        # soc_triage_agent.py::_format_case_context_for_prompt(), which
+        # already skips None/empty values), so they are removed outright
+        # rather than kept as always-null placeholders.
         tri = _json_or_empty(state.get("triage_result_json"))
         ticket = tri.get("ticket") or {}
         facts["triage"] = {
             "label": "confirmed",
-            "severity": tri.get("severity"), "confidence": tri.get("confidence"),
-            "classification": ticket.get("classification") or tri.get("classification"),
+            "classification": ticket.get("classification"),
             "summary": _cap_text(ticket.get("summary")),
             "recommended_actions": _cap_list(ticket.get("recommended_actions")),
-            "confirmed_facts": _cap_list(tri.get("confirmed_facts")),
-            "evidence_gaps": _cap_list(tri.get("evidence_gaps")),
         }
     else:
         facts["triage"] = {"label": _approval_label(triage_state)}
