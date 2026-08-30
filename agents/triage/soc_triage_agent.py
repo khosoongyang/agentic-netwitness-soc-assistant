@@ -56,6 +56,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from pydantic import ValidationError
 
 from .triage_result import dump_triage_agent_output, validate_triage_agent_output
 
@@ -465,21 +466,38 @@ def _store_ticket(unc: str, incident_id: str, severity: str, payload: dict) -> N
 
 
 # [FYP-FUNCTION] `_incident_fingerprint` — implements the incident fingerprint operation used by the surrounding triage workflow.
-# [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-INPUT] Parameters: `incident`, `parsed_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
 # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dumps`, `encode`, `get`, `hexdigest`, `isinstance`, `len`, `sha256`, `sorted`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def _incident_fingerprint(incident: dict) -> str:
+def _incident_fingerprint(incident: dict, parsed_context: dict | None = None) -> str:
     """
-    Stable content hash of an incident, used as the triage-cache key.
+    Stable content hash of an incident (+ any parsed_context actually
+    supplied), used as the triage-cache key.
 
     Deliberately hashes only fields that describe WHAT happened — not
     volatile bookkeeping like lastUpdated (which the 30s auto-refresh bumps
     constantly) — so re-triaging the same unchanged incident is a cache hit,
     while any real change (new alerts, changed risk score) is a miss.
+
+    parsed_context (Phase 5A): TriageAgent.triage()'s IOC/risk/classification
+    phases read parsed_context directly (_run_ioc(incident, parsed_context),
+    etc. — see _compact_incident()) and the canonical result records
+    used_parsed_context, so it materially affects Triage's output. Two calls
+    for the identical incident but with different parsed_context are NOT the
+    same Triage input and must not collide on one cache entry. Only folded
+    in when actually supplied (parsed_context is falsy -> omitted entirely)
+    so a call with no parsed_context keeps producing the exact same
+    fingerprint as before this change -- existing cache rows for the (very
+    common) no-parsed_context case remain valid. When supplied, a
+    sort_keys=True, default=str JSON dump is what's hashed -- deterministic
+    and stable for two semantically-identical dicts regardless of key order
+    or object identity, never a raw repr()/memory address. Only the final
+    sha256 digest is ever persisted (triage_cache.fingerprint) -- the
+    parsed_context content itself never enters the cache table.
     """
     alerts = incident.get("alerts") or []
     stable = {
@@ -493,6 +511,8 @@ def _incident_fingerprint(incident: dict) -> str:
             str(a.get("id") or "") for a in alerts[:100] if isinstance(a, dict)
         ),
     }
+    if parsed_context:
+        stable["parsed_context"] = json.dumps(parsed_context, sort_keys=True, default=str)
     blob = json.dumps(stable, sort_keys=True, default=str).encode()
     return hashlib.sha256(blob).hexdigest()
 
@@ -1340,14 +1360,42 @@ class TriageAgent:
         # ── Result cache: identical incident content → identical output ──────
         # Guarantees repeat triages of an unchanged incident return the exact
         # same findings (and instantly). force=True bypasses for a fresh run.
-        fingerprint = _incident_fingerprint(incident)
+        fingerprint = _incident_fingerprint(incident, parsed_context)
         if not force:
             cached = _cache_get(fingerprint)
-            if cached and not cached.get("error"):
-                for phase in ("IOC Checklists", "Risk Rating", "SOC Classification"):
-                    self._emit("phase_complete", phase, "cached")
+            # isinstance guard: a cache row can only be JSON-decodable garbage
+            # (e.g. a bare list/string/number) if something manually wrote a
+            # non-dict payload -- _cache_put() itself always stores a dict.
+            # Guarding here means such a row is treated as no-cache-entry
+            # (falls through below) instead of raising AttributeError on
+            # cached.get(...).
+            if isinstance(cached, dict) and cached and not cached.get("error"):
                 cached["cached"] = True
-                return dump_triage_agent_output(validate_triage_agent_output(cached))
+                # Phase 5A: a cache row written before the current strict
+                # Triage contract existed (e.g. missing used_parsed_context
+                # or a since-added required ticket/metakeys_payload field)
+                # fails validate_triage_agent_output() with a
+                # pydantic.ValidationError. That must behave as an ordinary
+                # cache miss -- NOT a Triage failure, and NOT a reason to
+                # loosen the contract -- so it's caught here and falls
+                # through to the normal fresh-execution path below, which
+                # will recompute and (via _cache_put() at the bottom of this
+                # method) naturally overwrite this same fingerprint's stale
+                # row with a fresh, contract-valid one.
+                try:
+                    validated = dump_triage_agent_output(validate_triage_agent_output(cached))
+                except ValidationError as exc:
+                    print(
+                        f"[{datetime.utcnow().strftime('%H:%M:%S')}] [TRIAGE] "
+                        f"cached result failed current contract validation "
+                        f"(incident_id={inc_id!r}, fingerprint={fingerprint[:12]}...); "
+                        f"treating as cache miss ({len(exc.errors())} field error(s))",
+                        flush=True,
+                    )
+                else:
+                    for phase in ("IOC Checklists", "Risk Rating", "SOC Classification"):
+                        self._emit("phase_complete", phase, "cached")
+                    return validated
 
         try:
             # Phase 1 — IOC
