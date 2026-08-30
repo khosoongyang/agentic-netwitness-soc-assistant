@@ -397,8 +397,17 @@ def _build_appendix_summaries(
         "triage": {
             "Classification": _short_value(_first(triage.get("classification"), triage.get("incident_category"), default="Not Provided")),
             "Severity": _short_value(_first(triage.get("severity"), severity.get("label"), default="Not Provided")),
-            "Confidence": _short_value(_first(triage.get("confidence"), confidence.get("label"), default="Not Provided")),
-            "Recommended Action": _short_value(_first(triage.get("recommended_next_action"), triage.get("next_action"), default="Not Provided")),
+            # Triage has never produced a "confidence" field (see
+            # agents/triage/triage_result.py's own scope docstring) --
+            # triage.get("confidence") always resolved to None here, so this
+            # cell always showed the resolved overall confidence anyway.
+            "Confidence": _short_value(_first(confidence.get("label"), default="Not Provided")),
+            # Triage has never produced "recommended_next_action" or
+            # "next_action" (its own field is the plural recommended_actions
+            # list, surfaced elsewhere in this context, not a single "next
+            # action" string) -- both reads always resolved to None, so this
+            # cell always showed "Not Provided".
+            "Recommended Action": "Not Provided",
         },
         "investigation": {
             "Status": _short_value(_first(investigation.get("status"), investigation.get("workflow_decision"), default="Not Provided")),
@@ -467,7 +476,11 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # Investigation may legitimately report incident_id="unknown" when it has
     # evidence gaps, but Reporting should still recover the correct incident and
     # alert title from the parser/triage/threat-intel context.
-    incident_id = _first(ticket_context.get("incident_id"), workflow_metadata.get("incident_id"), processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), investigation.get("incident_id"), investigation.get("case_id"), triage.get("case_id"), threat_intel_result.get("incident_id"), default="unknown")
+    # triage.get("case_id") dropped below -- the flattened triage_result.json
+    # has never had a "case_id" key (only "incident_id"); investigation
+    # .get("case_id") is left untouched -- auditing Investigation's own
+    # fields is out of scope for this phase.
+    incident_id = _first(ticket_context.get("incident_id"), workflow_metadata.get("incident_id"), processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), investigation.get("incident_id"), investigation.get("case_id"), threat_intel_result.get("incident_id"), default="unknown")
     alert_id = _first(processed.get("alert_id"), enriched.get("alert_id"), triage.get("alert_id"), investigation.get("alert_id"), default="UNKNOWN-ALERT")
     title = _first(processed.get("alert_title"), processed.get("alert_name"), enriched.get("alert_title"), enriched.get("alert_name"), enriched.get("case_title"), enriched.get("title"), triage.get("title"), investigation.get("title"), default="Not Provided")
     # Phase 5: prefer the canonical Investigation Agent contract payload
@@ -476,18 +489,25 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # whenever investigation_analysis.json validated, same value as the
     # nested payload today, kept as a fallback in case a producer only sets
     # one of the two), then Triage/enrichment/reporting exactly as before.
-    # confidence in particular was previously ALWAYS absent from Investigation
-    # output (dropped before the JSON handoff), so this chain always fell
-    # through to Triage's pre-investigation estimate -- it now resolves from
-    # Investigation's own post-investigation assessment whenever available.
     severity_value = _first(investigation_analysis.get("severity"), investigation.get("severity"), triage.get("severity"), enriched.get("severity"), enriched.get("risk_level"), reporting.get("severity"), default="Not Provided")
-    confidence_value = _first(investigation_analysis.get("confidence"), investigation.get("confidence"), triage.get("confidence"), enriched.get("confidence"), reporting.get("confidence"), default="Not Provided")
+    # Phase 4 (Reporting dead-fallback cleanup) correction: triage.get(
+    # "confidence") is dropped -- Triage has never produced a "confidence"
+    # field (see agents/triage/triage_result.py's own scope docstring), so
+    # this term always resolved to None. Before Investigation's own
+    # canonical confidence existed (Phase 5 above), this chain's real
+    # fallback was enriched.get("confidence")/reporting.get("confidence")/
+    # the "Not Provided" default -- never a genuine "Triage pre-investigation
+    # confidence estimate", which has never existed at any point.
+    confidence_value = _first(investigation_analysis.get("confidence"), investigation.get("confidence"), enriched.get("confidence"), reporting.get("confidence"), default="Not Provided")
     # Classification remains Triage-owned -- the Investigation Agent contract
     # (agents/investigation/investigation_result.py::InvestigationAgentOutput)
     # has no classification field, so there is no canonical Investigation
     # source to prefer here. Left unchanged from before Phase 5.
     classification = _first(investigation.get("classification"), triage.get("classification"), triage.get("incident_category"), reporting.get("classification"), default="Not Provided")
-    likely_scenario = _first(investigation.get("likely_scenario"), triage.get("likely_scenario"), reporting.get("likely_scenario"), default="Not Provided")
+    # triage.get("likely_scenario") dropped -- Triage does not produce a
+    # "likely_scenario" field (see agents/triage/triage_result.py's own
+    # scope docstring); this term always resolved to None.
+    likely_scenario = _first(investigation.get("likely_scenario"), reporting.get("likely_scenario"), default="Not Provided")
     investigation_status = str(_first(investigation.get("status"), investigation.get("workflow_decision"), default="not_provided"))
     investigation_status_norm = investigation_status.strip().lower().replace(" ", "_").replace("-", "_")
     limited_investigation_statuses = {"completed_limited", "completed_with_warnings", "completed_with_evidence_gaps", "needs_more_data", "waiting_for_telemetry", "insufficient_telemetry", "partial", "partial_success", "needs_analyst_review"}
@@ -507,11 +527,17 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         else "standard"
     )
 
-    affected_assets = [_normalise_asset(x) for x in _list(_first(investigation.get("affected_assets"), triage.get("affected_assets"), ticket_context.get("affected_assets"), enriched.get("affected_assets"), processed.get("affected_assets"), default=[]))]
-    affected_users = [_normalise_user(x) for x in _list(_first(investigation.get("affected_users"), triage.get("affected_users"), ticket_context.get("affected_users"), enriched.get("affected_users"), processed.get("affected_users"), default=[]))]
-    iocs = [_normalise_ioc(x) for x in _list(_first(investigation.get("iocs"), triage.get("iocs"), ticket_context.get("combined_iocs"), enriched.get("iocs"), enriched.get("indicators"), default=[]))]
-    evidence = [_normalise_evidence(x, idx + 1) for idx, x in enumerate(_list(_first(investigation.get("evidence"), triage.get("evidence"), enriched.get("evidence"), default=[])))]
-    timeline = [_normalise_timeline(x, idx + 1) for idx, x in enumerate(_list(_first(investigation.get("timeline"), triage.get("timeline"), enriched.get("timeline"), default=[])))]
+    # triage.get("affected_assets"/"affected_users"/"iocs"/"evidence"/
+    # "timeline") all dropped below -- Triage has never produced any of
+    # these (it has matched_metakeys/metakey_values/ioc_summary, not a
+    # canonical structured iocs list, and no affected_assets/affected_users/
+    # evidence/timeline concept at all -- see agents/triage/triage_result.py's
+    # own scope docstring). Every one of these terms always resolved to None.
+    affected_assets = [_normalise_asset(x) for x in _list(_first(investigation.get("affected_assets"), ticket_context.get("affected_assets"), enriched.get("affected_assets"), processed.get("affected_assets"), default=[]))]
+    affected_users = [_normalise_user(x) for x in _list(_first(investigation.get("affected_users"), ticket_context.get("affected_users"), enriched.get("affected_users"), processed.get("affected_users"), default=[]))]
+    iocs = [_normalise_ioc(x) for x in _list(_first(investigation.get("iocs"), ticket_context.get("combined_iocs"), enriched.get("iocs"), enriched.get("indicators"), default=[]))]
+    evidence = [_normalise_evidence(x, idx + 1) for idx, x in enumerate(_list(_first(investigation.get("evidence"), enriched.get("evidence"), default=[])))]
+    timeline = [_normalise_timeline(x, idx + 1) for idx, x in enumerate(_list(_first(investigation.get("timeline"), enriched.get("timeline"), default=[])))]
     # Phase 5: prefer the Phase 3 feedback-loop's structured, per-step gap
     # descriptions (sourced from execution_trace, see workflow/engine.py::
     # detect_evidence_gaps()) over the older, coarser missing_evidence/
@@ -520,7 +546,10 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # NOT touch reporting_mode's own with_limitations/standard decision
     # above, which is left reading investigation.get("missing_evidence")/
     # .get("missing_fields") exactly as before.
-    evidence_gaps = [_normalise_gap(x) for x in _list(_first(feedback_loop.get("gaps"), investigation.get("missing_evidence"), investigation.get("missing_fields"), triage.get("missing_evidence"), triage.get("missing_fields"), reporting.get("missing_report_fields"), default=[]))]
+    # triage.get("missing_evidence"/"missing_fields") dropped -- evidence
+    # gaps are an Investigation-stage concept (workflow/engine.py::
+    # detect_evidence_gaps()); Triage never produces either key.
+    evidence_gaps = [_normalise_gap(x) for x in _list(_first(feedback_loop.get("gaps"), investigation.get("missing_evidence"), investigation.get("missing_fields"), reporting.get("missing_report_fields"), default=[]))]
     missing_required_fields = [g.get("gap", str(g)) for g in evidence_gaps]
     investigation_limitations = evidence_gaps if reporting_mode == "with_limitations" else []
     investigation_completeness_note = (
@@ -529,11 +558,13 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         else "Investigation output is complete enough for standard reporting."
     )
 
+    # triage.get("powershell_analysis"/"powershell_command_analysis") dropped
+    # -- Triage does not perform endpoint/process-level analysis at this
+    # granularity; neither key has ever existed on the flattened
+    # triage_result.json.
     powershell_analysis = _first(
         investigation.get("powershell_analysis"),
         investigation.get("powershell_command_analysis"),
-        triage.get("powershell_analysis"),
-        triage.get("powershell_command_analysis"),
         enriched.get("powershell_analysis"),
         processed.get("powershell_analysis"),
         _get(processed, "normalised_alert.powershell_analysis"),
@@ -552,13 +583,14 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # run_investigation() from the same structured data, or previously from
     # Markdown-regex reconstruction) remains the very next fallback, followed
     # by every existing compatibility branch, unchanged.
+    # triage.get("recommendations") dropped -- Triage's real field is the
+    # plural "recommended_actions" (kept, just above), never "recommendations".
     raw_recommended_containment = _list(_first(
         investigation_analysis.get("recommended_containment"),
         investigation.get("recommended_containment"),
         investigation.get("containment_recommendations"),
         investigation.get("recommended_actions"),
         triage.get("recommended_actions"),
-        triage.get("recommendations"),
         reporting.get("recommended_actions"),
         default=[],
     ))
@@ -582,19 +614,26 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         if text:
             recommended_containment_actions.append(text)
 
+    # triage.get("approval_required"/"soc_analyst_approval_status"/
+    # "containment_status"/"containment_recommended"/"containment_action"/
+    # "recommended_containment_action") all dropped below -- Triage does not
+    # perform approval gating or containment recommendation at all (workflow
+    # state's own triage_status column is a separate mechanism entirely);
+    # none of these keys has ever existed on the flattened
+    # triage_result.json.
     approval = {
-        "approval_required": _first(approval_result.get("approval_required"), triage.get("approval_required")),
-        "approval_status": _first(approval_result.get("approval_status"), triage.get("soc_analyst_approval_status")),
+        "approval_required": _first(approval_result.get("approval_required")),
+        "approval_status": _first(approval_result.get("approval_status")),
         "analyst_decision": _first(approval_result.get("analyst_decision"), approval_result.get("decision")),
         "analyst_comments": _first(approval_result.get("analyst_comments"), approval_result.get("soc_analyst_comments")),
         "approved_by": _first(approval_result.get("analyst"), approval_result.get("approved_by"), approval_result.get("reviewed_by")),
         "approved_action": _first(approval_result.get("approved_action"), approval_result.get("approved_containment_action")),
     }
     containment = {
-        "status": _first(approval_result.get("containment_status"), triage.get("containment_status")),
-        "recommended": _first(triage.get("containment_recommended"), investigation.get("containment_recommended")),
-        "recommended_action": _first(triage.get("containment_action"), triage.get("recommended_containment_action"), approval_result.get("approved_containment_action")),
-        "execution_status": _first(approval_result.get("containment_execution_status"), triage.get("containment_status")),
+        "status": _first(approval_result.get("containment_status")),
+        "recommended": _first(investigation.get("containment_recommended")),
+        "recommended_action": _first(approval_result.get("approved_containment_action")),
+        "execution_status": _first(approval_result.get("containment_execution_status")),
         "blocking_reason": _first(approval_result.get("blocking_reason")),
         "decision_source": _first(approval_result.get("decision_source"), default="SOC analyst approval context"),
     }
@@ -615,8 +654,13 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         or item.get("archive_after_approval")
     ]
 
-    severity = _label(severity_value, _first(triage.get("severity_reason"), investigation.get("severity_reason"), default="Not Provided"))
-    confidence = _label(confidence_value, _first(triage.get("confidence_reason"), investigation.get("confidence_reason"), default="Not Provided"))
+    # triage.get("severity_reason"/"confidence_reason") dropped -- Triage
+    # has no flat rationale field under either name (its real rationale is
+    # nested at ticket.risk_rating.rationale, a differently-shaped field
+    # not wired into this chain in Phase 4 -- adding a new source is out of
+    # scope for a dead-field-removal phase).
+    severity = _label(severity_value, _first(investigation.get("severity_reason"), default="Not Provided"))
+    confidence = _label(confidence_value, _first(investigation.get("confidence_reason"), default="Not Provided"))
 
     evidence_backed_findings = [
         {"finding_id": "KF-001", "statement": f"The incident classification is {classification}.", "finding": f"The incident classification is {classification}.", "status": "Fact", "confidence": confidence["label"], "evidence_refs": ["investigation_result.json"], "evidence": "investigation_result.json", "interpretation": "Classification is taken from investigation output first, with triage as fallback."},
@@ -724,11 +768,16 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "classification": classification,
         "likely_scenario": likely_scenario,
         "scenario_type": scenario_type,
-        "report_status": _first(reporting.get("report_status"), investigation.get("report_status"), triage.get("report_status"), default="Generated for analyst review"),
+        # triage.get("report_status"/"validation_status"/"current_stage")
+        # all dropped -- Triage produces none of these; they are Reporting's
+        # own status concepts (report_status/validation_status) or a
+        # workflow-level concept tracked elsewhere (current_stage), never
+        # written onto the flattened triage_result.json.
+        "report_status": _first(reporting.get("report_status"), investigation.get("report_status"), default="Generated for analyst review"),
         "report_status_display": _first(reporting.get("report_status_display"), reporting.get("report_status"), default="Generated for analyst review"),
-        "validation_status": _first(reporting.get("validation_status"), investigation.get("validation_status"), triage.get("validation_status"), default="Requires analyst validation"),
+        "validation_status": _first(reporting.get("validation_status"), investigation.get("validation_status"), default="Requires analyst validation"),
         "validation_status_display": _first(reporting.get("validation_status_display"), reporting.get("validation_status"), default="Requires analyst validation"),
-        "current_stage": _first(triage.get("current_stage"), investigation.get("current_stage"), default="Not Provided"),
+        "current_stage": _first(investigation.get("current_stage"), default="Not Provided"),
         "current_lifecycle_stage": "Reporting and analyst review",
         "containment_status": containment["status"],
         "approval_status": approval["approval_status"],

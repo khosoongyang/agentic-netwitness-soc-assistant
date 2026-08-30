@@ -1105,10 +1105,16 @@ def _recover_asset_ip(context: dict[str, Any], asset: dict[str, Any], evidence_i
     raw = context.get("raw_inputs") or {}
     enriched = raw.get("enriched_alert") or {}
     processed = raw.get("processed_alert") or {}
-    triage = raw.get("triage_result") or context.get("triage") or {}
     investigation = raw.get("investigation_result") or context.get("investigation") or {}
     ticket = context.get("ticket") or {}
-    meta = triage.get("metakeys_payload") if isinstance(triage.get("metakeys_payload"), dict) else {}
+    # Phase 4 (Reporting dead-fallback cleanup): dropped three
+    # triage_result-sourced terms here -- "metakeys_payload.source_ip",
+    # "host_ip", and "source_ip" -- none of which the flattened
+    # triage_result.json has ever had at the top level (only the RAW
+    # canonical Triage contract nests a "metakeys_payload", and even that
+    # payload's real key is "ip.src"/"ip.dst", not "source_ip"/"host_ip").
+    # All three always resolved to None; the remaining fallback tiers below
+    # are unaffected.
     current = first_present(asset.get("ip_address"), asset.get("ip"), default=None)
     value = first_available(context, "asset_ip", [
         ("affected_assets", "asset.ip_address", current),
@@ -1121,9 +1127,6 @@ def _recover_asset_ip(context: dict[str, Any], asset: dict[str, Any], evidence_i
         ("enriched_alert", "endpoint_ip", enriched.get("endpoint_ip")),
         ("processed_alert", "source_ip", processed.get("source_ip")),
         ("processed_alert", "host_ip", processed.get("host_ip")),
-        ("triage_result", "metakeys_payload.source_ip", meta.get("source_ip")),
-        ("triage_result", "host_ip", triage.get("host_ip")),
-        ("triage_result", "source_ip", triage.get("source_ip")),
         ("investigation_result", "source_ip", investigation.get("source_ip")),
         ("investigation_result", "host_ip", investigation.get("host_ip")),
     ], evidence_index=evidence_index, default=None)
@@ -1315,18 +1318,23 @@ def _find_recommended_containment_action(context: dict[str, Any]) -> Any:
     investigation = raw.get("investigation_result") or context.get("investigation") or {}
     approval = context.get("approval_result") or {}
 
+    # triage.get("recommended_containment_action"/"containment_action")
+    # dropped -- Triage does not produce containment recommendations at
+    # all; neither key has ever existed on the flattened triage_result.json.
     explicit = first_present(
         approval.get("approved_containment_action"),
         approval.get("approved_action") if _looks_like_containment_action(approval.get("approved_action")) else None,
         investigation.get("recommended_containment_action"),
         investigation.get("containment_action"),
-        triage.get("recommended_containment_action"),
-        triage.get("containment_action"),
         default=None,
     )
     if not is_unknown(explicit):
         return explicit
 
+    # The loop below is shared/generic across investigation, triage, and
+    # context -- "recommendations" and "containment_recommendations" are
+    # left alone here (not proven dead for investigation/context, only for
+    # Triage specifically, and this expression isn't triage-specific).
     for source in (investigation, triage, context):
         for item in as_list(source.get("containment_recommendations")) + as_list(source.get("recommended_actions")) + as_list(source.get("recommendations")):
             action = item
@@ -1348,7 +1356,6 @@ def normalise_approval(context: dict[str, Any]) -> None:
     review_status shown on the report cover. Mutates context in place;
     called once per report from enhance_export_context()."""
     approval_result = context.get("approval_result") or {}
-    triage = context.get("triage") or {}
     approval = context.setdefault("approval", {})
     containment = context.setdefault("containment", {})
 
@@ -1374,7 +1381,10 @@ def normalise_approval(context: dict[str, Any]) -> None:
         containment["execution_status"] = "not_executed"
         context["containment_status"] = "rejected"
     else:
-        approval["approval_status"] = first_present(approval.get("approval_status"), triage.get("soc_analyst_approval_status"), default="pending")
+        # triage.get("soc_analyst_approval_status") dropped -- Triage does
+        # not perform approval gating; this key has never existed on the
+        # flattened triage_result.json.
+        approval["approval_status"] = first_present(approval.get("approval_status"), default="pending")
         approval["analyst_decision"] = first_present(approval.get("analyst_decision"), default="pending")
         approval["approved_by"] = first_present(approval.get("approved_by"), default="")
         context["approval_status"] = approval["approval_status"]
@@ -1421,7 +1431,8 @@ def normalise_approval(context: dict[str, Any]) -> None:
         default=None,
     )
     containment["execution_status"] = execution if not is_unknown(execution) else "not_contained"
-    containment["status"] = first_present(containment.get("status"), triage.get("containment_status"), default=containment["execution_status"])
+    # triage.get("containment_status") dropped -- never produced by Triage.
+    containment["status"] = first_present(containment.get("status"), default=containment["execution_status"])
     if str(containment["status"]).lower() in {"approved_pending_execution", "pending_execution"}:
         containment["status"] = "not_contained"
     context["containment_status"] = containment["status"]
@@ -1659,45 +1670,48 @@ def _apply_field_provenance(context: dict[str, Any], evidence_index: dict[str, l
     investigation = raw.get("investigation_result") or context.get("investigation") or {}
     approval = context.get("approval_result") or {}
     ticket = context.get("ticket") or {}
-    triage_meta = triage.get("metakeys_payload") if isinstance(triage.get("metakeys_payload"), dict) else {}
+    # Phase 4 (Reporting dead-fallback cleanup): dropped every
+    # "triage_result", "metakeys_payload.*"-sourced term below (host,
+    # source_ip, destination_ip, domain, url, sha256, process_name,
+    # mitre_technique_id) -- the flattened triage_result.json has never had
+    # a "metakeys_payload" key at all (that only exists on the RAW canonical
+    # Triage contract), so `triage_meta` was always {} and every one of
+    # these terms always resolved to None. Also dropped triage.get(
+    # "confidence"/"soc_analyst_approval_status"/"containment_status"/
+    # "containment_action"/"recommended_containment_action") -- none of
+    # these has ever existed on the flattened document either. triage.get(
+    # "severity"/"classification") remain -- both real, Triage-owned fields.
     fields = {
         "host": [
             ("enriched_alert", "host", enriched.get("host")),
             ("enriched_alert", "hostname", enriched.get("hostname")),
-            ("triage_result", "metakeys_payload.host", triage_meta.get("host")),
             ("processed_alert", "hostname", processed.get("hostname")),
             ("ticket_context", "host", ticket.get("host")),
         ],
         "source_ip": [
             ("enriched_alert", "source_ip", enriched.get("source_ip")),
-            ("triage_result", "metakeys_payload.source_ip", triage_meta.get("source_ip")),
             ("processed_alert", "source_ip", processed.get("source_ip")),
         ],
         "destination_ip": [
             ("enriched_alert", "destination_ip", enriched.get("destination_ip")),
-            ("triage_result", "metakeys_payload.destination_ip", triage_meta.get("destination_ip")),
             ("processed_alert", "destination_ip", processed.get("destination_ip")),
         ],
         "domain": [
             ("enriched_alert", "domain", enriched.get("domain")),
             ("enriched_alert", "event_domain", enriched.get("event_domain")),
-            ("triage_result", "metakeys_payload.domain", triage_meta.get("domain")),
         ],
         "url": [
             ("enriched_alert", "url", enriched.get("url")),
-            ("triage_result", "metakeys_payload.url", triage_meta.get("url")),
             ("processed_alert", "url", processed.get("url")),
         ],
         "sha256": [
             ("enriched_alert", "sha256", enriched.get("sha256")),
             ("enriched_alert", "file_hash", enriched.get("file_hash")),
-            ("triage_result", "metakeys_payload.sha256", triage_meta.get("sha256")),
             ("processed_alert", "file_hash", processed.get("file_hash")),
         ],
         "process_name": [
             ("enriched_alert", "process_name", enriched.get("process_name")),
             ("enriched_alert", "file_name", enriched.get("file_name")),
-            ("triage_result", "metakeys_payload.file_name", triage_meta.get("file_name")),
         ],
         "process_path": [
             ("enriched_alert", "process_path", enriched.get("process_path")),
@@ -1705,7 +1719,6 @@ def _apply_field_provenance(context: dict[str, Any], evidence_index: dict[str, l
         ],
         "mitre_technique_id": [
             ("enriched_alert", "mitre_technique_id", enriched.get("mitre_technique_id")),
-            ("triage_result", "metakeys_payload.mitre_technique_id", triage_meta.get("mitre_technique_id")),
             ("investigation_result", "mitre_technique_id", investigation.get("mitre_technique_id")),
         ],
         "severity": [
@@ -1715,7 +1728,6 @@ def _apply_field_provenance(context: dict[str, Any], evidence_index: dict[str, l
         ],
         "confidence": [
             ("investigation_result", "confidence", investigation.get("confidence")),
-            ("triage_result", "confidence", triage.get("confidence")),
             ("enriched_alert", "confidence", enriched.get("confidence")),
         ],
         "classification": [
@@ -1726,7 +1738,6 @@ def _apply_field_provenance(context: dict[str, Any], evidence_index: dict[str, l
         "approval_status": [
             ("approval_result", "approval_status", approval.get("approval_status")),
             ("approval_result", "decision", approval.get("decision")),
-            ("triage_result", "soc_analyst_approval_status", triage.get("soc_analyst_approval_status")),
         ],
         "analyst_decision": [
             ("approval_result", "analyst_decision", approval.get("analyst_decision")),
@@ -1739,12 +1750,9 @@ def _apply_field_provenance(context: dict[str, Any], evidence_index: dict[str, l
         ],
         "containment_status": [
             ("approval_result", "containment_status", approval.get("containment_status")),
-            ("triage_result", "containment_status", triage.get("containment_status")),
         ],
         "recommended_containment_action": [
             ("approval_result", "approved_action", approval.get("approved_action")),
-            ("triage_result", "containment_action", triage.get("containment_action")),
-            ("triage_result", "recommended_containment_action", triage.get("recommended_containment_action")),
             ("investigation_result", "containment_action", investigation.get("containment_action")),
             ("investigation_result", "recommended_containment_action", investigation.get("recommended_containment_action")),
             ("approval_result", "approved_containment_action", approval.get("approved_containment_action")),
@@ -2312,7 +2320,10 @@ def build_appendix_summaries(context: dict[str, Any]) -> dict[str, Any]:
             "Classification": first_present(triage.get("classification"), context.get("classification")),
             "Severity": get_path(context, "severity.label", ""),
             "Confidence": get_path(context, "confidence.label", ""),
-            "Next Action": first_present(triage.get("next_action"), default="No standalone next action supplied."),
+            # triage.get("next_action") dropped -- Triage's field is the
+            # plural recommended_actions list (see "Recommended Action
+            # Count" below), never a single "next_action" string.
+            "Next Action": "No standalone next action supplied.",
             "Containment Status": context.get("containment_status"),
             "Recommended Action Count": len(recommendations),
         },

@@ -17,14 +17,21 @@ from agents.reporting.adapters.run_reporting import _limitations, _has_limitatio
 
 
 def _base_inputs(**overrides) -> dict:
+    """Realistic inputs, `triage_result` matching the REAL flattened shape
+    workflow/engine.py::handoff_to_reporting() actually writes to
+    triage_result.json -- no "confidence" key (Triage has never produced
+    one) and severity/classification set to the same value, exactly as the
+    real producer does (`"severity": ticket.get("classification")`,
+    `"classification": ticket.get("classification")`)."""
     inputs = {
         "processed_alert": {"incident_id": "INC-1", "alert_id": "ALERT-1"},
         "enriched_alert": {},
         "triage_result": {
+            "incident_id": "INC-1",
+            "alert_id": "INC-1",
             "ticket": {"incident_id": "INC-1"},
-            "severity": "Medium",
-            "confidence": "Low",
-            "classification": "Suspicious Activity",
+            "severity": "MEDIUM",
+            "classification": "MEDIUM",
         },
         "investigation_result": {},
         "threat_intel_result": {},
@@ -76,12 +83,14 @@ def test_canonical_severity_is_preferred_over_legacy_flat_and_triage():
 
 def test_canonical_confidence_is_preferred_over_triage_confidence():
     """This is the headline Phase 5 behaviour: Investigation confidence used
-    to always fall through to Triage's pre-investigation estimate because it
-    was never populated. It must now win once the canonical contract exists,
-    with a deliberately different Triage confidence proving the source."""
+    to always fall through to a bare "Not Provided" default, because Triage
+    has never produced a confidence field for it to fall through TO (see
+    the Phase 4 correction in context_builder.py -- there never was a real
+    "Triage pre-investigation confidence estimate" to fall back to). It must
+    now win once the canonical contract exists."""
     investigation = {"investigation_analysis": _CANONICAL_AGENT_PAYLOAD}
     inputs = _base_inputs(investigation_result=investigation)
-    assert inputs["triage_result"]["confidence"] == "Low"  # sanity: differs
+    assert "confidence" not in inputs["triage_result"]  # sanity: no such field
 
     ctx = build_context(inputs)
 
@@ -159,25 +168,44 @@ def test_legacy_flat_investigation_fields_still_work_without_canonical_payload()
 def test_pre_migration_investigation_payload_with_no_new_fields_at_all():
     """Simulates an investigation_result.json persisted before this whole
     migration existed -- no investigation_analysis, no feedback_loop, no
-    confidence key whatsoever."""
+    confidence key whatsoever. Confidence resolves to "Not Provided": Triage
+    has never produced a confidence field for this to fall through to (see
+    the Phase 4 correction), and neither enriched_alert nor reporting_result
+    supply one in this fixture either -- there is no real fallback source
+    left, so "Not Provided" is the correct, honest result."""
     investigation = {"status": "completed", "severity": "High",
                      "summary": "Old-style investigation summary."}
     ctx = build_context(_base_inputs(investigation_result=investigation))
 
     assert ctx["severity"]["value"] == "High"
-    assert ctx["confidence"]["value"] == "Low"  # falls through to Triage
+    assert ctx["confidence"]["value"] == "Not Provided"
     assert ctx["investigation_summary"] == "Old-style investigation summary."
 
 
 # =============================================================================
-# 8-9: Triage fallback still works when Investigation confidence is absent;
-# investigation-skipped / needs_more_data scenarios still work
+# 8-9: Phase 4 correction -- when Investigation confidence is absent, the
+# next REAL fallback source (enriched_alert.confidence) still resolves
+# correctly; with no real fallback anywhere, the result is honestly
+# "Not Provided", never a fabricated Triage estimate. Investigation-skipped
+# / needs_more_data scenarios still work.
 # =============================================================================
 
-def test_triage_confidence_fallback_when_investigation_confidence_absent():
+def test_confidence_falls_back_to_enriched_alert_when_investigation_confidence_absent():
+    """The next REAL fallback source after Investigation's own confidence is
+    enriched_alert.confidence (Threat Intelligence enrichment) -- Triage is
+    no longer part of this chain at all, since it never had a real
+    confidence field to contribute."""
+    investigation = {"status": "completed", "severity": "High"}  # no confidence at all
+    inputs = _base_inputs(investigation_result=investigation,
+                          enriched_alert={"confidence": "Elevated"})
+    ctx = build_context(inputs)
+    assert ctx["confidence"]["value"] == "Elevated"
+
+
+def test_confidence_is_not_provided_when_no_real_source_supplies_it():
     investigation = {"status": "completed", "severity": "High"}  # no confidence at all
     ctx = build_context(_base_inputs(investigation_result=investigation))
-    assert ctx["confidence"]["value"] == "Low"  # Triage's confidence
+    assert ctx["confidence"]["value"] == "Not Provided"
 
 
 def test_investigation_skipped_needs_more_data_scenario_still_works():
@@ -194,7 +222,7 @@ def test_investigation_skipped_needs_more_data_scenario_still_works():
     ctx = build_context(_base_inputs(investigation_result=investigation))
 
     assert ctx["reporting_mode"] == "with_limitations"
-    assert ctx["confidence"]["value"] == "Low"  # falls through to Triage
+    assert ctx["confidence"]["value"] == "Not Provided"
     assert [g["gap"] for g in ctx["evidence_gaps"]] == [
         "Investigation was not run for this incident."]
 
