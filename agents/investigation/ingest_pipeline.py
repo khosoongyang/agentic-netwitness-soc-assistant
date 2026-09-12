@@ -365,6 +365,23 @@ def process_log_file(filepath: str) -> dict:
     if classification_severity:
         metadata["severity"] = classification_severity
 
+    # Threat Intelligence Phase 5D: forward the compact, curated TI summary
+    # (workflow/engine.py::build_investigation_threat_intel_context(),
+    # embedded on the raw alert as "threat_intelligence_summary" since
+    # Threat Intelligence Phase 5B) into metadata, mirroring the
+    # classification_severity forwarding immediately above -- so
+    # main.py::generate_local_standalone_report(), which has no other
+    # access to the raw queued-alert JSON's top-level keys, can surface it
+    # as explanatory evidence. Only set when the raw alert genuinely
+    # carries one (i.e. Threat Intelligence has actually run for this
+    # incident); the deterministic report must render with no TI section
+    # at all otherwise, never a fabricated one. This does NOT change
+    # Investigation's own severity/confidence/recommended_containment,
+    # which stay computed independently and are untouched by this value.
+    ti_summary = data.get("threat_intelligence_summary")
+    if isinstance(ti_summary, str) and ti_summary.strip():
+        metadata["threat_intelligence_summary"] = ti_summary
+
     res = {
         "id": incident_id,
         "document": document,

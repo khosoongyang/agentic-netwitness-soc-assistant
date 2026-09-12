@@ -476,7 +476,24 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
         business_impact_checklist=checklist,
         timeline_text=doc
     )
-    
+
+    # Threat Intelligence Phase 5D: append the compact, curated TI summary
+    # (workflow/engine.py::build_investigation_threat_intel_context(),
+    # forwarded here via ingest_pipeline.py::process_log_file()'s
+    # metadata) as explanatory evidence in the report's own free-text
+    # incident_summary field -- deliberately AFTER
+    # policy_engine.run_policy_compliance_rules() above, which was already
+    # called with the TI-free `summary`, so Threat Intelligence text can
+    # never influence its ransomware/guest-OS keyword escalation checks.
+    # severity_val/"High" confidence/compliance["modified_containment"]
+    # (already computed above) are untouched by this addition -- TI is
+    # explanatory only, never decisive, for this deterministic path.
+    # Omitted entirely (no fabricated section) whenever Threat Intelligence
+    # has not run for this incident.
+    ti_summary = (alert.get("metadata") or {}).get("threat_intelligence_summary")
+    if ti_summary:
+        summary = f"{summary}\n\n{ti_summary}" if summary else ti_summary
+
     report = orchestrator.FinalIncidentAnalysis(
         incident_id=alert_id,
         severity=severity_val,
