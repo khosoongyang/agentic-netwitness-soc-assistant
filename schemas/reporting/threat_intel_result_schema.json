@@ -1,0 +1,293 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "threat_intel_result_schema.json",
+  "$comment": "Documentation/reference schema only -- NOT wired into runtime jsonschema validation (see agents/threat_intelligence/threat_intel_result.py for the canonical, enforced Pydantic contract; this file is generated from that module's ThreatIntelResult.model_json_schema() output, field-for-field, not hand-invented). Generated 2026-09 during Threat Intelligence Result migration Phase 2 from ThreatIntelResult in agents/threat_intelligence/threat_intel_result.py -- the canonical shape of agents.threat_intelligence.threat_intel.run_threat_intel_for_dashboard()'s real return value. Does NOT model incident_id/run_id/stage/generated_at (added by workflow/engine.py::run_threat_intel()'s re-keying onto the workflow envelope) or ai_summary/ai_summary_model/ai_summary_generated_at (added later still by workflow/stage_summaries.py) -- see that module's docstring for why each is a separate, workflow-owned concern.",
+  "description": "Canonical shape of `run_threat_intel_for_dashboard()`'s return value\n(threat_intel.py:1250-1277) -- the Threat Intelligence stage's one real\nresult shape. Every field below is unconditionally set on every call\n(success, `completed_with_warnings`, no-IOC, every provider\nskipped/missing-key, or any individual provider error) -- none of them\nare ever absent, so none are `Optional` here.\n\n`extra=\"forbid\"`: an unrecognised key here (e.g. a future producer\nchange adding a new top-level field) must fail loudly at the point\n`validate_threat_intel_result()` is called rather than be silently\ndropped on re-serialization -- silent dropping would hide producer\nschema drift from whoever reads the validated result, which is exactly\nthe class of bug the Threat Intelligence contract audit was run to\nfind.\n\nDeliberately NOT modelled here (see module docstring):\n`incident_id`/`run_id`/`stage`/`generated_at` (added by\n`workflow/engine.py::run_threat_intel()`'s re-keying, not by this\nfunction), and `ai_summary`/`ai_summary_model`/\n`ai_summary_generated_at` (added later still by\n`workflow/stage_summaries.py`) -- both are workflow-owned augmentation\napplied after this stage's own producer returns.",
+  "$defs": {
+    "AbuseIPDBResults": {
+      "additionalProperties": false,
+      "description": "Mirrors `enrich_alert()`'s `threat_intel[\"abuseipdb\"]` dict exactly\n(threat_intel.py:888-890, 914-916). AbuseIPDB is only ever queried per\nIP indicator, so `ip_results` is its one real field.",
+      "properties": {
+        "ip_results": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Ip Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "ip_results"
+      ],
+      "title": "AbuseIPDBResults",
+      "type": "object"
+    },
+    "AlienVaultOTXResults": {
+      "additionalProperties": false,
+      "description": "Mirrors `enrich_alert()`'s `threat_intel[\"alienvault_otx\"]` dict\nexactly (threat_intel.py:891-893, 900-902, 918-920, 927-929).\n`otx_results` mixes file/IP/domain lookups in one list (each entry\ncarries its own `indicator_type`), matching the real producer -- there\nis no separate per-indicator-type container to model.",
+      "properties": {
+        "otx_results": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Otx Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "otx_results"
+      ],
+      "title": "AlienVaultOTXResults",
+      "type": "object"
+    },
+    "ThreatIntelIOCs": {
+      "additionalProperties": false,
+      "description": "Mirrors `extract_iocs()`'s return dict exactly (threat_intel.py:319-\n380). All seven keys are unconditionally present on every call --\n`possible_file_name`/`file_hash` may individually be `None` (sourced\nfrom `alert.get(...)`, which may find nothing), but the keys themselves\nare never absent, and none of the other five fields are ever `None`\n(`ip_indicators`/`domain_indicators`/`url_indicators` default to `[]`,\n`powershell_analysis` to `{}`, `powershell_enrichment_note` is always a\nnon-empty string from one of two fixed sentinels).\n\n`extra=\"forbid\"`: this exact key set is constructed by one literal\n`return {...}` with no conditional key addition/omission -- there is no\nhistorical/compatibility evidence requiring a looser policy.",
+      "properties": {
+        "possible_file_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Possible File Name"
+        },
+        "file_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "File Hash"
+        },
+        "ip_indicators": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ip Indicators",
+          "type": "array"
+        },
+        "domain_indicators": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Domain Indicators",
+          "type": "array"
+        },
+        "url_indicators": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Url Indicators",
+          "type": "array"
+        },
+        "powershell_analysis": {
+          "additionalProperties": true,
+          "title": "Powershell Analysis",
+          "type": "object"
+        },
+        "powershell_enrichment_note": {
+          "title": "Powershell Enrichment Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "possible_file_name",
+        "file_hash",
+        "ip_indicators",
+        "domain_indicators",
+        "url_indicators",
+        "powershell_analysis",
+        "powershell_enrichment_note"
+      ],
+      "title": "ThreatIntelIOCs",
+      "type": "object"
+    },
+    "ThreatIntelProviderBundle": {
+      "additionalProperties": false,
+      "description": "Mirrors `enrich_alert()`'s `threat_intel` dict exactly\n(threat_intel.py:881-895). Strictly models the known top-level provider\nkeys (`iocs`/`virustotal`/`abuseipdb`/`alienvault_otx`/`notes`) --\nalways present, never conditionally added or removed -- while each\nprovider's own per-lookup result bodies remain `dict[str, Any]`, since\nVirusTotal/AbuseIPDB/AlienVault OTX intentionally return different\nfield sets from each other (and across `status` values). This is the\n\"stable container, flexible payload\" split called for by the Threat\nIntelligence contract audit: strict enough to catch a future producer\ndropping/renaming one of these five keys, loose enough not to force\nthree brittle provider-specific Pydantic classes onto data that\ngenuinely varies by provider and by call outcome.\n\n`extra=\"forbid\"`: matches `enrich_alert()`'s one literal `threat_intel\n= {...}` dict -- exactly these five keys, always.",
+      "properties": {
+        "iocs": {
+          "$ref": "#/$defs/ThreatIntelIOCs"
+        },
+        "virustotal": {
+          "$ref": "#/$defs/VirusTotalResults"
+        },
+        "abuseipdb": {
+          "$ref": "#/$defs/AbuseIPDBResults"
+        },
+        "alienvault_otx": {
+          "$ref": "#/$defs/AlienVaultOTXResults"
+        },
+        "notes": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Notes",
+          "type": "array"
+        }
+      },
+      "required": [
+        "iocs",
+        "virustotal",
+        "abuseipdb",
+        "alienvault_otx",
+        "notes"
+      ],
+      "title": "ThreatIntelProviderBundle",
+      "type": "object"
+    },
+    "VirusTotalResults": {
+      "additionalProperties": false,
+      "description": "Mirrors `enrich_alert()`'s `threat_intel[\"virustotal\"]` dict exactly\n(threat_intel.py:883-887, 897-925). `file_hash` is initialised to\n`None` in the dict literal but is unconditionally overwritten by either\nbranch of the `is_available(file_hash)` check immediately after (a real\nlookup result if a hash was available, else an explicit\n`{\"status\": \"skipped\", ...}` dict) before `enrich_alert()` ever\nreturns -- so by the real return boundary it is always a dict, never\n`None`. `ip_results`/`domain_results` start as `[]` and are appended to\nonce per queried IP/domain -- each entry is a per-provider lookup\nresult whose own field set intentionally varies by `status`\n(`completed`/`skipped`/`error`), so those entries are modelled as\n`dict[str, Any]` rather than a further nested strict model (see module\ndocstring and `ThreatIntelProviderBundle` below for the stable-\ncontainer / flexible-payload split this follows).\n\n`extra=\"forbid\"`: this container's own key set (`file_hash`/\n`ip_results`/`domain_results`) is fixed by one literal, never\nconditionally extended.",
+      "properties": {
+        "file_hash": {
+          "additionalProperties": true,
+          "title": "File Hash",
+          "type": "object"
+        },
+        "ip_results": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Ip Results",
+          "type": "array"
+        },
+        "domain_results": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Domain Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "file_hash",
+        "ip_results",
+        "domain_results"
+      ],
+      "title": "VirusTotalResults",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "agent": {
+      "title": "Agent",
+      "type": "string"
+    },
+    "agent_source": {
+      "title": "Agent Source",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "completed_with_warnings"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "current_stage": {
+      "title": "Current Stage",
+      "type": "string"
+    },
+    "created_at": {
+      "title": "Created At",
+      "type": "string"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "enrichment_risk_score": {
+      "title": "Enrichment Risk Score",
+      "type": "integer"
+    },
+    "enrichment_risk_level": {
+      "enum": [
+        "Low",
+        "Medium",
+        "High"
+      ],
+      "title": "Enrichment Risk Level",
+      "type": "string"
+    },
+    "enrichment_risk_reasons": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Enrichment Risk Reasons",
+      "type": "array"
+    },
+    "threat_intelligence": {
+      "$ref": "#/$defs/ThreatIntelProviderBundle"
+    },
+    "notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    },
+    "enriched_alert": {
+      "additionalProperties": true,
+      "title": "Enriched Alert",
+      "type": "object"
+    },
+    "output_files": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Output Files",
+      "type": "object"
+    },
+    "export_status": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Export Status",
+      "type": "object"
+    },
+    "recommended_next_action": {
+      "title": "Recommended Next Action",
+      "type": "string"
+    }
+  },
+  "required": [
+    "agent",
+    "agent_source",
+    "status",
+    "current_stage",
+    "created_at",
+    "summary",
+    "enrichment_risk_score",
+    "enrichment_risk_level",
+    "enrichment_risk_reasons",
+    "threat_intelligence",
+    "notes",
+    "warnings",
+    "enriched_alert",
+    "output_files",
+    "export_status",
+    "recommended_next_action"
+  ],
+  "type": "object"
+}

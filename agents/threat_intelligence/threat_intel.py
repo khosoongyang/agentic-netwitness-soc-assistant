@@ -1236,6 +1236,13 @@ def run_threat_intel_for_dashboard(alert: Dict[str, Any], output_dir: str | Path
     enriched_alert["recommended_next_action"] = "Submit the enriched case for SOC analyst approval before Investigation."
     enriched_alert["warnings"] = warnings
 
+    # Local import (not module-level): run_threat_intel_for_dashboard() is
+    # the only caller that needs the canonical contract, and this keeps the
+    # standalone `python threat_intel.py` CLI entry point (main(), which
+    # never reaches this function) free of any dependency on package-
+    # relative imports resolving correctly outside a package context.
+    from .threat_intel_result import dump_threat_intel_result, validate_threat_intel_result
+
     output_json = output_dir / "enriched_alert.json"
     output_json.write_text(json.dumps(enriched_alert, indent=2, ensure_ascii=False), encoding="utf-8")
 
@@ -1273,5 +1280,14 @@ def run_threat_intel_for_dashboard(alert: Dict[str, Any], output_dir: str | Path
         },
         "recommended_next_action": "SOC analyst approval is required before Investigation Agent can run.",
     }
+    # Phase 2 (canonical Threat Intelligence Result contract migration):
+    # validate the stage's one real result shape before it is ever
+    # persisted, so a future producer change that drops/renames/mistypes a
+    # field fails loudly here rather than silently writing a malformed
+    # threat_intel_result.json. dump_threat_intel_result() re-serializes to
+    # the exact same plain-dict shape (every field on ThreatIntelResult is
+    # required, so nothing is added/omitted) -- existing callers keep
+    # receiving an ordinary dict, never a Pydantic object.
+    result = dump_threat_intel_result(validate_threat_intel_result(result))
     (output_dir / "threat_intel_result.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
     return result
