@@ -1355,6 +1355,79 @@ def prune_empty(d):
     return d
 
 
+# [FYP-SECTION] Threat Intelligence Phase 5B — compact Investigation-facing
+# TI projection.
+# -----------------------------------------------------------------------------
+# build_investigation_threat_intel_context() derives a small, bounded,
+# deterministic narrative block from the canonical ThreatIntelResult, for
+# embedding ahead of the generic (truncatable) Investigation narrative. This
+# is NOT a second canonical TI contract -- ThreatIntelResult (agents/
+# threat_intelligence/threat_intel_result.py) remains the sole Threat-
+# Intelligence-owned canonical result; this is a derived, workflow/
+# Investigation-facing projection of it, owned here because
+# build_investigation_alert() (below) is already the workflow-side function
+# that decides what of Threat Intelligence's output reaches Investigation.
+#
+# Only enrichment_risk_level/enrichment_risk_score/enrichment_risk_reasons
+# are used. enrichment_risk_reasons is already Threat Intelligence's own
+# deterministic, curated summary of provider evidence
+# (threat_intel.py::calculate_enrichment_risk()) -- e.g. "VirusTotal
+# reported 5 malicious detection(s) for IP 203.0.113.9.", "AbuseIPDB abuse
+# confidence score is high for 203.0.113.9: 92." -- so no separate
+# provider-findings list is layered on top of it; that would only repeat
+# the same machine-curated facts in a second shape.
+#
+# Deliberately excluded (per the Threat Intelligence Phase 4 audit's trust-
+# boundary and signal-value findings): AlienVault OTX related_pulses/pulse
+# names, VirusTotal meaningful_name, ISP/registrar/WHOIS-style fields,
+# harmless/undetected counts, submission/creation dates, sections_available,
+# and any other raw provider metadata. None of these are read by
+# calculate_enrichment_risk() or by any Investigation-adjacent consumer
+# (diamond_model.py/triage_verdict.py/mitigation_mapping.py), some are
+# externally-authored free text, and all of them belong to the full
+# ThreatIntelResult (still embedded unchanged under
+# threat_intelligence_enrichment on the queued alert, and still fully
+# available to the deterministic Reporting-side skills sidecar) -- this
+# projection is for LLM-facing prioritization only, not a replacement for
+# the canonical result.
+_MAX_TI_SUMMARY_REASONS = 10
+
+
+def build_investigation_threat_intel_context(threat_intel_result: dict | None) -> str | None:
+    """Derive a compact, bounded Threat Intelligence narrative block for
+    Investigation's LLM-facing document.
+
+    Returns None when threat_intel_result is falsy (mirrors
+    build_investigation_alert()'s existing threat_intel_result-is-falsy
+    handling for the other TI-owned queued-alert keys), so callers can
+    skip embedding the field entirely rather than embedding an empty
+    section. Bounded to at most _MAX_TI_SUMMARY_REASONS reasons so the
+    block's size — and therefore its survival ahead of the generic
+    narrative's 12,000-character truncation — is deterministic regardless
+    of how many IOCs a given case produced reasons for."""
+    if not threat_intel_result:
+        return None
+
+    level = threat_intel_result.get("enrichment_risk_level")
+    score = threat_intel_result.get("enrichment_risk_score")
+    reasons = threat_intel_result.get("enrichment_risk_reasons") or []
+
+    lines = [
+        "=== THREAT INTELLIGENCE SUMMARY ===",
+        f"Risk Level: {level if level is not None else 'Unknown'}",
+        f"Risk Score: {score if score is not None else 'Unknown'}",
+    ]
+    if reasons:
+        lines.append("Risk Reasons:")
+        lines.extend(f"- {reason}" for reason in reasons[:_MAX_TI_SUMMARY_REASONS])
+        remaining = len(reasons) - _MAX_TI_SUMMARY_REASONS
+        if remaining > 0:
+            lines.append(f"- (+{remaining} more reason(s) recorded)")
+    else:
+        lines.append("Risk Reasons: None recorded.")
+    return "\n".join(lines)
+
+
 # [FYP-FUNCTION] `build_investigation_alert` — constructs build investigation alert output for the next workflow orchestration and state consumer or analyst-facing view.
 # [FYP-INPUT] Parameters: `triage_result`, `incident`, `supplement`, `threat_intel_result`, `parsing_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
@@ -1591,6 +1664,11 @@ def build_investigation_alert(triage_result: dict, incident: dict,
         **({"alerts": sub_alerts} if sub_alerts else {}),
         **({"triage_deep_dive": supplement} if supplement else {}),
         **({
+            # Phase 5B: additive compact projection, rendered ahead of the
+            # generic narrative by ingest_pipeline.serialize_json_to_narrative()
+            # (see that function and build_investigation_threat_intel_context()
+            # above) — the four existing TI-owned keys below are unchanged.
+            "threat_intelligence_summary": build_investigation_threat_intel_context(threat_intel_result),
             "threat_intelligence_enrichment": threat_intel_result.get("threat_intelligence") or threat_intel_result.get("enriched_alert"),
             "enrichment_risk_score": threat_intel_result.get("enrichment_risk_score"),
             "enrichment_risk_level": threat_intel_result.get("enrichment_risk_level"),

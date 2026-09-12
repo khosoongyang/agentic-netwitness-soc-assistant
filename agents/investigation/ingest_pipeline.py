@@ -243,7 +243,20 @@ def serialize_json_to_narrative(data: dict) -> str:
     lines = []
     incident_id = data.get("incident_id", "Unknown")
     lines.append(f"Incident {incident_id} details are as follows:")
-    
+
+    # Threat Intelligence Phase 5B: render the compact, pre-rendered TI
+    # summary block (workflow/engine.py::build_investigation_threat_intel_context())
+    # BEFORE the correlated-alerts block below — that block's size grows
+    # unboundedly with how many alerts are correlated into this incident and
+    # is exactly what has been observed (see the Phase 5A baseline tests) to
+    # push everything after it past process_log_file()'s 12,000-character
+    # truncation cutoff. Positioning the bounded TI block here, ahead of any
+    # unbounded content, makes its survival deterministic regardless of
+    # incident size — it no longer depends on generic key-sort order.
+    ti_summary = data.get("threat_intelligence_summary")
+    if isinstance(ti_summary, str) and ti_summary.strip():
+        lines.append(ti_summary)
+
     alerts_list = data.get("alerts") or data.get("raw_alerts")
     if isinstance(alerts_list, list) and alerts_list:
         lines.append(f"Incident {incident_id} contains {len(alerts_list)} correlated alert(s):")
@@ -274,6 +287,8 @@ def serialize_json_to_narrative(data: dict) -> str:
         for k, v in sorted(d.items()):
             if k in ("alerts", "raw_alerts"):
                 continue  # Explicitly handled as sub-alerts above
+            if k == "threat_intelligence_summary":
+                continue  # Explicitly handled ahead of the correlated-alerts block above
             full_key = f"{parent_key} {k}".strip().replace("_", " ")
             if isinstance(v, dict):
                 recurse(v, full_key)
