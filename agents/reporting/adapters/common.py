@@ -220,10 +220,19 @@ def normalise_incident(enriched: dict | None = None) -> dict:
     enriched = enriched or read_json(INPUTS_DIR / "enriched_alert.json", {}) or read_json(OUTPUTS_DIR / "enriched_alert.json", {}) or {}
     # Support NetWitness style, processed-alert style, enriched-alert style, and simple sample JSON.
     ioc_score = _ioc_risk_score(enriched)
+    # Phase 3 (Threat Intelligence consumer-alignment audit): dropped
+    # enriched.get("enrichment_risk_score") from this chain -- `enriched`
+    # here is (by this function's own docstring) enriched_alert.json from
+    # INPUTS_DIR/OUTPUTS_DIR, i.e. workflow/engine.py::handoff_to_reporting()'s
+    # Triage/incident-derived Reporting artifact, which has never carried an
+    # "enrichment_risk_score" key (that field is Threat-Intelligence-owned
+    # and lives only on threat_intel_result.json). This term always resolved
+    # to None here, so removing it is a no-op for the (currently uncalled)
+    # real behaviour of this legacy mapper -- it only stops implying a
+    # wrong-artifact source that never actually existed.
     risk_score = _first_non_empty(
         enriched.get("risk_score"),
         enriched.get("incident_risk_score"),
-        enriched.get("enrichment_risk_score"),
         enriched.get("riskScore"),
         ioc_score if ioc_score else None,
         default=75,

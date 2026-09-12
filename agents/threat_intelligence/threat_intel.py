@@ -388,8 +388,17 @@ def extract_iocs(alert: Dict[str, Any]) -> Dict[str, Any]:
 # short-circuits to {"status": "skipped", ...} before any HTTP call is made;
 # a request exception is caught and returned as {"status": "error", ...} —
 # neither path raises, so one provider being down/unconfigured never stops
-# the others or the stage. [FYP-ERROR] status_code != 200 and
-# requests.RequestException are the two failure paths handled per call.
+# the others or the stage. [FYP-ERROR] status_code != 200, a network-level
+# requests.RequestException, and a malformed/non-JSON HTTP 200 body
+# (response.json() raising json.JSONDecodeError) are the three failure
+# paths handled per call — all degrade to the same {"status": "error", ...}
+# shape rather than propagating out of the provider function. (Phase 3
+# note: the requests library currently in use already makes
+# requests.exceptions.JSONDecodeError a RequestException subclass, so this
+# was already caught incidentally; catching json.JSONDecodeError
+# explicitly alongside requests.RequestException below makes that
+# guarantee visible in this code rather than resting on an un-asserted
+# detail of the installed requests version.)
 # [FYP-FUNCTION] `query_virustotal_file_hash` — retrieves query virustotal file hash data for the surrounding threat intelligence and NetWitness integration workflow.
 # [FYP-INPUT] Parameters: `file_hash`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
@@ -451,7 +460,7 @@ def query_virustotal_file_hash(file_hash: str) -> Dict[str, Any]:
             "last_analysis_date": attributes.get("last_analysis_date")
         }
 
-    except requests.RequestException as error:
+    except (requests.RequestException, json.JSONDecodeError) as error:
         return {
             "status": "error",
             "indicator": file_hash,
@@ -511,7 +520,7 @@ def query_virustotal_ip(ip_address: str) -> Dict[str, Any]:
             "as_owner": attributes.get("as_owner")
         }
 
-    except requests.RequestException as error:
+    except (requests.RequestException, json.JSONDecodeError) as error:
         return {
             "status": "error",
             "indicator": ip_address,
@@ -572,7 +581,7 @@ def query_virustotal_domain(domain: str) -> Dict[str, Any]:
             "creation_date": attributes.get("creation_date")
         }
 
-    except requests.RequestException as error:
+    except (requests.RequestException, json.JSONDecodeError) as error:
         return {
             "status": "error",
             "indicator": domain,
@@ -638,7 +647,7 @@ def query_abuseipdb(ip_address: str) -> Dict[str, Any]:
             "last_reported_at": result.get("lastReportedAt")
         }
 
-    except requests.RequestException as error:
+    except (requests.RequestException, json.JSONDecodeError) as error:
         return {
             "status": "error",
             "indicator": ip_address,
@@ -702,7 +711,7 @@ def query_otx_indicator(indicator_type: str, indicator_value: str) -> Dict[str, 
             "sections_available": result.get("sections", [])
         }
 
-    except requests.RequestException as error:
+    except (requests.RequestException, json.JSONDecodeError) as error:
         return {
             "status": "error",
             "indicator": indicator_value,

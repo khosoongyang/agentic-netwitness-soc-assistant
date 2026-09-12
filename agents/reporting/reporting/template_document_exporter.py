@@ -525,7 +525,11 @@ def build_agent_llm_fields(agent_key: str, context: dict[str, Any], output: dict
 
     def threat_fact_pack() -> dict[str, Any]:
         ti = output.get("threat_intelligence") or {}
-        iocs = output.get("iocs") or ti.get("iocs") or {}
+        # Phase 3: dropped output.get("iocs") -- the real threat_intel_result
+        # (ThreatIntelResult, see agents/threat_intelligence/threat_intel_result.py)
+        # has never had a top-level "iocs" key; IOCs only ever live nested
+        # under threat_intelligence.iocs. This term always resolved to None.
+        iocs = ti.get("iocs") or {}
         return {
             "stage": "Threat Intelligence Enrichment",
             "ticket_id": context.get("ticket_id") or context.get("incident_id"),
