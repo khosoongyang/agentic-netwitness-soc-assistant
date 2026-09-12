@@ -1,36 +1,278 @@
 {
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "triage_result_schema.json",
-  "type": "object",
-  "properties": {
-    "agent": {"type": ["string", "null"]},
-    "agent_source": {"type": ["string", "null"]},
-    "execution_mode": {"type": ["string", "null"]},
-    "status": {"type": ["string", "null"]},
-    "incident_id": {"type": ["string", "number", "null"]},
-    "title": {"type": ["string", "null"]},
-    "severity": {"type": ["string", "null"]},
-    "confidence": {"type": ["string", "null"]},
-    "classification": {"type": ["string", "null"]},
-    "likely_scenario": {"type": ["string", "null"]},
-    "risk_score": {"type": ["number", "integer", "string", "null"]},
-    "current_stage": {"type": ["string", "null"]},
-    "next_action": {"type": ["string", "null"]},
-    "recommended_next_action": {"type": ["string", "null"]},
-    "severity_reason": {"type": ["string", "null"]},
-    "confidence_reason": {"type": ["string", "null"]},
-    "recommended_actions": {"type": "array"},
-    "metakeys_payload": {"type": ["object", "null"]},
-    "ticket": {"type": ["object", "null"]},
-    "trace": {"type": "array"},
-    "confirmed_facts": {"type": "array"},
-    "not_confirmed_items": {"type": "array"},
-    "evidence_gaps": {"type": "array"},
-    "mitre_mapping": {"type": "array"},
-    "timeline": {"type": "array"},
-    "approval_required": {"type": ["boolean", "string", "null"]},
-    "approval_reason": {"type": ["string", "null"]},
-    "containment_approval_status": {"type": ["string", "null"]},
-    "containment_execution_status": {"type": ["string", "null"]}
-  },
-  "required": ["status", "severity", "confidence", "classification", "recommended_actions"]
+  "$comment": "Documentation/reference schema only -- NOT wired into runtime jsonschema validation (see agents/triage/triage_result.py for the canonical, enforced Pydantic contract; this file is generated from that module's model_json_schema() output, field-for-field, not hand-invented). Generated 2026-09 during Triage Result migration Phase 5B from TriageAgentSuccessOutput and TriageAgentErrorOutput in agents/triage/triage_result.py -- the canonical shape of agents.triage.soc_triage_agent.TriageAgent.triage()'s real return value (fresh or cache-served). Does NOT model deep_triage_supplement()'s output, alert_triage.py's pre-ingest verdict, or workflow/engine.py's flattened Reporting handoff -- see that module's docstring for why each is a separate concern.",
+  "description": "A validated TriageAgent.triage() return is exactly one of: TriageAgentSuccessOutput (successful run, error=null) or TriageAgentErrorOutput (exception branch, error=<message>). See `oneOf` below.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/TriageAgentSuccessOutput"
+    },
+    {
+      "$ref": "#/$defs/TriageAgentErrorOutput"
+    }
+  ],
+  "$defs": {
+    "TriageMetakeysPayload": {
+      "additionalProperties": false,
+      "description": "Mirrors TriageAgent.triage()'s `metakeys_payload` dict exactly\n(soc_triage_agent.py:1412-1423). `extra=\"forbid\"` -- see\n`TriageRiskRating` for rationale.",
+      "properties": {
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "incident_title": {
+          "title": "Incident Title",
+          "type": "string"
+        },
+        "timestamp": {
+          "title": "Timestamp",
+          "type": "string"
+        },
+        "matched_metakeys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Matched Metakeys",
+          "type": "array"
+        },
+        "metakey_values": {
+          "additionalProperties": true,
+          "title": "Metakey Values",
+          "type": "object"
+        },
+        "ioc_summary": {
+          "title": "Ioc Summary",
+          "type": "string"
+        },
+        "risk_level": {
+          "title": "Risk Level",
+          "type": "string"
+        },
+        "classification": {
+          "title": "Classification",
+          "type": "string"
+        },
+        "mitre_tactic": {
+          "title": "Mitre Tactic",
+          "type": "string"
+        },
+        "mitre_technique": {
+          "title": "Mitre Technique",
+          "type": "string"
+        }
+      },
+      "required": [
+        "incident_id",
+        "incident_title",
+        "timestamp",
+        "matched_metakeys",
+        "metakey_values",
+        "ioc_summary",
+        "risk_level",
+        "classification",
+        "mitre_tactic",
+        "mitre_technique"
+      ],
+      "title": "TriageMetakeysPayload",
+      "type": "object"
+    },
+    "TriageRiskRating": {
+      "additionalProperties": false,
+      "description": "Mirrors TriageAgent.triage()'s `ticket[\"risk_rating\"]` dict exactly\n(soc_triage_agent.py:1434-1440). All five sub-fields are always strings\n-- each is populated via `risk_data.get(...) or \"\u2014\"` (or, for\n`rationale`, `or \"\"`), so none of them are ever absent or non-string on\na successful triage run.\n\n`extra=\"forbid\"`: an unrecognised key here (e.g. a `confidence` score\nthe LLM prompt starts emitting) must fail loudly rather than be\nsilently dropped on re-serialization -- silent dropping would hide\nproducer/schema drift from whoever reads the validated result.",
+      "properties": {
+        "likelihood_initiation": {
+          "title": "Likelihood Initiation",
+          "type": "string"
+        },
+        "likelihood_occurrence": {
+          "title": "Likelihood Occurrence",
+          "type": "string"
+        },
+        "likelihood_adverse_impact": {
+          "title": "Likelihood Adverse Impact",
+          "type": "string"
+        },
+        "overall_risk": {
+          "title": "Overall Risk",
+          "type": "string"
+        },
+        "rationale": {
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "likelihood_initiation",
+        "likelihood_occurrence",
+        "likelihood_adverse_impact",
+        "overall_risk",
+        "rationale"
+      ],
+      "title": "TriageRiskRating",
+      "type": "object"
+    },
+    "TriageTicket": {
+      "additionalProperties": false,
+      "description": "Mirrors TriageAgent.triage()'s `ticket` dict exactly\n(soc_triage_agent.py:1427-1452).\n\nNote `classification` here is `classification.upper()` (e.g. \"HIGH\"),\na different casing from `TriageMetakeysPayload.classification` (the\nlowercase `risk_level`-derived value, e.g. \"high\") -- both are real,\nindependently-set values in the live producer, not a bug this contract\nshould paper over.\n\n`extra=\"forbid\"` -- see `TriageRiskRating` for rationale.",
+      "properties": {
+        "unc": {
+          "title": "Unc",
+          "type": "string"
+        },
+        "incident_id": {
+          "title": "Incident Id",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        },
+        "incident_time": {
+          "title": "Incident Time",
+          "type": "string"
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "classification": {
+          "title": "Classification",
+          "type": "string"
+        },
+        "risk_rating": {
+          "$ref": "#/$defs/TriageRiskRating"
+        },
+        "incident_category": {
+          "title": "Incident Category",
+          "type": "string"
+        },
+        "mitre_tactic": {
+          "title": "Mitre Tactic",
+          "type": "string"
+        },
+        "mitre_technique": {
+          "title": "Mitre Technique",
+          "type": "string"
+        },
+        "initial_response_time": {
+          "title": "Initial Response Time",
+          "type": "string"
+        },
+        "summary": {
+          "title": "Summary",
+          "type": "string"
+        },
+        "recommended_actions": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Recommended Actions",
+          "type": "array"
+        },
+        "matched_ioc_count": {
+          "title": "Matched Ioc Count",
+          "type": "integer"
+        },
+        "metakeys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Metakeys",
+          "type": "array"
+        }
+      },
+      "required": [
+        "unc",
+        "incident_id",
+        "title",
+        "incident_time",
+        "created_at",
+        "classification",
+        "risk_rating",
+        "incident_category",
+        "mitre_tactic",
+        "mitre_technique",
+        "initial_response_time",
+        "summary",
+        "recommended_actions",
+        "matched_ioc_count",
+        "metakeys"
+      ],
+      "title": "TriageTicket",
+      "type": "object"
+    },
+    "TriageAgentSuccessOutput": {
+      "additionalProperties": false,
+      "description": "Canonical shape of a successful (non-error) `TriageAgent.triage()`\nreturn value -- covers both a freshly-computed run (`result`,\nsoc_triage_agent.py:1456-1462) and a cache-served run (`cached`,\nsoc_triage_agent.py:1343-1348), which share the identical field set\nplus one additive marker (see `cached` below).\n\n`extra=\"forbid\"` at the top level too -- see `TriageRiskRating` for\nrationale. Note this does NOT cover `mock_triage_result()`\n(workflow/engine.py) -- that offline substitute is a *different*,\ndeliberately-mocked producer outside this contract's stated scope (see\nmodule docstring), and its own `\"mock\": True` marker key is stripped\nbefore validation at its one call site rather than modelled here.",
+      "properties": {
+        "metakeys_payload": {
+          "$ref": "#/$defs/TriageMetakeysPayload"
+        },
+        "ticket": {
+          "$ref": "#/$defs/TriageTicket"
+        },
+        "trace": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Trace",
+          "type": "array"
+        },
+        "used_parsed_context": {
+          "title": "Used Parsed Context",
+          "type": "boolean"
+        },
+        "error": {
+          "default": null,
+          "title": "Error",
+          "type": "null"
+        },
+        "cached": {
+          "default": false,
+          "title": "Cached",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "metakeys_payload",
+        "ticket",
+        "trace",
+        "used_parsed_context"
+      ],
+      "type": "object"
+    },
+    "TriageAgentErrorOutput": {
+      "additionalProperties": false,
+      "description": "Canonical shape of `TriageAgent.triage()`'s exception-branch return\n(soc_triage_agent.py:1403-1407).\n\nDeliberately NOT the same shape as `TriageAgentSuccessOutput` with\nfields loosened to Optional: the real error branch returns genuinely\nempty `{}` dicts for `metakeys_payload`/`ticket` (no classification/\nticket was ever produced), and -- unlike the success path -- never sets\n`used_parsed_context` at all, so that field has no place on this model.\n`trace` may be non-empty here: an exception raised partway through\nPhase 2 or 3 still returns whatever steps Phase 1/2 already appended.\n\n`extra=\"forbid\"`: the real error branch (soc_triage_agent.py:1406-1409)\nalways constructs exactly these four keys -- no other call site feeds a\ndict with diagnostic extras into `validate_triage_agent_output()` --\nso there is no historical/error-path compatibility evidence requiring\na looser policy here. Should a genuine need for extra diagnostic\nfields on the error path emerge later, loosen this deliberately then,\nwith that evidence recorded here.",
+      "properties": {
+        "error": {
+          "title": "Error",
+          "type": "string"
+        },
+        "metakeys_payload": {
+          "additionalProperties": true,
+          "title": "Metakeys Payload",
+          "type": "object"
+        },
+        "ticket": {
+          "additionalProperties": true,
+          "title": "Ticket",
+          "type": "object"
+        },
+        "trace": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Trace",
+          "type": "array"
+        }
+      },
+      "required": [
+        "error"
+      ],
+      "type": "object"
+    }
+  }
 }

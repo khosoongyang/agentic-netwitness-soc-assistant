@@ -15,12 +15,10 @@
 #     deterministic/rule-based, no LLM call anywhere in this file.
 #   - normalize_to_incident(): maps an arbitrary alert into the NetWitness
 #     incident schema the rest of the pipeline (triage/investigation) consumes.
-#   - format_analysis(): plain-text rendering of an analyze_alert verdict.
 # Inputs: a raw alert dict from any source (SIEM/EDR/NDR/custom log/upload).
 # Outputs: analyze_alert() -> {classification, severity, is_true_positive,
 #   recommended_actions, indicators, mitre, score, validation, context};
-#   normalize_to_incident() -> NetWitness-shaped incident dict carrying the
-#   analyze_alert verdict under "_analyze_alert".
+#   normalize_to_incident() -> NetWitness-shaped incident dict.
 # Workflow position: Triage stage, runs after Parsing & Normalisation and
 #   before Threat Intelligence Enrichment.
 # Called by [FYP-USED-BY]: app.py — `from alert_triage import
@@ -253,9 +251,7 @@ def analyze_alert(alert: dict, context: str = "siem") -> dict:
     custom — informational only, doesn't change the scoring logic).
 
     Returns: dict with classification, severity, is_true_positive,
-    recommended_actions, indicators, mitre, score, validation, context —
-    this exact shape is also embedded verbatim under normalize_to_incident()'s
-    "_analyze_alert" key.
+    recommended_actions, indicators, mitre, score, validation, context.
 
     [FYP-USED-BY]: normalize_to_incident() (below) and, per the file header,
     app.py's alert-upload/ingest path via normalize_to_incident.
@@ -330,9 +326,10 @@ def _extract_iocs(alert: dict) -> dict:
     hostnames, and hashes (_IPV4_RE/_USER_RE/_HOST_RE/_HASH_RE). Splits IPs
     into src/dst using explicit src_ip/dst_ip-style fields when present,
     else falls back to "the first private IP found" as source. Returns a
-    dict of capped lists (src_ips, dst_ips, users, hosts, hashes) merged
-    into the incident under "_extracted_iocs" by normalize_to_incident().
-    Note: this is a distinct, simpler IOC extractor from the one in
+    dict of capped lists (src_ips, dst_ips, users, hosts, hashes) that
+    normalize_to_incident() folds into the incident's alertMeta.SourceIp/
+    DestinationIp fields. Note: this is a distinct, simpler IOC extractor
+    from the one in
     threat_intel.py — that one runs on NetWitness-native alerts during the
     Threat Intelligence Enrichment stage; this one only runs for alerts
     ingested from non-NetWitness sources.
@@ -371,11 +368,9 @@ def normalize_to_incident(alert: dict, context: str = "siem") -> dict:
     Calls: analyze_alert() [FYP-CALLS] for the severity/classification
     verdict, _extract_iocs() for src/dst IPs, users, hosts, hashes.
 
-    Output: the incident dict, with the full analyze_alert verdict embedded
-    verbatim under inc["_analyze_alert"] and extracted IOCs under
-    inc["_extracted_iocs"] — downstream stages can read either the
-    normalised top-level fields or drill into these two keys for the raw
-    triage detail.
+    Output: the incident dict, with `priority`/`alertMeta`/`mitre_tactic`/
+    `mitre_technique` derived from the analyze_alert verdict and extracted
+    IOCs (see below) wherever those fields are absent.
 
     [FYP-USED-BY]: app.py (confirmed via grep) at the alert upload/ingest
     path — this is the entry point for any non-NetWitness alert source.
@@ -419,31 +414,4 @@ def normalize_to_incident(alert: dict, context: str = "siem") -> dict:
 
     inc["_source_format"] = context
     inc["_normalized_from_alert"] = True
-    inc["_analyze_alert"] = verdict
-    inc["_extracted_iocs"] = iocs
     return inc
-
-
-# [FYP-FUNCTION] `format_analysis` — constructs format analysis output for the next triage consumer or analyst-facing view.
-# [FYP-INPUT] Parameters: `verdict`; values come from its direct caller, route, UI event, fixture, or stage handoff.
-# [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
-# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] No direct caller confidently identified; this may be an entry point, callback, or test helper.
-# [FYP-CALLS] Calls: `append`, `join`, `upper`.
-# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
-
-def format_analysis(verdict: dict) -> str:
-    """Plain-text rendering of an analyze_alert verdict (UI / logs)."""
-    lines = [
-        f"ALERT TRIAGE ({verdict['context'].upper()} source) — "
-        f"classification: {verdict['classification']}, severity: {verdict['severity']}, "
-        f"true-positive: {verdict['is_true_positive']}",
-    ]
-    for ind in verdict["indicators"][:8]:
-        lines.append(f"  · {ind['label']} ×{ind['count']} → {ind['tactic']} "
-                     f"({ind['technique']})")
-    if verdict["recommended_actions"]:
-        lines.append("  recommended actions:")
-        for a in verdict["recommended_actions"]:
-            lines.append(f"    - {a}")
-    return "\n".join(lines)
