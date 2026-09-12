@@ -357,6 +357,7 @@ def _build_appendix_summaries(
     severity: dict[str, Any],
     confidence: dict[str, Any],
     evidence_gaps: list[dict[str, Any]],
+    threat_intel_result: dict[str, Any],
 ) -> dict[str, dict[str, str]]:
     """Build compact, always-present appendix summaries for Jinja templates.
 
@@ -387,12 +388,26 @@ def _build_appendix_summaries(
             "Missing Fields": _short_value(_first(processed.get("missing_fields"), _get(processed, "data_quality.missing_required_fields"), default=[])),
             "IOC Count": str(len(_list(processed.get("iocs")))),
         },
+        # Phase 1 (Threat Intelligence Reporting-consumer correctness fix):
+        # this section's labels ("Enrichment Status" / "Enriched Risk
+        # Score" / "Threat Intel Notes") genuinely describe Threat
+        # Intelligence, so they are now sourced from threat_intel_result
+        # (the authoritative TI result) rather than the unrelated,
+        # Triage/incident-derived Reporting `enriched_alert` object, which
+        # never carried a "status"/"enrichment_risk_score"/"notes" key in
+        # the first place. The old enriched.get(...) reads are kept as
+        # trailing legacy fallbacks only — enriched.get("risk_score") is
+        # deliberately NOT one of them, since that is the unrelated raw/
+        # source-system risk score, not Threat Intelligence's enrichment
+        # risk score. "Original Alert Risk Score" and "Final Risk Rating"
+        # already point at their correct owners (Parsing and Investigation
+        # respectively) and are unchanged.
         "enriched_alert": {
-            "Enrichment Status": _short_value(_first(enriched.get("status"), enriched.get("threat_intel_status"), default="Not Provided")),
+            "Enrichment Status": _short_value(_first(threat_intel_result.get("status"), enriched.get("status"), enriched.get("threat_intel_status"), default="Not Provided")),
             "Original Alert Risk Score": _short_value(_first(processed.get("risk_score"), default="Not Provided")),
-            "Enriched Risk Score": _short_value(_first(enriched.get("enrichment_risk_score"), enriched.get("risk_score"), default="Not Provided")),
+            "Enriched Risk Score": _short_value(_first(threat_intel_result.get("enrichment_risk_score"), enriched.get("enrichment_risk_score"), default="Not Provided")),
             "Final Risk Rating": _short_value(severity.get("label")),
-            "Threat Intel Notes": _short_value(_first(enriched.get("notes"), enriched.get("summary"), default="Not Provided")),
+            "Threat Intel Notes": _short_value(_first(threat_intel_result.get("notes"), threat_intel_result.get("summary"), enriched.get("notes"), enriched.get("summary"), default="Not Provided")),
         },
         "triage": {
             "Classification": _short_value(_first(triage.get("classification"), triage.get("incident_category"), default="Not Provided")),
@@ -706,7 +721,16 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "evidence_supporting_assessment": "See evidence register and evidence gaps.",
     }
     original_alert_risk_score = _first(processed.get("risk_score"), _extract_evidence_value(evidence, "risk_score"), default="Not Provided")
-    enriched_risk_score = _first(enriched.get("enrichment_risk_score"), enriched.get("risk_score"), default="Not Provided")
+    # Phase 1 (Threat Intelligence Reporting-consumer correctness fix):
+    # enrichment_risk_score is Threat-Intelligence-owned and lives only on
+    # threat_intel_result — enriched.get("risk_score") is a DIFFERENT,
+    # unrelated concept (the raw/source-system risk score carried onto
+    # Reporting's own Triage-derived enriched_alert.json by
+    # workflow/engine.py::handoff_to_reporting(); see original_alert_risk_score
+    # above) and must never be used as a stand-in for it. enriched.get(
+    # "enrichment_risk_score") is kept only as a legacy fallback in case an
+    # older enriched_alert.json shape ever carried this key directly.
+    enriched_risk_score = _first(threat_intel_result.get("enrichment_risk_score"), enriched.get("enrichment_risk_score"), default="Not Provided")
     final_risk_rating = severity["label"]
     malware_family = _first(investigation.get("malware_family"), enriched.get("malware_family"), default="Not Provided")
     scenario_type = _first(investigation.get("case_type"), reporting.get("scenario_type"), default="Not Provided")
@@ -754,6 +778,7 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         severity=severity,
         confidence=confidence,
         evidence_gaps=evidence_gaps,
+        threat_intel_result=threat_intel_result,
     )
 
     return {
@@ -908,7 +933,13 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "original_alert_risk_score": original_alert_risk_score,
         "initial_risk_score": original_alert_risk_score,
         "enriched_risk_score": enriched_risk_score,
-        "enrichment_risk_score": enriched_risk_score,
+        # "enrichment_risk_score" is set once, above, directly from
+        # threat_intel_result (the authoritative Threat Intelligence
+        # source) — it must not be duplicated here. A second assignment to
+        # the same dict-literal key previously overwrote that correct value
+        # with enriched_risk_score (itself derived from the unrelated
+        # Reporting enriched_alert object), silently replacing Threat
+        # Intelligence's real enrichment_risk_score with the wrong value.
         "final_risk_rating": final_risk_rating,
         "malware_family": malware_family,
         "threat_actor": _first(investigation.get("threat_actor"), default="Not Provided"),
@@ -930,7 +961,12 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
             "stale_context_detected": "Review Required" if warnings else "Not Detected",
             "triage_result_available": "Yes" if triage else "No",
             "investigation_result_available": "Yes" if investigation else "No",
-            "threat_intelligence_result_available": "Yes" if enriched else "No",
+            # Phase 1 fix: availability of the Threat Intelligence result
+            # must reflect the authoritative threat_intel_result input, not
+            # the unrelated Reporting `enriched_alert` object (which is
+            # always populated from Triage/incident data regardless of
+            # whether Threat Intelligence ever ran).
+            "threat_intelligence_result_available": "Yes" if threat_intel_result else "No",
             "fallback_logic_used": "No",
         },
         "report_validation_checks": report_validation_checks,
