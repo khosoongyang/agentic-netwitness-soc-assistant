@@ -14,6 +14,7 @@
   --success: #45d49a;
   --warning: #efba5a;
   --danger: #ff7382;
+  --header-height: 3.25rem;
 }
 
 * {

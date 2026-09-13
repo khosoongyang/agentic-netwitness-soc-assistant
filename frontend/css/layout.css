@@ -27,7 +27,7 @@
 }
 
 .sidebar-header {
-  height: 3.25rem;
+  height: var(--header-height);
   flex-shrink: 0;
   padding: 0 1rem;
   display: flex;
@@ -136,19 +136,23 @@
   padding: 0.6rem 0.75rem;
 }
 
-.app-main {
+.app-body {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "header header"
+    "main   aegis";
 }
 
 .topbar {
+  grid-area: header;
   position: sticky;
   top: 0;
   z-index: 5;
-  flex-shrink: 0;
-  height: 3.25rem;
+  height: var(--header-height);
   padding: 0 1.25rem;
   display: flex;
   align-items: center;
@@ -311,6 +315,8 @@
 }
 
 .page {
+  grid-area: main;
+  min-width: 0;
   width: min(90rem, 100%);
   margin: 0 auto;
   padding: clamp(1.25rem, 4vw, 3rem);

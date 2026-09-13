@@ -1,0 +1,381 @@
+.ask-aegis-panel {
+  grid-area: aegis;
+  position: sticky;
+  top: var(--header-height);
+  width: clamp(300px, 25vw, 480px);
+  height: calc(100vh - var(--header-height));
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--border-soft);
+  background: var(--surface);
+}
+
+@media (max-width: 1100px) {
+  .ask-aegis-panel {
+    width: 300px;
+  }
+}
+
+.ask-aegis-header {
+  flex-shrink: 0;
+  min-height: var(--header-height);
+  padding: 0.4rem 1.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.ask-aegis-avatar {
+  width: 2rem;
+  height: 2rem;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2c5c8f, #4b3f8f);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 12%);
+}
+
+.ask-aegis-avatar img,
+.ask-aegis-msg-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.ask-aegis-heading {
+  min-width: 0;
+}
+
+.ask-aegis-title {
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+
+.ask-aegis-subtitle {
+  margin-top: 0.15rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1.3;
+}
+
+.ask-aegis-context {
+  margin-top: 0.4rem;
+  display: flex;
+  align-items: center;
+  color: #8fb3dd;
+  font-size: 0.68rem;
+}
+
+.ask-aegis-context:empty {
+  display: none;
+}
+
+.ask-aegis-context::before {
+  content: "";
+  width: 0.4rem;
+  height: 0.4rem;
+  flex-shrink: 0;
+  margin-right: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.ask-aegis-prompts {
+  flex-shrink: 0;
+  padding: 0.75rem 1.1rem 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem;
+}
+
+.ask-aegis-prompts button {
+  padding: 0.42rem 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: #c8d5e8;
+  background: var(--surface-raised);
+  font-size: 0.72rem;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.ask-aegis-prompts button svg {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: color 0.15s ease;
+}
+
+.ask-aegis-prompts button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-aegis-prompts button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: #10233a;
+}
+
+.ask-aegis-prompts button:hover svg {
+  color: var(--accent);
+}
+
+.ask-aegis-messages {
+  flex: 1;
+  min-height: 0;
+  padding: 1rem 1.1rem;
+  overflow-y: auto;
+}
+
+.ask-aegis-message {
+  display: flex;
+  gap: 0.55rem;
+  margin-bottom: 1.1rem;
+}
+
+.ask-aegis-message:last-child {
+  margin-bottom: 0;
+}
+
+.ask-aegis-message.user {
+  flex-direction: row-reverse;
+}
+
+.ask-aegis-msg-avatar {
+  width: 1.6rem;
+  height: 1.6rem;
+  margin-top: 0.1rem;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #2c5c8f, #4b3f8f);
+  color: #d8e6ff;
+  font-size: 0.56rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ask-aegis-bubble {
+  max-width: 78%;
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.ask-aegis-message.assistant .ask-aegis-bubble {
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.85rem 0.85rem 0.85rem 0.2rem;
+  background: var(--surface-raised);
+}
+
+.ask-aegis-message.user .ask-aegis-bubble {
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.85rem 0.85rem 0.2rem 0.85rem;
+  background: #15314d;
+}
+
+.ask-aegis-bubble.ask-aegis-typing {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: var(--muted);
+}
+
+.ask-aegis-bubble > *:first-child {
+  margin-top: 0;
+}
+
+.ask-aegis-bubble > *:last-child {
+  margin-bottom: 0;
+}
+
+.ask-aegis-bubble p {
+  margin: 0 0 0.5rem;
+}
+
+.ask-aegis-bubble h1,
+.ask-aegis-bubble h2,
+.ask-aegis-bubble h3,
+.ask-aegis-bubble h4,
+.ask-aegis-bubble h5,
+.ask-aegis-bubble h6 {
+  margin: 0.6rem 0 0.3rem;
+  color: var(--text);
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.ask-aegis-bubble h1 {
+  font-size: 0.92rem;
+}
+
+.ask-aegis-bubble h2 {
+  font-size: 0.88rem;
+}
+
+.ask-aegis-bubble h3,
+.ask-aegis-bubble h4,
+.ask-aegis-bubble h5,
+.ask-aegis-bubble h6 {
+  font-size: 0.84rem;
+}
+
+.ask-aegis-bubble strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.ask-aegis-bubble em {
+  font-style: italic;
+}
+
+.ask-aegis-bubble ul,
+.ask-aegis-bubble ol {
+  margin: 0 0 0.5rem;
+  padding-left: 1.15rem;
+}
+
+.ask-aegis-bubble li {
+  margin: 0.2rem 0;
+}
+
+.ask-aegis-bubble li > ul,
+.ask-aegis-bubble li > ol {
+  margin-top: 0.2rem;
+  margin-bottom: 0.2rem;
+}
+
+.ask-aegis-bubble a {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.ask-aegis-bubble hr {
+  margin: 0.5rem 0;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.ask-aegis-bubble blockquote {
+  margin: 0 0 0.5rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--border);
+  color: var(--muted);
+}
+
+.ask-aegis-bubble code {
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.3rem;
+  background: #07101c;
+  color: #bcd4f0;
+  font-size: 0.78rem;
+}
+
+.ask-aegis-bubble pre {
+  margin: 0 0 0.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.5rem;
+  background: #07101c;
+  overflow-x: auto;
+}
+
+.ask-aegis-bubble pre code {
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  color: #cdd7e5;
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+.ask-aegis-bubble table {
+  display: block;
+  width: 100%;
+  margin: 0 0 0.5rem;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  overflow-x: auto;
+}
+
+.ask-aegis-bubble th,
+.ask-aegis-bubble td {
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--border-soft);
+  text-align: left;
+}
+
+.ask-aegis-composer {
+  flex-shrink: 0;
+  margin: 0 1.1rem 1.1rem;
+  padding: 0.4rem 0.4rem 0.4rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface-raised);
+}
+
+.ask-aegis-composer:focus-within {
+  border-color: var(--accent);
+}
+
+.ask-aegis-composer input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 0.5rem 0;
+  color: var(--text);
+  background: none;
+  font-size: 0.84rem;
+}
+
+.ask-aegis-composer input:focus {
+  outline: none;
+}
+
+.ask-aegis-composer input::placeholder {
+  color: var(--muted);
+}
+
+.ask-aegis-send {
+  width: 2.15rem;
+  height: 2.15rem;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.55rem;
+  color: #d8e6ff;
+  background: linear-gradient(135deg, #2c5c8f, #4b3f8f);
+  cursor: pointer;
+}
+
+.ask-aegis-send:hover {
+  filter: brightness(1.1);
+}
+
+.ask-aegis-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  filter: none;
+}
