@@ -157,6 +157,30 @@
   color: #8290a4;
 }
 
+.badge.severity-medium {
+  color: #ffe08a;
+  border-color: #6d6231;
+}
+
+.badge.severity-low {
+  color: #9ff0ca;
+  border-color: #28604c;
+}
+
+.badge.confidence-high {
+  color: #9ff0ca;
+  border-color: #28604c;
+}
+
+.badge.confidence-medium {
+  color: #ffd89a;
+  border-color: #6d5531;
+}
+
+.badge.confidence-low {
+  color: #8290a4;
+}
+
 .state-panel {
   min-height: 9rem;
   padding: 2rem;
@@ -210,6 +234,62 @@
 
 .table-wrap {
   overflow-x: auto;
+}
+
+.case-context-table-wrap {
+  border: 1px solid var(--border-soft);
+  border-radius: 0.7rem;
+  background: var(--surface-raised);
+}
+
+.case-context-table {
+  width: 100%;
+  min-width: 26rem;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.case-context-table thead th {
+  padding: 0.6rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  color: #7895bd;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+.case-context-table tbody th[scope="row"] {
+  width: 38%;
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.case-context-table tbody td {
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.case-context-table tbody tr:last-child th[scope="row"],
+.case-context-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.case-context-table tbody tr:hover th[scope="row"],
+.case-context-table tbody tr:hover td {
+  background: var(--surface);
+}
+
+.case-context-table .value-pending {
+  color: var(--muted);
+  font-style: italic;
 }
 
 table {

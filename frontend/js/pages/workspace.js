@@ -1,24 +1,92 @@
 import { fetchJSON } from "../api.js";
-import { emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, provenanceValue, stateBadge } from "../ui.js";
+import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, provenanceValue, severityBadge, stateBadge } from "../ui.js";
 import { installChat } from "./chatbot.js";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
 
+// Aegis workflow phases: Parsing & Normalisation -> Triage -> Threat
+// Intelligence Enrichment -> Investigation -> Reporting. `current_stage` is
+// already resolved to one of these human-readable names server-side (see
+// case_service.py::_STAGE_DEFINITIONS) so it is reused as-is here rather
+// than re-deriving it from a raw stage key.
+function stageBadge(stageName) {
+  return badge(stageName, "state-in_progress");
+}
+
+function statusBadge(status) {
+  const normalised = String(status || "").toLowerCase();
+  let tone = "state-in_progress";
+  if (/closed|resolved|approved|complete/.test(normalised)) tone = "state-completed";
+  else if (/reject|fail|block/.test(normalised)) tone = "state-failed";
+  return badge(status, tone);
+}
+
+function confidenceBadge(level, justification) {
+  const tone = String(level || "").toLowerCase() === "high" ? "confidence-high"
+    : String(level || "").toLowerCase() === "medium" ? "confidence-medium" : "confidence-low";
+  return badge(level, tone, justification || "");
+}
+
+function pendingValue(text) {
+  return `<span class="value-pending">${escapeHTML(text)}</span>`;
+}
+
 function caseContext(detail) {
   const context = detail.case.context || {};
   const overviewContext = detail.workspace?.overview?.case_context || {};
+  const investigation = detail.workspace?.output?.investigation_result || null;
+  const investigationHasResult = !!(investigation && Object.keys(investigation).length);
+  const investigationStatus = detail.workspace?.output?.status || "Pending";
+  // A result can exist (investigationHasResult) without every field populated
+  // — e.g. an older persisted run captured before a field like `confidence`
+  // was added to the Investigation Agent's contract — so that case reads as
+  // "Not Identified" (the data genuinely isn't there), not "still pending"
+  // (which would wrongly imply the stage hasn't run yet).
+  const investigationFieldFallback = investigationHasResult
+    ? "Not Identified"
+    : investigationStatus === "Processing" ? "Investigation in progress" : "Pending Investigation";
+
+  const netwitnessSeverity = provenanceValue(overviewContext.netwitness_severity) || detail.case.severity;
+
+  // NOTE: a provenance field must be checked for existence *before* being
+  // defaulted to `{}` — `{}` itself passes straight through provenanceValue()
+  // unchanged (it fails that helper's own "value" in value check), which
+  // would otherwise leak the placeholder object into the rendered cell.
+  const triage = overviewContext.triage_classification;
+  const triageClassification = triage && triage.evidence_status !== "unavailable" ? provenanceValue(triage) : null;
+
+  const verdict = overviewContext.unified_verdict || {};
+  const unifiedVerdict = verdict.value && verdict.value !== "—" ? verdict.value : null;
+
+  const host = overviewContext.host;
+  const hostValue = (host && host.evidence_status !== "unavailable" ? provenanceValue(host) : null) || context.hosts?.[0] || null;
+
+  const user = overviewContext.user;
+  const userValue = (user && user.evidence_status !== "unavailable" ? provenanceValue(user) : null) || context.users?.[0] || null;
+
   const rows = [
-    ["NetWitness severity", provenanceValue(overviewContext.netwitness_severity) || detail.case.severity],
-    ["Triage classification", provenanceValue(overviewContext.triage_classification) || "—"],
-    ["Unified verdict", provenanceValue(overviewContext.unified_verdict) || "—"],
-    ["Host", provenanceValue(overviewContext.host) || context.hosts?.[0] || "—"],
-    ["User", provenanceValue(overviewContext.user) || context.users?.[0] || "—"],
-    ["Alert count", detail.case.alert_count],
-    ["Created", formatDate(detail.case.created)],
-    ["Last seen", formatDate(detail.case.last_seen)],
+    ["Case ID", escapeHTML(detail.case.id)],
+    ["Status", statusBadge(detail.case.status)],
+    ["NetWitness Severity", netwitnessSeverity ? severityBadge(netwitnessSeverity) : pendingValue("Not Identified")],
+    ["Aegis Severity", investigation?.severity
+      ? severityBadge(investigation.severity, investigation.severity_justification)
+      : pendingValue(investigationFieldFallback)],
+    ["Triage Classification", triageClassification ? severityBadge(triageClassification) : pendingValue("Pending Triage")],
+    ["Unified Verdict", unifiedVerdict ? severityBadge(unifiedVerdict) : pendingValue("Not Identified")],
+    ["Confidence", investigation?.confidence
+      ? confidenceBadge(investigation.confidence, investigation.confidence_justification)
+      : pendingValue(investigationFieldFallback)],
+    ["Current Stage", stageBadge(detail.case.current_stage)],
+    ["Host", escapeHTML(hostValue || "Not Identified")],
+    ["User", escapeHTML(userValue || "Not Identified")],
+    ["Alert Count", escapeHTML(String(detail.case.alert_count ?? 0))],
+    ["Assigned To", escapeHTML(detail.case.assignee || "Unassigned")],
+    ["Created", escapeHTML(formatDate(detail.case.created))],
+    ["Last Seen", escapeHTML(formatDate(detail.case.last_seen))],
   ];
-  return `<div class="case-context-grid">${rows.map(([label, value]) => `<article class="metric-card"><span>${escapeHTML(label)}</span><strong>${escapeHTML(value ?? "—")}</strong></article>`).join("")}</div>`;
+
+  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
 function stageCards(stages) {

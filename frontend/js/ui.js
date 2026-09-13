@@ -31,12 +31,13 @@ export function formatDate(value) {
   return Number.isNaN(date.getTime()) ? escapeHTML(value) : date.toLocaleString();
 }
 
-export function badge(value, className = "") {
-  return `<span class="badge ${escapeHTML(className)}">${escapeHTML(value || "Unknown")}</span>`;
+export function badge(value, className = "", title = "") {
+  const titleAttr = title ? ` title="${escapeHTML(title)}"` : "";
+  return `<span class="badge ${escapeHTML(className)}"${titleAttr}>${escapeHTML(value || "Unknown")}</span>`;
 }
 
-export function severityBadge(value) {
-  return badge(value, `severity-${String(value || "").toLowerCase()}`);
+export function severityBadge(value, title = "") {
+  return badge(value, `severity-${String(value || "").toLowerCase()}`, title);
 }
 
 export function stateBadge(stage) {

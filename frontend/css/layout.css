@@ -330,7 +330,6 @@
 }
 
 .metrics-grid,
-.case-context-grid,
 .stage-grid {
   display: grid;
   gap: 1rem;
@@ -339,10 +338,6 @@
 .metrics-grid {
   grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
   margin-bottom: 1rem;
-}
-
-.case-context-grid {
-  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
 }
 
 .stage-grid {
