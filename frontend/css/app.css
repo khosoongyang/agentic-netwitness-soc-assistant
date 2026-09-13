@@ -15,6 +15,14 @@
   --warning: #efba5a;
   --danger: #ff7382;
   --header-height: 3.25rem;
+  --ask-aegis-width: clamp(300px, 25vw, 480px);
+  --ask-aegis-collapsed-width: 4.5rem;
+}
+
+@media (max-width: 1100px) {
+  :root {
+    --ask-aegis-width: 300px;
+  }
 }
 
 * {

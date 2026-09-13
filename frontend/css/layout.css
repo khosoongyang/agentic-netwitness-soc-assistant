@@ -140,11 +140,11 @@
   flex: 1;
   min-width: 0;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr;
   grid-template-rows: auto 1fr;
   grid-template-areas:
-    "header header"
-    "main   aegis";
+    "header"
+    "main";
 }
 
 .topbar {
@@ -317,9 +317,17 @@
 .page {
   grid-area: main;
   min-width: 0;
-  width: min(90rem, 100%);
+  container-type: inline-size;
+  width: min(90rem, calc(100% - var(--ask-aegis-collapsed-width)));
   margin: 0 auto;
+  margin-right: var(--ask-aegis-collapsed-width);
   padding: clamp(1.25rem, 4vw, 3rem);
+  transition: width 0.22s ease, margin-right 0.22s ease;
+}
+
+body.ask-aegis-open .page {
+  width: min(90rem, calc(100% - var(--ask-aegis-width)));
+  margin-right: var(--ask-aegis-width);
 }
 
 .page-header {
@@ -379,7 +387,14 @@
 
 .evidence-view-grid summary { cursor: pointer; }
 
-@media (max-width: 900px) {
+/*
+ * These respond to the width of `.page` itself (a container-query context,
+ * see above) rather than the viewport. `.page`'s own width already varies
+ * with the Ask Aegis expanded/collapsed state, so a viewport-based media
+ * query would miss the case where the workspace narrows on an otherwise
+ * wide screen.
+ */
+@container (max-width: 900px) {
   .workspace-grid {
     grid-template-columns: 1fr;
   }
@@ -394,7 +409,7 @@
   }
 }
 
-@media (max-width: 620px) {
+@container (max-width: 620px) {
   .stage-grid {
     grid-template-columns: 1fr;
   }

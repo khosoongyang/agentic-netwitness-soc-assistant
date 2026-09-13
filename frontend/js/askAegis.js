@@ -17,6 +17,7 @@ if (panel && collapseButton && fab) {
   function setCollapsed(collapsed) {
     panel.classList.toggle("collapsed", collapsed);
     fab.classList.toggle("visible", collapsed);
+    document.body.classList.toggle("ask-aegis-open", !collapsed);
     collapseButton.setAttribute("aria-expanded", String(!collapsed));
     fab.setAttribute("aria-expanded", String(!collapsed));
     try {

@@ -1,20 +1,16 @@
 .ask-aegis-panel {
-  grid-area: aegis;
-  position: sticky;
+  position: fixed;
   top: var(--header-height);
-  width: clamp(300px, 25vw, 480px);
+  right: 0;
+  z-index: 8;
+  width: var(--ask-aegis-width);
   height: calc(100vh - var(--header-height));
   display: flex;
   flex-direction: column;
   min-width: 0;
   border-left: 1px solid var(--border-soft);
   background: var(--surface);
-}
-
-@media (max-width: 1100px) {
-  .ask-aegis-panel {
-    width: 300px;
-  }
+  box-shadow: -8px 0 24px rgb(0 0 0 / 35%);
 }
 
 .ask-aegis-panel.collapsed {
