@@ -1,6 +1,5 @@
 import { fetchJSON } from "../api.js";
 import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, provenanceValue, severityBadge, stateBadge } from "../ui.js";
-import { installChat } from "./chatbot.js";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
@@ -182,11 +181,9 @@ export async function renderWorkspace(root, { navigate, route }) {
         ["Timeline", detail.workspace?.timeline], ["MITRE ATT&CK", detail.workspace?.mitre],
         ["Entity graph", detail.workspace?.entity_graph], ["Evidence", detail.workspace?.evidence],
         ["Activity", detail.workspace?.activity], ["Investigation output", detail.workspace?.output],
-      ].map(([label, value]) => `<details><summary>${escapeHTML(label)}</summary>${jsonPreview(value)}</details>`).join("")}</div></section>
-      <section class="panel" style="margin-top:1rem"><h2>Ask Aegis about this case</h2><div id="case-chat"></div></section>`;
+      ].map(([label, value]) => `<details><summary>${escapeHTML(label)}</summary>${jsonPreview(value)}</details>`).join("")}</div></section>`;
     root.querySelector("#open-reports").addEventListener("click", () => navigate("reports", { case: caseId }));
     root.querySelector("#load-raw").addEventListener("click", async () => { const output = root.querySelector("#raw-incident"); output.innerHTML = loadingState("Loading raw incident…"); try { const raw = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/raw`); output.innerHTML = jsonPreview(raw.incident); } catch (error) { output.innerHTML = errorState(error); } });
-    installChat(root.querySelector("#case-chat"), { caseId });
     const workflowRoot = root.querySelector("#workflow-panel");
     const outputRoot = root.querySelector("#stage-output");
 
