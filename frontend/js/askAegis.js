@@ -1,12 +1,42 @@
 import { fetchJSON } from "./api.js";
 import { currentRoute } from "./router.js";
 
+const COLLAPSE_STORAGE_KEY = "aegis:ask-aegis-collapsed";
+
+const panel = document.querySelector("#ask-aegis-panel");
+const collapseButton = document.querySelector("#ask-aegis-collapse-toggle");
+const fab = document.querySelector("#ask-aegis-fab");
 const promptsBar = document.querySelector("#ask-aegis-prompts");
 const contextBar = document.querySelector("#ask-aegis-context");
 const messagesEl = document.querySelector("#ask-aegis-messages");
 const form = document.querySelector("#ask-aegis-composer");
 const input = document.querySelector("#ask-aegis-input");
 const sendButton = form?.querySelector(".ask-aegis-send");
+
+if (panel && collapseButton && fab) {
+  function setCollapsed(collapsed) {
+    panel.classList.toggle("collapsed", collapsed);
+    fab.classList.toggle("visible", collapsed);
+    collapseButton.setAttribute("aria-expanded", String(!collapsed));
+    fab.setAttribute("aria-expanded", String(!collapsed));
+    try {
+      localStorage.setItem(COLLAPSE_STORAGE_KEY, collapsed ? "1" : "0");
+    } catch {
+      // Ignore storage failures (e.g. private browsing); collapse still works for this session.
+    }
+  }
+
+  let storedCollapsed = false;
+  try {
+    storedCollapsed = localStorage.getItem(COLLAPSE_STORAGE_KEY) === "1";
+  } catch {
+    storedCollapsed = false;
+  }
+  setCollapsed(storedCollapsed);
+
+  collapseButton.addEventListener("click", () => setCollapsed(true));
+  fab.addEventListener("click", () => setCollapsed(false));
+}
 
 const ROBOT_AVATAR_IMG = `<img src="/frontend/assets/aegis-avatar.png" alt="">`;
 
