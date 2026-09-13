@@ -14,26 +14,65 @@
 </head>
 <body>
   <div class="app-shell">
-    <header class="topbar">
-      <a class="brand" href="/?view=overview" data-nav="overview" aria-label="Aegis overview">
-        <span class="brand-mark">A</span>
-        <span><strong>Aegis</strong><small>SOC Investigation Platform</small></span>
-      </a>
-      <nav class="primary-nav" aria-label="Primary navigation">
-        <a href="/?view=overview" data-nav="overview">Overview</a>
-        <a href="/?view=cases" data-nav="cases">Cases</a>
-        <a href="/?view=chat" data-nav="chat">Ask Aegis</a>
-        <a href="/?view=search" data-nav="search">Search</a>
-        <a href="/?view=pipeline" data-nav="pipeline">Pipeline</a>
-        <a href="/?view=integrations" data-nav="integrations">Integrations</a>
-        <a href="/?view=settings" data-nav="settings">Settings</a>
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <a class="brand" href="/?view=overview" data-nav="overview" aria-label="Aegis overview">
+          <img class="brand-icon" src="/frontend/assets/aegis-icon.png" alt="Aegis">
+          <span class="brand-full">
+            <img class="brand-full-icon" src="/frontend/assets/aegis-icon.png" alt="">
+            <img class="brand-full-wordmark" src="/frontend/assets/aegis-wordmark.png" alt="Aegis">
+          </span>
+        </a>
+      </div>
+      <nav class="sidebar-nav" aria-label="Primary navigation">
+        <a class="sidebar-link" href="/?view=overview" data-nav="overview" title="Overview">
+          <span class="sidebar-icon" aria-hidden="true">
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2.5" y="2.5" width="6" height="6" rx="1"></rect>
+              <rect x="11.5" y="2.5" width="6" height="6" rx="1"></rect>
+              <rect x="2.5" y="11.5" width="6" height="6" rx="1"></rect>
+              <rect x="11.5" y="11.5" width="6" height="6" rx="1"></rect>
+            </svg>
+          </span>
+          <span class="sidebar-label">Overview</span>
+        </a>
       </nav>
-      <span class="read-only-badge">Flask application</span>
-    </header>
-    <main id="app-content" class="page" aria-live="polite">
-      <div class="state-panel"><span class="spinner" aria-hidden="true"></span>Loading Aegis…</div>
-    </main>
-    <footer>Canonical Aegis application · workflow actions use durable backend state.</footer>
+    </aside>
+    <div class="app-main">
+      <header class="topbar">
+        <div class="topbar-search">
+          <svg class="topbar-search-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="9" cy="9" r="6"></circle>
+            <line x1="17" y1="17" x2="13.4" y2="13.4"></line>
+          </svg>
+          <input type="text" class="topbar-search-input" id="topbar-search-input" placeholder="Search incidents, assets, indicators, or ask Aegis..." aria-label="Search incidents, assets, indicators, or ask Aegis">
+          <span class="topbar-search-shortcut" aria-hidden="true">Ctrl K</span>
+        </div>
+        <div class="topbar-actions">
+          <button class="topbar-icon-button" type="button" aria-label="Help">
+            <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="10" cy="10" r="7.5"></circle>
+              <path d="M7.6 7.5a2.4 2.4 0 1 1 3.4 2.18c-.72.34-1 .78-1 1.32v.35"></path>
+              <circle cx="10" cy="13.85" r="0.15" fill="currentColor" stroke="none"></circle>
+            </svg>
+          </button>
+          <div class="topbar-divider" aria-hidden="true"></div>
+          <button class="topbar-profile" type="button" aria-label="Account menu for Soong Yang Kho, SOC Analyst">
+            <span class="topbar-avatar" aria-hidden="true">SK</span>
+            <span class="topbar-profile-text">
+              <span class="topbar-profile-name">Soong Yang Kho</span>
+              <span class="topbar-profile-role">SOC Analyst</span>
+            </span>
+            <svg class="topbar-chevron" width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="5.5 8 10 12.5 14.5 8"></polyline>
+            </svg>
+          </button>
+        </div>
+      </header>
+      <main id="app-content" class="page" aria-live="polite">
+        <div class="state-panel"><span class="spinner" aria-hidden="true"></span>Loading Aegis…</div>
+      </main>
+    </div>
   </div>
 </body>
 </html>

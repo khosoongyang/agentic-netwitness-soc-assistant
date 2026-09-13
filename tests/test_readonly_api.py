@@ -167,6 +167,8 @@ def test_dashboard_returns_legacy_equivalent_aggregates(client: FlaskClient) -> 
         "critical_active": 0,
         "unassigned_active": 0,
         "awaiting_approval": 1,
+        "under_investigation": 0,
+        "awaiting_analyst": 0,
         "fetch_count": 1,
         "last_fetch": "2026-08-20T11:00:00+00:00",
     }

@@ -79,6 +79,9 @@ def get_dashboard(
         awaiting_approval = int(connection.execute(
             "SELECT COUNT(*) FROM incidents WHERE workflow_status='Awaiting Approval'"
         ).fetchone()[0])
+        awaiting_analyst = int(connection.execute(
+            "SELECT COUNT(*) FROM incidents WHERE workflow_status='Awaiting Action'"
+        ).fetchone()[0])
         severity_counts = _counts(connection, "severity")
         active_severity_counts = _counts(
             connection,
@@ -107,6 +110,8 @@ def get_dashboard(
         except sqlite3.DatabaseError:
             fetch_count, latest_fetch = 0, None
 
+    pipeline_counts = _pipeline_counts(pipeline_database_path)
+
     return {
         "summary": {
             "total_cases": total,
@@ -114,6 +119,8 @@ def get_dashboard(
             "critical_active": active_severity_counts.get("CRITICAL", 0),
             "unassigned_active": unassigned_active,
             "awaiting_approval": awaiting_approval,
+            "under_investigation": pipeline_counts.get("post_triage_investigate", 0),
+            "awaiting_analyst": awaiting_analyst,
             "fetch_count": fetch_count,
             "last_fetch": latest_fetch[0] if latest_fetch else None,
         },
@@ -122,6 +129,6 @@ def get_dashboard(
         "status_counts": status_counts,
         "workflow_counts": workflow_counts,
         "stage_status_counts": stage_status_counts,
-        "pipeline_counts": _pipeline_counts(pipeline_database_path),
+        "pipeline_counts": pipeline_counts,
         "recent_cases": [_case_list_item(dict(row)) for row in recent_rows],
     }

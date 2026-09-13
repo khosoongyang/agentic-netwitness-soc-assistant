@@ -1,5 +1,5 @@
 import { fetchJSON } from "../api.js";
-import { emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, provenanceValue, severityBadge, stateBadge } from "../ui.js";
+import { emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, provenanceValue, stateBadge } from "../ui.js";
 import { installChat } from "./chatbot.js";
 
 const POLL_INTERVAL_MS = 2000;
@@ -105,8 +105,7 @@ export async function renderWorkspace(root, { navigate, route }) {
     let workflow = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/workflow`);
     let selectedStageKey = workflow.stages.find((stage) => stage.name === workflow.current_stage)?.key || workflow.stages[0]?.key;
     root.innerHTML = `
-      <button class="text-button" id="back-to-cases">← Back to cases</button>
-      <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div>${severityBadge(detail.case.severity)}</section>
+      <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div></section>
       <div class="stage-actions"><button class="action-button" id="open-reports">Review reports &amp; triage ticket</button><button class="action-button" id="load-raw">View raw incident JSON</button></div><div id="raw-incident"></div>
       <section class="panel"><h2>Case context</h2>${caseContext(detail)}</section>
       <section class="panel" id="workflow-panel" style="margin-top:1rem"></section>
@@ -117,7 +116,6 @@ export async function renderWorkspace(root, { navigate, route }) {
         ["Activity", detail.workspace?.activity], ["Investigation output", detail.workspace?.output],
       ].map(([label, value]) => `<details><summary>${escapeHTML(label)}</summary>${jsonPreview(value)}</details>`).join("")}</div></section>
       <section class="panel" style="margin-top:1rem"><h2>Ask Aegis about this case</h2><div id="case-chat"></div></section>`;
-    root.querySelector("#back-to-cases").addEventListener("click", () => navigate("cases"));
     root.querySelector("#open-reports").addEventListener("click", () => navigate("reports", { case: caseId }));
     root.querySelector("#load-raw").addEventListener("click", async () => { const output = root.querySelector("#raw-incident"); output.innerHTML = loadingState("Loading raw incident…"); try { const raw = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/raw`); output.innerHTML = jsonPreview(raw.incident); } catch (error) { output.innerHTML = errorState(error); } });
     installChat(root.querySelector("#case-chat"), { caseId });

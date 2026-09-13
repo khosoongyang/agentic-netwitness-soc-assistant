@@ -40,3 +40,11 @@ async function render() {
 installRouter(render);
 document.documentElement.dataset.aegisShell = "loaded";
 render();
+
+document.addEventListener("keydown", (event) => {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "k") return;
+  const searchInput = document.querySelector("#topbar-search-input");
+  if (!searchInput) return;
+  event.preventDefault();
+  searchInput.focus();
+});

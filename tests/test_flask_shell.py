@@ -59,7 +59,6 @@ def test_frontend_index_loads(client: FlaskClient) -> None:
     assert response.status_code == 200
     assert response.mimetype == "text/html"
     assert b"Aegis" in response.data
-    assert b"Canonical Aegis application" in response.data
     assert b"Overview" in response.data
     assert b"Cases" in response.data
     assert b'type="module"' in response.data
