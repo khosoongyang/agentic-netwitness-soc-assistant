@@ -188,7 +188,7 @@ export async function renderWorkspace(root, { navigate, route }) {
     const outputRoot = root.querySelector("#stage-output");
 
     const renderWorkflow = () => {
-      workflowRoot.innerHTML = `<div class="page-header"><div><h2>Workflow</h2><p>${escapeHTML(workflow.workflow_status)} · run ${escapeHTML(workflow.run_id || "not started")}</p></div></div>${workflow.progress_note ? `<p class="notice">${escapeHTML(workflow.progress_note)}</p>` : ""}<div class="stage-grid">${stageCards(workflow.stages)}</div><p class="notice">${escapeHTML(workflow.evidence_gap?.message || "")}</p>`;
+      workflowRoot.innerHTML = `<div class="page-header"><div><h2>Workflow</h2><p>${escapeHTML(workflow.workflow_status)} · run ${escapeHTML(workflow.run_id || "not started")}</p></div></div>${workflow.progress_note ? `<p class="notice">${escapeHTML(workflow.progress_note)}</p>` : ""}<div class="stage-grid">${stageCards(workflow.stages)}</div>`;
       const selected = workflow.stages.find((stage) => stage.key === selectedStageKey) || workflow.stages[0];
       selectedStageKey = selected.key;
       renderSelectedStage(outputRoot, selected, handleAction);
