@@ -201,9 +201,163 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onContinue
   if (continueButton) continueButton.addEventListener("click", () => onContinue("triage"));
 }
 
+// Triage's canonical persisted shape (agents/triage/triage_result.py's
+// TriageAgentSuccessOutput, served verbatim by GET /api/cases/<id>/workflow's
+// stages[].result — see backend/services/case_service.py::_safe_stage_result,
+// which only redacts/truncates, never renames or drops a field): { ticket,
+// metakeys_payload, trace, used_parsed_context, cached, ai_summary,
+// ai_thinking, ai_summary_model, ai_summary_generated_at }. `ticket` and its
+// nested `risk_rating` are TriageTicket/TriageRiskRating's real fields — this
+// renderer draws ONLY on those (plus the trace's own "IOC Checklist" step for
+// the per-category confidentiality/integrity/availability breakdown), no
+// value is invented or hard-coded. Triage never produces a "confidence"
+// field, unlike Investigation, so none is shown here.
+const _TRIAGE_ACTION_LABELS = { start: "Run Triage", rerun: "Re-run Triage", approve: "Approve & Continue", reject: "Reject Triage" };
+
+function triageActionButtons(stage) {
+  const actions = stage.actions || [];
+  if (!actions.length) return "";
+  return `<div class="stage-actions" style="margin-top:1rem" aria-label="${escapeHTML(stage.name)} actions">${actions.map((action) => `<button class="action-button ${action.type === "reject" ? "danger" : ""}" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(_TRIAGE_ACTION_LABELS[action.type] || action.label)}</button>`).join("")}</div>`;
+}
+
+function triageTraceStep(result, stepName) {
+  return (result?.trace || []).find((step) => step && step.step === stepName) || null;
+}
+
+function triageClassificationCard(ticket) {
+  const rows = [
+    ["Classification", ticket.classification ? severityBadge(ticket.classification) : pendingValue("Not classified")],
+    ["Category", escapeHTML(ticket.incident_category || "—")],
+    ["MITRE Tactic", escapeHTML(ticket.mitre_tactic || "Unknown")],
+    ["MITRE Technique", escapeHTML(ticket.mitre_technique || "Unknown")],
+    ["Initial Response Time", escapeHTML(ticket.initial_response_time || "—")],
+  ];
+  return `<section class="panel"><h3>SOC Classification</h3><div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div></section>`;
+}
+
+function triageIOCCard(iocStep, ticket) {
+  const count = ticket.matched_ioc_count ?? iocStep?.total_ioc_count ?? 0;
+  const summary = iocStep?.ioc_summary || "";
+  const mkeys = ticket.metakeys?.length ? ticket.metakeys : (iocStep?.matched_metakeys || []);
+  const categories = iocStep?.per_category || {};
+  const catItems = Object.entries(categories)
+    .map(([name, data]) => {
+      const names = data?.matched_ioc_names || [];
+      if (!names.length) return "";
+      const label = name.charAt(0).toUpperCase() + name.slice(1);
+      const reasoning = data.reasoning ? ` — ${escapeHTML(data.reasoning)}` : "";
+      return `<li><div><strong>${escapeHTML(label)}:</strong> ${escapeHTML(names.join(", "))}${reasoning}</div></li>`;
+    })
+    .filter(Boolean)
+    .join("");
+  return `<article class="panel">
+    <h3>IOC Checklist</h3>
+    <p><strong>IOCs matched:</strong> ${escapeHTML(String(count))}</p>
+    ${summary ? `<p>${escapeHTML(summary)}</p>` : ""}
+    ${catItems ? `<ul class="data-list">${catItems}</ul>` : emptyState("No category-level IOC findings were recorded for this run.")}
+    ${mkeys.length ? `<p class="mono" style="margin-top:0.6rem;opacity:0.75">${mkeys.map((key) => escapeHTML(key)).join(" · ")}</p>` : ""}
+  </article>`;
+}
+
+function triageRiskCard(ticket) {
+  const rr = ticket.risk_rating || {};
+  const rows = [
+    ["Initiation", rr.likelihood_initiation],
+    ["Occurrence", rr.likelihood_occurrence],
+    ["Adverse Impact", rr.likelihood_adverse_impact],
+    ["Overall", rr.overall_risk],
+  ];
+  return `<article class="panel">
+    <h3>Risk Rating</h3>
+    <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Dimension</th><th>Rating</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value ? severityBadge(value) : pendingValue("—")}</td></tr>`).join("")}</tbody></table></div>
+    ${rr.rationale ? `<p class="notice" style="margin-top:0.6rem">${escapeHTML(rr.rationale)}</p>` : ""}
+  </article>`;
+}
+
+function triageSummaryCard(ticket, result) {
+  const parts = [];
+  if (ticket.summary) parts.push(`<p>${escapeHTML(ticket.summary)}</p>`);
+  if (result.ai_summary) parts.push(`<p class="notice">${escapeHTML(result.ai_summary)}<br><small style="opacity:0.75">AI-generated summary${result.ai_summary_model ? ` · ${escapeHTML(result.ai_summary_model)}` : ""}</small></p>`);
+  if (!parts.length) return "";
+  return `<section class="panel" style="margin-top:1rem"><h3>Triage Summary</h3>${parts.join("")}</section>`;
+}
+
+function triageMitreCard(ticket) {
+  if (!ticket.mitre_tactic && !ticket.mitre_technique) return "";
+  return `<section class="panel" style="margin-top:1rem"><h3>MITRE ATT&amp;CK</h3><p>${escapeHTML(ticket.mitre_tactic || "Unknown")} · ${escapeHTML(ticket.mitre_technique || "Unknown")}</p></section>`;
+}
+
+function triageActionsListCard(ticket) {
+  const actions = ticket.recommended_actions || [];
+  if (!actions.length) return "";
+  return `<section class="panel" style="margin-top:1rem"><h3>Recommended Actions</h3><ul class="data-list">${actions.map((action) => `<li><div>${escapeHTML(action)}</div></li>`).join("")}</ul></section>`;
+}
+
+function renderTriageStage(root, stage, caseId, lastError, onAction) {
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>IOC checklist, risk rating, and SOC classification for this incident.</p></div>${stateBadge(stage)}</div>`;
+  const statusLine = `<p class="notice">Status: ${escapeHTML(stage.status_text || stage.status)}${stage.updated_at ? ` · Last updated ${formatDate(stage.updated_at)}` : ""}</p>`;
+
+  if (stage.state === "in_progress") {
+    root.innerHTML = `
+      ${header}
+      ${statusLine}
+      ${loadingState("Analysing IOCs · assessing risk · classifying the incident…")}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+    root.querySelectorAll("[data-workflow-action]").forEach((button) => {
+      button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
+    });
+    return;
+  }
+
+  // A ticket persists once Triage has completed at least once, independent
+  // of the current state label — a Rejected run still has its ticket (the
+  // analyst needs to see what they rejected), and a Failed run never wrote
+  // one (workflow/engine.py::run_until_triage_approval returns before
+  // wss.save_triage_result() on the error branch). Keying off the actual
+  // data rather than an exhaustive state switch means every real status
+  // (not_started/locked/failed/awaiting_approval/completed/rejected)
+  // degrades correctly without a matching branch for each.
+  const result = stage.result || {};
+  const ticket = result.ticket || {};
+  const hasTicket = Boolean(ticket.incident_id || ticket.classification);
+
+  if (!hasTicket) {
+    root.innerHTML = `
+      ${header}
+      ${statusLine}
+      ${stage.state === "failed"
+        ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Triage failed for this run.")}</div></div>`
+        : emptyState("No persisted Triage output is available for this run yet.")}
+      ${triageActionButtons(stage)}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+  } else {
+    const iocStep = triageTraceStep(result, "IOC Checklist");
+    root.innerHTML = `
+      ${header}
+      ${statusLine}
+      <div id="action-status" aria-live="polite"></div>
+      ${triageClassificationCard(ticket)}
+      <div class="integration-grid">${triageIOCCard(iocStep, ticket)}${triageRiskCard(ticket)}</div>
+      ${triageSummaryCard(ticket, result)}
+      ${triageMitreCard(ticket)}
+      ${triageActionsListCard(ticket)}
+      ${triageActionButtons(stage)}
+    `;
+  }
+  root.querySelectorAll("[data-workflow-action]").forEach((button) => {
+    button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
+  });
+}
+
 function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinue) {
   if (stage.key === "parsing") {
     renderParsingStage(root, stage, caseId, lastError, onAction, onContinue);
+    return;
+  }
+  if (stage.key === "triage") {
+    renderTriageStage(root, stage, caseId, lastError, onAction);
     return;
   }
   root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div>${jsonPreview(stage.result)}`;

@@ -65,14 +65,23 @@ class ChatbotService:
             incident = {}
         incident.setdefault("id", case_id)
         try:
-            parsed = json.loads(state.get("parsing_result_json") or "{}")
+            parsing_result = json.loads(state.get("parsing_result_json") or "{}")
         except (TypeError, ValueError):
-            parsed = {}
+            parsing_result = {}
+        # soc_triage_chat_respond()'s parsed_context is documented (and used
+        # by the canonical workflow/engine.py::run_until_triage_approval ->
+        # run_triage() path) as Parsing's flat processed_alert view, not the
+        # whole persisted parsing_result wrapper (which also carries
+        # normalised_alert/parser_confidence/status/etc. at its own top
+        # level) -- passing the wrapper here would feed the ad hoc chat
+        # "retriage" trigger a differently-shaped parsed_alert_context than
+        # a real workflow run ever sees.
+        parsed_context = parsing_result.get("processed_alert") if isinstance(parsing_result, dict) else None
         from .case_view_service import build_aegis_context
         context = build_aegis_context(case_id, state.get("run_id"))
         if not context.get("available"):
             raise ChatServiceError("CHAT_CONTEXT_FAILED", "Trusted case context is unavailable.", 409)
-        return self._respond(prompt, incident, parsed, context, case_id)
+        return self._respond(prompt, incident, parsed_context, context, case_id)
 
     def _respond(self, prompt, incident, parsed, context, case_id):
         if not os.environ.get("OPENAI_API_KEY", "").strip() and self.responder is _default_responder:

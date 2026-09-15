@@ -1076,11 +1076,51 @@ _ALLOWED_TOP_LEVEL_KEYS = {
     "cluster_alert_ids", "summary", "severity", "indicators", "narrative_report",
     "missing_evidence", "feedback_loop", "severity_divergence",
 }
-_SECRET_KEY_RE = re.compile(r"(key|token|secret|password|credential|authorization)", re.I)
-_HIDDEN_FIELD_RE = re.compile(r"(reasoning|chain_of_thought|thinking|internal_notes)", re.I)
+_FIELD_TOKEN_RE = re.compile(r"[a-zA-Z0-9]+")
+# Matched against the field NAME's individual snake_case/kebab-case
+# components (via _field_tokens()), never as a raw substring search -- a
+# bare substring search over-matches legitimate domain vocabulary that
+# happens to contain one of these words fused into a larger token, e.g.
+# Triage's "metakeys"/"matched_metakeys"/"metakey_values" (a NetWitness
+# meta-key, unrelated to a credential) all contain "key" as a substring but
+# none of them tokenize to a bare "key"/"keys" component.
+_SECRET_KEY_TERMS = {
+    "key", "keys", "token", "tokens", "secret", "secrets",
+    "password", "passwords", "credential", "credentials", "authorization",
+}
+# Two real, evidenced-sensitive field names (and their compounds) -- NOT a
+# bare "reasoning"/"thinking" substring match. Triage's own per-category IOC
+# `reasoning` (agents/triage/soc_triage_agent.py::_run_ioc) and every
+# stage's `ai_thinking` (workflow/state_store.py::save_stage_ai_summary's
+# allowed-field list; workflow/stage_summaries.py::
+# render_triage_thinking_plain()) are BOTH deliberately analyst-facing
+# content, not hidden scratch reasoning -- matching "reasoning"/"thinking"
+# here would silently drop them from every stage's displayed result.
+_HIDDEN_FIELD_TERMS = {"chain_of_thought", "internal_notes"}
 _MAX_STRING_LEN = 4000
 _MAX_TOTAL_SIZE = 200_000
-_LOCAL_PATH_RE = re.compile(r"([A-Za-z]:\\[^\"'\s]+|/[\w./-]{6,})")
+# Unix-style absolute-path alternative requires a non-word character (or
+# start of string) immediately before the "/" -- a real path is preceded by
+# whitespace/punctuation/nothing, never fused directly onto a preceding
+# word. Without this, ordinary prose containing a slash (e.g. Triage's own
+# IOC_CONFIDENTIALITY checklist text "...originating from/terminating on
+# the device") gets its "/" silently eaten: the substring "/terminating"
+# alone matches, and _shorten() below then merges "from" and "terminating"
+# into one word.
+_LOCAL_PATH_RE = re.compile(r"([A-Za-z]:\\[^\"'\s]+|(?<!\w)/[\w./-]{6,})")
+
+
+def _field_tokens(name: str) -> list[str]:
+    return [token.lower() for token in _FIELD_TOKEN_RE.findall(str(name))]
+
+
+def _is_secret_field(name: str) -> bool:
+    return any(token in _SECRET_KEY_TERMS for token in _field_tokens(name))
+
+
+def _is_hidden_field(name: str) -> bool:
+    normalised = "_".join(_field_tokens(name))
+    return any(term in normalised for term in _HIDDEN_FIELD_TERMS)
 
 
 # [FYP-FUNCTION] `_redact_local_paths` — implements the redact local paths operation used by the surrounding SOC analysis support workflow.
@@ -1128,9 +1168,9 @@ def _sanitize_for_display(value: Any, _seen: set | None = None) -> Any:
         _seen = _seen | {obj_id}
         out = {}
         for k, v in value.items():
-            if _HIDDEN_FIELD_RE.search(str(k)):
+            if _is_hidden_field(k):
                 continue
-            if _SECRET_KEY_RE.search(str(k)):
+            if _is_secret_field(k):
                 out[k] = "«redacted»"
             else:
                 out[k] = _sanitize_for_display(v, _seen)
