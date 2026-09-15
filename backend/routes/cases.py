@@ -62,3 +62,10 @@ def case_workflow(case_id: str):
 def case_raw(case_id: str):
     return jsonify(case_service.get_case_raw(
         case_id, database_path=current_app.config.get("AEGIS_CASE_DB_PATH")))
+
+
+@cases_blueprint.get("/<case_id>/stages/parsing/download")
+def parsing_result_download(case_id: str):
+    data, filename = case_service.get_parsing_result_download(
+        case_id, database_path=current_app.config.get("AEGIS_CASE_DB_PATH"))
+    return send_file(io.BytesIO(data), mimetype="application/json", as_attachment=True, download_name=filename)

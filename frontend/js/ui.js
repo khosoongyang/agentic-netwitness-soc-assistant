@@ -52,3 +52,30 @@ export function jsonPreview(value) {
 export function provenanceValue(value) {
   return value && typeof value === "object" && "value" in value ? value.value : value;
 }
+
+// Generic overlay used to inspect large/secondary content (e.g. raw incident
+// JSON) without giving it permanent space on the page it was opened from.
+export function openModal(title) {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${escapeHTML(title)}"><div class="modal-header"><h2>${escapeHTML(title)}</h2><button type="button" class="modal-close" aria-label="Close">&times;</button></div><div class="modal-body"></div></div>`;
+  document.body.appendChild(overlay);
+  const body = overlay.querySelector(".modal-body");
+
+  function onKeyDown(event) {
+    if (event.key === "Escape") close();
+  }
+
+  function close() {
+    overlay.remove();
+    document.removeEventListener("keydown", onKeyDown);
+  }
+
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+  overlay.querySelector(".modal-close").addEventListener("click", close);
+  document.addEventListener("keydown", onKeyDown);
+
+  return { close, setBody: (html) => { body.innerHTML = html; } };
+}

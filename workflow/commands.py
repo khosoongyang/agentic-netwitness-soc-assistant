@@ -214,7 +214,7 @@ def _launch_fresh(
             provisional, stage, worker, incident, allow_retry, stage == "parsing"
         )
 
-        deadline = time.monotonic() + 2.0
+        deadline = time.monotonic() + 10.0
         state = before
         while time.monotonic() < deadline:
             state = _state_or_error(case_id)

@@ -1,5 +1,5 @@
 import { fetchJSON } from "../api.js";
-import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, provenanceValue, severityBadge, stateBadge } from "../ui.js";
+import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, openModal, provenanceValue, severityBadge, stateBadge } from "../ui.js";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
@@ -64,10 +64,14 @@ function caseContext(detail) {
   const user = overviewContext.user;
   const userValue = (user && user.evidence_status !== "unavailable" ? provenanceValue(user) : null) || context.users?.[0] || null;
 
+  // Case ID/Status/NetWitness Severity/Current Stage are the fields an
+  // analyst needs at a glance, so they lead the (scrollable) table; every
+  // other field is unchanged, just reordered to sit below the fold.
   const rows = [
     ["Case ID", escapeHTML(detail.case.id)],
     ["Status", statusBadge(detail.case.status)],
     ["NetWitness Severity", netwitnessSeverity ? severityBadge(netwitnessSeverity) : pendingValue("Not Identified")],
+    ["Current Stage", stageBadge(detail.case.current_stage)],
     ["Aegis Severity", investigation?.severity
       ? severityBadge(investigation.severity, investigation.severity_justification)
       : pendingValue(investigationFieldFallback)],
@@ -76,7 +80,6 @@ function caseContext(detail) {
     ["Confidence", investigation?.confidence
       ? confidenceBadge(investigation.confidence, investigation.confidence_justification)
       : pendingValue(investigationFieldFallback)],
-    ["Current Stage", stageBadge(detail.case.current_stage)],
     ["Host", escapeHTML(hostValue || "Not Identified")],
     ["User", escapeHTML(userValue || "Not Identified")],
     ["Alert Count", escapeHTML(String(detail.case.alert_count ?? 0))],
@@ -85,7 +88,7 @@ function caseContext(detail) {
     ["Last Seen", escapeHTML(formatDate(detail.case.last_seen))],
   ];
 
-  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
+  return `<div class="case-context-card"><div class="case-context-scroll table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div><div class="case-context-fade" aria-hidden="true"></div></div>`;
 }
 
 function stageCards(stages) {
@@ -104,7 +107,105 @@ function actionControls(stage) {
   return `<div class="stage-actions" aria-label="${escapeHTML(stage.name)} actions">${actions.map((action) => `<button class="action-button ${action.type === "reject" ? "danger" : ""}" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(action.label)}</button>`).join("")}</div>`;
 }
 
-function renderSelectedStage(root, stage, onAction) {
+// Only fields that actually exist in the persisted parsing result are
+// shown here — the live workflow (workflow/engine.py::run_until_triage_
+// approval) persists status/parser_confidence/recommended_next_action/
+// run_id/generated_at plus the ai_summary/-model/-generated_at trio into
+// parsing_result_json. The rich structured normalised_alert is persisted
+// alongside it but shown separately, in full, via the Normalised Alert
+// JSON viewer below. Anything missing here is simply omitted rather than
+// backfilled with a placeholder.
+function parserSummaryRows(result) {
+  const generatedAt = result.generated_at || result.ai_summary_generated_at;
+  return [
+    ["Status", result.status ? statusBadge(result.status) : null],
+    ["Parser Confidence", result.parser_confidence ? confidenceBadge(result.parser_confidence) : null],
+    ["Recommended Next Action", result.recommended_next_action ? escapeHTML(result.recommended_next_action) : null],
+    ["Run ID", result.run_id ? `<span class="mono">${escapeHTML(result.run_id)}</span>` : null],
+    ["Generated At", generatedAt ? escapeHTML(formatDate(generatedAt)) : null],
+  ].filter(([, value]) => value);
+}
+
+function parserSummaryCard(result) {
+  if (!result) return emptyState("No persisted output is available for this stage yet.");
+  const rows = parserSummaryRows(result);
+  const table = rows.length
+    ? `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`
+    : emptyState("No parser summary fields are available for this stage yet.");
+  const summaryText = result.ai_summary || result.summary;
+  const caption = result.ai_summary_model
+    ? `Generated by ${result.ai_summary_model}${result.ai_summary_generated_at ? ` · ${formatDate(result.ai_summary_generated_at)}` : ""}`
+    : "";
+  const summaryBlock = summaryText
+    ? `<p class="notice" style="margin-top:0.9rem">${escapeHTML(summaryText)}${caption ? `<br><small style="opacity:0.75">${escapeHTML(caption)}</small>` : ""}</p>`
+    : "";
+  return table + summaryBlock;
+}
+
+// Parsing never has an approval gate and is never locked (it is always the
+// first stage), so build_workflow_stages() can only ever report one of
+// these four states for it — the fifth generic state ("awaiting_approval")
+// is unreachable here and intentionally not handled.
+const _PARSING_ACTION_LABELS = { start: "Run Parsing", rerun: "Re-run Parsing" };
+
+function parsingActionControls(stage) {
+  const actions = stage.actions || [];
+  if (!actions.length) return "";
+  return `<div class="stage-actions" aria-label="${escapeHTML(stage.name)} actions">${actions.map((action) => `<button class="action-button" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(_PARSING_ACTION_LABELS[action.type] || action.label)}</button>`).join("")}</div>`;
+}
+
+function renderParsingStage(root, stage, caseId, lastError, onAction, onContinue) {
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Transform raw NetWitness incident data into structured, analyst-ready context.</p></div>${stateBadge(stage)}</div>`;
+
+  if (stage.state === "in_progress") {
+    root.innerHTML = `
+      ${header}
+      <p class="notice">Status: Running</p>
+      ${loadingState("Parsing incident…")}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+  } else if (stage.state === "failed") {
+    root.innerHTML = `
+      ${header}
+      <p class="notice">Status: Failed</p>
+      <div class="state-panel error"><div>${escapeHTML(lastError || "Parsing failed for this run.")}</div></div>
+      ${parsingActionControls(stage)}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+  } else if (stage.state === "completed") {
+    const downloadButton = `<a class="action-button" href="/api/cases/${encodeURIComponent(caseId)}/stages/parsing/download">Download JSON</a>`;
+    root.innerHTML = `
+      ${header}
+      <p class="notice">Status: Completed${stage.updated_at ? ` · Last updated ${formatDate(stage.updated_at)}` : ""}</p>
+      <div id="action-status" aria-live="polite"></div>
+      <section class="panel" style="margin-top:1rem"><h3>Parser Summary</h3>${parserSummaryCard(stage.result)}</section>
+      <section class="panel" style="margin-top:1rem">
+        <div class="panel-header-row"><h3>Normalised Alert</h3>${downloadButton}</div>
+        ${jsonPreview(stage.result?.normalised_alert || stage.result)}
+      </section>
+      <div class="stage-actions" style="margin-top:1rem">${(stage.actions || []).map((action) => `<button class="action-button" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(_PARSING_ACTION_LABELS[action.type] || action.label)}</button>`).join("")}<button class="action-button" id="continue-to-triage">Continue to Triage</button></div>
+    `;
+  } else {
+    // not_started
+    root.innerHTML = `
+      ${header}
+      <p class="notice">Status: Not started</p>
+      ${parsingActionControls(stage)}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+  }
+  root.querySelectorAll("[data-workflow-action]").forEach((button) => {
+    button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
+  });
+  const continueButton = root.querySelector("#continue-to-triage");
+  if (continueButton) continueButton.addEventListener("click", () => onContinue("triage"));
+}
+
+function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinue) {
+  if (stage.key === "parsing") {
+    renderParsingStage(root, stage, caseId, lastError, onAction, onContinue);
+    return;
+  }
   root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div>${jsonPreview(stage.result)}`;
   root.querySelectorAll("[data-workflow-action]").forEach((button) => {
     button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
@@ -172,26 +273,37 @@ export async function renderWorkspace(root, { navigate, route }) {
     let workflow = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/workflow`);
     let selectedStageKey = workflow.stages.find((stage) => stage.name === workflow.current_stage)?.key || workflow.stages[0]?.key;
     root.innerHTML = `
-      <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div></section>
-      <div class="stage-actions"><button class="action-button" id="open-reports">Review reports &amp; triage ticket</button><button class="action-button" id="load-raw">View raw incident JSON</button></div><div id="raw-incident"></div>
+      <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div><div class="stage-actions" style="margin:0"><button class="action-button" id="open-reports">Review reports &amp; triage ticket</button><button class="action-button" id="load-raw">View Raw Incident JSON</button></div></section>
       <section class="panel"><h2>Case context</h2>${caseContext(detail)}</section>
       <section class="panel" id="workflow-panel" style="margin-top:1rem"></section>
-      <section class="workspace-grid"><article class="panel"><h2>Key findings</h2>${findings(detail.workspace)}</article><article class="panel" id="stage-output"></article></section>
-      <section class="panel" style="margin-top:1rem"><h2>Case evidence views</h2><div class="evidence-view-grid">${[
-        ["Timeline", detail.workspace?.timeline], ["MITRE ATT&CK", detail.workspace?.mitre],
-        ["Entity graph", detail.workspace?.entity_graph], ["Evidence", detail.workspace?.evidence],
-        ["Activity", detail.workspace?.activity], ["Investigation output", detail.workspace?.output],
-      ].map(([label, value]) => `<details><summary>${escapeHTML(label)}</summary>${jsonPreview(value)}</details>`).join("")}</div></section>`;
+      <section class="workspace-grid${selectedStageKey === "parsing" ? " stage-only" : ""}" id="stage-workspace-grid"><article class="panel" id="key-findings-panel" ${selectedStageKey === "parsing" ? "hidden" : ""}><h2>Key findings</h2>${findings(detail.workspace)}</article><article class="panel" id="stage-output"></article></section>`;
     root.querySelector("#open-reports").addEventListener("click", () => navigate("reports", { case: caseId }));
-    root.querySelector("#load-raw").addEventListener("click", async () => { const output = root.querySelector("#raw-incident"); output.innerHTML = loadingState("Loading raw incident…"); try { const raw = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/raw`); output.innerHTML = jsonPreview(raw.incident); } catch (error) { output.innerHTML = errorState(error); } });
+    root.querySelector("#load-raw").addEventListener("click", async () => {
+      const modal = openModal("Raw Incident JSON");
+      modal.setBody(loadingState("Loading raw incident…"));
+      try {
+        const raw = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/raw`);
+        modal.setBody(jsonPreview(raw.incident));
+      } catch (error) {
+        modal.setBody(errorState(error));
+      }
+    });
     const workflowRoot = root.querySelector("#workflow-panel");
+    const stageWorkspaceGrid = root.querySelector("#stage-workspace-grid");
+    const keyFindingsPanel = root.querySelector("#key-findings-panel");
     const outputRoot = root.querySelector("#stage-output");
 
     const renderWorkflow = () => {
       workflowRoot.innerHTML = `<div class="page-header"><div><h2>Workflow</h2><p>${escapeHTML(workflow.workflow_status)} · run ${escapeHTML(workflow.run_id || "not started")}</p></div></div>${workflow.progress_note ? `<p class="notice">${escapeHTML(workflow.progress_note)}</p>` : ""}<div class="stage-grid">${stageCards(workflow.stages)}</div>`;
       const selected = workflow.stages.find((stage) => stage.key === selectedStageKey) || workflow.stages[0];
       selectedStageKey = selected.key;
-      renderSelectedStage(outputRoot, selected, handleAction);
+      const isParsingStage = selected.key === "parsing";
+      keyFindingsPanel.hidden = isParsingStage;
+      stageWorkspaceGrid.classList.toggle("stage-only", isParsingStage);
+      renderSelectedStage(outputRoot, selected, caseId, workflow.last_error, handleAction, (key) => {
+        selectedStageKey = key;
+        renderWorkflow();
+      });
       workflowRoot.querySelectorAll("[data-stage]").forEach((button) => {
         button.classList.toggle("active", button.dataset.stage === selectedStageKey);
         button.addEventListener("click", () => {

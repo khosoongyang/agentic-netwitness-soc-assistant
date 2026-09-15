@@ -365,6 +365,10 @@ body.ask-aegis-open .page {
   margin-top: 1rem;
 }
 
+.workspace-grid.stage-only {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .integration-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(18rem, 1fr));

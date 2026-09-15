@@ -13,7 +13,12 @@ from typing import Any, Callable
 
 from workflow import state_store as wss
 
-from ..errors import CaseNotFoundError, DataStoreUnavailableError, InvalidQueryError
+from ..errors import (
+    CaseNotFoundError,
+    DataStoreUnavailableError,
+    InvalidQueryError,
+    StageResultNotAvailableError,
+)
 
 
 _CASE_COLUMNS = (
@@ -260,6 +265,22 @@ def get_case_detail(
 def get_case_raw(case_id: str, *, database_path: str | Path | None = None) -> dict[str, Any]:
     row = _get_case_row(case_id, database_path)
     return {"case_id": case_id, "incident": _json_object(row.get("raw_json"))}
+
+
+def get_parsing_result_download(
+    case_id: str, *, database_path: str | Path | None = None
+) -> tuple[bytes, str]:
+    """Return the persisted Parsing & Normalisation result as a downloadable
+    JSON file — the same sanitized object the workspace's Normalised Alert
+    panel renders, not a frontend reconstruction."""
+    row = _get_case_row(case_id, database_path)
+    result = _safe_stage_result("parsing", row.get("parsing_result_json"))
+    if not result:
+        raise StageResultNotAvailableError()
+    normalised_alert = result.get("normalised_alert")
+    payload = normalised_alert if isinstance(normalised_alert, dict) and normalised_alert else result
+    data = json.dumps(payload, indent=2, default=str).encode("utf-8")
+    return data, f"{case_id}_normalised_alert.json"
 
 
 def export_cases_csv(*, database_path: str | Path | None = None) -> tuple[bytes, str]:

@@ -34,6 +34,15 @@ class DataStoreUnavailableError(APIError):
         )
 
 
+class StageResultNotAvailableError(APIError):
+    def __init__(self) -> None:
+        super().__init__(
+            "STAGE_RESULT_NOT_AVAILABLE",
+            "No persisted output is available for this stage yet.",
+            404,
+        )
+
+
 def install_error_handlers(app: Flask) -> None:
     """Install the consistent API error contract without exposing traces."""
 

@@ -1007,7 +1007,7 @@ def run_parsing(incident: dict, run_id: str) -> dict:
     [FYP-USED-BY]: run_until_triage_approval() (this module) — the only
     caller (skipped entirely when use_mock_triage=True).
     """
-    from agents.parsing.parser_normaliser import run_parser_normalisation_for_dashboard
+    from agents.parsing import run_parser_normalisation_for_dashboard
 
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
     output_dir = REP_DIR / "outputs" / _safe(inc_id) / _safe(run_id) / "parsing"
@@ -2991,15 +2991,23 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     pipeline_db_init()
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
     title  = incident.get("title") or incident.get("name") or "Untitled"
-    
-    # Enrich incident with comprehensive raw alerts using APIRetrieval FETCH API / disk exports
-    incident = enrich_incident_with_apiretrieval_fetch(incident, host=host, token=token)
-    
-    ctx: dict = {"incident": incident, "errors": {}, "stages": {}}
+
+    # Mint/persist the run identity FIRST. wss.start_run() is a fast, local
+    # DB write with no network I/O; enrich_incident_with_apiretrieval_fetch()
+    # below can make live NetWitness HTTP calls (each with a 15-30s timeout)
+    # when no matching disk export exists. Callers that observe the
+    # incidents table for a freshly-published run_id (workflow/commands.py
+    # ::_launch_fresh, which starts this function on a background thread and
+    # polls for run_id to appear so it can return it to the HTTP caller)
+    # would otherwise race against that enrichment latency and time out
+    # before a run_id ever gets published.
+    run_id = wss.start_run(inc_id, allow_retry=allow_retry)
     run_started = datetime.now()
 
-    run_id = wss.start_run(inc_id, allow_retry=allow_retry)
-    ctx["run_id"] = run_id
+    # Enrich incident with comprehensive raw alerts using APIRetrieval FETCH API / disk exports
+    incident = enrich_incident_with_apiretrieval_fetch(incident, host=host, token=token)
+
+    ctx: dict = {"incident": incident, "errors": {}, "stages": {}, "run_id": run_id}
 
     # Persist the full raw incident (with alertMeta) for this run BEFORE
     # anything else — this is the only durable source of it for the
@@ -3053,6 +3061,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
             wss.set_parsing_status(inc_id, run_id, "Failed")
             wss.set_triage_status(inc_id, run_id, "Blocked")
             wss.set_workflow_status(inc_id, run_id, "Failed")
+            wss.set_last_error(inc_id, run_id, f"parsing failed: {str(exc)[:300]}")
             _emit("phase_error", "Parsing and Normalisation", str(exc))
             _log("PARSING", f"FAILED: {exc}")
             return ctx
@@ -3064,18 +3073,55 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
         wss.set_parsing_status(inc_id, run_id, "Failed")
         wss.set_triage_status(inc_id, run_id, "Blocked")
         wss.set_workflow_status(inc_id, run_id, "Failed")
+        # run_parser_normalisation_for_dashboard() sets status to "failed"
+        # both for genuine parser errors and when its own
+        # parser_context_guard identity check refuses stale/mismatched
+        # output (see agents/parsing/parser_normaliser.py) — in that case
+        # `summary` already carries the real, specific reason, which is
+        # far more useful to an analyst than the generic message below.
+        failure_reason = (
+            parsing_result.get("summary")
+            if parsing_result.get("identity_validation", {}).get("passed") is False
+            else None
+        ) or (
+            f"parser returned status "
+            f"{parsing_result.get('status')!r} instead of 'completed'"
+        )
+        wss.set_last_error(inc_id, run_id, f"parsing failed: {failure_reason}"[:500])
         _emit("phase_error", "Parsing and Normalisation", "non-completed status")
         _log("PARSING", "FAILED: non-completed status")
         return ctx
 
-    ctx["stages"]["parsing"] = "completed"
-    wss.set_parsing_status(inc_id, run_id, "Complete")
+    # Persist BEFORE marking the stage Complete: the case page's Parsing
+    # tab (and any later resume) reads only parsing_result_json, not this
+    # in-process ctx, so a persist failure here must not be allowed to
+    # leave the stage looking "Complete" with nothing durable behind it —
+    # that would let Continue to Triage / a rerun proceed on missing data.
     try:
         wss.save_parsing_result(inc_id, run_id, {
             "run_id": run_id,
             "status": parsing_result.get("status"),
+            "summary": parsing_result.get("summary"),
             "parser_confidence": parsing_result.get("parser_confidence"),
             "recommended_next_action": parsing_result.get("recommended_next_action"),
+            "important_extracted_fields": parsing_result.get("important_extracted_fields"),
+            "missing_important_fields": parsing_result.get("missing_important_fields"),
+            "warnings": parsing_result.get("warnings"),
+            "parser_summary_card": parsing_result.get("parser_summary_card"),
+            # parser_context_guard's input/output identity fingerprint and
+            # verdict (see agents/parsing/parser_normaliser.py's own
+            # identity_validation wiring) — kept for the same reason the
+            # CLI adapter persists it: it is the audit trail proving this
+            # parser output was actually checked against the raw alert it
+            # was given, not just trusted blindly.
+            "input_identity": parsing_result.get("input_identity"),
+            "identity_validation": parsing_result.get("identity_validation"),
+            # The actual structured parser output the case page's Normalised
+            # Alert panel and its Download JSON button render — see
+            # run_parser_normalisation_for_dashboard() in
+            # agents/parsing/parser_normaliser.py for their shape.
+            "normalised_alert": parsing_result.get("normalised_alert"),
+            "processed_alert": parsing_result.get("processed_alert"),
             "output_files": parsing_result.get("output_files"),
             "ai_summary": parsing_result.get("ai_summary"),
             "ai_thinking": parsing_result.get("ai_thinking"),
@@ -3085,8 +3131,17 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         })
     except Exception as exc:
-        _log("PARSING", f"run-scoped parsing summary persist failed "
-                        f"(breaks durable resume for this run): {exc}")
+        ctx["stages"]["parsing"] = "failed"
+        ctx["errors"]["parsing"] = f"result persist failed: {exc}"
+        wss.set_parsing_status(inc_id, run_id, "Failed")
+        wss.set_triage_status(inc_id, run_id, "Blocked")
+        wss.set_workflow_status(inc_id, run_id, "Failed")
+        wss.set_last_error(inc_id, run_id, f"parsing failed: result persist failed: {str(exc)[:250]}")
+        _log("PARSING", f"result persist FAILED (breaks durable resume for this run): {exc}")
+        return ctx
+
+    ctx["stages"]["parsing"] = "completed"
+    wss.set_parsing_status(inc_id, run_id, "Complete")
     _emit("phase_complete", "Parsing and Normalisation",
           parsing_result.get("parser_confidence") or "")
 
@@ -3100,6 +3155,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
         wss.set_parsing_status(inc_id, run_id, "Failed")
         wss.set_triage_status(inc_id, run_id, "Blocked")
         wss.set_workflow_status(inc_id, run_id, "Failed")
+        wss.set_last_error(inc_id, run_id, f"parsing failed: {str(exc)[:300]}")
         _log("PARSING", f"VALIDATION FAILED: {exc}")
         return ctx
     ctx["parsing_validation"] = validation

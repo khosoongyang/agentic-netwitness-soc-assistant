@@ -117,10 +117,15 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.parse import urlparse
 
-# [FYP-CALLS] Only external (non-stdlib) dependency of this file: PowerShell
+# [FYP-CALLS] Only external (non-stdlib) dependencies of this file: PowerShell
 # -EncodedCommand base64 decoding + heuristic analysis, used later when
-# building process/command-line context (see normalise_event()).
+# building process/command-line context (see normalise_event()); and the
+# parsing package's own input/output identity guard, used by
+# run_parser_normalisation_for_dashboard() (the canonical dashboard entry
+# point) to refuse to hand back parser output that doesn't belong to the
+# raw alert it was actually given.
 from agents.parsing.powershell_decoder import analyse_powershell_command_lines
+from agents.parsing.parser_context_guard import extract_alert_identity, validate_parser_identity
 
 
 # =============================================================================
@@ -2092,6 +2097,35 @@ def extract_alert_values_fast(alert: Dict[str, Any], incident: Dict[str, Any]) -
             values[field].append(val)
             paths[field].append(p or field)
 
+    # [FYP-INPUT] `alertMeta` -- present on every NetWitness incident-list
+    # record this deployment produces (SourceIp/DestinationIp always;
+    # HostName/UserName/CommandLine when NetWitness populates them), even
+    # when no per-event "events" array is available at all (e.g. no
+    # nested "alerts", or live/export enrichment could not run). Without
+    # this, incidents shaped like a bare incident-list summary (no
+    # "alerts"/"events") lost their only available network/endpoint
+    # evidence entirely, even though FIELD_ALIASES has always documented
+    # "incident.alertMeta.SourceIp[*]" etc. as a valid source for these
+    # fields -- that table just isn't consulted by this fast path. Checked
+    # on both `alert` (the per-alert dict, which for a bare incident IS
+    # the whole incident record) and `incident` (populated for shapes
+    # that keep a distinct incident wrapper), whichever actually has it.
+    def _add_all(field, meta_value):
+        values_to_add = meta_value if isinstance(meta_value, list) else [meta_value]
+        for item in values_to_add:
+            _add(field, item, f"alertMeta.{field}")
+
+    alert_meta = alert.get("alertMeta") if isinstance(alert.get("alertMeta"), dict) else {}
+    if not alert_meta and isinstance(incident.get("alertMeta"), dict):
+        alert_meta = incident["alertMeta"]
+    if alert_meta:
+        _add_all("source_ip", alert_meta.get("SourceIp"))
+        _add_all("destination_ip", alert_meta.get("DestinationIp"))
+        _add_all("hostname", alert_meta.get("HostName"))
+        _add_all("username", alert_meta.get("UserName") or alert_meta.get("User"))
+        _add_all("command_line", alert_meta.get("CommandLine") or alert_meta.get("ParamSrc")
+                 or alert_meta.get("ParamDst") or alert_meta.get("ProcessTree"))
+
     _add("incident_id", incident.get("id") or alert.get("incidentId") or alert.get("incident_id"))
     _add("incident_title", incident.get("title") or incident.get("name"))
     _add("incident_priority", incident.get("priority"))
@@ -3081,8 +3115,15 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
 
     This is the function the Flask adapter uses. It keeps the original parser
     outputs and also emits a flat processed_alert for existing agents.
+
+    Owns its own input/output identity guard (parser_context_guard.py):
+    the raw alert's identity is fingerprinted before parsing, and the
+    result's identity is checked against it before returning, so a caller
+    can never silently receive parser output that belongs to a different
+    alert/incident than the one it asked to parse.
     """
     output_dir = Path(output_dir)
+    input_identity = extract_alert_identity(raw_alert)
     result = build_standard_alert(raw_alert, output_dir=str(output_dir))
     paths = write_outputs(result, output_dir=str(output_dir), write_debug=True)
     normalised = result.get("normalised_alert") or {}
@@ -3126,4 +3167,29 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
         "output_files": {**paths, "parsed_incident_file": str(parsed_path), "processed_alert_flat": str(processed_path)},
         "recommended_next_action": "Run Triage Agent using the normalised alert context." if result.get("parser_status") == "completed" else "Review parser errors or input format before continuing.",
     }
+
+    # Refuse to hand back output that doesn't belong to the raw alert we
+    # were actually given (hard failure only on alert_id/incident_id —
+    # see parser_context_guard.validate_parser_identity()). This is the
+    # same identity check the CLI adapter (agents/reporting/adapters/
+    # run_parser_normalisation.py) performs around this same call; owning
+    # it here means every caller of the canonical dashboard entry point
+    # gets it, not just that one adapter.
+    identity_validation = validate_parser_identity(input_identity, dashboard_result)
+    dashboard_result["input_identity"] = input_identity
+    dashboard_result["identity_validation"] = identity_validation
+    if not identity_validation.get("passed"):
+        dashboard_result["status"] = "failed"
+        dashboard_result["parser_status"] = "failed"
+        dashboard_result["display_status"] = "Failed"
+        dashboard_result["current_stage"] = "parser_input_mismatch"
+        dashboard_result["summary"] = identity_validation.get("message")
+        dashboard_result["recommended_next_action"] = (
+            "Reload the selected incident and rerun Parsing & Normalisation. "
+            "Do not continue with stale parser output."
+        )
+        dashboard_result.setdefault("warnings", [])
+        if identity_validation.get("message") not in dashboard_result["warnings"]:
+            dashboard_result["warnings"].append(identity_validation.get("message"))
+
     return make_json_safe(dashboard_result)

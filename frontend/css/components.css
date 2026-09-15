@@ -242,6 +242,51 @@
   background: var(--surface-raised);
 }
 
+.case-context-card {
+  position: relative;
+}
+
+/* Fixed-height, internally scrolling card: ~4 data rows plus the sticky
+   header are visible; the rest of the (unchanged) field list scrolls
+   into view inside the same card instead of growing the page. */
+.case-context-scroll {
+  max-height: 11.5rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #35485f var(--surface-raised);
+}
+
+.case-context-scroll::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.case-context-scroll::-webkit-scrollbar-track {
+  background: var(--surface-raised);
+}
+
+.case-context-scroll::-webkit-scrollbar-thumb {
+  background: #35485f;
+  border-radius: 999px;
+}
+
+.case-context-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface-raised);
+  z-index: 1;
+}
+
+.case-context-fade {
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  bottom: 1px;
+  height: 1.5rem;
+  border-radius: 0 0 0.65rem 0.65rem;
+  background: linear-gradient(to bottom, transparent, var(--surface-raised));
+  pointer-events: none;
+}
+
 .case-context-table {
   width: 100%;
   min-width: 26rem;
@@ -543,4 +588,77 @@ td {
   .filters {
     grid-template-columns: 1fr;
   }
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 4rem 1rem 1rem;
+  background: rgba(4, 9, 16, 0.65);
+}
+
+.modal {
+  width: 100%;
+  max-width: 48rem;
+  max-height: calc(100vh - 6rem);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.7rem;
+  background: var(--surface);
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.45);
+}
+
+.modal-header {
+  padding: 0.9rem 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.modal-close {
+  border: 0;
+  padding: 0.2rem 0.5rem;
+  color: var(--muted);
+  background: none;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-close:hover {
+  color: var(--text);
+}
+
+.modal-body {
+  padding: 1.1rem;
+  overflow: auto;
+}
+
+.modal-body .json-preview {
+  max-height: none;
+}
+
+.panel-header-row {
+  margin-bottom: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.panel-header-row h3 {
+  margin: 0;
 }
