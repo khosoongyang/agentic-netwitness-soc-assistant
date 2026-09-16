@@ -1564,3 +1564,146 @@ def test_investigation_failure_persists_actionable_last_error(monkeypatch):
     assert state["last_error"] == (
         "investigation failed: ValueError: embedding function conflict"
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# recommended_next_action — Threat-Intelligence-owned recommendation, never
+# an orchestration/approval claim.
+#
+# Previously this field was a single static sentence ("SOC analyst approval
+# is required before Investigation Agent can run.") on every call, which is
+# false under the real workflow: threat_intel is not in
+# workflow/commands.py's APPROVAL_STAGES, and
+# workflow/engine.py::resume_after_triage_approval() advances
+# investigation_status straight to "Processing" automatically on success.
+# The value is now derived only from this stage's own evidence (risk level
+# and its own warnings) and must never claim an approval/orchestration fact
+# — that belongs to the workflow API (see frontend/js/pages/workspace.js::
+# tiWorkflowStatusLine(), which reads the Investigation stage's own `state`
+# instead of this field).
+# ══════════════════════════════════════════════════════════════════════════
+
+_STALE_APPROVAL_SENTENCE = "SOC analyst approval is required before Investigation Agent can run."
+
+
+def test_recommended_next_action_never_claims_approval_gate(tmp_path):
+    """No scenario should ever reproduce the old static orchestration claim,
+    regardless of risk level or warnings."""
+    result = ti.run_threat_intel_for_dashboard({}, output_dir=tmp_path)
+    action = result["recommended_next_action"].lower()
+    assert result["recommended_next_action"] != _STALE_APPROVAL_SENTENCE
+    assert "approval" not in action
+    assert "investigation agent can run" not in action
+
+
+def test_recommended_next_action_low_risk_no_warnings(tmp_path):
+    result = ti.run_threat_intel_for_dashboard({}, output_dir=tmp_path)
+    assert result["status"] == "completed"
+    assert result["enrichment_risk_level"] == "Low"
+    assert result["warnings"] == []
+    assert result["recommended_next_action"] == (
+        "No elevated enrichment risk was identified from the available "
+        "threat intelligence."
+    )
+
+
+def test_recommended_next_action_reflects_warnings_over_risk_level(monkeypatch, tmp_path):
+    """Missing-key warnings take precedence in the sentence choice — an
+    analyst must be told the result is incomplete even if the (partial) risk
+    computed from what little ran happens to read Low."""
+    _mock_all_ti_keys_absent(monkeypatch)
+    result = ti.run_threat_intel_for_dashboard(
+        {"destination_ip": "8.8.8.8"}, output_dir=tmp_path)
+    assert result["status"] == "completed_with_warnings"
+    assert result["warnings"]
+    assert result["recommended_next_action"] == (
+        "Review the provider warnings below before relying on this "
+        "enrichment result."
+    )
+
+
+def test_recommended_next_action_reflects_medium_or_high_risk(monkeypatch, tmp_path):
+    monkeypatch.setenv("VT_API_KEY", "test-vt-key")
+    resp = _ok_json_response({"data": {"attributes": {
+        "last_analysis_stats": {"malicious": 5, "suspicious": 0}, "reputation": -10}}})
+    with patch("requests.get", return_value=resp):
+        result = ti.run_threat_intel_for_dashboard(
+            {"file_hash": "a" * 64}, output_dir=tmp_path)
+    assert result["warnings"] == []
+    assert result["enrichment_risk_level"] in ("Medium", "High")
+    assert result["recommended_next_action"] == (
+        f"{result['enrichment_risk_level']} enrichment risk was identified "
+        "— review the risk reasons below."
+    )
+
+
+def test_recommended_next_action_consistent_between_result_and_enriched_alert(tmp_path):
+    """enriched_alert carries its own copy of recommended_next_action
+    (threat_intel.py:enriched_alert["recommended_next_action"]) — it must
+    never silently diverge from the top-level field, as the two previously
+    did (two different static sentences)."""
+    result = ti.run_threat_intel_for_dashboard({}, output_dir=tmp_path)
+    assert result["recommended_next_action"] == result["enriched_alert"]["recommended_next_action"]
+
+
+def test_recommended_next_action_persists_through_disk_round_trip(tmp_path):
+    result = ti.run_threat_intel_for_dashboard(
+        {"destination_ip": "8.8.8.8"}, output_dir=tmp_path)
+    on_disk = json.loads((tmp_path / "threat_intel_result.json").read_text(encoding="utf-8"))
+    assert on_disk["recommended_next_action"] == result["recommended_next_action"]
+    assert on_disk["recommended_next_action"] != _STALE_APPROVAL_SENTENCE
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# PowerShell analysis passthrough — extract_iocs() must forward the parsing
+# stage's powershell_analysis (including its own extracted_iocs/
+# risk_assessment) unchanged into threat_intelligence.iocs, since the
+# dedicated workspace.js PowerShell Analysis subsection reads those fields
+# directly rather than re-decoding anything client-side.
+# ══════════════════════════════════════════════════════════════════════════
+
+def test_powershell_analysis_passthrough_with_extracted_iocs(tmp_path):
+    powershell_analysis = {
+        "encoded_command_present": True,
+        "powershell_indicator_present": True,
+        "decode_status": "success",
+        "encoded_command_count": 1,
+        "decoded_command_count": 1,
+        "decoded_command_summary": "Downloaded and executed a remote payload.",
+        "extracted_iocs": {
+            "urls": ["http://evil.example.com/payload.ps1"],
+            "domains": ["evil.example.com"],
+            "public_ips": [],
+            "hashes": [],
+            "file_paths": [],
+            "file_names": [],
+        },
+        "risk_assessment": {"risk_level": "High", "risk_score": 80},
+    }
+    result = ti.run_threat_intel_for_dashboard(
+        {"powershell_analysis": powershell_analysis}, output_dir=tmp_path)
+    iocs = result["threat_intelligence"]["iocs"]
+    assert iocs["powershell_analysis"] == powershell_analysis
+    assert iocs["powershell_enrichment_note"] == (
+        "Decoded PowerShell IOCs were included for enrichment when available."
+    )
+
+
+def test_powershell_analysis_absent_uses_no_analysis_note(tmp_path):
+    result = ti.run_threat_intel_for_dashboard({}, output_dir=tmp_path)
+    iocs = result["threat_intelligence"]["iocs"]
+    assert iocs["powershell_analysis"] == {}
+    assert iocs["powershell_enrichment_note"] == (
+        "No decoded PowerShell analysis was available before enrichment."
+    )
+
+
+def test_possible_file_name_is_a_plain_string_not_a_list(tmp_path):
+    """ThreatIntelIOCs.possible_file_name is `str | None` on the canonical
+    contract — the workspace UI must render it as a string, not recreate an
+    old prototype's list-bracket formatting."""
+    result = ti.run_threat_intel_for_dashboard(
+        {"possible_file_name": "splunkd.exe"}, output_dir=tmp_path)
+    file_name = result["threat_intelligence"]["iocs"]["possible_file_name"]
+    assert file_name == "splunkd.exe"
+    assert not isinstance(file_name, list)

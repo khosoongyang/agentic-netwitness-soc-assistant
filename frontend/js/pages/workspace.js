@@ -238,11 +238,17 @@ function triageClassificationCard(ticket) {
 function triageIOCCard(iocStep, ticket) {
   const count = ticket.matched_ioc_count ?? iocStep?.total_ioc_count ?? 0;
   const summary = iocStep?.ioc_summary || "";
-  const mkeys = ticket.metakeys?.length ? ticket.metakeys : (iocStep?.matched_metakeys || []);
-  const categories = iocStep?.per_category || {};
+  // Array.isArray guards, not just a truthy/length check: a persisted
+  // result the backend sanitizer has redacted-to-string (or any other
+  // unexpected shape) must degrade to an empty list here rather than throw
+  // on .map() below and blank the whole stage.
+  const ticketKeys = Array.isArray(ticket.metakeys) ? ticket.metakeys : [];
+  const traceKeys = Array.isArray(iocStep?.matched_metakeys) ? iocStep.matched_metakeys : [];
+  const mkeys = ticketKeys.length ? ticketKeys : traceKeys;
+  const categories = iocStep?.per_category && typeof iocStep.per_category === "object" ? iocStep.per_category : {};
   const catItems = Object.entries(categories)
     .map(([name, data]) => {
-      const names = data?.matched_ioc_names || [];
+      const names = Array.isArray(data?.matched_ioc_names) ? data.matched_ioc_names : [];
       if (!names.length) return "";
       const label = name.charAt(0).toUpperCase() + name.slice(1);
       const reasoning = data.reasoning ? ` — ${escapeHTML(data.reasoning)}` : "";
@@ -288,7 +294,7 @@ function triageMitreCard(ticket) {
 }
 
 function triageActionsListCard(ticket) {
-  const actions = ticket.recommended_actions || [];
+  const actions = Array.isArray(ticket.recommended_actions) ? ticket.recommended_actions : [];
   if (!actions.length) return "";
   return `<section class="panel" style="margin-top:1rem"><h3>Recommended Actions</h3><ul class="data-list">${actions.map((action) => `<li><div>${escapeHTML(action)}</div></li>`).join("")}</ul></section>`;
 }
@@ -351,13 +357,318 @@ function renderTriageStage(root, stage, caseId, lastError, onAction) {
   });
 }
 
-function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinue) {
+// -----------------------------------------------------------------------------
+// Threat Intelligence Enrichment stage renderer
+// -----------------------------------------------------------------------------
+// Canonical source: agents/threat_intelligence/threat_intel.py's
+// run_threat_intel_for_dashboard(), validated against the ThreatIntelResult
+// contract (agents/threat_intelligence/threat_intel_result.py) before it is
+// ever persisted. workflow/engine.py::run_threat_intel() re-keys it onto the
+// workflow's own stage envelope (adds incident_id/run_id/stage/generated_at,
+// then workflow/stage_summaries.py adds ai_summary/-model/-generated_at) and
+// stores the result verbatim in incidents.threat_intel_result_json.
+// backend/services/case_service.py::_safe_stage_result() only redacts
+// secret-looking keys / truncates long strings before it reaches
+// GET /api/cases/<id>/workflow as stage.result — every field rendered below
+// (iocs, virustotal, abuseipdb, alienvault_otx, enrichment_risk_*, notes,
+// warnings, recommended_next_action) is that same backend-computed value.
+// This section formats/labels/selects fields only; it never recomputes risk,
+// provider status, or IOC validity — see the ownership note on
+// tiWorkflowStatusLine() below for why the live "what happens next" line is
+// derived from the Investigation stage's own reported state rather than from
+// Threat Intelligence's recommended_next_action.
+const _TI_ACTION_LABELS = { start: "Run Threat Intelligence", rerun: "Re-run Threat Intelligence" };
+
+function tiActionButtons(stage) {
+  const actions = stage.actions || [];
+  if (!actions.length) return "";
+  return `<div class="stage-actions" style="margin-top:1rem" aria-label="${escapeHTML(stage.name)} actions">${actions.map((action) => `<button class="action-button" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(_TI_ACTION_LABELS[action.type] || action.label)}</button>`).join("")}</div>`;
+}
+
+function tiDash() {
+  return `<span class="value-pending">—</span>`;
+}
+
+function tiText(value) {
+  return value === 0 || value ? escapeHTML(String(value)) : tiDash();
+}
+
+function tiJoined(list) {
+  return Array.isArray(list) && list.length ? escapeHTML(list.join(", ")) : tiDash();
+}
+
+function tiTable(columns, rows) {
+  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr>${columns.map((c) => `<th>${escapeHTML(c)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
+}
+
+// Presentation-only status -> badge tone, reusing the same state-* tones the
+// stage cards already render (state-completed/failed/locked/
+// awaiting_approval/not_started) rather than inventing new CSS. This labels
+// whatever status string the provider call already returned
+// (completed/skipped/not_found/error/unknown) — it never re-derives whether
+// a lookup "worked".
+function providerStatusBadge(status) {
+  const s = String(status || "").toLowerCase();
+  const tone = s === "completed" ? "state-completed"
+    : s === "error" ? "state-failed"
+    : s === "not_found" ? "state-awaiting_approval"
+    : s === "skipped" ? "state-locked"
+    : "state-not_started";
+  return badge(status || "unknown", tone);
+}
+
+// Skipped/error results carry their own explanatory "reason" (or an HTTP
+// status_code) straight from threat_intel.py's provider functions — shown
+// visibly under the badge, not only as a hover title, so a failed/skipped
+// lookup is never mistaken for "no results".
+function providerStatusCell(result) {
+  const detail = result?.reason || (result?.status_code ? `HTTP ${result.status_code}` : "");
+  const badgeHTML = providerStatusBadge(result?.status);
+  return detail ? `${badgeHTML}<br><small style="opacity:0.7">${escapeHTML(detail)}</small>` : badgeHTML;
+}
+
+const _INVESTIGATION_STATE_LINES = {
+  not_started: "Investigation has not started yet.",
+  in_progress: "Investigation is currently running.",
+  awaiting_approval: "Investigation is complete and awaiting SOC analyst approval.",
+  completed: "Investigation has been approved.",
+  failed: "Investigation failed.",
+  rejected: "Investigation was rejected.",
+  locked: "Investigation is locked pending an earlier stage.",
+};
+
+// [OWNERSHIP] Threat Intelligence has no analyst-approval gate of its own —
+// workflow/engine.py::resume_after_triage_approval() flips
+// investigation_status straight to "Processing" the moment this stage
+// completes (confirmed via workflow/commands.py's APPROVAL_STAGES, which
+// does not include "threat_intel"). So "what happens next" is an
+// orchestration fact, not a Threat-Intelligence one: it is read here from
+// the Investigation stage's OWN already-computed `state` (the same enum
+// stateBadge() renders on every stage card), never inferred or recomputed
+// client-side. This is deliberately kept separate from — and never
+// substituted for — result.recommended_next_action below, which is
+// threat_intel.py's own risk-derived recommendation and must not be read as
+// a workflow-state claim (including for older persisted results that still
+// contain the pre-fix orchestration-claiming sentence).
+function tiWorkflowStatusLine(workflow) {
+  const investigation = workflow?.stages?.find((stage) => stage.key === "investigation");
+  if (!investigation) return "";
+  return _INVESTIGATION_STATE_LINES[investigation.state] || "";
+}
+
+function tiSummaryCard(result, workflow) {
+  const rows = [
+    ["Risk level", result.enrichment_risk_level ? severityBadge(result.enrichment_risk_level) : tiDash()],
+    ["Risk score", tiText(result.enrichment_risk_score)],
+    ["Last enriched", (result.generated_at || result.created_at) ? escapeHTML(formatDate(result.generated_at || result.created_at)) : tiDash()],
+  ];
+  const table = `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
+  const summaryPara = result.summary ? `<p class="notice">${escapeHTML(result.summary)}</p>` : "";
+  const aiPara = result.ai_summary
+    ? `<p class="notice">${escapeHTML(result.ai_summary)}<br><small style="opacity:0.75">AI-generated summary${result.ai_summary_model ? ` · ${escapeHTML(result.ai_summary_model)}` : ""}</small></p>`
+    : "";
+  // Labelled explicitly as a Threat Intelligence recommendation (not "Next
+  // step"/"Workflow") so it can never be misread as an orchestration
+  // decision — see tiWorkflowStatusLine() above for the actual live
+  // workflow-state line, sourced independently from the Investigation
+  // stage's own state.
+  const recommendation = result.recommended_next_action
+    ? `<p class="notice"><strong>Threat Intelligence recommendation:</strong> ${escapeHTML(result.recommended_next_action)}</p>`
+    : "";
+  const workflowLine = tiWorkflowStatusLine(workflow);
+  const workflowPara = workflowLine ? `<p class="notice"><strong>Workflow:</strong> ${escapeHTML(workflowLine)}</p>` : "";
+  return table + summaryPara + aiPara + recommendation + workflowPara;
+}
+
+// Mirrors agents/reporting/triage_ticket_editing.py::_threat_intel_blocks()'s
+// Extracted IOCs table field-for-field (same source: threat_intelligence.iocs)
+// so the live workspace view and the generated ticket/report document never
+// disagree on what was extracted. possible_file_name is a single string on
+// the current contract (ThreatIntelIOCs.possible_file_name: str | None) —
+// rendered as plain text, not as a reconstructed list.
+function tiIOCsCard(iocs) {
+  if (!iocs || !Object.keys(iocs).length) return emptyState("No IOC extraction data is available for this run.");
+  const rows = [
+    ["Possible file name", iocs.possible_file_name ? escapeHTML(iocs.possible_file_name) : tiDash()],
+    ["File hash", iocs.file_hash ? `<span class="mono">${escapeHTML(iocs.file_hash)}</span>` : tiDash()],
+    ["Public IP indicators", tiJoined(iocs.ip_indicators)],
+    ["Domain indicators", tiJoined(iocs.domain_indicators)],
+    ["URL indicators", tiJoined(iocs.url_indicators)],
+    ["PowerShell enrichment", iocs.powershell_enrichment_note ? escapeHTML(iocs.powershell_enrichment_note) : tiDash()],
+  ];
+  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+// powershell_analysis (agents/parsing/powershell_decoder.py's real output,
+// passed through threat_intel.py's extract_iocs() unchanged) — rendered as
+// a compact field table, never as a raw nested JSON dump. When the decoder
+// found no encoded command at all, this degrades to a one-line empty state
+// instead of a table of all-empty fields.
+function tiPowerShellCard(psa) {
+  if (!psa || typeof psa !== "object" || !Object.keys(psa).length) return "";
+  const hasActivity = Boolean(psa.encoded_command_present || psa.powershell_indicator_present)
+    || Boolean(psa.decode_status && !["not_present", "not_found"].includes(psa.decode_status));
+  if (!hasActivity) {
+    return `<article class="panel"><h3>PowerShell Analysis</h3>${emptyState(psa.decoded_command_summary || "No PowerShell activity was detected for this alert.")}</article>`;
+  }
+  const risk = psa.risk_assessment || {};
+  const extracted = psa.extracted_iocs || {};
+  const rows = [
+    ["Decode status", psa.decode_status ? escapeHTML(psa.decode_status) : tiDash()],
+    ["Encoded command detected", psa.encoded_command_present ? "Yes" : "No"],
+    ["Encoded command count", tiText(psa.encoded_command_count)],
+    ["Decoded command count", tiText(psa.decoded_command_count)],
+    ["PowerShell risk level", risk.risk_level ? severityBadge(risk.risk_level) : tiDash()],
+    ["PowerShell risk score", tiText(risk.risk_score)],
+    ["Extracted URLs", tiJoined(extracted.urls)],
+    ["Extracted domains", tiJoined(extracted.domains)],
+    ["Extracted public IPs", tiJoined(extracted.public_ips)],
+    ["Extracted hashes", tiJoined(extracted.hashes)],
+    ["Extracted file paths", tiJoined(extracted.file_paths)],
+    ["Extracted file names", tiJoined(extracted.file_names)],
+  ];
+  const table = `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
+  const summary = psa.decoded_command_summary ? `<p class="notice">${escapeHTML(psa.decoded_command_summary)}</p>` : "";
+  return `<article class="panel"><h3>PowerShell Analysis</h3>${table}${summary}</article>`;
+}
+
+// Columns mirror _threat_intel_blocks()'s VirusTotal table (Type/Indicator/
+// Status/Malicious/Suspicious/Reputation) plus a visible status detail —
+// file_hash is always present as a dict (real result or an explicit
+// {"status":"skipped",...}), so a "skipped" row is expected, not a bug.
+function tiVirusTotalCard(vt, iocs) {
+  const rows = [];
+  const fileHash = vt?.file_hash;
+  if (fileHash && typeof fileHash === "object") {
+    rows.push([tiText("File hash"), tiText(fileHash.indicator || iocs?.file_hash), providerStatusCell(fileHash), tiText(fileHash.malicious), tiText(fileHash.suspicious), tiText(fileHash.reputation)]);
+  }
+  for (const r of vt?.ip_results || []) rows.push([tiText("IP"), tiText(r.indicator), providerStatusCell(r), tiText(r.malicious), tiText(r.suspicious), tiText(r.reputation)]);
+  for (const r of vt?.domain_results || []) rows.push([tiText("Domain"), tiText(r.indicator), providerStatusCell(r), tiText(r.malicious), tiText(r.suspicious), tiText(r.reputation)]);
+  if (!rows.length) return emptyState("No VirusTotal lookups were performed for this run.");
+  const body = rows.map(([type, indicator, status, malicious, suspicious, reputation]) => `<tr><td>${type}</td><td class="mono">${indicator}</td><td>${status}</td><td>${malicious}</td><td>${suspicious}</td><td>${reputation}</td></tr>`).join("");
+  return tiTable(["Type", "Indicator", "Status", "Malicious", "Suspicious", "Reputation"], [body]);
+}
+
+function tiAbuseIPDBCard(abuse, iocs) {
+  const rows = abuse?.ip_results || [];
+  if (!rows.length) {
+    return emptyState((iocs?.ip_indicators || []).length
+      ? "AbuseIPDB did not return a result for the extracted IP indicator(s)."
+      : "No AbuseIPDB results for this run — no usable public IP indicator was extracted.");
+  }
+  const body = rows.map((r) => `<tr><td class="mono">${tiText(r.indicator)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.abuse_confidence_score)}</td><td>${tiText(r.total_reports)}</td><td>${tiText(r.country_code)}</td><td>${tiText(r.isp)}</td><td>${tiText(r.usage_type)}</td><td>${r.last_reported_at ? escapeHTML(formatDate(r.last_reported_at)) : tiDash()}</td></tr>`).join("");
+  return tiTable(["IP", "Status", "Abuse confidence", "Total reports", "Country", "ISP", "Usage type", "Last reported"], [body]);
+}
+
+function tiOTXCard(otx, iocs) {
+  const rows = otx?.otx_results || [];
+  if (!rows.length) {
+    const hasIndicator = Boolean(iocs?.file_hash) || (iocs?.ip_indicators || []).length || (iocs?.domain_indicators || []).length;
+    return emptyState(hasIndicator
+      ? "AlienVault OTX did not return a result for the extracted indicator(s)."
+      : "No AlienVault OTX results for this run — no usable indicator was extracted.");
+  }
+  const body = rows.map((r) => `<tr><td class="mono">${tiText(r.indicator)}</td><td>${tiText(r.indicator_type)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.pulse_count)}</td><td>${tiJoined(r.related_pulses)}</td><td>${tiJoined(r.sections_available)}</td></tr>`).join("");
+  return tiTable(["Indicator", "Type", "Status", "Pulse count", "Related pulses", "Available sections"], [body]);
+}
+
+// enrichment_risk_reasons is already a list of finished, human-readable
+// sentences produced by threat_intel.py::calculate_enrichment_risk() — this
+// only renders them as bullets, it never re-derives a score from provider
+// fields.
+function tiRiskAssessmentCard(result) {
+  const level = result.enrichment_risk_level;
+  const score = result.enrichment_risk_score;
+  const reasons = (Array.isArray(result.enrichment_risk_reasons) ? result.enrichment_risk_reasons : []).filter((r) => String(r || "").trim());
+  const heading = level ? `${escapeHTML(level)} risk (score ${score != null ? escapeHTML(String(score)) : "—"})` : "Risk not assessed";
+  const list = reasons.length
+    ? `<ul class="data-list">${reasons.map((r) => `<li><div>${escapeHTML(r)}</div></li>`).join("")}</ul>`
+    : emptyState("No risk reasons were recorded for this run.");
+  return `<article class="panel"><h3>Risk Assessment</h3><p><strong>${heading}</strong></p>${list}</article>`;
+}
+
+// notes (informational — why a lookup was skipped, PowerShell handling,
+// etc.) and warnings (missing API key / provider error only) are two
+// distinct lists on the real result and are kept visually distinct here —
+// warnings get their own notice-error treatment rather than being merged
+// into the informational list.
+function tiNotesCard(result) {
+  const notes = (Array.isArray(result.notes) ? result.notes : []).filter((n) => String(n || "").trim());
+  const warnings = (Array.isArray(result.warnings) ? result.warnings : []).filter((w) => String(w || "").trim());
+  const notesBlock = notes.length
+    ? `<ul class="data-list">${notes.map((n) => `<li><div>${escapeHTML(n)}</div></li>`).join("")}</ul>`
+    : emptyState("No enrichment notes were recorded for this run.");
+  const warningsBlock = warnings.length
+    ? `<div class="notice notice-error" style="margin-top:0.75rem"><strong>Warnings</strong><ul class="data-list">${warnings.map((w) => `<li><div>${escapeHTML(w)}</div></li>`).join("")}</ul></div>`
+    : "";
+  return `<article class="panel"><h3>Notes</h3>${notesBlock}${warningsBlock}</article>`;
+}
+
+function renderThreatIntelStage(root, stage, caseId, lastError, onAction, workflow) {
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>VirusTotal, AbuseIPDB, and AlienVault OTX enrichment for the extracted IOCs, with the resulting case-level risk verdict.</p></div>${stateBadge(stage)}</div>`;
+  const statusLine = `<p class="notice">Status: ${escapeHTML(stage.status_text || stage.status)}${stage.updated_at ? ` · Last updated ${formatDate(stage.updated_at)}` : ""}</p>`;
+
+  if (stage.state === "in_progress") {
+    root.innerHTML = `
+      ${header}
+      ${statusLine}
+      ${loadingState("Querying VirusTotal · AbuseIPDB · AlienVault OTX…")}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+    root.querySelectorAll("[data-workflow-action]").forEach((button) => {
+      button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
+    });
+    return;
+  }
+
+  const result = stage.result || {};
+  const block = result.threat_intelligence || {};
+  const hasResult = Boolean(result.threat_intelligence);
+
+  if (!hasResult) {
+    root.innerHTML = `
+      ${header}
+      ${statusLine}
+      ${stage.state === "failed"
+        ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Threat Intelligence enrichment failed for this run.")}</div></div>`
+        : emptyState("No persisted Threat Intelligence output is available for this run yet.")}
+      ${tiActionButtons(stage)}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+  } else {
+    const iocs = block.iocs || {};
+    const psaHTML = tiPowerShellCard(iocs.powershell_analysis);
+    root.innerHTML = `
+      ${header}
+      ${statusLine}
+      <div id="action-status" aria-live="polite"></div>
+      <section class="panel"><h3>Summary</h3>${tiSummaryCard(result, workflow)}</section>
+      <section class="panel" style="margin-top:1rem"><h3>Extracted IOCs</h3>${tiIOCsCard(iocs)}</section>
+      ${psaHTML ? `<div style="margin-top:1rem">${psaHTML}</div>` : ""}
+      <section class="panel" style="margin-top:1rem"><h3>VirusTotal</h3>${tiVirusTotalCard(block.virustotal, iocs)}</section>
+      <section class="panel" style="margin-top:1rem"><h3>AbuseIPDB</h3>${tiAbuseIPDBCard(block.abuseipdb, iocs)}</section>
+      <section class="panel" style="margin-top:1rem"><h3>AlienVault OTX</h3>${tiOTXCard(block.alienvault_otx, iocs)}</section>
+      <div style="margin-top:1rem">${tiRiskAssessmentCard(result)}</div>
+      <div style="margin-top:1rem">${tiNotesCard(result)}</div>
+      ${tiActionButtons(stage)}
+    `;
+  }
+  root.querySelectorAll("[data-workflow-action]").forEach((button) => {
+    button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
+  });
+}
+
+function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinue, workflow) {
   if (stage.key === "parsing") {
     renderParsingStage(root, stage, caseId, lastError, onAction, onContinue);
     return;
   }
   if (stage.key === "triage") {
     renderTriageStage(root, stage, caseId, lastError, onAction);
+    return;
+  }
+  if (stage.key === "threat_intel") {
+    renderThreatIntelStage(root, stage, caseId, lastError, onAction, workflow);
     return;
   }
   root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div>${jsonPreview(stage.result)}`;
@@ -457,7 +768,7 @@ export async function renderWorkspace(root, { navigate, route }) {
       renderSelectedStage(outputRoot, selected, caseId, workflow.last_error, handleAction, (key) => {
         selectedStageKey = key;
         renderWorkflow();
-      });
+      }, workflow);
       workflowRoot.querySelectorAll("[data-stage]").forEach((button) => {
         button.classList.toggle("active", button.dataset.stage === selectedStageKey);
         button.addEventListener("click", () => {

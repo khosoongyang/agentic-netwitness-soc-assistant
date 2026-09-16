@@ -78,9 +78,14 @@ confidence, or caching system — each stage run performs its own fresh lookups.
 #
 # Workflow position:
 #   Stage 3 of 5 — Threat Intelligence Enrichment. Runs after Triage has
-#   produced a triage_result and before Investigation. The dashboard result's
-#   recommended_next_action states SOC analyst approval is required before
-#   the Investigation stage can run.
+#   produced a triage_result and before Investigation. This stage has no
+#   analyst approval gate of its own — workflow/engine.py transitions
+#   Investigation to Processing automatically once this stage completes.
+#   The dashboard result's recommended_next_action is a Threat-Intelligence-
+#   owned recommendation derived from this stage's own risk level/warnings
+#   only — it never asserts an approval-gate or orchestration fact (that is
+#   workflow/engine.py + workflow/commands.py territory, surfaced to the UI
+#   via the workflow API, not via this field).
 #
 # Called by:
 #   - soc_workflow.py: run_threat_intel() dynamically imports this module,
@@ -1237,12 +1242,42 @@ def run_threat_intel_for_dashboard(alert: Dict[str, Any], output_dir: str | Path
     status = "completed_with_warnings" if warnings else "completed"
     created_at = datetime.now(timezone.utc).isoformat()
 
+    # [FYP-DECISION] recommended_next_action is a Threat-Intelligence-OWNED
+    # recommendation derived only from this stage's own evidence (its risk
+    # level and its own provider warnings) -- it must never assert an
+    # orchestration/workflow fact (e.g. whether an approval gate exists or
+    # which stage runs next), since this module has no visibility into
+    # workflow state and must not acquire any just to phrase a sentence.
+    # Whether analyst approval is required and what happens next is decided
+    # by workflow/engine.py + workflow/commands.py alone; the frontend reads
+    # that from the workflow API, not from this field. (Previously this was
+    # a static, always-identical sentence claiming "SOC analyst approval is
+    # required before Investigation Agent can run" -- false under the real
+    # workflow, which has no approval gate at this stage and transitions
+    # Investigation to Processing automatically.)
+    risk_level = enriched_alert.get("enrichment_risk_level")
+    if warnings:
+        recommended_next_action = (
+            "Review the provider warnings below before relying on this "
+            "enrichment result."
+        )
+    elif risk_level in ("Medium", "High"):
+        recommended_next_action = (
+            f"{risk_level} enrichment risk was identified — review the risk "
+            "reasons below."
+        )
+    else:
+        recommended_next_action = (
+            "No elevated enrichment risk was identified from the available "
+            "threat intelligence."
+        )
+
     enriched_alert["agent"] = "Threat Intelligence Enrichment"
     enriched_alert["agent_source"] = "threat_intel.py"
     enriched_alert["status"] = status
     enriched_alert["created_at"] = created_at
     enriched_alert["current_stage"] = "threat_intelligence_completed"
-    enriched_alert["recommended_next_action"] = "Submit the enriched case for SOC analyst approval before Investigation."
+    enriched_alert["recommended_next_action"] = recommended_next_action
     enriched_alert["warnings"] = warnings
 
     # Local import (not module-level): run_threat_intel_for_dashboard() is
@@ -1287,7 +1322,7 @@ def run_threat_intel_for_dashboard(alert: Dict[str, Any], output_dir: str | Path
             "pdf": "generate_on_download",
             "csv": "not_generated",
         },
-        "recommended_next_action": "SOC analyst approval is required before Investigation Agent can run.",
+        "recommended_next_action": recommended_next_action,
     }
     # Phase 2 (canonical Threat Intelligence Result contract migration):
     # validate the stage's one real result shape before it is ever
