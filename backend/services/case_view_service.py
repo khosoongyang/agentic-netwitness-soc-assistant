@@ -716,18 +716,42 @@ def build_mitre(state: dict, incident: dict, incident_id: str, run_id: str) -> d
                     "source": inf.get("source") or "tactic_inference",
                 })
 
-    # Tier 3: Investigation Agent's own MITRE table — parsed from
-    # narrative_report markdown, since investigation_result_json has no
-    # structured mitre_mappings field (confirmed: the agent's
-    # FinalIncidentAnalysis is never serialized to JSON, only rendered to
-    # markdown). Never promoted above "agent_suggestion".
+    # Tier 3: Investigation Agent's own MITRE table. Since the Phase 3
+    # canonical Investigation Result contract migration (see
+    # workflow/engine.py::run_investigation()'s _load_structured_
+    # investigation_analysis() path), a validated investigation_analysis.json
+    # gives us the agent's real structured MitreTTPMapping list verbatim
+    # (result["mitre_mappings"], a flat compatibility alias of
+    # investigation_analysis.mitre_mappings) — prefer that over regex-parsing
+    # narrative_report's Markdown table, since the structured form can never
+    # be corrupted by column reordering/escaping and needs no table-location
+    # heuristics. Markdown parsing remains the fallback for runs that only
+    # produced the Markdown report (investigation_source == "markdown_fallback",
+    # or any pre-migration persisted result). Never promoted above
+    # "agent_suggestion" either way.
     inv_status = state.get("investigation_status")
     if inv_status in ("Awaiting Approval", "Approved"):
         inv_result = _json_or_empty(state.get("investigation_result_json"))
-        inv_mappings, inv_warnings = _parse_mitre_markdown_table(
-            inv_result.get("narrative_report") or "")
-        mappings.extend(inv_mappings)
-        warnings.extend(inv_warnings)
+        structured = inv_result.get("mitre_mappings")
+        if isinstance(structured, list) and structured:
+            for m in structured:
+                if not isinstance(m, dict):
+                    continue
+                evidence = m.get("observed_evidence")
+                mappings.append({
+                    "tactic": m.get("tactic") or "Unclassified",
+                    "technique_id": m.get("technique_id") or "",
+                    "technique_name": m.get("technique_name") or "",
+                    "evidence": [evidence] if evidence else [],
+                    "timeline_phase": m.get("timeline_phase") or "",
+                    "origin": "investigation_agent_suggestion",
+                    "source": "investigation_agent",
+                })
+        else:
+            inv_mappings, inv_warnings = _parse_mitre_markdown_table(
+                inv_result.get("narrative_report") or "")
+            mappings.extend(inv_mappings)
+            warnings.extend(inv_warnings)
 
     return {"mappings": mappings, "warnings": warnings}
 
@@ -1075,6 +1099,16 @@ _ALLOWED_TOP_LEVEL_KEYS = {
     "agent", "status", "incident_id", "incident_folder", "investigated_for",
     "cluster_alert_ids", "summary", "severity", "indicators", "narrative_report",
     "missing_evidence", "feedback_loop", "severity_divergence",
+    # Phase 3 canonical Investigation Result contract fields (see
+    # agents/investigation/investigation_result.py::InvestigationAgentOutput
+    # and workflow/engine.py::run_investigation()'s structured-JSON path) —
+    # these are recognized, non-sensitive, structured fields the Investigation
+    # Agent itself produces. Without them here they still displayed (bucketed
+    # into "additional_output" below), just not as first-class allowlisted
+    # fields a caller can rely on finding at the top level.
+    "confidence", "severity_justification", "confidence_justification",
+    "execution_trace", "recommended_containment", "mitre_mappings",
+    "investigation_analysis", "workflow",
 }
 _FIELD_TOKEN_RE = re.compile(r"[a-zA-Z0-9]+")
 # Matched against the field NAME's individual snake_case/kebab-case

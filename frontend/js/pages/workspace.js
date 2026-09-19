@@ -658,7 +658,188 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, workfl
   });
 }
 
-function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinue, workflow) {
+// ══════════════════════════════════════════════════════════════════════════
+// Investigation stage — Overview/Output/Timeline/MITRE ATT&CK/Entity Graph/
+// Evidence/Activity sub-tabs. All seven are already computed server-side by
+// backend/services/case_view_service.py::build_case_view() (see its own
+// docstring: "app.py must render Overview/Output/Timeline/MITRE ATT&CK/
+// Entity Graph/Evidence/Activity from ONE call") and returned as `workspace`
+// on GET /api/cases/<id> — this only renders that payload; it never derives
+// evidence, MITRE mappings, or containment recommendations of its own, and
+// every sub-tab shows an explicit "not available" message instead of
+// fabricating content when its source field is empty/absent.
+// ══════════════════════════════════════════════════════════════════════════
+
+function _provEntry(entry) {
+  return entry && typeof entry === "object" && "value" in entry ? entry : { value: entry };
+}
+
+function provenanceRow(label, entry) {
+  const e = _provEntry(entry);
+  const title = e.source_stage ? `Source: ${e.source_stage}${e.source_field ? ` · ${e.source_field}` : ""}` : "";
+  return `<tr><th scope="row">${escapeHTML(label)}</th><td title="${escapeHTML(title)}">${escapeHTML(e.value ?? "—")}</td></tr>`;
+}
+
+function investigationOverviewTab(workspace) {
+  const ctx = workspace?.overview?.case_context || {};
+  if (!Object.keys(ctx).length) return emptyState("No case overview is available yet.");
+  const verdict = ctx.unified_verdict || {};
+  const rows = [
+    provenanceRow("NetWitness Severity", ctx.netwitness_severity),
+    provenanceRow("Triage Classification", ctx.triage_classification),
+    provenanceRow("Host", ctx.host),
+    provenanceRow("User", ctx.user),
+    provenanceRow("NetWitness Status", ctx.netwitness_status),
+    provenanceRow("Workflow Status", ctx.workflow_status),
+    provenanceRow("IOC IP Count", ctx.ioc_ip_count),
+  ].join("");
+  const verdictBlock = verdict.value
+    ? `<div class="table-wrap case-context-table-wrap" style="margin-top:1rem"><h3>Unified Verdict</h3><p>${severityBadge(verdict.value)} <span class="mono">${escapeHTML((verdict.source_stages || []).join(", "))}</span></p>${(verdict.reasons || []).length ? `<ul class="data-list">${verdict.reasons.map((r) => `<li>${escapeHTML(r)}</li>`).join("")}</ul>` : ""}</div>`
+    : "";
+  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>${verdictBlock}`;
+}
+
+function _pickAnalysisField(result, key) {
+  const analysis = result?.investigation_analysis;
+  if (analysis && analysis[key] !== undefined && analysis[key] !== null) return analysis[key];
+  return result?.[key];
+}
+
+function markdownBlock(text) {
+  if (!text) return "";
+  if (window.marked && window.DOMPurify) {
+    return `<div class="markdown-body">${window.DOMPurify.sanitize(window.marked.parse(text, { breaks: true, gfm: true }))}</div>`;
+  }
+  return `<pre class="json-preview">${escapeHTML(text)}</pre>`;
+}
+
+function playbookTraceTable(steps) {
+  if (!Array.isArray(steps) || !steps.length) {
+    return emptyState("No structured playbook execution trace was persisted for this run — see the narrative report above.");
+  }
+  const statusTone = (status) => (status === "MET" ? "state-completed" : status === "SKIPPED" ? "state-locked" : "state-failed");
+  const rows = steps.map((s) => `<tr><td class="mono">${escapeHTML(s.step_id)}</td><td>${escapeHTML(s.instruction)}</td><td>${badge(s.status, statusTone(s.status))}</td><td>${escapeHTML(s.findings)}</td></tr>`).join("");
+  return `<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Step ID</th><th>Instruction</th><th>Status</th><th>Findings</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function policyAuditTable(records) {
+  if (!Array.isArray(records) || !records.length) {
+    return emptyState("No policy compliance audit log was persisted for this run.");
+  }
+  const rows = records.map((r) => `<tr><td class="mono">${escapeHTML(r.audit_id)}</td><td>${escapeHTML(r.decision_point)}</td><td>${escapeHTML(r.policy_reference)}</td><td>${escapeHTML(r.input_summary)}</td><td>${escapeHTML(r.result)}</td><td class="mono">${escapeHTML(r.decision_made)}</td><td>${r.human_review_required ? "Yes" : "No"}</td><td>${escapeHTML(formatDate(typeof r.timestamp === "number" ? r.timestamp * 1000 : r.timestamp))}</td></tr>`).join("");
+  return `<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Audit ID</th><th>Decision Point</th><th>Policy Reference</th><th>Input Summary</th><th>Result</th><th>Decision Made</th><th>Human Review?</th><th>Timestamp</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function investigationOutputTab(workspace) {
+  const output = workspace?.output || {};
+  const result = output.investigation_result || {};
+  if (!Object.keys(result).length) {
+    return emptyState(output.status === "Processing"
+      ? "Investigation is currently running."
+      : "No Investigation output has been persisted yet.");
+  }
+  const parts = [];
+  parts.push(`<p>${result.severity ? severityBadge(result.severity, result.severity_justification) : ""} ${result.confidence ? confidenceBadge(result.confidence, result.confidence_justification) : ""} ${statusBadge(result.status)}</p>`);
+  if (output.errors?.length) parts.push(`<p class="notice">${output.errors.map((e) => escapeHTML(e)).join("<br>")}</p>`);
+  if (output.last_error) parts.push(`<p class="notice">${escapeHTML(output.last_error)}</p>`);
+  if (output.worker_progress_note) parts.push(`<p class="notice">${escapeHTML(output.worker_progress_note)}</p>`);
+  if (output.warnings?.length) {
+    parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Evidence Gaps</h3><ul class="data-list">${output.warnings.map((w) => `<li>${escapeHTML(w)}</li>`).join("")}</ul></section>`);
+  }
+  if (result.summary) {
+    parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Summary</h3><p>${escapeHTML(result.summary)}</p></section>`);
+  }
+  if (result.narrative_report) {
+    parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Investigation Narrative Report</h3>${markdownBlock(result.narrative_report)}</section>`);
+  }
+  const containment = _pickAnalysisField(result, "recommended_containment");
+  if (Array.isArray(containment) && containment.length) {
+    parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Recommended Containment Actions</h3><ul class="data-list">${containment.map((c) => `<li>${escapeHTML(c)}</li>`).join("")}</ul></section>`);
+  }
+  const trace = _pickAnalysisField(result, "execution_trace");
+  parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Playbook Execution Trace</h3>${playbookTraceTable(trace)}</section>`);
+  const audits = result.investigation_analysis?.policy_audit_logs;
+  parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Policy-Based Compliance Audit Log</h3>${policyAuditTable(audits)}</section>`);
+  if (Array.isArray(result.missing_evidence) && result.missing_evidence.length) {
+    parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Missing Evidence</h3><ul class="data-list">${result.missing_evidence.map((m) => `<li>${escapeHTML(m)}</li>`).join("")}</ul></section>`);
+  }
+  return parts.join("");
+}
+
+function investigationTimelineTab(workspace) {
+  const items = workspace?.timeline || [];
+  if (!items.length) return emptyState("No timeline events have been recorded for this case yet.");
+  const typeTone = { security: "state-in_progress", warning: "state-failed", workflow: "state-completed", info: "state-locked" };
+  const rows = items.map((it) => `<tr><td class="mono">${escapeHTML(it.timestamp || "—")}</td><td>${escapeHTML(it.event)}</td><td>${badge(it.event_type, typeTone[it.event_type] || "")}</td><td class="mono">${escapeHTML(it.source_stage || "")}</td></tr>`).join("");
+  return `<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Timestamp</th><th>Event</th><th>Type</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function investigationMitreTab(workspace) {
+  const mappings = workspace?.mitre || [];
+  const warnings = workspace?.mitre_warnings || [];
+  if (!mappings.length) return emptyState("No MITRE ATT&CK mappings are available for this case yet.");
+  const rows = mappings.map((m) => `<tr><td>${escapeHTML(m.timeline_phase || "")}</td><td>${escapeHTML((m.evidence || []).join("; "))}</td><td>${escapeHTML(m.tactic)}</td><td>${escapeHTML(m.technique_name)}</td><td class="mono">${escapeHTML(m.technique_id)}</td><td><span class="origin-tag">${escapeHTML((m.origin || "").replaceAll("_", " "))}</span></td></tr>`).join("");
+  const warn = warnings.length ? `<p class="notice">${warnings.map((w) => escapeHTML(w)).join("<br>")}</p>` : "";
+  return `${warn}<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Timeline Phase / Activity</th><th>Observed Evidence</th><th>MITRE Tactic</th><th>MITRE Technique Name</th><th>MITRE ID</th><th>Origin</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function investigationEntityGraphTab(workspace) {
+  const graph = workspace?.entity_graph || {};
+  const nodes = graph.nodes || [];
+  const edges = graph.edges || [];
+  if (!nodes.length) return emptyState("No entity graph could be derived for this case yet.");
+  const nodeItems = nodes.map((n) => `<li><div><strong>${escapeHTML(n.label)}</strong><p>${escapeHTML(n.type)}</p></div></li>`).join("");
+  const edgeItems = edges.map((e) => `<li><div><strong>${escapeHTML(e.src)} → ${escapeHTML(e.dst)}</strong><p>${escapeHTML(e.relation)}${e.evidence_status ? ` · <span class="evidence-status-tag">${escapeHTML(e.evidence_status)}</span>` : ""}</p>${(e.evidence || []).length ? `<p class="mono">${escapeHTML(e.evidence.join(", "))}</p>` : ""}</div></li>`).join("");
+  return `<div class="entity-graph-columns"><div><h3>Entities (${nodes.length})</h3><ul class="data-list">${nodeItems}</ul></div><div><h3>Relationships (${edges.length})</h3><ul class="data-list">${edgeItems || `<li>${emptyState("No relationships were derived between entities.")}</li>`}</ul></div></div>`;
+}
+
+function investigationEvidenceTab(workspace) {
+  const items = workspace?.evidence || [];
+  if (!items.length) return emptyState("No evidence items have been recorded for this case yet.");
+  const rows = items.map((it) => `<li><div><strong>${escapeHTML(it.summary || it.evidence_type)}</strong><p>${escapeHTML(it.evidence_type)} · ${escapeHTML(it.source)} · ${escapeHTML(formatDate(it.timestamp))}</p>${(it.related_entities || []).length ? `<p class="mono">${escapeHTML(it.related_entities.join(", "))}</p>` : ""}${(it.supported_findings || []).length ? `<p>${it.supported_findings.map((f) => escapeHTML(f)).join("; ")}</p>` : ""}</div><span class="evidence-status-tag">${escapeHTML(it.evidence_status || "")}</span></li>`).join("");
+  return `<ul class="data-list">${rows}</ul>`;
+}
+
+function investigationActivityTab(workspace) {
+  const items = workspace?.activity || [];
+  if (!items.length) return emptyState("No activity has been recorded for this case yet.");
+  const rows = items.map((it) => `<tr><td class="mono">${escapeHTML(formatDate(it.timestamp))}</td><td>${escapeHTML(it.actor)}</td><td>${escapeHTML(it.action)}</td><td class="mono">${escapeHTML(it.stage || "")}</td><td>${escapeHTML(it.comments || "")}</td></tr>`).join("");
+  return `<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Timestamp</th><th>Actor</th><th>Action</th><th>Stage</th><th>Comments</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+const _INVESTIGATION_SUBTABS = [
+  ["overview", "Overview", investigationOverviewTab],
+  ["output", "Output", investigationOutputTab],
+  ["timeline", "Timeline", investigationTimelineTab],
+  ["mitre", "MITRE ATT&CK", investigationMitreTab],
+  ["entity_graph", "Entity Graph", investigationEntityGraphTab],
+  ["evidence", "Evidence", investigationEvidenceTab],
+  ["activity", "Activity", investigationActivityTab],
+];
+
+function renderInvestigationStage(root, stage, caseId, lastError, onAction, workspace) {
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div>`;
+  const nav = `<div class="subtab-bar" role="tablist">${_INVESTIGATION_SUBTABS.map(([key, label]) => `<button type="button" class="subtab-button" data-subtab="${key}" role="tab">${escapeHTML(label)}</button>`).join("")}</div>`;
+  root.innerHTML = `${header}${nav}<div id="investigation-subtab-body"></div>`;
+  root.querySelectorAll("[data-workflow-action]").forEach((button) => {
+    button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
+  });
+  const body = root.querySelector("#investigation-subtab-body");
+  const buttons = [...root.querySelectorAll("[data-subtab]")];
+  const activate = (key) => {
+    const entry = _INVESTIGATION_SUBTABS.find(([k]) => k === key) || _INVESTIGATION_SUBTABS[0];
+    buttons.forEach((b) => b.classList.toggle("active", b.dataset.subtab === entry[0]));
+    try {
+      body.innerHTML = entry[2](workspace);
+    } catch (error) {
+      body.innerHTML = errorState(error);
+    }
+  };
+  buttons.forEach((button) => button.addEventListener("click", () => activate(button.dataset.subtab)));
+  activate("overview");
+}
+
+function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinue, workflow, workspace) {
   if (stage.key === "parsing") {
     renderParsingStage(root, stage, caseId, lastError, onAction, onContinue);
     return;
@@ -669,6 +850,10 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinu
   }
   if (stage.key === "threat_intel") {
     renderThreatIntelStage(root, stage, caseId, lastError, onAction, workflow);
+    return;
+  }
+  if (stage.key === "investigation") {
+    renderInvestigationStage(root, stage, caseId, lastError, onAction, workspace);
     return;
   }
   root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div>${jsonPreview(stage.result)}`;
@@ -734,12 +919,12 @@ export async function renderWorkspace(root, { navigate, route }) {
   }
   root.innerHTML = loadingState(`Loading case ${caseId}…`);
   try {
-    const detail = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}`);
+    let detail = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}`);
     let workflow = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/workflow`);
     let selectedStageKey = workflow.stages.find((stage) => stage.name === workflow.current_stage)?.key || workflow.stages[0]?.key;
     root.innerHTML = `
       <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div><div class="stage-actions" style="margin:0"><button class="action-button" id="open-reports">Review reports &amp; triage ticket</button><button class="action-button" id="load-raw">View Raw Incident JSON</button></div></section>
-      <section class="panel"><h2>Case context</h2>${caseContext(detail)}</section>
+      <section class="panel" id="case-context-panel"><h2>Case context</h2>${caseContext(detail)}</section>
       <section class="panel" id="workflow-panel" style="margin-top:1rem"></section>
       <section class="workspace-grid${selectedStageKey === "parsing" ? " stage-only" : ""}" id="stage-workspace-grid"><article class="panel" id="key-findings-panel" ${selectedStageKey === "parsing" ? "hidden" : ""}><h2>Key findings</h2>${findings(detail.workspace)}</article><article class="panel" id="stage-output"></article></section>`;
     root.querySelector("#open-reports").addEventListener("click", () => navigate("reports", { case: caseId }));
@@ -756,6 +941,7 @@ export async function renderWorkspace(root, { navigate, route }) {
     const workflowRoot = root.querySelector("#workflow-panel");
     const stageWorkspaceGrid = root.querySelector("#stage-workspace-grid");
     const keyFindingsPanel = root.querySelector("#key-findings-panel");
+    const caseContextPanel = root.querySelector("#case-context-panel");
     const outputRoot = root.querySelector("#stage-output");
 
     const renderWorkflow = () => {
@@ -768,7 +954,7 @@ export async function renderWorkspace(root, { navigate, route }) {
       renderSelectedStage(outputRoot, selected, caseId, workflow.last_error, handleAction, (key) => {
         selectedStageKey = key;
         renderWorkflow();
-      }, workflow);
+      }, workflow, detail.workspace);
       workflowRoot.querySelectorAll("[data-stage]").forEach((button) => {
         button.classList.toggle("active", button.dataset.stage === selectedStageKey);
         button.addEventListener("click", () => {
@@ -778,8 +964,19 @@ export async function renderWorkspace(root, { navigate, route }) {
       });
     };
 
+    // Refetches BOTH the workflow (per-stage status/actions) and the full
+    // case detail (`detail.workspace` — the Investigation tabs' data source)
+    // together, so an approve/rerun/reject action can never leave the
+    // Investigation tabs, the Key findings panel, or the Case context
+    // severity/confidence badges showing a stale run's data after the
+    // action completes.
     const refreshWorkflow = async () => {
-      workflow = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/workflow`);
+      [detail, workflow] = await Promise.all([
+        fetchJSON(`/api/cases/${encodeURIComponent(caseId)}`),
+        fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/workflow`),
+      ]);
+      caseContextPanel.innerHTML = `<h2>Case context</h2>${caseContext(detail)}`;
+      keyFindingsPanel.innerHTML = `<h2>Key findings</h2>${findings(detail.workspace)}`;
       renderWorkflow();
     };
 

@@ -255,6 +255,18 @@ def get_case_detail(
             from .case_view_service import build_case_view
             case_view_builder = build_case_view
         workspace = case_view_builder(str(case_id), row.get("run_id"))
+        # build_output() deliberately returns the RAW, unsanitized
+        # investigation_result_json (see its own docstring) and expects the
+        # caller to sanitize before display -- GET /api/cases/<id>/workflow
+        # already does this for the per-stage view via _safe_stage_result()'s
+        # investigation special-case below; this is the same sanitization
+        # applied at the full case-detail boundary so the two endpoints never
+        # disagree on whether secrets/oversized fields reach the browser.
+        output = workspace.get("output") if isinstance(workspace, dict) else None
+        if isinstance(output, dict) and isinstance(output.get("investigation_result"), dict):
+            from .case_view_service import sanitize_investigation_result_for_display
+            output["investigation_result"] = sanitize_investigation_result_for_display(
+                output["investigation_result"])
     return {
         "case": {**_case_list_item(row), "context": _case_context(row)},
         "workspace": workspace,

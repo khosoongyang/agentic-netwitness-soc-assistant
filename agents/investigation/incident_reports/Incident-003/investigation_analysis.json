@@ -1,0 +1,136 @@
+{
+  "incident_id": "INC-53027",
+  "severity": "High",
+  "confidence": "Medium",
+  "execution_trace": [
+    {
+      "step_id": "step_1",
+      "instruction": "Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System",
+      "status": "NOT_MET",
+      "findings": "Only the source IP 192.168.10.210 is available. The timeline does not provide a username, login details, computer name, or operating system, so the endpoint/user identity cannot be confirmed from the provided record."
+    },
+    {
+      "step_id": "step_2",
+      "instruction": "Was it horizontal or vertical",
+      "status": "NOT_MET",
+      "findings": "The timeline shows only outbound traffic from internal IP 192.168.10.210 to external IP 188.40.170.197. There is no evidence of internal-to-internal movement or multiple internal peers, so horizontal vs vertical movement cannot be determined."
+    },
+    {
+      "step_id": "step_3",
+      "instruction": "Was any malicious process spawned on the victim's machine?",
+      "status": "NOT_MET",
+      "findings": "No process creation telemetry, command lines, parent-child process data, or EDR process tree is present. Therefore, there is no evidence to confirm whether a malicious process was spawned on the victim machine."
+    },
+    {
+      "step_id": "step_4",
+      "instruction": "Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
+      "status": "NOT_MET",
+      "findings": "A process tree cannot be analyzed because the incident contains only network-level metadata. There is no evidence of privilege escalation, lateral movement, or data exfiltration from endpoint/process artifacts in the provided timeline."
+    },
+    {
+      "step_id": "step_5",
+      "instruction": "Based on the analysis, determine if further investigation is necessary and the containment steps",
+      "status": "MET",
+      "findings": "Further investigation is necessary. The incident is suspicious outbound network activity from 192.168.10.210 to 188.40.170.197, which is a VirusTotal-maligned IP. Recommended containment steps: isolate host 192.168.10.210 from the network, preserve volatile data and EDR telemetry, block destination IP 188.40.170.197 at perimeter controls, collect authentication and process logs for the host, and investigate for additional related connections or persistence."
+    }
+  ],
+  "incident_summary": "At 2026-04-28T11:08:52+00:00, the incident telemetry recorded outbound network activity from internal host 192.168.10.210 to external IP 188.40.170.197. The destination IP was enriched as a Hetzner-hosted address with VirusTotal showing 9 malicious detections, while AbuseIPDB returned no reports and OTX showed no active pulse data. The alert payload did not include a username, hostname, operating system, process creation event, command line, or parent-child process chain, and PowerShell analysis found no decodable EncodedCommand content. The available evidence therefore consists solely of a single suspicious external connection from 192.168.10.210 to 188.40.170.197, with no confirmed endpoint execution, privilege escalation, internal movement, or data transfer artifacts in the provided record.",
+  "actions_taken": [
+    "Reviewed the alert payload and enrichment for source IP 192.168.10.210 and destination IP 188.40.170.197.",
+    "Checked available threat intelligence enrichment for the destination IP, including VirusTotal, AbuseIPDB, and OTX results.",
+    "Validated that no decodable PowerShell EncodedCommand telemetry was present.",
+    "Compared the incident details against the playbook steps and confirmed that endpoint identity, process lineage, and movement type could not be established from the supplied timeline.",
+    "Determined that further investigation is required due to suspicious outbound traffic to a maliciously detected external IP."
+  ],
+  "recommended_containment": [
+    "Immediately isolate host 192.168.10.210 from the network using EDR network containment or VLAN quarantine, while preserving local memory and active connections.",
+    "Block outbound and inbound traffic to 188.40.170.197 at the firewall, proxy, and DNS security controls, and add the IP to temporary perimeter deny lists.",
+    "Acquire volatile triage from 192.168.10.210 before reboot or logoff, including running processes, active network sockets, logged-on users, and command history if live response is available.",
+    "Collect Windows Security, Sysmon, EDR, DNS, and proxy logs for 192.168.10.210 covering at least 24 hours before and after 2026-04-28T11:08:52+00:00 to identify any related process, authentication, or additional outbound activity.",
+    "Search enterprise telemetry for any other hosts connecting to 188.40.170.197 and quarantine any systems showing the same destination or related indicators.",
+    "Preserve EDR process lineage, network connection records, and memory captures for later malware analysis and to confirm whether the connection was command-and-control or another malicious use case."
+  ],
+  "business_impact_checklist": {
+    "critical_system": "unknown",
+    "essential_service": "unknown",
+    "data_sensitivity": "unknown",
+    "operational_impact": "unknown"
+  },
+  "severity_justification": "High is appropriate because the incident contains a strongly suspected malicious outbound connection from an internal host to an externally threat-enriched IP, which fits the High category for suspicious activity affecting an important asset or requiring SOC Analyst review. The destination IP had 9 VirusTotal malicious detections, and the internal host 192.168.10.210 may represent an important workstation or server. However, there is no evidence of confirmed compromise, data exposure, service outage, or multi-system spread, so Critical is not supported.",
+  "confidence_justification": "Confidence is Medium because multiple reliable sources align on the outbound connection and the destination IP reputation is suspicious, but the evidence remains incomplete. There is no endpoint telemetry, username, hostname, process tree, or payload evidence, and PowerShell analysis is negative. This supports a suspicious-but-unconfirmed conclusion rather than a high-confidence confirmation.",
+  "mitre_mappings": [
+    {
+      "timeline_phase": "Initial outbound connection from internal host to suspicious external IP",
+      "observed_evidence": "Source IP 192.168.10.210 connected to destination IP 188.40.170.197 at 2026-04-28T11:08:52+00:00; destination resolved to Hetzner Online GmbH and was flagged by VirusTotal with 9 malicious detections.",
+      "tactic": "Command and Control",
+      "technique_name": "Application Layer Protocol",
+      "technique_id": "T1071"
+    },
+    {
+      "timeline_phase": "Suspicious external communication to potential C2 infrastructure",
+      "observed_evidence": "Single outbound network observation from internal host 192.168.10.210 to 188.40.170.197 with no accompanying process or payload telemetry, and threat intelligence indicating a maliciously detected IP.",
+      "tactic": "Command and Control",
+      "technique_name": "External Remote Services",
+      "technique_id": "T1133"
+    }
+  ],
+  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial outbound connection from internal host to suspicious external IP | Source IP 192.168.10.210 connected to destination IP 188.40.170.197 at 2026-04-28T11:08:52+00:00; destination resolved to Hetzner Online GmbH and was flagged by VirusTotal with 9 malicious detections. | Command and Control | Application Layer Protocol | T1071 |\n| Suspicious external communication to potential C2 infrastructure | Single outbound network observation from internal host 192.168.10.210 to 188.40.170.197 with no accompanying process or payload telemetry, and threat intelligence indicating a maliciously detected IP. | Command and Control | External Remote Services | T1133 |",
+  "policy_audit_logs": [
+    {
+      "audit_id": "AUD-DP07-1789791958-1",
+      "incident_id": "INC-53027",
+      "agent_name": "Investigation Agent",
+      "policy_reference": "Appendix C",
+      "decision_point": "DP-07",
+      "input_summary": "Critical System: False, Sensitive Data: False",
+      "result": "Pass",
+      "decision_made": "Investigate",
+      "timestamp": 1789791958.3234928,
+      "evidence_reference": "business_impact_checklist",
+      "human_review_required": true,
+      "final_reviewer": null
+    },
+    {
+      "audit_id": "AUD-DP08-1789791958-2",
+      "incident_id": "INC-53027",
+      "agent_name": "Investigation Agent",
+      "policy_reference": "Appendix A",
+      "decision_point": "DP-08",
+      "input_summary": "Severity classification: High",
+      "result": "Warning",
+      "decision_made": "Escalate",
+      "timestamp": 1789791958.3234928,
+      "evidence_reference": "incident_summary",
+      "human_review_required": true,
+      "final_reviewer": null
+    },
+    {
+      "audit_id": "AUD-DP09-1789791958-3",
+      "incident_id": "INC-53027",
+      "agent_name": "Investigation Agent",
+      "policy_reference": "Appendix F",
+      "decision_point": "DP-09",
+      "input_summary": "Confidence level: Medium",
+      "result": "Warning",
+      "decision_made": "Escalate",
+      "timestamp": 1789791958.3234928,
+      "evidence_reference": "execution_trace",
+      "human_review_required": true,
+      "final_reviewer": null
+    },
+    {
+      "audit_id": "AUD-DP10-1789791958-4",
+      "incident_id": "INC-53027",
+      "agent_name": "Investigation Agent",
+      "policy_reference": "Appendix G",
+      "decision_point": "DP-10/DP-11",
+      "input_summary": "Severity: High, Confidence: Medium, Ransomware: False, Guest OS: False",
+      "result": "Fail",
+      "decision_made": "Escalate",
+      "timestamp": 1789791958.3234928,
+      "evidence_reference": "recommended_containment",
+      "human_review_required": true,
+      "final_reviewer": null
+    }
+  ]
+}

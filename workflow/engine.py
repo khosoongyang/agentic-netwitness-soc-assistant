@@ -3563,9 +3563,10 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
             )
         if not failed:
             try:
+                post_inv_run_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                 pipeline_insert("post_investigation",
                                 build_post_investigation_record(
-                                    inv_result, ticket, title, run_stamp=run_stamp))
+                                    inv_result, ticket, run_stamp=post_inv_run_stamp))
             except Exception as exc:
                 _log("INVESTIGATION", f"post_investigation pipeline insert failed: {exc}")
 

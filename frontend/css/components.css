@@ -662,3 +662,91 @@ td {
 .panel-header-row h3 {
   margin: 0;
 }
+
+/* Investigation stage — sub-tab navigation (Overview/Output/Timeline/MITRE
+   ATT&CK/Entity Graph/Evidence/Activity), all rendered client-side from one
+   already-fetched case-detail payload (backend/services/case_view_service.py
+   ::build_case_view()) — switching tabs never triggers a new request. */
+.subtab-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 0.6rem;
+}
+
+.subtab-button {
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.subtab-button:hover {
+  color: var(--text);
+}
+
+.subtab-button.active {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.entity-graph-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (max-width: 900px) {
+  .entity-graph-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.evidence-status-tag,
+.origin-tag {
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Rendered Markdown (Investigation's final_analysis_report.md, sanitized via
+   window.marked + window.DOMPurify — see workspace.js::markdownBlock()) — the
+   same library pair askAegis.js already uses for chat responses. */
+.markdown-body {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3 {
+  margin-top: 1rem;
+}
+
+.markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.6rem 0;
+  font-size: 0.82rem;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid var(--border-soft);
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-body code {
+  background: var(--surface-raised);
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+}
