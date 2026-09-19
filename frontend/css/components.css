@@ -696,16 +696,205 @@ td {
   background: var(--surface-raised);
 }
 
-.entity-graph-columns {
+/* Entity Graph — interactive node-link diagram (workspace.js::
+   mountEntityGraph). Colors/layout intentionally reuse the app's existing
+   dark palette (--bg/--surface/--accent/...) rather than a separate theme. */
+.entity-graph-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.entity-graph-wrap.is-fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--bg);
+  padding: 1rem;
+  overflow: auto;
+}
+
+.entity-graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.entity-graph-search-input {
+  flex: 1 1 220px;
+  min-width: 160px;
+  padding: 0.45rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.entity-graph-toolbar-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.entity-graph-caption {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.entity-graph-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 20rem;
   gap: 1rem;
 }
 
 @media (max-width: 900px) {
-  .entity-graph-columns {
+  .entity-graph-body {
     grid-template-columns: 1fr;
   }
+}
+
+.entity-graph-canvas-wrap {
+  border: 1px solid var(--border-soft);
+  border-radius: 0.7rem;
+  background: var(--surface);
+  overflow: hidden;
+  min-height: 420px;
+}
+
+.entity-graph-wrap.is-fullscreen .entity-graph-canvas-wrap {
+  min-height: calc(100vh - 12rem);
+}
+
+.entity-graph-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+}
+
+.entity-graph-svg {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+  display: block;
+  cursor: grab;
+}
+
+.entity-graph-svg:active {
+  cursor: grabbing;
+}
+
+.entity-graph-node {
+  cursor: pointer;
+}
+
+.entity-graph-node circle {
+  transition: opacity 0.15s ease, stroke-width 0.15s ease;
+}
+
+.entity-graph-node-icon {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.entity-graph-node-label {
+  font-size: 0.66rem;
+  fill: var(--muted);
+}
+
+.entity-graph-node.is-selected circle {
+  stroke-width: 4;
+  filter: drop-shadow(0 0 5px rgba(118, 183, 255, 0.55));
+}
+
+.entity-graph-node.is-dimmed,
+.entity-graph-node.is-search-dimmed {
+  opacity: 0.25;
+}
+
+.entity-graph-edges line {
+  transition: opacity 0.15s ease, stroke 0.15s ease;
+}
+
+.entity-graph-edge.is-highlighted line {
+  stroke: var(--accent);
+  stroke-width: 2.2;
+}
+
+.entity-graph-edge.is-dimmed {
+  opacity: 0.15;
+}
+
+.entity-graph-edge-label {
+  font-size: 0.58rem;
+  fill: #9fb8c8;
+}
+
+.entity-graph-edge-label-bg {
+  fill: #0b1422;
+  opacity: 0.85;
+}
+
+.entity-graph-details {
+  font-size: 0.85rem;
+}
+
+.entity-graph-details-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.75rem;
+}
+
+.entity-graph-mini-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+  font-size: 0.6rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.entity-graph-related-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.entity-graph-related-link:hover {
+  color: var(--accent);
+}
+
+.entity-graph-related-list li {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.entity-graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.9rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.entity-graph-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
 }
 
 .evidence-status-tag,

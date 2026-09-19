@@ -2059,7 +2059,11 @@ def build_case_view(incident_id: str, run_id: str | None = None) -> dict:
         "timeline": timeline,
         "mitre": mitre.get("mappings", []),
         "mitre_warnings": mitre.get("warnings", []),
-        "entity_graph": {"nodes": entity_graph["nodes"], "edges": entity_graph["edges"]},
+        "entity_graph": {
+            "nodes": entity_graph["nodes"], "edges": entity_graph["edges"],
+            "stats": entity_graph.get("stats", {}),
+            "data_availability_warning": entity_graph.get("data_availability_warning"),
+        },
         "evidence": evidence,
         "activity": activity,
         "warnings": [w for w in (data_availability.get("warnings") or [])],

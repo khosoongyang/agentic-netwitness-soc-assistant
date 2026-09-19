@@ -783,14 +783,339 @@ function investigationMitreTab(workspace) {
   return `${warn}<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Timeline Phase / Activity</th><th>Observed Evidence</th><th>MITRE Tactic</th><th>MITRE Technique Name</th><th>MITRE ID</th><th>Origin</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
+// Entity Graph — a real interactive node-link diagram over the exact
+// nodes/edges backend/services/case_view_service.py::build_entity_graph()
+// derives (deterministically, no LLM) from agents/investigation/tools/
+// incident_map.py. No node, edge, or property here is invented client-side:
+// this module only lays out and renders what the server already computed.
+// Layout is a small Fruchterman-Reingold force simulation run once per
+// mount (deterministic circular starting positions keyed by node order, so
+// re-mounting the same graph reproduces the same layout).
+
+const _ENTITY_TYPE_META = {
+  incident: { color: "#76b7ff", name: "Incident" },
+  host: { color: "#ff7382", name: "Host" },
+  user: { color: "#5ec8ff", name: "User" },
+  ip: { color: "#b9a3ff", name: "IP Address" },
+  domain: { color: "#efba5a", name: "Domain / URL" },
+  process: { color: "#45d49a", name: "Process" },
+  file: { color: "#f2c879", name: "File" },
+  hash: { color: "#9b8dff", name: "Hash" },
+  mitre: { color: "#ff8fc7", name: "MITRE ATT&CK" },
+  entity: { color: "#92a3ba", name: "Entity" },
+};
+function _entityMeta(type) { return _ENTITY_TYPE_META[type] || _ENTITY_TYPE_META.entity; }
+function _entityMonogram(type) { return (type || "??").slice(0, 2).toUpperCase(); }
+
+const _GRAPH_W = 960;
+const _GRAPH_H = 560;
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function _svgEl(tag, attrs = {}) {
+  const el = document.createElementNS(SVG_NS, tag);
+  Object.entries(attrs).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") el.setAttribute(k, v); });
+  return el;
+}
+
+function _computeGraphLayout(nodes, edges) {
+  const pos = new Map();
+  const n = nodes.length;
+  if (!n) return pos;
+  const cx = _GRAPH_W / 2, cy = _GRAPH_H / 2;
+  const r0 = Math.min(_GRAPH_W, _GRAPH_H) / 2 - 70;
+  nodes.forEach((node, i) => {
+    const angle = (2 * Math.PI * i) / n;
+    pos.set(node.id, { x: cx + r0 * Math.cos(angle), y: cy + r0 * Math.sin(angle) });
+  });
+  if (n < 2) return pos;
+  const k = Math.sqrt((_GRAPH_W * _GRAPH_H) / n) * 0.85;
+  const iterations = n > 260 ? 40 : n > 100 ? 90 : 220;
+  let temp = _GRAPH_W / 10;
+  const cooling = temp / iterations;
+  const disp = new Map();
+  for (let iter = 0; iter < iterations; iter += 1) {
+    nodes.forEach((v) => disp.set(v.id, { x: 0, y: 0 }));
+    for (let i = 0; i < n; i += 1) {
+      for (let j = i + 1; j < n; j += 1) {
+        const pv = pos.get(nodes[i].id), pu = pos.get(nodes[j].id);
+        const dx = pv.x - pu.x, dy = pv.y - pu.y;
+        const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+        const force = (k * k) / dist;
+        const ux = dx / dist, uy = dy / dist;
+        const dv = disp.get(nodes[i].id), du = disp.get(nodes[j].id);
+        dv.x += ux * force; dv.y += uy * force;
+        du.x -= ux * force; du.y -= uy * force;
+      }
+    }
+    edges.forEach((e) => {
+      const pv = pos.get(e.src), pu = pos.get(e.dst);
+      if (!pv || !pu || e.src === e.dst) return;
+      const dx = pv.x - pu.x, dy = pv.y - pu.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
+      const force = (dist * dist) / k;
+      const ux = dx / dist, uy = dy / dist;
+      const dv = disp.get(e.src), du = disp.get(e.dst);
+      dv.x -= ux * force; dv.y -= uy * force;
+      du.x += ux * force; du.y += uy * force;
+    });
+    nodes.forEach((v) => {
+      const d = disp.get(v.id);
+      const dist = Math.sqrt(d.x * d.x + d.y * d.y) || 0.01;
+      const p = pos.get(v.id);
+      p.x += (d.x / dist) * Math.min(dist, temp);
+      p.y += (d.y / dist) * Math.min(dist, temp);
+      p.x += (cx - p.x) * 0.006;
+      p.y += (cy - p.y) * 0.006;
+      const margin = 50;
+      p.x = Math.min(_GRAPH_W - margin, Math.max(margin, p.x));
+      p.y = Math.min(_GRAPH_H - margin, Math.max(margin, p.y));
+    });
+    temp = Math.max(temp - cooling, 0.5);
+  }
+  return pos;
+}
+
+function _neighborsOf(nodeId, edges) {
+  const out = [];
+  edges.forEach((e) => {
+    if (e.src === nodeId) out.push({ id: e.dst, dir: "out", edge: e });
+    else if (e.dst === nodeId) out.push({ id: e.src, dir: "in", edge: e });
+  });
+  return out;
+}
+
 function investigationEntityGraphTab(workspace) {
   const graph = workspace?.entity_graph || {};
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
   if (!nodes.length) return emptyState("No entity graph could be derived for this case yet.");
-  const nodeItems = nodes.map((n) => `<li><div><strong>${escapeHTML(n.label)}</strong><p>${escapeHTML(n.type)}</p></div></li>`).join("");
-  const edgeItems = edges.map((e) => `<li><div><strong>${escapeHTML(e.src)} → ${escapeHTML(e.dst)}</strong><p>${escapeHTML(e.relation)}${e.evidence_status ? ` · <span class="evidence-status-tag">${escapeHTML(e.evidence_status)}</span>` : ""}</p>${(e.evidence || []).length ? `<p class="mono">${escapeHTML(e.evidence.join(", "))}</p>` : ""}</div></li>`).join("");
-  return `<div class="entity-graph-columns"><div><h3>Entities (${nodes.length})</h3><ul class="data-list">${nodeItems}</ul></div><div><h3>Relationships (${edges.length})</h3><ul class="data-list">${edgeItems || `<li>${emptyState("No relationships were derived between entities.")}</li>`}</ul></div></div>`;
+  const stats = graph.stats || {};
+  const typeCounts = Object.entries(stats.node_counts || {})
+    .filter(([t]) => t !== "incident")
+    .map(([t, c]) => `${escapeHTML(_entityMeta(t).name)}: ${c}`).join(" · ");
+  const caption = `<p class="mono entity-graph-caption">${edges.length} relationships${typeCounts ? ` · ${typeCounts}` : ""}${stats.evidence_basis ? ` · basis: ${escapeHTML(stats.evidence_basis)}` : ""}</p>`;
+  const warning = graph.data_availability_warning ? `<p class="notice">${escapeHTML(graph.data_availability_warning)}</p>` : "";
+  return `<div class="entity-graph-wrap" id="entity-graph-wrap">
+    <div class="entity-graph-toolbar">
+      <input type="search" id="entity-graph-search" class="entity-graph-search-input" placeholder="Search entities…" aria-label="Search entities">
+      <div class="entity-graph-toolbar-actions">
+        <button type="button" class="action-button" id="entity-graph-fit">Reset View</button>
+        <button type="button" class="action-button" id="entity-graph-fullscreen" title="Fullscreen">⤢</button>
+      </div>
+    </div>
+    ${warning}${caption}
+    <div class="entity-graph-body">
+      <div class="entity-graph-canvas-wrap"><div class="entity-graph-canvas" id="entity-graph-canvas"></div></div>
+      <aside class="entity-graph-details panel" id="entity-graph-details"><h3>Entity Details</h3><p class="notice">Select a node to view its details.</p></aside>
+    </div>
+    <div class="entity-graph-legend" id="entity-graph-legend"></div>
+  </div>`;
+}
+
+function mountEntityGraph(container, workspace) {
+  const graph = workspace?.entity_graph || {};
+  const nodes = graph.nodes || [];
+  const edges = graph.edges || [];
+  const wrap = container.querySelector("#entity-graph-wrap");
+  const canvasHost = container.querySelector("#entity-graph-canvas");
+  const detailsHost = container.querySelector("#entity-graph-details");
+  const legendHost = container.querySelector("#entity-graph-legend");
+  const searchInput = container.querySelector("#entity-graph-search");
+  const fitButton = container.querySelector("#entity-graph-fit");
+  const fullscreenButton = container.querySelector("#entity-graph-fullscreen");
+  if (!canvasHost || !nodes.length) return;
+
+  const nodeById = new Map(nodes.map((n) => [n.id, n]));
+  const pos = _computeGraphLayout(nodes, edges);
+
+  const svg = _svgEl("svg", { viewBox: `0 0 ${_GRAPH_W} ${_GRAPH_H}`, class: "entity-graph-svg", role: "img", "aria-label": "Entity relationship graph" });
+  const defs = _svgEl("defs");
+  const marker = _svgEl("marker", { id: "entity-graph-arrow", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" });
+  marker.appendChild(_svgEl("path", { d: "M0,0 L10,5 L0,10 z", fill: "#5b7a8f" }));
+  defs.appendChild(marker);
+  svg.appendChild(defs);
+  const viewport = _svgEl("g", { class: "entity-graph-viewport" });
+  const edgeLayer = _svgEl("g", { class: "entity-graph-edges" });
+  const nodeLayer = _svgEl("g", { class: "entity-graph-nodes" });
+  viewport.appendChild(edgeLayer);
+  viewport.appendChild(nodeLayer);
+  svg.appendChild(viewport);
+
+  const edgeGroups = [];
+  edges.forEach((e) => {
+    const pv = pos.get(e.src), pu = pos.get(e.dst);
+    if (!pv || !pu) return;
+    const g = _svgEl("g", { class: "entity-graph-edge", "data-src": e.src, "data-dst": e.dst });
+    g.appendChild(_svgEl("line", {
+      x1: pv.x, y1: pv.y, x2: pu.x, y2: pu.y,
+      stroke: e.evidence_status === "co_occurrence_only" ? "#5b6b7a" : "#5b7a8f",
+      "stroke-width": 1.4,
+      "stroke-dasharray": e.evidence_status === "co_occurrence_only" ? "4 3" : "",
+      "marker-end": "url(#entity-graph-arrow)",
+    }));
+    const label = (e.relation || "").replaceAll("_", " ");
+    if (label) {
+      const text = _svgEl("text", { x: (pv.x + pu.x) / 2, y: (pv.y + pu.y) / 2, class: "entity-graph-edge-label", "text-anchor": "middle" });
+      text.textContent = label;
+      g.appendChild(text);
+    }
+    const title = _svgEl("title");
+    title.textContent = `${e.relation}${(e.evidence || []).length ? ` — evidence: ${e.evidence.join(", ")}` : ""}`;
+    g.appendChild(title);
+    edgeLayer.appendChild(g);
+    edgeGroups.push(g);
+  });
+
+  const nodeGroups = new Map();
+  nodes.forEach((n) => {
+    const p = pos.get(n.id);
+    if (!p) return;
+    const meta = _entityMeta(n.type);
+    const radius = n.type === "incident" ? 26 : 22;
+    const g = _svgEl("g", { class: "entity-graph-node", "data-id": n.id, transform: `translate(${p.x},${p.y})`, tabindex: "0", role: "button" });
+    g.appendChild(_svgEl("circle", { r: radius, fill: "#0b1422", stroke: meta.color, "stroke-width": 2.5 }));
+    const mono = _svgEl("text", { class: "entity-graph-node-icon", fill: meta.color, "text-anchor": "middle", dy: "0.32em" });
+    mono.textContent = _entityMonogram(n.type);
+    g.appendChild(mono);
+    const label = _svgEl("text", { class: "entity-graph-node-label", y: radius + 14, "text-anchor": "middle" });
+    label.textContent = n.label && n.label.length > 22 ? `${n.label.slice(0, 21)}…` : (n.label || "");
+    g.appendChild(label);
+    const title = _svgEl("title");
+    title.textContent = `${n.label} (${n.type})`;
+    g.appendChild(title);
+    nodeLayer.appendChild(g);
+    nodeGroups.set(n.id, g);
+  });
+
+  canvasHost.innerHTML = "";
+  canvasHost.appendChild(svg);
+
+  // Edge label backgrounds need real layout metrics (getBBox), so they're
+  // added only once the <svg> is attached to the document.
+  edgeLayer.querySelectorAll("text.entity-graph-edge-label").forEach((text) => {
+    try {
+      const bbox = text.getBBox();
+      const rect = _svgEl("rect", { x: bbox.x - 3, y: bbox.y - 1, width: bbox.width + 6, height: bbox.height + 2, class: "entity-graph-edge-label-bg" });
+      text.parentNode.insertBefore(rect, text);
+    } catch { /* getBBox can throw on a hidden tab in some browsers; label just renders without a backing rect */ }
+  });
+
+  // Pan (drag background) and zoom (wheel), scoped to this <svg> via
+  // pointer capture so listeners are discarded with the element on remount
+  // instead of accumulating on `window`.
+  let scale = 1, tx = 0, ty = 0, dragging = false, dragStartX = 0, dragStartY = 0, startTx = 0, startTy = 0;
+  const applyTransform = () => viewport.setAttribute("transform", `translate(${tx},${ty}) scale(${scale})`);
+  svg.addEventListener("pointerdown", (event) => {
+    if (event.target.closest(".entity-graph-node")) return;
+    dragging = true; dragStartX = event.clientX; dragStartY = event.clientY; startTx = tx; startTy = ty;
+    svg.setPointerCapture(event.pointerId);
+  });
+  svg.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    tx = startTx + (event.clientX - dragStartX);
+    ty = startTy + (event.clientY - dragStartY);
+    applyTransform();
+  });
+  svg.addEventListener("pointerup", () => { dragging = false; });
+  svg.addEventListener("pointercancel", () => { dragging = false; });
+  svg.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    scale = Math.min(2.5, Math.max(0.4, scale * (event.deltaY > 0 ? 0.9 : 1.1)));
+    applyTransform();
+  }, { passive: false });
+
+  function renderDetails(node) {
+    if (!node) {
+      detailsHost.innerHTML = `<h3>Entity Details</h3><p class="notice">Select a node to view its details.</p>`;
+      return;
+    }
+    const props = node.props || {};
+    const propRows = Object.entries(props).map(([k, v]) => `<tr><th scope="row">${escapeHTML(k.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()))}</th><td>${escapeHTML(String(v))}</td></tr>`).join("");
+    const neighbors = _neighborsOf(node.id, edges);
+    const related = neighbors.map(({ id, dir, edge }) => {
+      const other = nodeById.get(id);
+      if (!other) return "";
+      const arrow = dir === "out" ? "→" : "←";
+      return `<li><button type="button" class="entity-graph-related-link" data-id="${escapeHTML(id)}"><span class="entity-graph-mini-icon" style="color:${_entityMeta(other.type).color}">${_entityMonogram(other.type)}</span><span>${escapeHTML(other.label)}</span></button><p class="mono">${arrow} ${escapeHTML((edge.relation || "").replaceAll("_", " "))}${edge.evidence_status ? ` · ${escapeHTML(edge.evidence_status)}` : ""}</p></li>`;
+    }).join("");
+    detailsHost.innerHTML = `
+      <div class="entity-graph-details-header">
+        <span class="entity-graph-mini-icon" style="color:${_entityMeta(node.type).color}">${_entityMonogram(node.type)}</span>
+        <div><strong>${escapeHTML(node.label)}</strong><p class="mono">${escapeHTML(node.type)}</p></div>
+      </div>
+      <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>
+        <tr><th scope="row">Entity Type</th><td>${escapeHTML(_entityMeta(node.type).name)}</td></tr>
+        <tr><th scope="row">Connections</th><td>${neighbors.length}</td></tr>
+        ${propRows}
+      </tbody></table></div>
+      <h3 style="margin-top:1rem">Related Entities (${neighbors.length})</h3>
+      <ul class="data-list entity-graph-related-list">${related || `<li>${emptyState("No related entities.")}</li>`}</ul>`;
+    detailsHost.querySelectorAll(".entity-graph-related-link").forEach((btn) => {
+      btn.addEventListener("click", () => selectNode(btn.dataset.id));
+    });
+  }
+
+  let selectedId = null;
+  function selectNode(id) {
+    selectedId = id;
+    const isConnected = (nid) => nid === id || edges.some((e) => (e.src === id && e.dst === nid) || (e.dst === id && e.src === nid));
+    nodeGroups.forEach((g, nid) => {
+      g.classList.toggle("is-selected", nid === id);
+      g.classList.toggle("is-dimmed", Boolean(id) && !isConnected(nid));
+    });
+    edgeGroups.forEach((g) => {
+      const connected = g.dataset.src === id || g.dataset.dst === id;
+      g.classList.toggle("is-highlighted", Boolean(id) && connected);
+      g.classList.toggle("is-dimmed", Boolean(id) && !connected);
+    });
+    renderDetails(id ? nodeById.get(id) : null);
+  }
+  nodeGroups.forEach((g, id) => {
+    g.addEventListener("click", () => selectNode(selectedId === id ? null : id));
+    g.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectNode(selectedId === id ? null : id); }
+    });
+  });
+
+  // Default selection: the most-connected node (real degree, not a guess).
+  const degree = new Map(nodes.map((n) => [n.id, 0]));
+  edges.forEach((e) => {
+    degree.set(e.src, (degree.get(e.src) || 0) + 1);
+    degree.set(e.dst, (degree.get(e.dst) || 0) + 1);
+  });
+  const defaultNode = [...nodes].sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0))[0] || null;
+  selectNode(defaultNode ? defaultNode.id : null);
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      const q = searchInput.value.trim().toLowerCase();
+      nodeGroups.forEach((g, id) => {
+        const n = nodeById.get(id);
+        g.classList.toggle("is-search-dimmed", Boolean(q) && !(n.label || "").toLowerCase().includes(q));
+      });
+    });
+  }
+  if (fitButton) {
+    fitButton.addEventListener("click", () => {
+      scale = 1; tx = 0; ty = 0; applyTransform();
+      if (searchInput) searchInput.value = "";
+      nodeGroups.forEach((g) => g.classList.remove("is-search-dimmed"));
+      selectNode(defaultNode ? defaultNode.id : null);
+    });
+  }
+  if (fullscreenButton && wrap) {
+    fullscreenButton.addEventListener("click", () => {
+      const isFull = wrap.classList.toggle("is-fullscreen");
+      fullscreenButton.textContent = isFull ? "⤡" : "⤢";
+      fullscreenButton.title = isFull ? "Exit fullscreen" : "Fullscreen";
+    });
+  }
+
+  // Legend lists only the entity types actually present in this graph —
+  // never the full type catalogue, so it never implies evidence that
+  // wasn't derived for this case.
+  const presentTypes = [...new Set(nodes.map((n) => n.type))];
+  legendHost.innerHTML = "<strong>Legend</strong>" + presentTypes.map((t) => `<span class="entity-graph-legend-item"><span class="entity-graph-mini-icon" style="color:${_entityMeta(t).color}">${_entityMonogram(t)}</span>${escapeHTML(_entityMeta(t).name)}</span>`).join("");
 }
 
 function investigationEvidenceTab(workspace) {
@@ -812,7 +1137,7 @@ const _INVESTIGATION_SUBTABS = [
   ["output", "Output", investigationOutputTab],
   ["timeline", "Timeline", investigationTimelineTab],
   ["mitre", "MITRE ATT&CK", investigationMitreTab],
-  ["entity_graph", "Entity Graph", investigationEntityGraphTab],
+  ["entity_graph", "Entity Graph", investigationEntityGraphTab, mountEntityGraph],
   ["evidence", "Evidence", investigationEvidenceTab],
   ["activity", "Activity", investigationActivityTab],
 ];
@@ -831,6 +1156,7 @@ function renderInvestigationStage(root, stage, caseId, lastError, onAction, work
     buttons.forEach((b) => b.classList.toggle("active", b.dataset.subtab === entry[0]));
     try {
       body.innerHTML = entry[2](workspace);
+      if (typeof entry[3] === "function") entry[3](body, workspace);
     } catch (error) {
       body.innerHTML = errorState(error);
     }
