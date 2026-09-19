@@ -129,3 +129,29 @@
   .reports-table-wrap { overflow-x: auto; }
   .block-editor-toolbar { flex-direction: column; align-items: stretch; }
 }
+
+.reports-panel-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; margin: .75rem 0; }
+
+/* Reporting table embedded inside the Agents/case workspace's Reporting
+   stage card (frontend/js/pages/workspace.js::renderReportingStage()) is
+   much narrower than the standalone Reporting page (route ?view=reports),
+   since it shares the workspace-grid's ~1.5fr column with Key Findings
+   alongside it. Container-query (not viewport) scoped to the panel's own
+   rendered width — matching the pattern layout.css already uses for
+   .workspace-grid — since that width depends on the two-column stage grid
+   and the Ask Aegis sidebar state, not the viewport. .table-wrap's
+   unconditional overflow-x:auto (components.css) is still the underlying
+   safety net below this breakpoint too. */
+#reporting-panel { container-type: inline-size; }
+
+@container (max-width: 640px) {
+  .reports-table-embedded .reports-table-description { display: none; }
+  .reports-table-embedded .report-actions-cell {
+    flex-direction: column;
+    align-items: stretch;
+    gap: .35rem;
+  }
+  .reports-table-embedded .report-actions-cell .action-button,
+  .reports-table-embedded .export-dropdown { width: 100%; }
+  .reports-table-embedded .export-menu { left: 0; right: 0; }
+}

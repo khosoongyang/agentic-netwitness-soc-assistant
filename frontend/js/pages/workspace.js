@@ -1,5 +1,6 @@
 import { fetchJSON } from "../api.js";
 import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, openModal, provenanceValue, severityBadge, stateBadge } from "../ui.js";
+import { TICKET_REPORT_TYPE, mountReportsPanel, openReportInto } from "./reports.js";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
@@ -302,6 +303,13 @@ function triageActionsListCard(ticket) {
 function renderTriageStage(root, stage, caseId, lastError, onAction) {
   const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>IOC checklist, risk rating, and SOC classification for this incident.</p></div>${stateBadge(stage)}</div>`;
   const statusLine = `<p class="notice">Status: ${escapeHTML(stage.status_text || stage.status)}${stage.updated_at ? ` · Last updated ${formatDate(stage.updated_at)}` : ""}</p>`;
+  // The Triage Ticket's view/edit/export entry point lives here — on the
+  // Triage stage card, where it belongs — rather than inside Reporting
+  // (they share the same report_edits-style plumbing server-side, via
+  // agents/reporting/triage_ticket_editing.py, but that's an
+  // implementation detail; the ticket is a Triage concern, not one of the
+  // four Reporting reports).
+  const ticketAction = `<div class="stage-actions" style="margin-top:.5rem"><button type="button" class="action-button" id="view-triage-ticket">View Triage Ticket</button></div><div id="triage-ticket-detail"></div>`;
 
   if (stage.state === "in_progress") {
     root.innerHTML = `
@@ -350,10 +358,15 @@ function renderTriageStage(root, stage, caseId, lastError, onAction) {
       ${triageMitreCard(ticket)}
       ${triageActionsListCard(ticket)}
       ${triageActionButtons(stage)}
+      ${ticketAction}
     `;
   }
   root.querySelectorAll("[data-workflow-action]").forEach((button) => {
     button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
+  });
+  root.querySelector("#view-triage-ticket")?.addEventListener("click", () => {
+    const ticketDetail = root.querySelector("#triage-ticket-detail");
+    openReportInto(ticketDetail, { caseId, reportType: TICKET_REPORT_TYPE, mode: "view" });
   });
 }
 
@@ -1182,10 +1195,34 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinu
     renderInvestigationStage(root, stage, caseId, lastError, onAction, workspace);
     return;
   }
+  if (stage.key === "reporting") {
+    renderReportingStage(root, stage, caseId, lastError, onAction);
+    return;
+  }
   root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div>${jsonPreview(stage.result)}`;
   root.querySelectorAll("[data-workflow-action]").forEach((button) => {
     button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
   });
+}
+
+// Reporting stage card: same header/action-controls shape every other stage
+// uses (name, status, attempt, last updated, stateBadge, Re-run/Approve/
+// Reject), but with the four-report table (frontend/js/pages/reports.js —
+// the SAME implementation the standalone Reporting page uses, embedded
+// directly here) in place of a raw JSON dump. Raw Reporting JSON is still
+// available, just as a secondary "Raw JSON" link inside that panel rather
+// than the primary view. Approve is only enabled once a reviewed candidate
+// has actually been materialised (Submit for Approval, inside the reports
+// panel) — see workflow/commands.py::available_actions() — so this single
+// Approve control is the one approval path; there is no second "confirm"
+// button competing with it.
+function renderReportingStage(root, stage, caseId, lastError, onAction) {
+  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div><div id="reporting-panel"></div>`;
+  root.querySelectorAll("[data-workflow-action]").forEach((button) => {
+    button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
+  });
+  const panel = root.querySelector("#reporting-panel");
+  mountReportsPanel(panel, { caseId, navigate: null, embedded: true });
 }
 
 async function analystIdentity() {
@@ -1249,11 +1286,10 @@ export async function renderWorkspace(root, { navigate, route }) {
     let workflow = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/workflow`);
     let selectedStageKey = workflow.stages.find((stage) => stage.name === workflow.current_stage)?.key || workflow.stages[0]?.key;
     root.innerHTML = `
-      <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div><div class="stage-actions" style="margin:0"><button class="action-button" id="open-reports">Review reports &amp; triage ticket</button><button class="action-button" id="load-raw">View Raw Incident JSON</button></div></section>
+      <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div><div class="stage-actions" style="margin:0"><button class="action-button" id="load-raw">View Raw Incident JSON</button></div></section>
       <section class="panel" id="case-context-panel"><h2>Case context</h2>${caseContext(detail)}</section>
       <section class="panel" id="workflow-panel" style="margin-top:1rem"></section>
       <section class="workspace-grid${selectedStageKey === "parsing" ? " stage-only" : ""}" id="stage-workspace-grid"><article class="panel" id="key-findings-panel" ${selectedStageKey === "parsing" ? "hidden" : ""}><h2>Key findings</h2>${findings(detail.workspace)}</article><article class="panel" id="stage-output"></article></section>`;
-    root.querySelector("#open-reports").addEventListener("click", () => navigate("reports", { case: caseId }));
     root.querySelector("#load-raw").addEventListener("click", async () => {
       const modal = openModal("Raw Incident JSON");
       modal.setBody(loadingState("Loading raw incident…"));

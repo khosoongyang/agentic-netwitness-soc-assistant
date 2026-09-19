@@ -522,12 +522,30 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
             and state.get("approval_stage") == stage
             and status == "Awaiting Approval"
         )
+        approve_enabled, approve_reason = awaiting, (None if awaiting else "This approval gate is no longer current.")
+        if stage == "reporting" and awaiting:
+            # Reporting redesign Phase 6/7: approve_reporting_candidate()
+            # approves whichever reviewed candidate was last materialised
+            # via POST .../reports/submit-for-approval (itself gated there
+            # on all four core reports being Reviewed). The workflow-level
+            # "awaiting" check above only knows the coarse Awaiting
+            # Approval state, not whether that step has actually happened
+            # yet — without this, Approve would still be clickable and
+            # would silently fall back to approving the original,
+            # unreviewed AI-generated candidate. This is the one place
+            # that decides whether Approve is actionable, so the UI never
+            # needs a second, competing approval control.
+            pending_reviewed_set = wss.get_latest_report_set(
+                str(state.get("id") or ""), state.get("run_id"), status="materialised")
+            if pending_reviewed_set is None:
+                approve_enabled = False
+                approve_reason = "Submit the reviewed report set for approval first (all four reports must be Reviewed)."
         if stage in APPROVAL_STAGES and (awaiting or status == "Awaiting Approval"):
             stage_actions.extend((
                 {
-                    "type": "approve", "label": "Approve", "enabled": awaiting,
+                    "type": "approve", "label": "Approve", "enabled": approve_enabled,
                     "confirmation": False,
-                    "reason": None if awaiting else "This approval gate is no longer current.",
+                    "reason": approve_reason,
                 },
                 {
                     "type": "reject", "label": "Reject", "enabled": awaiting,
