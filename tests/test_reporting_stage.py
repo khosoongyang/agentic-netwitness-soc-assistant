@@ -487,6 +487,151 @@ def test_approve_reporting_candidate_fails_on_identity_mismatch(tmp_path, _isola
 
 
 # ══════════════════════════════════════════════════════════════════════
+# Phase 7: approve_reporting_candidate() prefers a materialised reviewed
+# candidate (report_sets, status='materialised') over the original v1
+# document_exports.candidate_manifest_path pointer, and flips that row's
+# own status to 'approved' in place on success.
+# ══════════════════════════════════════════════════════════════════════
+
+def test_approve_reporting_candidate_prefers_materialised_reviewed_set(tmp_path, _isolated_artifact_root):
+    from agents.reporting.reporting.candidate_materialiser import materialise_reviewed_candidate
+
+    run_id = _run_awaiting_reporting_approval()
+    v1_manifest_path, v1_candidate = _build_candidate_set("INC-1", run_id, 1, _isolated_artifact_root)
+    _approve_via_state("INC-1", run_id, 1, v1_manifest_path)
+
+    output_dir = sw.reporting_attempt_dir("INC-1", run_id, 1) / "outputs"
+    reviewed_reports = {
+        key: {"version_id": idx + 1, "blocks": [{"type": "paragraph", "text": f"reviewed {key}"}]}
+        for idx, key in enumerate(_ALL_CORE_REPORT_TYPES)
+    }
+    materialised_manifest, materialised_path = materialise_reviewed_candidate(
+        output_dir, "INC-1", run_id, 1,
+        reviewed_reports=reviewed_reports, based_on_report_set_id=v1_candidate["report_set_id"],
+        analyst="Analyst A")
+    wss.create_report_set(
+        "INC-1", run_id, report_set_id=materialised_manifest["report_set_id"],
+        based_on_report_set_id=v1_candidate["report_set_id"], manifest_path=str(materialised_path),
+        manifest_sha256=materialised_manifest["candidate_manifest_sha256"],
+        report_version_ids={k: v["version_id"] for k, v in reviewed_reports.items()},
+        status="materialised", created_by="Analyst A")
+
+    ra.approve_reporting_candidate("INC-1", run_id, analyst="Analyst B")
+
+    # The APPROVED set is the materialised one, not v1.
+    legacy_approved = wss.get_latest_approved_reporting_set("INC-1", run_id)
+    assert legacy_approved["report_set_id"] == materialised_manifest["report_set_id"]
+
+    report_set = wss.get_latest_report_set("INC-1", run_id, status="approved")
+    assert report_set["report_set_id"] == materialised_manifest["report_set_id"]
+    assert report_set["approved_by"] == "Analyst B"
+    assert report_set["approved_at"]
+
+    # v1's own report_sets tracking (if any existed) is untouched — this
+    # test never registered one, so there simply is no 'generated' row;
+    # the key guarantee is that ONLY the materialised row was flipped.
+    all_sets = wss.list_report_sets("INC-1", run_id)
+    assert len(all_sets) == 1
+    assert all_sets[0]["report_set_id"] == materialised_manifest["report_set_id"]
+
+
+def test_approve_reporting_candidate_falls_back_to_legacy_path_without_materialised_set(
+        tmp_path, _isolated_artifact_root):
+    """No report_sets row exists at all for this run — approval must still
+    work exactly as before Phase 6/7, against the original candidate."""
+    run_id = _run_awaiting_reporting_approval()
+    manifest_path, candidate = _build_candidate_set("INC-1", run_id, 1, _isolated_artifact_root)
+    _approve_via_state("INC-1", run_id, 1, manifest_path)
+
+    ra.approve_reporting_candidate("INC-1", run_id, analyst="analyst")
+
+    legacy_approved = wss.get_latest_approved_reporting_set("INC-1", run_id)
+    assert legacy_approved["report_set_id"] == candidate["report_set_id"]
+    assert wss.get_latest_report_set("INC-1", run_id, status="approved") is None
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Phase 8: report_editing.export_report() — frozen approved bytes vs
+# freshly-rendered, watermarked drafts.
+# ══════════════════════════════════════════════════════════════════════
+
+def test_export_report_serves_frozen_approved_bytes_when_status_matches(tmp_path, _isolated_artifact_root):
+    import hashlib
+    from agents.reporting import report_editing as re
+    from agents.reporting.reporting.candidate_materialiser import materialise_reviewed_candidate
+
+    run_id = _run_awaiting_reporting_approval()
+    v1_manifest_path, v1_candidate = _build_candidate_set("INC-1", run_id, 1, _isolated_artifact_root)
+    _approve_via_state("INC-1", run_id, 1, v1_manifest_path)
+
+    output_dir = sw.reporting_attempt_dir("INC-1", run_id, 1) / "outputs"
+    reviewed_reports = {
+        key: {"version_id": idx + 1, "blocks": [{"type": "paragraph", "text": f"approved {key}"}]}
+        for idx, key in enumerate(_ALL_CORE_REPORT_TYPES)
+    }
+    materialised_manifest, materialised_path = materialise_reviewed_candidate(
+        output_dir, "INC-1", run_id, 1, reviewed_reports=reviewed_reports,
+        based_on_report_set_id=v1_candidate["report_set_id"], analyst="Analyst A")
+    wss.create_report_set(
+        "INC-1", run_id, report_set_id=materialised_manifest["report_set_id"],
+        based_on_report_set_id=v1_candidate["report_set_id"], manifest_path=str(materialised_path),
+        manifest_sha256=materialised_manifest["candidate_manifest_sha256"],
+        report_version_ids={k: v["version_id"] for k, v in reviewed_reports.items()},
+        status="materialised", created_by="Analyst A")
+
+    ra.approve_reporting_candidate("INC-1", run_id, analyst="Analyst B")
+
+    entry = next(r for r in materialised_manifest["reports"] if r["report_type"] == "executive_summary")
+    row_state = {"status": "Approved", "blocks": reviewed_reports["executive_summary"]["blocks"],
+                "title": "Executive Summary", "has_edits": False}
+
+    data, filename = re.export_report("INC-1", run_id, "executive_summary", "docx",
+                                      row_state=row_state, reporting_stage_attempt=1, analyst="Analyst C")
+
+    assert hashlib.sha256(data).hexdigest() == entry["docx"]["sha256"]
+    assert filename.endswith("_approved.docx")
+    # No fresh render was written into the draft-export folder.
+    draft_dir = re._analyst_edits_dir("INC-1", run_id, 1)
+    assert not draft_dir.exists() or not list(draft_dir.glob("*.docx"))
+
+
+def test_export_report_watermarks_content_not_matching_the_approved_set():
+    from docx import Document
+    import io
+    from agents.reporting import report_editing as re
+
+    row_state = {"status": "Edited", "blocks": [{"type": "paragraph", "text": "unapproved draft text"}],
+                "title": "Executive Summary", "has_edits": True}
+    data, filename = re.export_report("INC-DRAFT", "INC-DRAFT@run1", "executive_summary", "docx",
+                                      row_state=row_state, reporting_stage_attempt=1, analyst="Analyst A")
+
+    doc = Document(io.BytesIO(data))
+    all_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "DRAFT" in all_text and "NOT APPROVED" in all_text
+    assert "unapproved draft text" in all_text
+
+
+def test_export_report_falls_back_to_watermarked_render_when_approved_file_unresolvable():
+    """row_state claims "Approved" but no actual approval/report_sets data
+    exists for this incident — resolve_approved_report_file() correctly
+    returns None, and export must not crash or silently serve nothing; it
+    falls back to a fresh, watermarked render rather than pretending to be
+    the approved artefact."""
+    from docx import Document
+    import io
+    from agents.reporting import report_editing as re
+
+    row_state = {"status": "Approved", "blocks": [{"type": "paragraph", "text": "orphaned approved-looking status"}],
+                "title": "Executive Summary", "has_edits": False}
+    data, filename = re.export_report("INC-ORPHAN", "INC-ORPHAN@run1", "executive_summary", "docx",
+                                      row_state=row_state, reporting_stage_attempt=1, analyst="Analyst A")
+
+    doc = Document(io.BytesIO(data))
+    all_text = "\n".join(p.text for p in doc.paragraphs)
+    assert "DRAFT" in all_text and "NOT APPROVED" in all_text
+
+
+# ══════════════════════════════════════════════════════════════════════
 # editable_reports.finalize_candidate_manifest — immutability
 # ══════════════════════════════════════════════════════════════════════
 

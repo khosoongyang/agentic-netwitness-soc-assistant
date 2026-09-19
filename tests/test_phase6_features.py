@@ -240,6 +240,8 @@ def test_report_routes_final_confirmation_and_download_contracts():
         def get_report(self, case_id, report_type): return {"case_id": case_id, "report_type": report_type}
         def save_report(self, case_id, report_type, body): return {"saved": report_type}
         def confirm_section(self, case_id, report_type, body): return {"confirmed": report_type}
+        def mark_reviewed(self, case_id, report_type, body): return {"reviewed": report_type, "analyst": body.get("analyst")}
+        def list_versions(self, case_id, report_type): return {"report_type": report_type, "versions": [{"version": 1}]}
         def confirm_final(self, case_id, body): return {"finalized": case_id}
         def export(self, case_id, report_type, file_type, analyst, approved=False): return (b"FILE", f"report.{file_type}")
         def reporting_json(self, case_id): return (b"{}", "data.json")
@@ -250,7 +252,27 @@ def test_report_routes_final_confirmation_and_download_contracts():
     assert client.get(f"{base}/executive_summary").status_code == 200
     assert client.put(f"{base}/executive_summary", json={}).json["saved"] == "executive_summary"
     assert client.post(f"{base}/executive_summary/confirm", json={}).json["confirmed"] == "executive_summary"
+    review_response = client.post(f"{base}/executive_summary/review", json={"analyst": "Analyst A"})
+    assert review_response.json == {"reviewed": "executive_summary", "analyst": "Analyst A"}
+    versions_response = client.get(f"{base}/executive_summary/versions")
+    assert versions_response.json == {"report_type": "executive_summary", "versions": [{"version": 1}]}
     assert client.post(f"{base}/final/confirm", json={}).json["finalized"] == "CASE-1"
     assert client.get(f"{base}/executive_summary/download?format=docx").data == b"FILE"
     assert client.get(f"{base}/executive_summary/download?format=pdf").data == b"FILE"
     assert client.get(f"{base}/data/download").data == b"{}"
+
+
+def test_report_service_mark_reviewed_and_list_versions_reject_triage_ticket():
+    from backend.services.report_service import ReportService, ReportServiceError
+    from agents.reporting import triage_ticket_editing
+
+    service = ReportService()
+    service._state = lambda case_id: {"run_id": "run-1"}  # bypass DB lookup for this contract check
+
+    for method, args in (
+        (service.mark_reviewed, (triage_ticket_editing.TICKET_REPORT_TYPE, {"analyst": "A"})),
+        (service.list_versions, (triage_ticket_editing.TICKET_REPORT_TYPE,)),
+    ):
+        with pytest.raises(ReportServiceError) as excinfo:
+            method("CASE-1", *args)
+        assert excinfo.value.status_code == 400

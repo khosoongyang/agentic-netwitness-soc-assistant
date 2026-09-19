@@ -61,6 +61,21 @@ def confirm_section(case_id: str, report_type: str):
     return jsonify(_call(_service().confirm_section, case_id, report_type, _body()))
 
 
+@reports_blueprint.post("/<report_type>/review")
+def mark_reviewed(case_id: str, report_type: str):
+    return jsonify(_call(_service().mark_reviewed, case_id, report_type, _body()))
+
+
+@reports_blueprint.get("/<report_type>/versions")
+def list_versions(case_id: str, report_type: str):
+    return jsonify(_call(_service().list_versions, case_id, report_type))
+
+
+@reports_blueprint.post("/submit-for-approval")
+def submit_for_approval(case_id: str):
+    return jsonify(_call(_service().submit_for_approval, case_id, _body()))
+
+
 @reports_blueprint.post("/final/confirm")
 def confirm_final(case_id: str):
     return jsonify(_call(_service().confirm_final, case_id, _body()))

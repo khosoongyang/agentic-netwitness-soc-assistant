@@ -130,6 +130,30 @@ def main() -> int:
             er.candidate_manifest_path(output_dir, incident_id))
         result["report_set_id"] = candidate_manifest.get("report_set_id")
         result["candidate_manifest_sha256"] = candidate_manifest.get("candidate_manifest_sha256")
+        # Phase 6 registration hook: records this original AI-generated
+        # candidate as report_sets row #1 (status='generated',
+        # based_on_report_set_id=NULL) — the lineage root every later
+        # reviewed-candidate materialisation (agents/reporting/
+        # report_editing.py::submit_for_approval()) chains from. Called
+        # only AFTER the manifest/hash above already exist on disk, never
+        # before — this never changes what finalize_candidate_manifest()
+        # itself does. Best-effort: a registration failure (e.g. the
+        # workflow DB being briefly unavailable) must not turn an otherwise
+        # successful export into a reported failure, and a repeat call for
+        # an already-registered report_set_id (the idempotent-no-op path
+        # above) is expected, not an error.
+        try:
+            from workflow import state_store as wss
+            wss.create_report_set(
+                incident_id, run_id,
+                report_set_id=candidate_manifest["report_set_id"],
+                based_on_report_set_id=None,
+                manifest_path=result["candidate_manifest_path"],
+                manifest_sha256=candidate_manifest["candidate_manifest_sha256"],
+                report_version_ids={},
+                status="generated", created_by="Aegis")
+        except Exception as exc:
+            result["report_set_registration_note"] = str(exc)
     except er.CandidateManifestConflictError as exc:
         # A published candidate set already exists and differs — this is
         # not a generation failure, it's a bug-guard; surface it loudly

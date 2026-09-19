@@ -64,12 +64,19 @@ class ReportService:
         confirmations = self._confirmations(case_id, state["run_id"])
         for row in [*reports, ticket]:
             row["confirmed"] = row["report_type"] in confirmations
+        # Phase 7: lets the frontend show "Approve reviewed report set" only
+        # once a Submit-for-Approval materialisation is actually pending —
+        # not merely because the whole-workflow reporting_status says
+        # Awaiting Approval, which doesn't by itself mean a reviewed
+        # candidate exists yet.
+        pending_set = wss.get_latest_report_set(case_id, state["run_id"], status="materialised")
         return {
             "case_id": case_id,
             "run_id": state["run_id"],
             "reporting_status": state.get("reporting_status") or "Pending",
             "reporting_attempt": int(state.get("reporting_attempt") or 1),
             "report_set_id": attempt.get("report_set_id"),
+            "pending_report_set_id": pending_set["report_set_id"] if pending_set else None,
             "reports": reports,
             "triage_ticket": ticket,
             "export_all_available": model.get("export_all_available", False),
@@ -126,9 +133,61 @@ class ReportService:
 
     def discard_report(self, case_id: str, report_type: str, analyst: str) -> dict:
         current = self.get_report(case_id, report_type)
-        editor = triage_ticket_editing if report_type == triage_ticket_editing.TICKET_REPORT_TYPE else report_editing
-        editor.discard_report_edit(case_id, current["run_id"], report_type, analyst)
+        if report_type == triage_ticket_editing.TICKET_REPORT_TYPE:
+            triage_ticket_editing.discard_report_edit(case_id, current["run_id"], report_type, analyst)
+        else:
+            # report_editing's Phase 3 immutable-version model appends a new
+            # "reverted to AI" version rather than deleting anything, so it
+            # needs the current AI-original content/candidate id supplied —
+            # both already loaded on `current` from get_report() above.
+            report_editing.discard_report_edit(
+                case_id, current["run_id"], report_type, analyst,
+                ai_blocks=current["original_blocks"],
+                ai_report_set_id=current.get("current_report_set_id"))
         return self.get_report(case_id, report_type)
+
+    def list_versions(self, case_id: str, report_type: str) -> dict:
+        state = self._state(case_id)
+        if report_type == triage_ticket_editing.TICKET_REPORT_TYPE:
+            raise ReportServiceError("REPORT_INVALID", "The triage ticket does not support version history.", 400)
+        if report_type not in report_editing.CORE_REPORT_TYPES:
+            raise ReportServiceError("REPORT_NOT_FOUND", "Unknown report type.", 404)
+        return {
+            "report_type": report_type,
+            "versions": report_editing.list_report_versions(case_id, state["run_id"], report_type),
+        }
+
+    def mark_reviewed(self, case_id: str, report_type: str, values: dict) -> dict:
+        current = self.get_report(case_id, report_type)
+        if report_type == triage_ticket_editing.TICKET_REPORT_TYPE:
+            raise ReportServiceError("REPORT_INVALID", "The triage ticket does not support review state.", 400)
+        analyst = str(values.get("analyst") or "").strip()
+        if not analyst:
+            raise ReportServiceError("REPORT_REVIEW_FAILED", "Analyst identity is required.")
+        try:
+            report_editing.mark_reviewed(
+                case_id, current["run_id"], report_type, analyst,
+                expected_report_version_id=values.get("report_version_id"))
+        except report_editing.ReportEditingError as exc:
+            raise ReportServiceError("REPORT_REVIEW_FAILED", str(exc), 409) from exc
+        return self.get_report(case_id, report_type)
+
+    def submit_for_approval(self, case_id: str, values: dict) -> dict:
+        state = self._state(case_id)
+        analyst = str(values.get("analyst") or "").strip()
+        if not analyst:
+            raise ReportServiceError("REPORT_SUBMIT_FAILED", "Analyst identity is required.")
+        reporting_stage_attempt = int(state.get("reporting_attempt") or 1)
+        try:
+            manifest = report_editing.submit_for_approval(
+                case_id, state["run_id"], reporting_stage_attempt, analyst=analyst)
+        except report_editing.ReportEditingError as exc:
+            raise ReportServiceError("REPORT_SUBMIT_FAILED", str(exc), 409) from exc
+        return {
+            "report_set_id": manifest["report_set_id"],
+            "based_on_report_set_id": manifest.get("based_on_report_set_id"),
+            "status": "materialised",
+        }
 
     def confirm_section(self, case_id: str, report_type: str, values: dict) -> dict:
         current = self.get_report(case_id, report_type)

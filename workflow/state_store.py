@@ -365,6 +365,76 @@ def db_init() -> None:
                 UNIQUE(incident_id, run_id, report_type)
             )
         """)
+        # [FYP-TABLE] report_versions — Phase 3 of the Reporting redesign.
+        # Immutable content snapshots: every analyst save (or AI/assembly
+        # seed) is a NEW row, never an UPDATE of an existing one. Supersedes
+        # report_edits (above) as the live source for report_editing.py, but
+        # report_edits is intentionally left in place, unmodified, for
+        # backward compatibility — see ensure_report_version_seeded() below,
+        # which backfills any pre-existing report_edits row into real
+        # version history the first time a report is read post-migration.
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS report_versions (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id              TEXT NOT NULL,
+                run_id                   TEXT NOT NULL,
+                report_type              TEXT NOT NULL,
+                version                  INTEGER NOT NULL,
+                content_json             TEXT NOT NULL,
+                origin                   TEXT NOT NULL,
+                source_report_set_id     TEXT,
+                source_version_ids_json  TEXT,
+                edited_by                TEXT NOT NULL,
+                change_summary           TEXT,
+                created_at               TEXT NOT NULL,
+                UNIQUE(incident_id, run_id, report_type, version)
+            )
+        """)
+        # [FYP-TABLE] report_reviews — review facts about ONE specific
+        # immutable report_versions row. Never mutates report_versions; a
+        # later edit simply produces a new version with no matching review
+        # row, which is how "Reviewed" naturally reverts to "Edited" without
+        # any status column ever being overwritten (see
+        # report_editing.resolve_report_status()).
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS report_reviews (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_version_id  INTEGER NOT NULL,
+                review_status      TEXT NOT NULL DEFAULT 'Reviewed',
+                reviewed_by        TEXT NOT NULL,
+                reviewed_at        TEXT NOT NULL,
+                comments           TEXT,
+                UNIQUE(report_version_id)
+            )
+        """)
+        # [FYP-TABLE] report_sets — Phase 6 of the Reporting redesign.
+        # Candidate/report-set lineage: one permanent row per candidate —
+        # the original AI-generated set (status='generated', registered by
+        # agents/reporting/adapters/export_documents.py right after
+        # editable_reports.finalize_candidate_manifest() publishes it), and
+        # every later reviewed-candidate materialisation
+        # (status='materialised', then flipped in place to 'approved' by
+        # Phase 7 — see workflow_state_store.py's own module docstring
+        # convention of never overwriting an EARLIER row's data). No row is
+        # ever deleted or its own past values overwritten; only its own
+        # forward-only status/approved_at/approved_by may be filled in once.
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS report_sets (
+                id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+                incident_id              TEXT NOT NULL,
+                run_id                   TEXT NOT NULL,
+                report_set_id            TEXT NOT NULL UNIQUE,
+                based_on_report_set_id   TEXT,
+                manifest_path            TEXT NOT NULL,
+                manifest_sha256          TEXT NOT NULL,
+                report_version_ids_json  TEXT NOT NULL,
+                status                   TEXT NOT NULL,
+                created_at               TEXT NOT NULL,
+                created_by               TEXT NOT NULL,
+                approved_at              TEXT,
+                approved_by              TEXT
+            )
+        """)
         con.commit()
     _ensure_workflow_columns()
     _ensure_workflow_approvals_attempt_columns()
@@ -2342,3 +2412,228 @@ def discard_report_edit(incident_id: str, run_id: str, report_type: str) -> None
             "DELETE FROM report_edits WHERE incident_id=? AND run_id=? AND report_type=?",
             (str(incident_id), run_id, report_type))
     _tx(_do)
+
+
+# =============================================================================
+# report_versions / report_reviews — Phase 3 of the Reporting redesign.
+# Immutable content history plus separately-tracked review facts (see the
+# module-level comment above the report_versions CREATE TABLE). Consumed by
+# agents/reporting/report_editing.py, which owns the status-resolution logic
+# (resolve_report_status()) — this module only stores and retrieves rows.
+# =============================================================================
+
+def create_report_version(incident_id: str, run_id: str, report_type: str, *,
+                          content: list, origin: str, edited_by: str,
+                          source_report_set_id: str | None = None,
+                          source_version_ids: dict | None = None,
+                          change_summary: str | None = None) -> dict:
+    """Appends a new immutable content snapshot — never updates an existing
+    row. `origin` must be one of 'ai_generated' | 'analyst_edit' |
+    'assembled' (see report_editing.py's status-resolution logic, which
+    branches on this field rather than on version number)."""
+    def _do(con):
+        now = datetime.now(timezone.utc).isoformat()
+        current = con.execute(
+            "SELECT COALESCE(MAX(version), 0) AS v FROM report_versions "
+            "WHERE incident_id=? AND run_id=? AND report_type=?",
+            (str(incident_id), run_id, report_type)).fetchone()
+        next_version = int(current["v"]) + 1
+        con.execute(
+            "INSERT INTO report_versions (incident_id, run_id, report_type, version, "
+            "content_json, origin, source_report_set_id, source_version_ids_json, "
+            "edited_by, change_summary, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (str(incident_id), run_id, report_type, next_version,
+             json.dumps(content or [], default=str), origin, source_report_set_id,
+             json.dumps(source_version_ids) if source_version_ids is not None else None,
+             edited_by, change_summary, now))
+        row = con.execute(
+            "SELECT * FROM report_versions WHERE incident_id=? AND run_id=? AND report_type=? AND version=?",
+            (str(incident_id), run_id, report_type, next_version)).fetchone()
+        return dict(row)
+    return _tx(_do)
+
+
+def get_latest_report_version(incident_id: str, run_id: str, report_type: str) -> dict | None:
+    db_init()
+    with db_connect() as con:
+        row = con.execute(
+            "SELECT * FROM report_versions WHERE incident_id=? AND run_id=? AND report_type=? "
+            "ORDER BY version DESC LIMIT 1",
+            (str(incident_id), run_id, report_type)).fetchone()
+        return dict(row) if row else None
+
+
+def list_report_versions(incident_id: str, run_id: str, report_type: str) -> list[dict]:
+    """Newest first, each row carrying its review facts (NULL columns if
+    that specific version was never reviewed) via a LEFT JOIN — one query,
+    no N+1 lookups for a version-history panel."""
+    db_init()
+    with db_connect() as con:
+        rows = con.execute(
+            "SELECT rv.*, rr.review_status, rr.reviewed_by, rr.reviewed_at, rr.comments AS review_comments "
+            "FROM report_versions rv LEFT JOIN report_reviews rr ON rr.report_version_id = rv.id "
+            "WHERE rv.incident_id=? AND rv.run_id=? AND rv.report_type=? "
+            "ORDER BY rv.version DESC",
+            (str(incident_id), run_id, report_type)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def create_report_review(report_version_id: int, *, reviewed_by: str, comments: str | None = None) -> dict:
+    """Idempotent: marking an already-reviewed version as reviewed again
+    returns the existing row unchanged rather than erroring or duplicating —
+    review facts are one-per-version, matching the UNIQUE(report_version_id)
+    constraint."""
+    def _do(con):
+        existing = con.execute(
+            "SELECT * FROM report_reviews WHERE report_version_id=?", (report_version_id,)).fetchone()
+        if existing is not None:
+            return dict(existing)
+        now = datetime.now(timezone.utc).isoformat()
+        con.execute(
+            "INSERT INTO report_reviews (report_version_id, review_status, reviewed_by, reviewed_at, comments) "
+            "VALUES (?,?,?,?,?)",
+            (report_version_id, "Reviewed", reviewed_by, now, comments))
+        row = con.execute(
+            "SELECT * FROM report_reviews WHERE report_version_id=?", (report_version_id,)).fetchone()
+        return dict(row)
+    return _tx(_do)
+
+
+def get_report_review(report_version_id: int) -> dict | None:
+    db_init()
+    with db_connect() as con:
+        row = con.execute(
+            "SELECT * FROM report_reviews WHERE report_version_id=?", (report_version_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def ensure_report_version_seeded(incident_id: str, run_id: str, report_type: str, *,
+                                 ai_blocks: list, ai_report_set_id: str | None) -> None:
+    """Idempotent compatibility seed, called at the top of every
+    report_editing.report_row_state() so report_versions is never empty for
+    a report that has content. If real version history already exists for
+    this (incident, run, report_type), does nothing.
+
+    Otherwise: if a pre-Phase-3 report_edits row exists (the old
+    single-row-per-report analyst-edit model), backfills it as TWO real
+    versions — v1 = the AI-original snapshot report_edits preserved,
+    v2 = the analyst's saved edit — so no prior analyst work is lost or
+    silently dropped. If no legacy edit exists, seeds a single v1
+    'ai_generated' version from the caller-supplied current AI content.
+    Never touches or deletes report_edits."""
+    def _do(con):
+        existing = con.execute(
+            "SELECT 1 FROM report_versions WHERE incident_id=? AND run_id=? AND report_type=? LIMIT 1",
+            (str(incident_id), run_id, report_type)).fetchone()
+        if existing is not None:
+            return
+        legacy_row = con.execute(
+            "SELECT * FROM report_edits WHERE incident_id=? AND run_id=? AND report_type=?",
+            (str(incident_id), run_id, report_type)).fetchone()
+        now = datetime.now(timezone.utc).isoformat()
+        if legacy_row is not None:
+            legacy = dict(legacy_row)
+            con.execute(
+                "INSERT INTO report_versions (incident_id, run_id, report_type, version, content_json, "
+                "origin, source_report_set_id, source_version_ids_json, edited_by, change_summary, created_at) "
+                "VALUES (?,?,?,1,?,?,?,NULL,?,?,?)",
+                (str(incident_id), run_id, report_type, legacy.get("original_blocks_json") or "[]",
+                 "ai_generated", legacy.get("source_report_set_id"), "Aegis",
+                 "Backfilled from pre-Phase-3 report_edits (AI-original snapshot).",
+                 legacy.get("created_at") or now))
+            con.execute(
+                "INSERT INTO report_versions (incident_id, run_id, report_type, version, content_json, "
+                "origin, source_report_set_id, source_version_ids_json, edited_by, change_summary, created_at) "
+                "VALUES (?,?,?,2,?,?,?,NULL,?,?,?)",
+                (str(incident_id), run_id, report_type, legacy.get("edited_blocks_json") or "[]",
+                 "analyst_edit", legacy.get("source_report_set_id"),
+                 legacy.get("last_edited_by") or "Unknown analyst",
+                 "Backfilled from pre-Phase-3 report_edits (analyst's saved edit).",
+                 legacy.get("updated_at") or now))
+        else:
+            con.execute(
+                "INSERT INTO report_versions (incident_id, run_id, report_type, version, content_json, "
+                "origin, source_report_set_id, source_version_ids_json, edited_by, change_summary, created_at) "
+                "VALUES (?,?,?,1,?,?,?,NULL,?,NULL,?)",
+                (str(incident_id), run_id, report_type, json.dumps(ai_blocks or [], default=str),
+                 "ai_generated", ai_report_set_id, "Aegis", now))
+    _tx(_do)
+
+
+# =============================================================================
+# report_sets — Phase 6 of the Reporting redesign. Candidate/report-set
+# lineage (see the report_sets CREATE TABLE comment in db_init() above for
+# the full design rationale). Pure DB layer only — the actual manifest
+# file/hash work happens in
+# agents/reporting/reporting/candidate_materialiser.py, which calls
+# create_report_set() once it has already written and hashed the files.
+# =============================================================================
+
+def create_report_set(incident_id: str, run_id: str, *, report_set_id: str,
+                      based_on_report_set_id: str | None, manifest_path: str,
+                      manifest_sha256: str, report_version_ids: dict, status: str,
+                      created_by: str) -> dict:
+    """One permanent row per candidate set. `report_set_id` is UNIQUE, so a
+    caller accidentally registering the same set twice fails loudly
+    (sqlite3.IntegrityError) rather than silently duplicating lineage."""
+    def _do(con):
+        now = datetime.now(timezone.utc).isoformat()
+        con.execute(
+            "INSERT INTO report_sets (incident_id, run_id, report_set_id, based_on_report_set_id, "
+            "manifest_path, manifest_sha256, report_version_ids_json, status, created_at, created_by) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (str(incident_id), run_id, report_set_id, based_on_report_set_id, manifest_path,
+             manifest_sha256, json.dumps(report_version_ids), status, now, created_by))
+        row = con.execute(
+            "SELECT * FROM report_sets WHERE report_set_id=?", (report_set_id,)).fetchone()
+        return dict(row)
+    return _tx(_do)
+
+
+def get_latest_report_set(incident_id: str, run_id: str, *, status: str | None = None) -> dict | None:
+    db_init()
+    with db_connect() as con:
+        if status is not None:
+            row = con.execute(
+                "SELECT * FROM report_sets WHERE incident_id=? AND run_id=? AND status=? "
+                "ORDER BY id DESC LIMIT 1",
+                (str(incident_id), run_id, status)).fetchone()
+        else:
+            row = con.execute(
+                "SELECT * FROM report_sets WHERE incident_id=? AND run_id=? ORDER BY id DESC LIMIT 1",
+                (str(incident_id), run_id)).fetchone()
+        return dict(row) if row else None
+
+
+def list_report_sets(incident_id: str, run_id: str) -> list[dict]:
+    """Full lineage, newest first — every candidate this run has ever
+    produced (generated / materialised / approved / superseded), for a
+    future audit/history view. Nothing here is ever deleted."""
+    db_init()
+    with db_connect() as con:
+        rows = con.execute(
+            "SELECT * FROM report_sets WHERE incident_id=? AND run_id=? ORDER BY id DESC",
+            (str(incident_id), run_id)).fetchall()
+        return [dict(r) for r in rows]
+
+
+def mark_report_set_approved(report_set_id: str, *, approved_by: str) -> dict:
+    """Flips exactly one report_sets row's own status from 'materialised'
+    to 'approved' IN PLACE — never touches any other row. Idempotent: if
+    already approved, returns it unchanged rather than overwriting
+    approved_at/approved_by with a later timestamp."""
+    def _do(con):
+        existing = con.execute(
+            "SELECT * FROM report_sets WHERE report_set_id=?", (report_set_id,)).fetchone()
+        if existing is None:
+            raise ValueError(f"no report_sets row for report_set_id={report_set_id!r}")
+        existing = dict(existing)
+        if existing["status"] == "approved":
+            return existing
+        now = datetime.now(timezone.utc).isoformat()
+        con.execute(
+            "UPDATE report_sets SET status='approved', approved_at=?, approved_by=? WHERE report_set_id=?",
+            (now, approved_by, report_set_id))
+        row = con.execute("SELECT * FROM report_sets WHERE report_set_id=?", (report_set_id,)).fetchone()
+        return dict(row)
+    return _tx(_do)

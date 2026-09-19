@@ -194,16 +194,28 @@ def approve_reporting_candidate(incident_id: str, run_id: str, *, analyst: str,
        concurrent rerun between this validation pass and the final DB
        write causes the approval to fail rather than silently apply to a
        different candidate set).
-    2. Resolves and fully re-verifies the candidate manifest referenced by
-       that result (_verify_candidate_manifest, above) — identity, every
-       file's hash, the manifest's own hash, and no blocking validation
-       errors. Raises ReportValidationError on any failure; the caller
-       (app.py) is expected to show that message to the analyst.
+    2. Resolves the candidate manifest to approve — Phase 7: PREFERS the
+       latest 'materialised' report_sets row (see agents/reporting/
+       report_editing.py::submit_for_approval(), Phase 6) — i.e. the set
+       built from the four core reports' latest REVIEWED content — falling
+       back to the original document_exports.candidate_manifest_path only
+       for an incident/run that never went through the review-and-submit
+       flow (legacy data, or a deliberate fast-path approval). Either way,
+       fully re-verifies it (_verify_candidate_manifest, above) — identity,
+       every file's hash, the manifest's own hash, and no blocking
+       validation errors. Raises ReportValidationError on any failure; the
+       caller (app.py) is expected to show that message to the analyst.
     3. Builds the durable approval metadata and hands off to the pure-DB
        workflow_state_store.commit_reporting_approval() — which performs
        its own final, transactional re-check of workflow_status/
        approval_stage/reporting_status/reporting_attempt/
        reporting_result_json before writing anything.
+    4. On success, if step 2 resolved a report_sets row (the reviewed-
+       candidate path), flips THAT row's own status to 'approved' in place
+       (workflow_state_store.mark_report_set_approved()) — never touching
+       any other row. Best-effort: a lineage-flip failure here must not
+       undo an approval that workflow_state_store.commit_reporting_approval()
+       already durably committed in step 3.
     """
     state = wss.get_state(incident_id)
     if not state:
@@ -225,8 +237,12 @@ def approve_reporting_candidate(incident_id: str, run_id: str, *, analyst: str,
     except Exception as exc:
         raise ReportValidationError(f"reporting_result_json could not be parsed: {exc}") from exc
 
-    candidate_manifest_path = (reporting_result.get("document_exports") or {}).get(
-        "candidate_manifest_path")
+    materialised_set = wss.get_latest_report_set(incident_id, run_id, status="materialised")
+    if materialised_set is not None:
+        candidate_manifest_path = materialised_set["manifest_path"]
+    else:
+        candidate_manifest_path = (reporting_result.get("document_exports") or {}).get(
+            "candidate_manifest_path")
     if not candidate_manifest_path:
         raise ReportValidationError(
             "no candidate manifest is referenced for this attempt — Reporting may not "
@@ -248,12 +264,19 @@ def approve_reporting_candidate(incident_id: str, run_id: str, *, analyst: str,
         "warning_count": warning_count,
     }
 
-    return wss.commit_reporting_approval(
+    result = wss.commit_reporting_approval(
         incident_id, run_id,
         expected_reporting_attempt=reporting_attempt,
         expected_reporting_result_json=reporting_result_json,
         metadata=approval_metadata,
         approved_by=analyst, comments=comments)
+
+    if materialised_set is not None:
+        try:
+            wss.mark_report_set_approved(materialised_set["report_set_id"], approved_by=analyst)
+        except Exception:
+            pass  # the approval itself is already durably committed above
+    return result
 
 
 # ═══════════════════════════════════════════════════════════════════════

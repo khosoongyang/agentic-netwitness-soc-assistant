@@ -1207,6 +1207,25 @@ def _add_title_block(doc: Any, title: str, incident_id: str, manifest: dict[str,
     if RGBColor is not None:
         heading_run.font.color.rgb = RGBColor.from_string("172033")
 
+    # [FYP-EXPORT] Phase 8 of the Reporting redesign: report_editing.py's
+    # export_report() sets manifest["watermark"] whenever the exported
+    # content is not the exact version that was approved — a freshly
+    # rendered document must never look identical to (and be mistaken for)
+    # the official approved artefact.
+    watermark_text = manifest.get("watermark")
+    if watermark_text:
+        watermark_para = doc.add_paragraph()
+        if WD_ALIGN_PARAGRAPH is not None:
+            watermark_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        watermark_run = watermark_para.add_run(watermark_text)
+        _apply_report_font(watermark_run)
+        watermark_run.bold = True
+        if Pt is not None:
+            watermark_run.font.size = Pt(13)
+            watermark_para.paragraph_format.space_after = Pt(4)
+        if RGBColor is not None:
+            watermark_run.font.color.rgb = RGBColor.from_string("B3261E")
+
     subtitle = doc.add_paragraph("Reviewed SOC report section exported from the analyst-confirmed dashboard draft and converted to PDF from Word.")
     if WD_ALIGN_PARAGRAPH is not None:
         subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -1221,7 +1240,7 @@ def _add_title_block(doc: Any, title: str, incident_id: str, manifest: dict[str,
     meta.style = "Table Grid"
     values = [
         ("Incident ID", incident_id),
-        ("Report Status", "Confirmed by SOC Analyst"),
+        ("Report Status", watermark_text or "Confirmed by SOC Analyst"),
         ("Confirmed By", manifest.get("confirmed_by") or "SOC Analyst"),
         ("Exported At", utc_now()),
     ]
@@ -1468,9 +1487,20 @@ def _pdf_write_blocks(path: Path, title: str, blocks: list[dict[str, Any]], inci
         logo = Image(str(logo_path), width=2.65 * inch, height=0.86 * inch)
         logo.hAlign = "CENTER"
         story.extend([logo, Spacer(1, 0.12 * inch)])
-    story.extend([_pdf_para(title, styles["Title"]), Spacer(1, 0.15 * inch)])
+    story.extend([_pdf_para(title, styles["Title"]), Spacer(1, 0.1 * inch)])
+    # [FYP-EXPORT] Phase 8 — same watermark contract as _add_title_block()'s
+    # docx path (report_editing.py sets manifest["watermark"] whenever this
+    # export isn't the exact approved version).
+    watermark_text = manifest.get("watermark")
+    if watermark_text and ParagraphStyle is not None:
+        watermark_style = ParagraphStyle("Watermark", parent=styles["Heading3"],
+                                         textColor=colors.HexColor("#B3261E"), alignment=1)
+        story.extend([_pdf_para(watermark_text, watermark_style), Spacer(1, 0.1 * inch)])
+    elif watermark_text:
+        story.extend([_pdf_para(watermark_text, styles["Heading3"]), Spacer(1, 0.1 * inch)])
     meta_data = [[_pdf_para("Field", styles["Heading5"]), _pdf_para("Value", styles["Heading5"])],
                  [_pdf_para("Incident ID", styles["BodyText"]), _pdf_para(incident_id, styles["BodyText"])],
+                 [_pdf_para("Report status", styles["BodyText"]), _pdf_para(watermark_text or "Confirmed", styles["BodyText"])],
                  [_pdf_para("Confirmed by", styles["BodyText"]), _pdf_para(manifest.get("confirmed_by") or "SOC Analyst", styles["BodyText"])],
                  [_pdf_para("Generated at", styles["BodyText"]), _pdf_para(utc_now(), styles["BodyText"])] ]
     meta = Table(meta_data, repeatRows=1, hAlign="LEFT", colWidths=[1.6*inch, 4.8*inch])

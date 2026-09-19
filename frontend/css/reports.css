@@ -1,9 +1,131 @@
-.reports-layout { display: grid; grid-template-columns: minmax(15rem, .55fr) minmax(30rem, 1.6fr); gap: 1rem; }
-.report-list { display: grid; align-content: start; gap: .6rem; }
-.report-card { padding: .85rem; display: grid; gap: .3rem; border: 1px solid var(--border-soft); border-radius: .55rem; color: var(--text); background: var(--surface); text-align: left; cursor: pointer; }
-.report-card span, .report-card small { color: var(--muted); }
+.reports-table-wrap { margin: 1rem 0; }
+.reports-table td:first-child { white-space: nowrap; }
+.report-actions-cell { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+
+/* Report-row status pills reuse the shared .badge component (see
+   components.css) with new tone modifiers matching the four tones the
+   backend already computes per report (report_editing.STATUS_TONES). */
+.badge.report-status-critical { color: #ffc0c7; border-color: #6e3540; }
+.badge.report-status-high { color: #ffd89a; border-color: #6d5531; }
+.badge.report-status-low { color: #9ff0ca; border-color: #28604c; }
+.badge.report-status-info { color: #a9d2ff; border-color: #315d87; }
+
+/* Per-row Export control: a lightweight anchored popover (not the app's
+   full modal component, which is too heavy for a two-link menu). Anchored
+   to the button's right edge so it stays on-screen from the table's
+   rightmost column. */
+.export-dropdown { position: relative; display: inline-block; }
+.export-menu {
+  position: absolute;
+  top: calc(100% + .3rem);
+  right: 0;
+  z-index: 20;
+  min-width: 13rem;
+  display: grid;
+  border: 1px solid var(--border-soft);
+  border-radius: .5rem;
+  background: var(--surface);
+  box-shadow: 0 .5rem 1.5rem rgba(0, 0, 0, .45);
+  overflow: hidden;
+}
+.export-menu[hidden] { display: none; }
+.export-menu a { padding: .6rem .85rem; color: var(--text); font-size: .82rem; text-decoration: none; }
+.export-menu a:hover { background: var(--surface-raised); }
+
 .report-preview { line-height: 1.55; }
 .report-preview h2, .report-preview h3, .report-preview h4 { margin: 1.2rem 0 .5rem; }
 .report-preview p, .report-preview ul { margin: .6rem 0; }
-.block-editor { width: 100%; min-height: 32rem; margin-top: 1rem; padding: 1rem; border: 1px solid var(--border); border-radius: .45rem; color: var(--text); background: #07101c; font-family: monospace; }
-@media (max-width: 900px) { .reports-layout { grid-template-columns: 1fr; } }
+
+.muted { color: var(--muted); font-size: .82rem; }
+
+/* Edit Report screen — header/meta wrapper around the block editor. */
+.report-editor-header { display: flex; align-items: flex-start; gap: .75rem; margin-bottom: .25rem; }
+.report-editor-header h2 { margin: 0 0 .2rem; }
+.report-editor-meta { margin: 0 0 1rem; padding: .85rem 1rem; border: 1px solid var(--border-soft); border-radius: .55rem; background: var(--surface-raised); }
+.report-editor-meta-row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.report-editor-meta-row strong { font-size: 1rem; }
+.report-editor-meta p { margin: .4rem 0 0; }
+.report-editor-footer { justify-content: space-between; align-items: center; }
+.report-editor-footer-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
+
+/* Version history panel (Phase 4) — rendered inside the app's shared
+   .modal-body (see ui.js::openModal). */
+.version-history-list { margin: 0; padding: 0; list-style: none; display: grid; gap: .75rem; }
+.version-history-item { padding: .75rem .9rem; border: 1px solid var(--border-soft); border-radius: .5rem; background: var(--surface-raised); }
+.version-history-item-header { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.version-history-item p { margin: .35rem 0; }
+
+/* Block-aware editor (frontend/js/components/blockEditor.js) — structural
+   editing only in this phase (headings/paragraphs/lists/tables/page breaks,
+   undo/redo, Preview); no inline bold/italic/underline/links yet, see the
+   component's file header for why. */
+.block-editor-root { border: 1px solid var(--border-soft); border-radius: .6rem; background: var(--surface); overflow: hidden; }
+.block-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .65rem .75rem;
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-raised);
+}
+.block-editor-toolbar-group { display: flex; flex-wrap: wrap; gap: .4rem; }
+.block-editor-toolbar .action-button,
+.editor-block-body .action-button { min-height: 2rem; padding: .35rem .65rem; font-size: .78rem; }
+.block-editor-surface { max-height: 40rem; overflow-y: auto; padding: 1rem; display: grid; gap: .85rem; }
+.editor-empty { text-align: center; padding: 2rem 0; }
+
+.editor-block { position: relative; padding: .75rem .75rem .75rem 2.4rem; border: 1px solid var(--border-soft); border-radius: .5rem; background: var(--surface-raised); }
+.editor-block-controls { position: absolute; top: .5rem; left: .5rem; display: grid; gap: .25rem; }
+.editor-block-btn {
+  width: 1.6rem;
+  height: 1.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-soft);
+  border-radius: .35rem;
+  color: var(--muted);
+  background: var(--surface);
+  font-size: .75rem;
+  cursor: pointer;
+}
+.editor-block-btn:hover { color: var(--text); border-color: var(--accent); }
+.editor-block-btn:disabled { opacity: .35; cursor: not-allowed; }
+.editor-block-btn-danger:hover { color: #ffc0c7; border-color: #6e3540; }
+
+.editor-text {
+  min-height: 1.6rem;
+  padding: .4rem .55rem;
+  border: 1px solid transparent;
+  border-radius: .35rem;
+  color: var(--text);
+  line-height: 1.5;
+}
+.editor-text:hover { border-color: var(--border-soft); }
+.editor-text:focus { outline: none; border-color: var(--accent); background: var(--surface); }
+.editor-text:empty::before { content: attr(data-placeholder); color: var(--muted); }
+
+.editor-block-heading .editor-block-body { display: flex; align-items: center; gap: .6rem; }
+.editor-heading-level { padding: .3rem .5rem; border: 1px solid var(--border); border-radius: .35rem; color: var(--text); background: var(--surface); font-size: .78rem; }
+.editor-heading-text { flex: 1; font-weight: 600; }
+
+.editor-list { list-style: none; margin: 0 0 .5rem; padding: 0; display: grid; gap: .3rem; }
+.editor-list-item { display: flex; align-items: center; gap: .5rem; }
+.editor-list-item::before { content: "•"; color: var(--muted); }
+.editor-list-item .editor-text { flex: 1; }
+.editor-list-item-controls { display: flex; gap: .25rem; }
+
+.editor-table { width: 100%; border-collapse: collapse; }
+.editor-table th, .editor-table td { border: 1px solid var(--border-soft); padding: 0; }
+.editor-table .editor-text { border-radius: 0; min-height: 1.4rem; }
+.editor-table-row-actions { border: none !important; text-align: center; vertical-align: middle; width: 2.2rem; }
+
+.editor-block-page-break { text-align: center; }
+.editor-block-page-break hr { border-color: var(--border-soft); }
+
+@media (max-width: 900px) {
+  .reports-table-wrap { overflow-x: auto; }
+  .block-editor-toolbar { flex-direction: column; align-items: stretch; }
+}

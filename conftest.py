@@ -59,7 +59,16 @@ def pytest_configure(config: pytest.Config) -> None:
         / "outputs"
         / f".pytest-{root.name}"
     )
-    bridge_link.symlink_to(reporting_root, target_is_directory=True)
+    try:
+        bridge_link.symlink_to(reporting_root, target_is_directory=True)
+    except OSError:
+        # Some Windows accounts lack SeCreateSymbolicLinkPrivilege (no
+        # Developer Mode, not running elevated) even though the process can
+        # otherwise write anywhere it needs to. A directory junction has the
+        # same transparent-redirection effect for this bridge's purposes and
+        # needs no special privilege — stdlib-only, no subprocess/mklink.
+        import _winapi
+        _winapi.CreateJunction(str(reporting_root), str(bridge_link))
     reporting_inputs = bridge_link / "inputs"
     reporting_outputs = bridge_link / "outputs"
     merged_fixture = root / "merged_report_context"
