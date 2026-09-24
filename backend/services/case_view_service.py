@@ -299,6 +299,258 @@ def _extract_agent_key_findings(inv_result: dict | None, triage_result: dict | N
     return findings
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# Stage-specific Key findings (Triage / Threat Intelligence / Investigation)
+# ══════════════════════════════════════════════════════════════════════════
+#
+# These feed the per-stage "Key findings" card in My Workspace — a fast
+# TL;DR of what THAT stage discovered, not a restatement of incident
+# metadata (severity/alert titles/incident id — already visible in the
+# case context table) or of a previous stage's conclusions. Each builder
+# only reads that one stage's own persisted result fields:
+#   Triage        -> ticket.risk_rating/mitre_tactic/matched_ioc_count/
+#                    recommended_actions (never NetWitness severity).
+#   Threat Intel  -> threat_intelligence.{virustotal,abuseipdb,alienvault_otx}
+#                    per-indicator verdicts (never Triage's classification).
+#   Investigation -> mitre_mappings/execution_trace/recommended_containment
+#                    (never re-stating raw IP/domain reputation — that is
+#                    Threat Intel's own finding surface).
+# This field separation is what keeps the three cards from repeating each
+# other: each only has access to, and only reads, its own stage's fields.
+#
+# Shape: {"title", "desc", "category" ("observed"|"correlation"|
+# "assessment"), "confidence", "evidence"}. `evidence` is a flat
+# {label: value} map of real structured values (IPs, hashes, technique IDs,
+# matched metakey values, …) drawn from the stage's own result — the
+# frontend highlights these exact values wherever they appear in `desc`.
+
+def _finding(title: str, desc: str, *, category: str, confidence: str = "",
+             evidence: dict | None = None) -> dict:
+    return {
+        "title": str(title).strip()[:120],
+        "desc": str(desc).strip(),
+        "category": category,
+        "confidence": confidence,
+        "evidence": {str(k): v for k, v in (evidence or {}).items() if v not in (None, "", [])},
+    }
+
+
+_RISK_CONFIDENCE = {"critical": "high", "high": "high", "medium": "elevated", "low": "moderate"}
+
+
+def _build_triage_key_findings(triage_result: dict | None) -> list[dict]:
+    """Triage's own risk verdict + rationale, matched-IOC evidence (actual
+    metakey values, not just a count), MITRE mapping, and top recommended
+    action. Deliberately excludes NetWitness severity/alert titles/incident
+    id — those are collected_alert_title/deterministic_signal findings
+    elsewhere, not Triage's own conclusions."""
+    if not triage_result or not isinstance(triage_result, dict):
+        return []
+    ticket = triage_result.get("ticket") or {}
+    metakeys_payload = triage_result.get("metakeys_payload") or {}
+    findings: list[dict] = []
+
+    risk_rating = ticket.get("risk_rating") or {}
+    classification = ticket.get("classification") or metakeys_payload.get("classification")
+    overall_risk = risk_rating.get("overall_risk") or ""
+    rationale = (risk_rating.get("rationale") or "").strip()
+    if classification:
+        conf = _RISK_CONFIDENCE.get(str(classification).lower(), "")
+        findings.append(_finding(
+            f"Triage risk rating: {classification}",
+            rationale or f"Overall risk assessed as {overall_risk or classification}.",
+            category="assessment", confidence=conf, evidence={"classification": classification}))
+
+    matched_ioc_count = ticket.get("matched_ioc_count") or 0
+    metakey_values = metakeys_payload.get("metakey_values") or {}
+    if matched_ioc_count:
+        sample_evidence: dict = {}
+        sample_bits: list[str] = []
+        for key, val in list(metakey_values.items())[:3]:
+            v = val[0] if isinstance(val, list) and val else val
+            if v in (None, ""):
+                continue
+            sample_evidence[key] = v
+            sample_bits.append(str(v))
+        desc = f"{matched_ioc_count} indicator(s) matched during triage"
+        desc += (": " + ", ".join(sample_bits) + "." if sample_bits else ".")
+        findings.append(_finding(f"{matched_ioc_count} IOC(s) matched", desc,
+                                 category="observed", confidence="elevated",
+                                 evidence=sample_evidence))
+
+    mitre_tactic = ticket.get("mitre_tactic") or ""
+    mitre_technique = ticket.get("mitre_technique") or ""
+    if mitre_tactic and mitre_tactic.lower() != "unknown":
+        desc = f"Observed behaviour maps to the {mitre_tactic} tactic"
+        if mitre_technique and mitre_technique.lower() != "unknown":
+            desc += f" ({mitre_technique})"
+        desc += "."
+        findings.append(_finding(f"MITRE ATT&CK mapping: {mitre_tactic}", desc,
+                                 category="correlation", confidence="moderate",
+                                 evidence={"mitre_tactic": mitre_tactic,
+                                          "mitre_technique": mitre_technique}))
+
+    recommended_actions = ticket.get("recommended_actions") or []
+    if recommended_actions and len(findings) < 5:
+        first_action = str(recommended_actions[0]).strip()
+        if first_action:
+            findings.append(_finding("Recommended next action", first_action,
+                                     category="assessment", evidence={}))
+
+    return findings[:5]
+
+
+def _build_threat_intel_key_findings(ti_result: dict | None) -> list[dict]:
+    """Only what enrichment itself discovered: per-indicator reputation
+    verdicts from VirusTotal/AbuseIPDB/AlienVault OTX. Deliberately excludes
+    Triage's classification/risk verdict and raw severity — this card is
+    about indicator reputation, not the case-level verdict."""
+    if not ti_result or not isinstance(ti_result, dict):
+        return []
+    bundle = ti_result.get("threat_intelligence") or {}
+    findings: list[dict] = []
+
+    vt = bundle.get("virustotal") or {}
+    for entry in list(vt.get("ip_results") or []) + list(vt.get("domain_results") or []):
+        if not isinstance(entry, dict) or entry.get("status") != "completed":
+            continue
+        malicious = entry.get("malicious") or 0
+        if malicious <= 0:
+            continue
+        indicator = entry.get("indicator") or "—"
+        findings.append(_finding(
+            "Malicious reputation (VirusTotal)",
+            f"{indicator} was flagged malicious by {malicious} of the security vendors "
+            f"queried on VirusTotal.",
+            category="correlation", confidence="high",
+            evidence={"indicator": indicator, "malicious_vendors": malicious}))
+
+    file_hash_result = vt.get("file_hash") or {}
+    if isinstance(file_hash_result, dict) and file_hash_result.get("status") == "completed":
+        malicious = file_hash_result.get("malicious") or 0
+        if malicious > 0:
+            indicator = file_hash_result.get("indicator") or "—"
+            findings.append(_finding(
+                "Known malicious hash",
+                f"File hash {indicator} was flagged malicious by {malicious} security "
+                f"vendors on VirusTotal.",
+                category="correlation", confidence="high",
+                evidence={"file_hash": indicator, "malicious_vendors": malicious}))
+
+    abuse = bundle.get("abuseipdb") or {}
+    for entry in list(abuse.get("ip_results") or []):
+        if not isinstance(entry, dict) or entry.get("status") != "completed":
+            continue
+        score = entry.get("abuse_confidence_score")
+        if not score:
+            continue
+        indicator = entry.get("indicator") or "—"
+        findings.append(_finding(
+            "AbuseIPDB reputation",
+            f"{indicator} has an AbuseIPDB confidence score of {score}% across "
+            f"{entry.get('total_reports') or 0} report(s).",
+            category="correlation", confidence="high" if score >= 50 else "elevated",
+            evidence={"indicator": indicator, "abuse_confidence_score": score}))
+
+    otx = bundle.get("alienvault_otx") or {}
+    for entry in list(otx.get("otx_results") or []):
+        if not isinstance(entry, dict) or entry.get("status") != "completed":
+            continue
+        pulse_count = entry.get("pulse_count") or 0
+        if pulse_count <= 0:
+            continue
+        indicator = entry.get("indicator") or "—"
+        findings.append(_finding(
+            "Threat infrastructure correlation (OTX)",
+            f"{indicator} appears in {pulse_count} AlienVault OTX threat intelligence "
+            f"pulse(s).",
+            category="correlation", confidence="elevated",
+            evidence={"indicator": indicator, "pulse_count": pulse_count}))
+
+    if not findings:
+        reasons = [str(r).strip() for r in (ti_result.get("enrichment_risk_reasons") or []) if str(r).strip()]
+        risk_level = ti_result.get("enrichment_risk_level")
+        if reasons:
+            findings.append(_finding(
+                f"Enrichment risk: {risk_level}" if risk_level else "Enrichment risk assessment",
+                " ".join(reasons[:2]), category="assessment", evidence={}))
+        else:
+            findings.append(_finding(
+                "No malicious reputation found",
+                "None of the queried indicators returned a malicious verdict from "
+                "VirusTotal, AbuseIPDB, or AlienVault OTX.",
+                category="observed", evidence={}))
+
+    def _rank(f: dict) -> int:
+        ev = f.get("evidence") or {}
+        return int(ev.get("malicious_vendors") or ev.get("abuse_confidence_score")
+                  or ev.get("pulse_count") or 0)
+
+    findings.sort(key=_rank, reverse=True)
+    return findings[:5]
+
+
+def _build_investigation_key_findings(inv_result: dict | None) -> list[dict]:
+    """The most evidence-driven card: MITRE technique <-> observed-evidence
+    correlations (process/host/network chains Investigation itself
+    reconstructed) and MET-milestone findings from the execution trace.
+    Deliberately excludes raw indicator reputation (VirusTotal/AbuseIPDB/OTX
+    verdicts) — that is Threat Intelligence's own finding surface, not
+    Investigation's."""
+    if not inv_result or not isinstance(inv_result, dict):
+        return []
+    findings: list[dict] = []
+
+    for mapping in (inv_result.get("mitre_mappings") or [])[:2]:
+        if not isinstance(mapping, dict):
+            continue
+        evidence_text = (mapping.get("observed_evidence") or "").strip()
+        tactic = mapping.get("tactic") or ""
+        technique = mapping.get("technique_name") or ""
+        technique_id = mapping.get("technique_id") or ""
+        if not evidence_text or not tactic:
+            continue
+        title = tactic if not technique else f"{tactic} — {technique}"
+        findings.append(_finding(title, evidence_text, category="correlation",
+                                 confidence="high",
+                                 evidence={"technique_id": technique_id}))
+
+    for step in (inv_result.get("execution_trace") or []):
+        if len(findings) >= 5:
+            break
+        if not isinstance(step, dict) or step.get("status") != "MET":
+            continue
+        text = (step.get("findings") or "").strip()
+        if not text or len(text) < 15:
+            continue
+        instruction = (step.get("instruction") or "Investigation milestone").strip()
+        findings.append(_finding(instruction, text, category="observed",
+                                 confidence="elevated", evidence={}))
+
+    if len(findings) < 2:
+        containment = inv_result.get("recommended_containment") or []
+        if containment:
+            first = str(containment[0]).strip()
+            if first:
+                findings.append(_finding("Containment recommended", first,
+                                         category="assessment", evidence={}))
+
+    if not findings:
+        justification = (inv_result.get("severity_justification") or "").strip()
+        severity = inv_result.get("severity")
+        if justification:
+            findings.append(_finding(
+                f"Severity assessment: {severity}" if severity else "Severity assessment",
+                justification, category="assessment", evidence={}))
+        else:
+            findings.append(_finding(
+                "Limited investigation telemetry",
+                "Investigation completed but did not record milestone-level findings "
+                "for this incident.", category="observed", evidence={}))
+
+    return findings[:5]
+
+
 # [FYP-FUNCTION] `_collect_alert_titles` — implements the collect alert titles operation used by the surrounding SOC analysis support workflow.
 # [FYP-INPUT] Parameters: `incident`, `state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
@@ -520,7 +772,33 @@ def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -
             source_field="alertMeta.SourceIp/DestinationIp (deduped, IPv4-validated)",
             incident_id=incident_id, run_id=run_id),
     }
-    return {"key_findings": key_findings, "case_context": case_context}
+
+    # Per-stage "Key findings" cards (My Workspace) — see the builders'
+    # own docstrings above. Kept separate from the flat `key_findings`
+    # list above (which stays untouched: it feeds Ask Aegis's cross-stage
+    # chat grounding context, a different consumer with different needs).
+    key_findings_by_stage = {
+        "triage": _build_triage_key_findings(triage_result),
+        "threat_intel": _build_threat_intel_key_findings(ti_result),
+        "investigation": _build_investigation_key_findings(inv_result),
+    }
+    # Stamp the confirmed host/user onto every finding's evidence map (only
+    # if not already present) so the frontend's exact-value evidence
+    # highlighter can chip hostnames/usernames inside free-text findings
+    # (e.g. Investigation's execution_trace findings/mitre observed_evidence
+    # sentences) -- these are the SAME confirmed, structured-field-sourced
+    # host/user values case_context already displays, never a regex guess.
+    for stage_findings in key_findings_by_stage.values():
+        for f in stage_findings:
+            evidence = f.get("evidence") or {}
+            if host_stage and "host" not in evidence:
+                evidence["host"] = host_val
+            if user_stage and "user" not in evidence:
+                evidence["user"] = user_val
+            f["evidence"] = evidence
+
+    return {"key_findings": key_findings, "key_findings_by_stage": key_findings_by_stage,
+            "case_context": case_context}
 
 
 # ══════════════════════════════════════════════════════════════════════════

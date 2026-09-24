@@ -240,6 +240,65 @@
   color: var(--muted);
 }
 
+/* Key findings cards (Triage / Threat Intelligence / Investigation) */
+.finding-item > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.finding-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.finding-item p {
+  margin: 0.2rem 0 0;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.finding-category {
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.finding-category.cat-observed {
+  color: #9ff0ca;
+  border-color: #28604c;
+}
+
+.finding-category.cat-correlation {
+  color: #a9d2ff;
+  border-color: #315d87;
+}
+
+.finding-category.cat-assessment {
+  color: #ffd89a;
+  border-color: #6d5531;
+}
+
+/* Evidence chip: a value pulled directly from stage telemetry/logs, kept
+   visually distinct from surrounding explanatory prose at a glance. */
+.evidence-chip {
+  display: inline-block;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.85em;
+  color: var(--accent);
+  background: rgba(118, 183, 255, 0.1);
+  border: 1px solid rgba(118, 183, 255, 0.28);
+  border-radius: 0.3rem;
+  padding: 0.02rem 0.32rem;
+  line-height: 1.5;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

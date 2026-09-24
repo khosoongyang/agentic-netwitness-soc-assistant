@@ -96,10 +96,104 @@ function stageCards(stages) {
   return stages.map((stage) => `<button class="stage-card ${stage.locked ? "locked" : ""}" data-stage="${escapeHTML(stage.key)}"><strong>${escapeHTML(stage.name)}</strong><small>${escapeHTML(stage.status)}</small>${stateBadge(stage)}</button>`).join("");
 }
 
-function findings(workspace) {
-  const items = workspace?.overview?.key_findings || [];
-  if (!items.length) return emptyState("No findings have been distilled for this case yet.");
-  return `<ul class="data-list">${items.slice(0, 12).map((item) => `<li><div><strong>${escapeHTML(item.title || "Finding")}</strong><p>${escapeHTML(item.desc || "")}</p></div>${item.confidence ? `<span>${escapeHTML(item.confidence)}</span>` : ""}</li>`).join("")}</ul>`;
+// The "Key findings" card only makes sense for stages that actually
+// produce a verdict/evidence to distil — Parsing is pure normalisation and
+// Reporting consumes prior findings rather than discovering new ones, so
+// neither gets a card at all (see renderWorkflow()'s hideKeyFindings check).
+const KEY_FINDINGS_STAGES = new Set(["triage", "threat_intel", "investigation"]);
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Pattern-based fallback for evidence embedded in free-text narrative
+// (Investigation's execution_trace/mitre observed_evidence sentences carry
+// no separate structured field per value) — applied only where a backend
+// `evidence` value hasn't already claimed the span. Every pattern here
+// detects a general SHAPE (IP, hash, path, port, …), never a specific
+// hardcoded example value.
+const EVIDENCE_PATTERNS = [
+  /https?:\/\/[^\s"'<>)]+/g,
+  /[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]+/g,
+  /\b[a-fA-F0-9]{64}\b/g,
+  /\b[a-fA-F0-9]{40}\b/g,
+  /\b[a-fA-F0-9]{32}\b/g,
+  /\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g,
+  /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
+  /(?<=:)\d{2,5}\b/g,
+  /\bport\s+\d{1,5}\b/gi,
+  /\b[\w-]+\.(?:exe|dll|ps1|psm1|bat|cmd|sh|py|js|vbs|scr|msi|jar)\b/gi,
+  /\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|ru|cn|info|biz|xyz|top|club|online|site|dev|co|uk|de|fr|gov|edu|int|mil|app|cloud)\b/gi,
+  /(?:\/[\w.-]+){2,}/g,
+  /\b(?:Event ID|EventID|Process ID|Parent Process ID|PID|PPID)\s*[:#]?\s*\d+\b/gi,
+  /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g,
+  /\bHK(?:EY_LOCAL_MACHINE|EY_CURRENT_USER|LM|CU|CR|U|CC)\\[^\s,;]+/gi,
+];
+
+// Highlights evidence values inside `text` as compact chips so an analyst
+// can tell observed-evidence apart from explanatory prose at a glance.
+// Backend-supplied `evidence` (exact values drawn from the stage's own
+// structured result) always wins over pattern detection for the same span.
+function highlightEvidence(text, evidenceMap) {
+  if (!text) return "";
+  const ranges = [];
+  const claim = (start, end) => {
+    if (start >= end) return;
+    for (const r of ranges) { if (start < r.end && end > r.start) return; }
+    ranges.push({ start, end });
+  };
+
+  const evidenceValues = Object.values(evidenceMap || {})
+    .filter((v) => v !== null && v !== undefined && String(v).trim().length > 1)
+    .map(String)
+    .sort((a, b) => b.length - a.length);
+  for (const value of evidenceValues) {
+    const re = new RegExp(escapeRegExp(value), "g");
+    let match;
+    while ((match = re.exec(text))) {
+      claim(match.index, match.index + match[0].length);
+    }
+  }
+
+  for (const pattern of EVIDENCE_PATTERNS) {
+    pattern.lastIndex = 0;
+    let match;
+    while ((match = pattern.exec(text))) {
+      claim(match.index, match.index + match[0].length);
+      if (match[0].length === 0) pattern.lastIndex += 1;
+    }
+  }
+
+  if (!ranges.length) return escapeHTML(text);
+  ranges.sort((a, b) => a.start - b.start);
+  let out = "";
+  let cursor = 0;
+  for (const { start, end } of ranges) {
+    if (start < cursor) continue;
+    out += escapeHTML(text.slice(cursor, start));
+    out += `<span class="evidence-chip">${escapeHTML(text.slice(start, end))}</span>`;
+    cursor = end;
+  }
+  out += escapeHTML(text.slice(cursor));
+  return out;
+}
+
+const FINDING_CATEGORY_LABELS = { observed: "Observed", correlation: "Correlation", assessment: "Assessment" };
+
+function findings(workspace, stageKey) {
+  if (!KEY_FINDINGS_STAGES.has(stageKey)) return "";
+  const items = workspace?.overview?.key_findings_by_stage?.[stageKey] || [];
+  if (!items.length) return emptyState("No key findings have been distilled for this stage yet.");
+  return `<ul class="data-list findings-list">${items.slice(0, 5).map((item) => {
+    const categoryLabel = FINDING_CATEGORY_LABELS[item.category] || "";
+    return `<li class="finding-item">
+      <div>
+        <div class="finding-heading"><strong>${escapeHTML(item.title || "Finding")}</strong>${categoryLabel ? `<span class="finding-category cat-${escapeHTML(item.category)}">${escapeHTML(categoryLabel)}</span>` : ""}</div>
+        <p>${highlightEvidence(item.desc || "", item.evidence)}</p>
+      </div>
+      ${item.confidence ? `<span>${escapeHTML(item.confidence)}</span>` : ""}
+    </li>`;
+  }).join("")}</ul>`;
 }
 
 function actionControls(stage) {
@@ -1275,7 +1369,7 @@ export async function renderWorkspace(root, { navigate, route }) {
       <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div><div class="stage-actions" style="margin:0"><button class="action-button" id="load-raw">View Raw Incident JSON</button></div></section>
       <section class="panel" id="case-context-panel"><h2>Case context</h2>${caseContext(detail)}</section>
       <section class="panel" id="workflow-panel" style="margin-top:1rem"></section>
-      <section class="workspace-grid${selectedStageKey === "parsing" ? " stage-only" : ""}" id="stage-workspace-grid"><article class="panel" id="key-findings-panel" ${selectedStageKey === "parsing" ? "hidden" : ""}><h2>Key findings</h2>${findings(detail.workspace)}</article><article class="panel" id="stage-output"></article></section>`;
+      <section class="workspace-grid${KEY_FINDINGS_STAGES.has(selectedStageKey) ? "" : " stage-only"}" id="stage-workspace-grid"><article class="panel" id="key-findings-panel" ${KEY_FINDINGS_STAGES.has(selectedStageKey) ? "" : "hidden"}><h2>Key findings</h2>${findings(detail.workspace, selectedStageKey)}</article><article class="panel" id="stage-output"></article></section>`;
     root.querySelector("#load-raw").addEventListener("click", async () => {
       const modal = openModal("Raw Incident JSON");
       modal.setBody(loadingState("Loading raw incident…"));
@@ -1296,9 +1390,12 @@ export async function renderWorkspace(root, { navigate, route }) {
       workflowRoot.innerHTML = `<div class="page-header"><div><h2>Workflow</h2><p>${escapeHTML(workflow.workflow_status)} · run ${escapeHTML(workflow.run_id || "not started")}</p></div></div>${workflow.progress_note ? `<p class="notice">${escapeHTML(workflow.progress_note)}</p>` : ""}<div class="stage-grid">${stageCards(workflow.stages)}</div>`;
       const selected = workflow.stages.find((stage) => stage.key === selectedStageKey) || workflow.stages[0];
       selectedStageKey = selected.key;
-      const isParsingStage = selected.key === "parsing";
-      keyFindingsPanel.hidden = isParsingStage;
-      stageWorkspaceGrid.classList.toggle("stage-only", isParsingStage);
+      const showKeyFindings = KEY_FINDINGS_STAGES.has(selected.key);
+      keyFindingsPanel.hidden = !showKeyFindings;
+      stageWorkspaceGrid.classList.toggle("stage-only", !showKeyFindings);
+      if (showKeyFindings) {
+        keyFindingsPanel.innerHTML = `<h2>Key findings</h2>${findings(detail.workspace, selected.key)}`;
+      }
       renderSelectedStage(outputRoot, selected, caseId, workflow.last_error, handleAction, (key) => {
         selectedStageKey = key;
         renderWorkflow();
@@ -1324,7 +1421,6 @@ export async function renderWorkspace(root, { navigate, route }) {
         fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/workflow`),
       ]);
       caseContextPanel.innerHTML = `<h2>Case context</h2>${caseContext(detail)}`;
-      keyFindingsPanel.innerHTML = `<h2>Key findings</h2>${findings(detail.workspace)}`;
       renderWorkflow();
     };
 
