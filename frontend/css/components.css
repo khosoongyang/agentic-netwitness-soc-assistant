@@ -152,9 +152,17 @@
   border-color: #315d87;
 }
 
-.badge.state-locked,
-.badge.state-not_started {
+.badge.state-locked {
   color: #8290a4;
+}
+
+/* Pending / not-yet-started workflow stage: a muted amber/gold "waiting"
+   tone, kept deliberately distinct from Completed (green), Processing
+   (blue), Failed (pink/red) and Locked (blue-grey) so analysts can tell
+   at a glance that a stage simply hasn't run yet. */
+.badge.state-not_started {
+  color: #e3c07a;
+  border-color: #5a4726;
 }
 
 .badge.severity-medium {
