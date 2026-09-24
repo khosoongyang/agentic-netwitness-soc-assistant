@@ -161,14 +161,12 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onContinue
   if (stage.state === "in_progress") {
     root.innerHTML = `
       ${header}
-      <p class="notice">Status: Running</p>
       ${loadingState("Parsing incident…")}
       <div id="action-status" aria-live="polite"></div>
     `;
   } else if (stage.state === "failed") {
     root.innerHTML = `
       ${header}
-      <p class="notice">Status: Failed</p>
       <div class="state-panel error"><div>${escapeHTML(lastError || "Parsing failed for this run.")}</div></div>
       ${parsingActionControls(stage)}
       <div id="action-status" aria-live="polite"></div>
@@ -177,7 +175,6 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onContinue
     const downloadButton = `<a class="action-button" href="/api/cases/${encodeURIComponent(caseId)}/stages/parsing/download">Download JSON</a>`;
     root.innerHTML = `
       ${header}
-      <p class="notice">Status: Completed${stage.updated_at ? ` · Last updated ${formatDate(stage.updated_at)}` : ""}</p>
       <div id="action-status" aria-live="polite"></div>
       <section class="panel" style="margin-top:1rem"><h3>Parser Summary</h3>${parserSummaryCard(stage.result)}</section>
       <section class="panel" style="margin-top:1rem">
@@ -190,7 +187,6 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onContinue
     // not_started
     root.innerHTML = `
       ${header}
-      <p class="notice">Status: Not started</p>
       ${parsingActionControls(stage)}
       <div id="action-status" aria-live="polite"></div>
     `;
