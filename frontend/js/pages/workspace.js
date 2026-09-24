@@ -119,7 +119,6 @@ function actionControls(stage) {
 function parserSummaryRows(result) {
   const generatedAt = result.generated_at || result.ai_summary_generated_at;
   return [
-    ["Status", result.status ? statusBadge(result.status) : null],
     ["Parser Confidence", result.parser_confidence ? confidenceBadge(result.parser_confidence) : null],
     ["Recommended Next Action", result.recommended_next_action ? escapeHTML(result.recommended_next_action) : null],
     ["Run ID", result.run_id ? `<span class="mono">${escapeHTML(result.run_id)}</span>` : null],
