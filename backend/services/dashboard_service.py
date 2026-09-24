@@ -59,7 +59,7 @@ def get_dashboard(
     *,
     database_path: str | Path | None = None,
     pipeline_database_path: str | Path | None = None,
-    recent_limit: int = 8,
+    recent_limit: int = 200,
 ) -> dict[str, Any]:
     """Return high-level metrics and recent cases as structured JSON."""
     placeholders = ",".join("?" for _ in _CLOSED_STATUSES)
@@ -100,7 +100,7 @@ def get_dashboard(
             "threat_intel_status, investigation_status, reporting_status "
             "FROM incidents ORDER BY COALESCE(last_seen, updated, created, '') DESC "
             "LIMIT ?",
-            (max(1, min(int(recent_limit), 20)),),
+            (max(1, min(int(recent_limit), 200)),),
         ).fetchall()
         try:
             fetch_count = int(connection.execute("SELECT COUNT(*) FROM fetch_log").fetchone()[0])

@@ -236,6 +236,35 @@
   overflow-x: auto;
 }
 
+/* Recent cases can list up to 200 rows; scroll inside a fixed-height
+   panel instead of growing the page, with the header pinned in view. */
+.recent-cases-wrap {
+  max-height: 28rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #35485f var(--surface-raised);
+}
+
+.recent-cases-wrap::-webkit-scrollbar {
+  width: 0.55rem;
+}
+
+.recent-cases-wrap::-webkit-scrollbar-track {
+  background: var(--surface-raised);
+}
+
+.recent-cases-wrap::-webkit-scrollbar-thumb {
+  background: #35485f;
+  border-radius: 999px;
+}
+
+.recent-cases-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
 .case-context-table-wrap {
   border: 1px solid var(--border-soft);
   border-radius: 0.7rem;

@@ -17,7 +17,7 @@ function summaryCard(icon, variant, label, value) {
 
 function recentCases(items) {
   if (!items.length) return emptyState("No cases have been recorded yet.");
-  return `<div class="table-wrap"><table><thead><tr><th>Case</th><th>Severity</th><th>Status</th><th>Stage</th><th>Last seen</th></tr></thead><tbody>${items.map((item) => `
+  return `<div class="table-wrap recent-cases-wrap"><table class="recent-cases-table"><thead><tr><th>Case</th><th>Severity</th><th>Status</th><th>Stage</th><th>Last seen</th></tr></thead><tbody>${items.map((item) => `
     <tr class="case-row" data-case-id="${escapeHTML(item.id)}" tabindex="0" role="button" aria-label="Open incident ${escapeHTML(item.id)}: ${escapeHTML(item.title)}">
       <td><span class="case-link mono">${escapeHTML(item.id)}</span><br>${escapeHTML(item.title)}</td>
       <td>${severityBadge(item.severity)}</td>
