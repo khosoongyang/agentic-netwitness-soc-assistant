@@ -1350,7 +1350,7 @@ export async function renderWorkspace(root, { navigate, route }) {
         if (result.run_id) {
           await pollRun(result.run_id, (run) => {
             const statusRoot = outputRoot.querySelector("#action-status");
-            if (statusRoot) statusRoot.innerHTML = `<p class="notice">${escapeHTML(run.stage || stage.name)} · ${escapeHTML(run.stage_status || run.status)}${run.progress?.note ? ` · ${escapeHTML(run.progress.note)}` : ""}</p>`;
+            if (statusRoot) statusRoot.innerHTML = run.progress?.note ? `<p class="notice">${escapeHTML(run.progress.note)}</p>` : "";
           });
           await refreshWorkflow();
         }
