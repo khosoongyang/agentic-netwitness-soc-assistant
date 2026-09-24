@@ -490,6 +490,14 @@ def _ensure_workflow_columns() -> None:
             "investigation_attempt":     "INTEGER NOT NULL DEFAULT 1",
             "threat_intel_attempt":      "INTEGER NOT NULL DEFAULT 1",
             "reporting_attempt":         "INTEGER NOT NULL DEFAULT 1",
+            # Triage's own attempt/updated_at columns — added so Triage can
+            # join threat_intel/investigation/reporting on the same durable
+            # claim_stage()/complete_stage() per-stage worker machinery
+            # instead of only ever running bundled with Parsing inside
+            # start_run()/run_until_triage_approval(). See rerun_stage()'s
+            # and begin_stage()'s own docstrings for the full rationale.
+            "triage_attempt":            "INTEGER NOT NULL DEFAULT 1",
+            "triage_updated_at":         "TEXT",
             "ioc_correlation_status":       "TEXT",
             "ioc_correlation_result_json":  "TEXT",
             "ioc_correlation_updated_at":   "TEXT",
@@ -1429,25 +1437,33 @@ def get_latest_approved_reporting_set(incident_id: str, run_id: str) -> dict | N
 def rerun_stage(incident_id: str, run_id: str, stage: str) -> dict:
     """[FYP-FUNCTION] Re-run a Completed/Terminal Downstream Stage
     [FYP-RERUN] [FYP-STAGE-LOCK] [FYP-STATE] [FYP-EVALUATOR]
-    Params: incident_id, run_id (str), stage (str — one of "threat_intel",
-    "investigation", "reporting"; anything else raises immediately).
+    Params: incident_id, run_id (str), stage (str — one of "triage",
+    "threat_intel", "investigation", "reporting"; anything else raises
+    immediately).
     Requires: run_id matches the row's current run_id, workflow_status !=
     "Processing" (can't rerun while another stage is actively running),
     `stage`'s own status column is one of that stage's
-    allowed_current_statuses (Threat Intel: Complete/Complete with
-    Warnings/Failed; Investigation: Awaiting Approval/Approved/Failed;
-    Reporting: Awaiting Approval/Approved/Failed/Rejected — "Rejected" is
-    deliberately included so Reject -> Re-run is a reachable analyst path;
-    without it a rejected Reporting attempt would be stuck with no way
-    forward), AND the stage's own upstream prerequisite still holds
-    (threat_intel needs triage_status=="Approved"; investigation needs
-    threat_intel_status in Complete/Complete with Warnings; reporting needs
-    investigation_status=="Approved").
+    allowed_current_statuses (Triage: Awaiting Approval/Approved/Failed/
+    Rejected; Threat Intel: Complete/Complete with Warnings/Failed;
+    Investigation: Awaiting Approval/Approved/Failed; Reporting: Awaiting
+    Approval/Approved/Failed/Rejected — "Rejected" is deliberately included
+    on Triage/Reporting so Reject -> Re-run is a reachable analyst path;
+    without it a rejected attempt would be stuck with no way forward), AND
+    the stage's own upstream prerequisite still holds (triage needs
+    parsing_status=="Complete"; threat_intel needs triage_status==
+    "Approved"; investigation needs threat_intel_status in Complete/
+    Complete with Warnings; reporting needs investigation_status==
+    "Approved").
     Writes: `stage`_status="Processing", `stage`_result_json=None,
     `stage`_updated_at=None, workflow_status="Processing",
     approval_stage=None, approved_by/approved_at/approval_comments=None,
     every worker_* lease column=None, last_error=None,
-    workflow_updated_at=now. If stage=="threat_intel", ALSO clears
+    workflow_updated_at=now. If stage=="triage", ALSO clears
+    threat_intel_status/threat_intel_result_json/threat_intel_updated_at,
+    investigation_status/investigation_result_json/investigation_updated_at,
+    and reporting_status/reporting_result_json/reporting_updated_at back to
+    Pending/None (every downstream stage invalidated — Triage feeds all
+    three). If stage=="threat_intel", ALSO clears
     investigation_status/investigation_result_json/investigation_updated_at
     and reporting_status/reporting_result_json/reporting_updated_at back to
     Pending/None (both downstream stages invalidated). If
@@ -1475,15 +1491,19 @@ def rerun_stage(incident_id: str, run_id: str, stage: str) -> dict:
     naturally lands on a new stage_attempt without colliding with any
     prior row, so every past decision (including ones later superseded by
     a rerun) stays permanently visible in get_approval_history().
-    [FYP-STAGE-LOCK] Parsing and Triage do NOT go through this function —
-    they use start_run(..., allow_retry=True) instead, because the
-    existing entry point runs those two stages as one fresh, run-scoped
-    process; this transition only ever handles the three post-approval
-    agent stages, and always leaves the restarted stage's status at
-    "Processing" (not "Pending") for soc_workflow.run_stage_chain() to
-    pick straight up without a separate begin_stage() call."""
+    [FYP-STAGE-LOCK] Parsing does NOT go through this function — it uses
+    start_run(..., allow_retry=True) instead, because the case-page Parsing
+    action mints a whole new run (Parsing is the root of the pipeline: a
+    genuine re-run legitimately invalidates everything downstream of it,
+    which starting a fresh run_id naturally achieves). Triage now DOES go
+    through this function (and begin_stage() for a first start) — it
+    re-runs Triage alone, against the SAME run_id, reusing Parsing's
+    already-persisted output rather than re-executing Parsing. It always
+    leaves the restarted stage's status at "Processing" (not "Pending")
+    for soc_workflow.run_stage_chain() to pick straight up without a
+    separate begin_stage() call."""
     stage = str(stage or "").strip().lower()
-    if stage not in {"threat_intel", "investigation", "reporting"}:
+    if stage not in {"triage", "threat_intel", "investigation", "reporting"}:
         raise ApprovalConflictError(
             f"{stage or 'stage'} cannot be re-run with this transition")
 
@@ -1510,6 +1530,12 @@ def rerun_stage(incident_id: str, run_id: str, stage: str) -> dict:
                 f"{stage} cannot be re-run while another stage is processing")
 
         allowed_current_statuses = {
+            "triage": {
+                # "Rejected" is included so a rejected Triage attempt can be
+                # re-run (Reject -> Re-run is a required analyst path, same
+                # reasoning as Reporting's "Rejected" below).
+                "Awaiting Approval", "Approved", "Failed", "Rejected",
+            },
             "threat_intel": {
                 "Complete", "Complete with Warnings", "Failed",
             },
@@ -1525,6 +1551,7 @@ def rerun_stage(incident_id: str, run_id: str, stage: str) -> dict:
             },
         }
         upstream_ready = {
+            "triage": row["parsing_status"] == "Complete",
             "threat_intel": row["triage_status"] == "Approved",
             "investigation": row["threat_intel_status"]
                 in {"Complete", "Complete with Warnings"},
@@ -1559,7 +1586,19 @@ def rerun_stage(incident_id: str, run_id: str, stage: str) -> dict:
             "last_error": None,
             "workflow_updated_at": now,
         }
-        if stage == "threat_intel":
+        if stage == "triage":
+            sets.update({
+                "threat_intel_status": "Pending",
+                "threat_intel_result_json": None,
+                "threat_intel_updated_at": None,
+                "investigation_status": "Pending",
+                "investigation_result_json": None,
+                "investigation_updated_at": None,
+                "reporting_status": "Pending",
+                "reporting_result_json": None,
+                "reporting_updated_at": None,
+            })
+        elif stage == "threat_intel":
             sets.update({
                 "investigation_status": "Pending",
                 "investigation_result_json": None,
@@ -1581,7 +1620,8 @@ def rerun_stage(incident_id: str, run_id: str, stage: str) -> dict:
         # value (to stamp stage_attempt on whatever gets persisted), it
         # never increments it itself — this is the one place a stage's
         # attempt count actually advances.
-        attempt_col = {"threat_intel": "threat_intel_attempt",
+        attempt_col = {"triage": "triage_attempt",
+                      "threat_intel": "threat_intel_attempt",
                       "investigation": "investigation_attempt",
                       "reporting": "reporting_attempt"}[stage]
         sets[attempt_col] = int(row[attempt_col] or 1) + 1
@@ -1678,10 +1718,11 @@ def retry_threat_intel(incident_id: str, run_id: str) -> dict:
 # [FYP-STATE] Per-stage "is the upstream prerequisite satisfied" predicate,
 # shared by begin_stage() (below) and mirrored (duplicated, not imported —
 # kept a plain dict of column checks in each place) by rerun_stage()'s own
-# upstream_ready dict. threat_intel needs Triage approved; investigation
-# needs Threat Intel finished (successfully or with warnings); reporting
-# needs Investigation approved.
+# upstream_ready dict. triage needs Parsing complete; threat_intel needs
+# Triage approved; investigation needs Threat Intel finished (successfully
+# or with warnings); reporting needs Investigation approved.
 _STAGE_UPSTREAM_READY = {
+    "triage": lambda row: row["parsing_status"] == "Complete",
     "threat_intel": lambda row: row["triage_status"] == "Approved",
     "investigation": lambda row: row["threat_intel_status"]
         in {"Complete", "Complete with Warnings"},
@@ -1692,8 +1733,9 @@ _STAGE_UPSTREAM_READY = {
 def begin_stage(incident_id: str, run_id: str, stage: str) -> dict:
     """[FYP-FUNCTION] Start a Stage a Prior Approval Unlocked but Left Pending
     [FYP-STAGE-LOCK] [FYP-STATE] [FYP-EVALUATOR]
-    Params: incident_id, run_id (str), stage (str — one of "threat_intel",
-    "investigation", "reporting"; anything else raises immediately).
+    Params: incident_id, run_id (str), stage (str — one of "triage",
+    "threat_intel", "investigation", "reporting"; anything else raises
+    immediately).
     Requires: run_id matches the row's current run_id, workflow_status !=
     "Processing", `stage`'s own status column =="Pending" (i.e. an
     approve_*() call already unlocked it but nothing has started it yet),
@@ -1777,6 +1819,7 @@ _LEASE_DURATION_SECONDS  = 45   # a claim is valid this long without renewal
 _HEARTBEAT_RENEW_SECONDS = 15   # renewed this often while a stage actually runs
 
 _STAGE_ATTEMPT_COLUMN = {
+    "triage": "triage_attempt",
     "threat_intel": "threat_intel_attempt",
     "investigation": "investigation_attempt",
     "reporting": "reporting_attempt",
@@ -2041,6 +2084,7 @@ def complete_stage(incident_id: str, run_id: str, worker_id: str, *,
     unaffected."""
     status_column = f"{stage}_status"
     updated_at_col = {
+        "triage": "triage_updated_at",
         "threat_intel": "threat_intel_updated_at",
         "investigation": "investigation_updated_at",
         "reporting": "reporting_updated_at",

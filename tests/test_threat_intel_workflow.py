@@ -797,6 +797,31 @@ def test_resume_dispatches_directly_to_reporting_when_investigation_already_appr
 # [FYP-CALLS] Calls: `fromisoformat`, `isoformat`, `now`, `timedelta`, `total_seconds`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
+def test_run_stage_chain_dispatches_triage_before_threat_intel_and_leaves_parsing_alone(monkeypatch):
+    """Regression test for the "Run Triage re-runs Parsing" bug at the
+    dispatcher level: run_stage_chain() must call run_triage_stage() (never
+    resume_after_triage_approval(), which is the Threat Intelligence
+    runner) when triage_status=="Processing", and must not advance into
+    Threat Intelligence itself — Triage always pauses at "Awaiting
+    Approval", so threat_intel_status stays "Pending" until the analyst
+    approves and explicitly starts it. parsing_status must also be left
+    untouched throughout."""
+    run_id = wss.start_run("INC-1")
+    wss._guarded_update("INC-1", run_id, {
+        "parsing_status": "Complete",
+        "triage_status": "Processing",
+        "threat_intel_status": "Pending",
+        "workflow_status": "Processing"})
+    fake_triage = Mock(return_value={"ticket": {"unc": "#1"}})
+    fake_resume = Mock(side_effect=AssertionError("must not be called"))
+    monkeypatch.setattr(sw, "run_triage_stage", fake_triage)
+    monkeypatch.setattr(sw, "resume_after_triage_approval", fake_resume)
+    sw.run_stage_chain("INC-1", run_id)
+    fake_triage.assert_called_once_with("INC-1", run_id)
+    fake_resume.assert_not_called()
+    assert wss.get_state("INC-1")["parsing_status"] == "Complete"
+
+
 def test_worker_start_grace_period_suppresses_false_interruption():
     now = datetime.now(timezone.utc)
     row_starting = {"workflow_status": "Processing",

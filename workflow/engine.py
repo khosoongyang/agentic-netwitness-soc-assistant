@@ -3267,6 +3267,160 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     return ctx
 
 
+def run_triage_stage(incident_id: str, run_id: str) -> dict:
+    """
+    [FYP-FUNCTION] [FYP-ENTRY-POINT] Durable Triage Stage Runner
+
+    Durable, per-stage Triage worker — the counterpart to
+    resume_after_triage_approval()/run_investigation_stage()/
+    run_reporting_stage() below for the one stage that, before this
+    function existed, only ever ran bundled together with Parsing inside
+    run_until_triage_approval(). That coupling was fine for the original
+    single "Start Process" button, but it meant the per-stage workspace
+    UI's "Run Triage"/"Re-run Triage" buttons (workflow/commands.py::
+    start_stage()/rerun_stage()) had no way to execute Triage alone —
+    every click re-ran Parsing too, even when Parsing had already
+    completed. This function is the fix: it takes ONLY incident_id/run_id,
+    reloads the persisted Parsing result and raw incident for THIS run
+    from SQLite/disk (load_parsing_result_for_run()/
+    load_raw_incident_for_run()) rather than re-executing Parsing, and
+    follows the exact same claim_stage -> LeaseRenewer -> do the work ->
+    complete_stage -> release_stage_lease shape as the other three durable
+    stage runners in this module.
+
+    Safe to call from a fresh process or a background thread, as long as
+    triage_status == "Processing" (set atomically by
+    workflow_state_store.begin_stage()/.rerun_stage(), exactly like the
+    other three stages). Ends in "Awaiting Approval" on success (the
+    mandatory SOC Analyst approval gate, same as the combined path) or
+    "Failed" on any exception/error result. Bypasses TriageAgent's own
+    result cache (force=True) — an explicit analyst Run/Re-run click must
+    always actually execute, never silently reuse a stale cached ticket
+    from an earlier run of the same incident.
+
+    run_until_triage_approval() (above) remains the entry point for a
+    genuinely fresh case (no run_id yet) and for the standalone Parsing
+    action (parsing_only=True) — this function is Triage's OWN entry point
+    once Parsing has already produced a persisted result for the current
+    run.
+
+    Args:
+        incident_id: the incident this run belongs to.
+        run_id: the specific durable run being resumed.
+
+    Returns:
+        The triage result dict (TriageAgent.triage()'s native shape) on
+        success, or {"status": "failed", "errors": [...]} on failure.
+        Raises StageClaimError if this worker never actually owned/kept
+        the stage lease (a losing race, not a crash).
+
+    [FYP-CALLS]: claim_stage(), LeaseRenewer, load_parsing_result_for_run(),
+    load_raw_incident_for_run(), run_triage(), generate_triage_ai_summary(),
+    ioc_correlation.correlate_iocs(), wv.mandatory_triage_approval(),
+    complete_stage(), release_stage_lease().
+    [FYP-USED-BY]: run_stage_chain() (this module), via
+    workflow/commands.py::start_stage()/rerun_stage() for the "triage"
+    stage.
+    """
+    try:
+        worker_id, _stage_attempt = claim_stage(
+            incident_id, run_id, stage="triage",
+            status_column="triage_status", expect_status="Processing")
+    except StageClaimError:
+        raise   # run_stage_chain treats this as "already being handled elsewhere"
+
+    renewer = LeaseRenewer(incident_id, run_id, worker_id)
+    renewer.start()
+    try:
+        parsing_result = load_parsing_result_for_run(incident_id, run_id) or {}
+        incident = load_raw_incident_for_run(incident_id, run_id) or {}
+        inc_id = str(incident.get("id") or incident.get("incidentId") or incident_id)
+        title = incident.get("title") or incident.get("name") or "Untitled"
+        parsed_context = parsing_result.get("processed_alert") or None
+
+        _log("TRIAGE", f"running triage for incident {inc_id}")
+        try:
+            triage_result = run_triage(incident, parsed_context=parsed_context, force=True)
+        except Exception as exc:
+            triage_result = {"error": str(exc)[:500]}
+
+        if triage_result.get("error"):
+            _log("TRIAGE", f"FAILED: {triage_result['error']}")
+            if renewer.lease_lost.is_set():
+                raise StageClaimError(f"triage: worker {worker_id} lost its lease mid-run")
+            complete_stage(
+                incident_id, run_id, worker_id, stage="triage",
+                result_column="triage_result_json", result=triage_result,
+                status_updates={"triage_status": "Failed", "workflow_status": "Failed"})
+            wss.set_last_error(incident_id, run_id, f"triage failed: {triage_result['error']}"[:500])
+            return {"status": "failed", "errors": [triage_result["error"]]}
+
+        ticket = triage_result["ticket"]
+        cls = ticket.get("classification", "")
+        _log("TRIAGE", f"complete — ticket {ticket.get('unc')} classification={cls}")
+
+        triage_result.update(generate_triage_ai_summary(triage_result))
+
+        pipeline_insert("initial_ticket", {
+            "id": ticket.get("unc") or f"TKT_{inc_id}", "incident_id": inc_id,
+            "title": f"Ticket {ticket.get('unc')} — {title}", "severity": cls,
+            "summary": ticket.get("summary") or "", "ticket": ticket})
+
+        # One-time internal IOC correlation snapshot — best-effort/non-fatal,
+        # same as run_until_triage_approval()'s combined path.
+        try:
+            from agents.investigation.tools.ioc_correlation import correlate_iocs
+            _corr = correlate_iocs(incident, triage_result)
+            _corr_status = "Complete" if _corr.get("available") else "Complete with Warnings"
+            wss.save_ioc_correlation_result(inc_id, run_id, status=_corr_status, result=_corr)
+        except Exception as exc:
+            _log("WORKFLOW", f"IOC correlation snapshot failed (non-fatal, supporting "
+                             f"context only): {exc}")
+            try:
+                wss.save_ioc_correlation_result(
+                    inc_id, run_id, status="Failed",
+                    result={"available": False, "reason": str(exc)[:300]})
+            except Exception:
+                pass
+
+        gate = wv.mandatory_triage_approval(incident_id=inc_id, triage_result=triage_result)
+
+        if renewer.lease_lost.is_set():
+            raise StageClaimError(f"triage: worker {worker_id} lost its lease mid-run")
+        ok = complete_stage(
+            incident_id, run_id, worker_id, stage="triage",
+            result_column="triage_result_json", result=triage_result,
+            status_updates={
+                "triage_status": "Awaiting Approval",
+                "workflow_status": "Awaiting Approval",
+                "approval_stage": gate["approval_stage"],
+            })
+        if not ok:
+            raise StageClaimError(f"triage: lease for {incident_id}/{run_id} "
+                                  "was reassigned before this result could be saved")
+        _log("WORKFLOW", f"paused for mandatory SOC analyst approval "
+                         f"(ticket={ticket.get('unc')}, next={gate['next_stage_after_approval']})")
+        return triage_result
+    except StageClaimError:
+        raise   # a losing race is not a crash — run_stage_chain just stops quietly
+    except Exception as exc:
+        try:
+            complete_stage(
+                incident_id, run_id, worker_id, stage="triage",
+                result_column="triage_result_json",
+                result={"status": "failed", "errors": [str(exc)[:300]]},
+                status_updates={"triage_status": "Failed", "workflow_status": "Failed"})
+        except Exception:
+            pass
+        wss.set_last_error(incident_id, run_id, f"triage failed: {str(exc)[:300]}")
+        _log("TRIAGE", f"FAILED: {exc}")
+        return {"status": "failed", "errors": [str(exc)[:300]]}
+    finally:
+        renewer.stop()
+        release_stage_lease(incident_id, run_id, worker_id)   # no-op if complete_stage()
+                                                              # already cleared it
+
+
 def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
     """
     [FYP-FUNCTION] [FYP-ENTRY-POINT] Durable Threat-Intelligence Stage Runner
@@ -3904,26 +4058,34 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
     """
     [FYP-FUNCTION] [FYP-ENTRY-POINT] State-Aware Stage Dispatcher
     [FYP-EVALUATOR]: THE function app.py hands to background threads
-    (`threading.Thread(target=wf_run_stage_chain, ...)`) every time it
-    kicks off or resumes work after Triage approval — the single place that
-    decides "what runs next" for a given run_id. Read this alongside
+    (`threading.Thread(target=wf_run_stage_chain, ...)`) every time a
+    per-stage "Run"/"Re-run" action or Approve puts a stage into
+    "Processing" — the single place that decides "what runs next" for a
+    given run_id. Read this alongside run_triage_stage()/
     resume_after_triage_approval()/run_investigation_stage()/
-    run_reporting_stage() to see the full Threat Intel -> Investigation ->
-    Reporting chain and how each stage hands off to the next purely via
-    workflow_state_store's *_status columns.
+    run_reporting_stage() to see the full Triage -> Threat Intel ->
+    Investigation -> Reporting chain and how each stage hands off to the
+    next purely via workflow_state_store's *_status columns.
 
     Top-level worker entry point AND what "Resume Workflow" calls. A
     state-aware dispatcher: reads current state ONCE and resumes
     whichever stage is actually 'Processing', falling through to the
     next stage only if that stage's own outcome says to continue. This
-    means a fresh run (started right after Approve Triage) and an
-    interrupted-mid-Investigation resume both correctly converge on the
-    right stage — it does NOT always restart from Threat Intelligence.
+    means a fresh run (started right after an approval unlocks the next
+    stage) and an interrupted-mid-Investigation resume both correctly
+    converge on the right stage — it does NOT always restart from Triage
+    or Threat Intelligence.
 
-    [FYP-FLOW]: three sequential `if state[...] == "Processing":` checks
-    (threat_intel_status -> investigation_status -> reporting_status), each
-    guarded so it only proceeds to the NEXT stage's check if the current
-    one both succeeded AND didn't end in a normal pause:
+    [FYP-FLOW]: four sequential `if state[...] == "Processing":` checks
+    (triage_status -> threat_intel_status -> investigation_status ->
+    reporting_status), each guarded so it only proceeds to the NEXT
+    stage's check if the current one both succeeded AND didn't end in a
+    normal pause:
+      - triage: any failure -> return (don't touch threat_intel). Success
+        always ends at "Awaiting Approval", which leaves threat_intel_status
+        at "Pending" (not "Processing") — so the next check below simply
+        finds nothing to do, with no explicit early-return needed for the
+        pause case (unlike investigation's, below).
       - threat_intel: any failure -> return (don't touch investigation).
       - investigation: result status in {"failed", "awaiting_approval"} ->
         return (awaiting_approval is a SUCCESSFUL pause requiring analyst
@@ -3939,7 +4101,7 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
     superseding this one (e.g. force-retry) — it silently does nothing
     rather than resuming stale work.
 
-    [FYP-ERROR] [FYP-FALLBACK]: every StageClaimError from the three stage
+    [FYP-ERROR] [FYP-FALLBACK]: every StageClaimError from the four stage
     functions is caught locally and treated as "someone else is already
     handling this — stop quietly," not a caller-visible error. This
     function itself never raises: "Pure backend function: no UI-framework
@@ -3955,7 +4117,7 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
         workflow_state_store's persisted status columns (this function is
         fire-and-forget from the caller's point of view).
 
-    [FYP-CALLS]: resume_after_triage_approval(), run_investigation_stage(),
+    [FYP-CALLS]: run_triage_stage(), resume_after_triage_approval(), run_investigation_stage(),
     run_reporting_stage(), workflow_state_store.get_state().
     [FYP-USED-BY]: app.py, imported as `wf_run_stage_chain` — launched via
     `threading.Thread(target=wf_run_stage_chain, args=(incident_id, run_id))`
@@ -3965,6 +4127,20 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
     state = wss.get_state(incident_id)
     if not state or state["run_id"] != run_id:
         return   # superseded by a newer run — nothing to resume here
+
+    if state["triage_status"] == "Processing":
+        try:
+            result = run_triage_stage(incident_id, run_id)
+        except StageClaimError:
+            return
+        if result.get("status") == "failed":
+            return   # Triage always pauses at "Awaiting Approval" on success —
+                     # threat_intel_status stays "Pending" until the analyst
+                     # explicitly approves Triage and starts it, so simply
+                     # falling through here (rather than returning) is safe:
+                     # the next check below will correctly see "Pending", not
+                     # "Processing", and do nothing further.
+        state = wss.get_state(incident_id)
 
     if state["threat_intel_status"] == "Processing":
         try:

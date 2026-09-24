@@ -190,7 +190,12 @@ def _launch_fresh(
     allow_retry: bool,
     executor: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
-    """Launch the existing Parsing/Triage entry point and observe its run ID."""
+    """Launch the existing Parsing entry point (run_until_triage_approval,
+    parsing_only=True) and observe its run ID. Only ever called with
+    stage="parsing" — start_stage()/rerun_stage() route every other stage,
+    including Triage, through begin_stage()/rerun_stage() + run_stage_chain()
+    instead, which act on the current run_id in place rather than minting a
+    new one."""
     with _FRESH_LAUNCH_LOCK:
         before = _state_or_error(case_id)
         if before.get("workflow_status") == "Processing":
@@ -270,7 +275,7 @@ def start_stage(
 ) -> dict[str, Any]:
     """Start an eligible stage through the existing canonical transition."""
     stage = normalise_stage(stage)
-    if stage in {"parsing", "triage"}:
+    if stage == "parsing":
         return _launch_fresh(
             str(case_id), stage, allow_retry=False, executor=executor
         )
@@ -300,7 +305,7 @@ def rerun_stage(
 ) -> dict[str, Any]:
     """Re-run a stage using the legacy UI's exact canonical path."""
     stage = normalise_stage(stage)
-    if stage in {"parsing", "triage"}:
+    if stage == "parsing":
         return _launch_fresh(
             str(case_id), stage, allow_retry=True, executor=executor
         )
@@ -466,7 +471,7 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
     processing_stage = _processing_stage(state)
     resume_enabled = bool(
         workflow_busy
-        and processing_stage in {"threat_intel", "investigation", "reporting"}
+        and processing_stage in {"triage", "threat_intel", "investigation", "reporting"}
         and not _live_lease(state)
     )
     upstream_ready = {
@@ -580,12 +585,12 @@ def resume_workflow(
     *,
     executor: Callable[..., Any] | None = None,
 ) -> dict[str, Any]:
-    """Resume a persisted downstream Processing stage via run_stage_chain."""
+    """Resume a persisted Processing stage via run_stage_chain."""
     state = _state_or_error(case_id)
     run_id = _current_run(state)
     stage = _processing_stage(state)
     if state.get("workflow_status") != "Processing" or stage not in {
-        "threat_intel", "investigation", "reporting"
+        "triage", "threat_intel", "investigation", "reporting"
     }:
         raise WorkflowCommandError(
             "WORKFLOW_NOT_RESUMABLE",
@@ -623,7 +628,7 @@ def get_run_status(run_id: str) -> dict[str, Any]:
         task_started = task.started_at if task else None
     attempt = (
         int(state.get(f"{stage}_attempt") or 1)
-        if stage in {"threat_intel", "investigation", "reporting"}
+        if stage in {"triage", "threat_intel", "investigation", "reporting"}
         else 1
     )
     status = str(state.get("workflow_status") or "Unknown")

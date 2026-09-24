@@ -115,6 +115,48 @@ def test_rerun_threat_intel_restarts_stage_and_invalidates_downstream():
     assert state["workflow_status"] == "Processing"
 
 
+def test_rerun_triage_restarts_stage_and_invalidates_all_downstream():
+    """[FYP-FUNCTION] Regression test for the "Run/Re-run Triage re-runs
+    Parsing" bug: rerun_stage("triage") must reset ONLY triage_status to
+    "Processing" (never parsing_status — Triage's own rerun must reuse
+    Parsing's already-persisted output, not re-execute it), and invalidate
+    every stage downstream of Triage (threat_intel, investigation,
+    reporting) back to "Pending" with cleared result JSON, since all three
+    depend on this Triage attempt's output.
+    """
+    run_id = wss.start_run("INC-1")
+    wss._guarded_update("INC-1", run_id, {
+        "parsing_status": "Complete",
+        "triage_status": "Awaiting Approval",
+        "workflow_status": "Awaiting Approval",
+        "approval_stage": "triage",
+    })
+    wss.approve_triage("INC-1", run_id, approved_by="analyst")
+    wss._guarded_update("INC-1", run_id, {
+        "threat_intel_status": "Complete",
+        "threat_intel_result_json": json.dumps({"status": "completed"}),
+        "investigation_status": "Approved",
+        "investigation_result_json": json.dumps({"status": "completed"}),
+        "reporting_status": "Approved",
+        "reporting_result_json": json.dumps({"status": "completed"}),
+        "workflow_status": "Complete",
+    })
+
+    wss.rerun_stage("INC-1", run_id, "triage")
+
+    state = wss.get_state("INC-1")
+    assert state["parsing_status"] == "Complete"   # Parsing must NOT re-run
+    assert state["triage_status"] == "Processing"
+    assert state["threat_intel_status"] == "Pending"
+    assert state["threat_intel_result_json"] is None
+    assert state["investigation_status"] == "Pending"
+    assert state["investigation_result_json"] is None
+    assert state["reporting_status"] == "Pending"
+    assert state["reporting_result_json"] is None
+    assert state["workflow_status"] == "Processing"
+    assert state["triage_attempt"] == 2
+
+
 def test_rerun_investigation_removes_old_approval_and_can_be_approved_again():
     """[FYP-FUNCTION] Validates workflow_state_store.rerun_stage() for the
     "investigation" target: after Investigation was already approved and

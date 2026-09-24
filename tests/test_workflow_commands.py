@@ -107,29 +107,71 @@ def test_rerun_increments_attempt_and_invalidates_downstream() -> None:
     assert state["reporting_result_json"] is None
 
 
-def test_triage_rerun_uses_fresh_canonical_run_and_resets_downstream() -> None:
-    previous_run_id = _run_after_triage_approval()
-    wss._guarded_update("CASE-001", previous_run_id, {
+def test_start_triage_reuses_existing_run_without_reparsing() -> None:
+    """Regression test for the "Run Triage re-runs Parsing" bug
+    (workflow/commands.py::start_stage() used to group "triage" with
+    "parsing" and route both through the combined fresh-run launcher).
+    With Parsing already Complete, clicking Run Triage must execute ONLY
+    Triage against the SAME run_id — parsing_status must not move."""
+    run_id = wss.start_run("CASE-001")
+    wss._guarded_update("CASE-001", run_id, {
+        "parsing_status": "Complete",
+        "triage_status": "Pending",
+        "workflow_status": "Awaiting Action",
+    })
+
+    result = commands.start_stage("CASE-001", "triage", executor=lambda *_: None)
+    state = wss.get_state("CASE-001")
+
+    assert result["run_id"] == run_id
+    assert state["run_id"] == run_id
+    assert state["parsing_status"] == "Complete"   # Parsing must NOT re-run
+    assert state["triage_status"] == "Processing"
+    assert state["workflow_status"] == "Processing"
+
+
+def test_triage_start_locked_until_parsing_complete() -> None:
+    run_id = wss.start_run("CASE-001")
+    wss._guarded_update("CASE-001", run_id, {
+        "parsing_status": "Processing",
+        "triage_status": "Pending",
+        "workflow_status": "Awaiting Action",
+    })
+    with pytest.raises(commands.WorkflowCommandError) as error:
+        commands.start_stage("CASE-001", "triage", executor=lambda *_: None)
+    assert error.value.code == "STAGE_LOCKED"
+
+
+def test_triage_rerun_reuses_existing_run_and_does_not_reparse() -> None:
+    """Regression test for the same dispatch bug, on the Re-run path:
+    rerun_stage("triage") must reuse the existing run_id (never mint a
+    fresh one via the combined Parsing+Triage launcher), leave
+    parsing_status untouched, and invalidate every stage downstream of
+    Triage (threat_intel/investigation/reporting) back to Pending, since
+    they all depend on this Triage attempt's output."""
+    run_id = _run_after_triage_approval()
+    wss._guarded_update("CASE-001", run_id, {
         "threat_intel_status": "Complete",
         "investigation_status": "Approved",
+        "investigation_result_json": json.dumps({"old": True}),
         "reporting_status": "Approved",
+        "reporting_result_json": json.dumps({"old": True}),
         "workflow_status": "Complete",
     })
 
-    def existing_retry_entrypoint(incident: dict) -> None:
-        wss.start_run(incident["id"], allow_retry=True)
-
-    result = commands.rerun_stage(
-        "CASE-001", "triage", executor=existing_retry_entrypoint
-    )
+    result = commands.rerun_stage("CASE-001", "triage", executor=lambda *_: None)
     state = wss.get_state("CASE-001")
 
-    assert result["run_id"] != previous_run_id
-    assert state["run_id"] == result["run_id"]
-    assert state["parsing_status"] == "Processing"
+    assert result["run_id"] == run_id
+    assert state["run_id"] == run_id
+    assert state["parsing_status"] == "Complete"   # Parsing must NOT re-run
+    assert state["triage_status"] == "Processing"
+    assert result["attempt"] == 2
     assert state["threat_intel_status"] == "Pending"
     assert state["investigation_status"] == "Pending"
+    assert state["investigation_result_json"] is None
     assert state["reporting_status"] == "Pending"
+    assert state["reporting_result_json"] is None
 
 
 def test_approval_and_duplicate_approval_use_atomic_state_store() -> None:
