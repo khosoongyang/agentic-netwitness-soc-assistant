@@ -298,7 +298,6 @@ function triageActionsListCard(ticket) {
 
 function renderTriageStage(root, stage, caseId, lastError, onAction) {
   const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>IOC checklist, risk rating, and SOC classification for this incident.</p></div>${stateBadge(stage)}</div>`;
-  const statusLine = `<p class="notice">Status: ${escapeHTML(stage.status_text || stage.status)}${stage.updated_at ? ` · Last updated ${formatDate(stage.updated_at)}` : ""}</p>`;
   // The Triage Ticket's view/edit/export entry point lives here — on the
   // Triage stage card, where it belongs — rather than inside Reporting
   // (they share the same report_edits-style plumbing server-side, via
@@ -310,7 +309,6 @@ function renderTriageStage(root, stage, caseId, lastError, onAction) {
   if (stage.state === "in_progress") {
     root.innerHTML = `
       ${header}
-      ${statusLine}
       ${loadingState("Analysing IOCs · assessing risk · classifying the incident…")}
       <div id="action-status" aria-live="polite"></div>
     `;
@@ -335,7 +333,6 @@ function renderTriageStage(root, stage, caseId, lastError, onAction) {
   if (!hasTicket) {
     root.innerHTML = `
       ${header}
-      ${statusLine}
       ${stage.state === "failed"
         ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Triage failed for this run.")}</div></div>`
         : emptyState("No persisted Triage output is available for this run yet.")}
@@ -346,7 +343,6 @@ function renderTriageStage(root, stage, caseId, lastError, onAction) {
     const iocStep = triageTraceStep(result, "IOC Checklist");
     root.innerHTML = `
       ${header}
-      ${statusLine}
       <div id="action-status" aria-live="polite"></div>
       ${triageClassificationCard(ticket)}
       <div class="integration-grid">${triageIOCCard(iocStep, ticket)}${triageRiskCard(ticket)}</div>
@@ -615,12 +611,9 @@ function tiNotesCard(result) {
 
 function renderThreatIntelStage(root, stage, caseId, lastError, onAction, workflow) {
   const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>VirusTotal, AbuseIPDB, and AlienVault OTX enrichment for the extracted IOCs, with the resulting case-level risk verdict.</p></div>${stateBadge(stage)}</div>`;
-  const statusLine = `<p class="notice">Status: ${escapeHTML(stage.status_text || stage.status)}${stage.updated_at ? ` · Last updated ${formatDate(stage.updated_at)}` : ""}</p>`;
-
   if (stage.state === "in_progress") {
     root.innerHTML = `
       ${header}
-      ${statusLine}
       ${loadingState("Querying VirusTotal · AbuseIPDB · AlienVault OTX…")}
       <div id="action-status" aria-live="polite"></div>
     `;
@@ -637,7 +630,6 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, workfl
   if (!hasResult) {
     root.innerHTML = `
       ${header}
-      ${statusLine}
       ${stage.state === "failed"
         ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Threat Intelligence enrichment failed for this run.")}</div></div>`
         : emptyState("No persisted Threat Intelligence output is available for this run yet.")}
@@ -649,7 +641,6 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, workfl
     const psaHTML = tiPowerShellCard(iocs.powershell_analysis);
     root.innerHTML = `
       ${header}
-      ${statusLine}
       <div id="action-status" aria-live="polite"></div>
       <section class="panel"><h3>Summary</h3>${tiSummaryCard(result, workflow)}</section>
       <section class="panel" style="margin-top:1rem"><h3>Extracted IOCs</h3>${tiIOCsCard(iocs)}</section>
@@ -1152,7 +1143,7 @@ const _INVESTIGATION_SUBTABS = [
 ];
 
 function renderInvestigationStage(root, stage, caseId, lastError, onAction, workspace) {
-  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div>`;
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>${actionControls(stage)}<div id="action-status" aria-live="polite"></div>`;
   const nav = `<div class="subtab-bar" role="tablist">${_INVESTIGATION_SUBTABS.map(([key, label]) => `<button type="button" class="subtab-button" data-subtab="${key}" role="tab">${escapeHTML(label)}</button>`).join("")}</div>`;
   root.innerHTML = `${header}${nav}<div id="investigation-subtab-body"></div>`;
   root.querySelectorAll("[data-workflow-action]").forEach((button) => {
@@ -1195,15 +1186,15 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinu
     renderReportingStage(root, stage, caseId, lastError, onAction);
     return;
   }
-  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div>${jsonPreview(stage.result)}`;
+  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>${actionControls(stage)}<div id="action-status" aria-live="polite"></div>${jsonPreview(stage.result)}`;
   root.querySelectorAll("[data-workflow-action]").forEach((button) => {
     button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
   });
 }
 
 // Reporting stage card: same header/action-controls shape every other stage
-// uses (name, status, attempt, last updated, stateBadge, Re-run/Approve/
-// Reject), but with the four-report table (frontend/js/pages/reports.js —
+// uses (name, stateBadge, Re-run/Approve/Reject), but with the four-report
+// table (frontend/js/pages/reports.js —
 // the SAME implementation the standalone Reporting page uses, embedded
 // directly here) in place of a raw JSON dump. Raw Reporting JSON is still
 // available, just as a secondary "Raw JSON" link inside that panel rather
@@ -1213,7 +1204,7 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onContinu
 // Approve control is the one approval path; there is no second "confirm"
 // button competing with it.
 function renderReportingStage(root, stage, caseId, lastError, onAction) {
-  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Persisted output · ${escapeHTML(stage.status_text)}${stage.attempt ? ` · attempt ${stage.attempt}` : ""}</p></div>${stateBadge(stage)}</div>${stage.updated_at ? `<p class="notice">Last updated ${formatDate(stage.updated_at)}</p>` : ""}${actionControls(stage)}<div id="action-status" aria-live="polite"></div><div id="reporting-panel"></div>`;
+  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>${actionControls(stage)}<div id="action-status" aria-live="polite"></div><div id="reporting-panel"></div>`;
   root.querySelectorAll("[data-workflow-action]").forEach((button) => {
     button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
   });
