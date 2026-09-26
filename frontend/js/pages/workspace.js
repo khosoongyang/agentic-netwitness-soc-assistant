@@ -873,10 +873,28 @@ function renderTriageStage(root, stage, caseId, lastError, onAction) {
 // Threat Intelligence's recommended_next_action.
 const _TI_ACTION_LABELS = { start: "Run Threat Intelligence", rerun: "Re-run Threat Intelligence" };
 
-function tiActionButtons(stage) {
+// "Continue to Investigation" is the Investigation stage's OWN backend
+// `start` action (workflow/commands.py::available_actions()), surfaced here
+// so the analyst can start it from the completed Threat Intelligence card.
+// Its presence/enabled state come straight from that action — no workflow
+// eligibility is re-derived client-side — and clicking it goes through the
+// same handleAction("start", investigationStage) -> POST
+// /stages/investigation/runs -> begin_stage() path as the Investigation
+// card's own Run button.
+function tiInvestigationStartAction(workflow) {
+  const investigation = workflow?.stages?.find((stage) => stage.key === "investigation");
+  const start = investigation?.actions?.find((action) => action.type === "start");
+  return investigation && start ? { investigation, start } : null;
+}
+
+function tiActionButtons(stage, workflow) {
   const actions = stage.actions || [];
-  if (!actions.length) return "";
-  return `<div class="stage-actions" style="margin-top:1rem" aria-label="${escapeHTML(stage.name)} actions">${actions.map((action) => `<button class="action-button" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(_TI_ACTION_LABELS[action.type] || action.label)}</button>`).join("")}</div>`;
+  const cont = tiInvestigationStartAction(workflow);
+  if (!actions.length && !cont) return "";
+  const continueButton = cont
+    ? `<button class="action-button" id="continue-to-investigation" ${cont.start.enabled ? "" : "disabled"} title="${escapeHTML(cont.start.reason || "Start Investigation")}">Continue to Investigation</button>`
+    : "";
+  return `<div class="stage-actions" style="margin-top:1rem" aria-label="${escapeHTML(stage.name)} actions">${actions.map((action) => `<button class="action-button" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(_TI_ACTION_LABELS[action.type] || action.label)}</button>`).join("")}${continueButton}</div>`;
 }
 
 function tiDash() {
@@ -931,11 +949,15 @@ const _INVESTIGATION_STATE_LINES = {
   locked: "Investigation is locked pending an earlier stage.",
 };
 
-// [OWNERSHIP] Threat Intelligence has no analyst-approval gate of its own —
-// workflow/engine.py::resume_after_triage_approval() flips
-// investigation_status straight to "Processing" the moment this stage
-// completes (confirmed via workflow/commands.py's APPROVAL_STAGES, which
-// does not include "threat_intel"). So "what happens next" is an
+// [OWNERSHIP] Threat Intelligence has no analyst-approval gate of its own
+// (workflow/commands.py's APPROVAL_STAGES does not include "threat_intel"),
+// but its completion only UNLOCKS Investigation: workflow/engine.py::
+// resume_after_triage_approval() leaves investigation_status "Pending"
+// (available, waiting for the analyst) and workflow_status "Awaiting
+// Action". Investigation only moves to "Processing" (executing) when the
+// analyst explicitly starts it — via "Continue to Investigation" below or
+// the Investigation card's own Run button, both the same backend start
+// action. So "what happens next" is an
 // orchestration fact, not a Threat-Intelligence one: it is read here from
 // the Investigation stage's OWN already-computed `state` (the same enum
 // stateBadge() renders on every stage card), never inferred or recomputed
@@ -1139,12 +1161,20 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, workfl
       <section class="panel" style="margin-top:1rem"><h3>AlienVault OTX</h3>${tiOTXCard(block.alienvault_otx, iocs)}</section>
       <div style="margin-top:1rem">${tiRiskAssessmentCard(result)}</div>
       <div style="margin-top:1rem">${tiNotesCard(result)}</div>
-      ${tiActionButtons(stage)}
+      ${tiActionButtons(stage, workflow)}
     `;
   }
   root.querySelectorAll("[data-workflow-action]").forEach((button) => {
     button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
   });
+  const continueButton = root.querySelector("#continue-to-investigation");
+  const cont = tiInvestigationStartAction(workflow);
+  if (continueButton && cont) {
+    continueButton.addEventListener("click", () => {
+      continueButton.disabled = true;
+      onAction("start", cont.investigation);
+    });
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1828,6 +1858,10 @@ export async function renderWorkspace(root, { navigate, route }) {
         const [path, body] = await actionRequest(caseId, action, stage);
         if (actionStatus) actionStatus.innerHTML = `<p class="notice"><span class="spinner"></span>Submitting ${escapeHTML(action)}…</p>`;
         const result = await fetchJSON(path, { method: "POST", body });
+        // Presentation only: once the backend has accepted a start (e.g.
+        // "Continue to Investigation" from the Threat Intelligence card),
+        // focus the stage that is now running so its progress is visible.
+        if (action === "start") selectedStageKey = stage.key;
         await refreshWorkflow();
         if (result.run_id) {
           await pollRun(result.run_id, (run) => {

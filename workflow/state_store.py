@@ -1682,11 +1682,13 @@ def retry_threat_intel(incident_id: str, run_id: str) -> dict:
     Calls: _tx().
     Error handling: raises ApprovalConflictError if run_id is stale or
     threat_intel_status isn't "Failed".
-    Does not itself re-run anything; the caller (app.py) spawns
+    Does not itself re-run anything; the caller spawns
     soc_workflow.run_stage_chain() afterward, which — being a state-aware
-    dispatcher — naturally resumes from Threat Intelligence and continues
-    into Investigation/Reporting on success, exactly like the first
-    attempt."""
+    dispatcher — resumes from Threat Intelligence only. On success
+    Investigation is left "Pending" (available, waiting for the analyst)
+    with workflow_status "Awaiting Action", exactly like the first attempt;
+    it never continues into Investigation until the analyst explicitly
+    starts it via begin_stage()."""
     # [FYP-FUNCTION] `_do` — implements the do operation used by the surrounding workflow orchestration and state workflow.
     # [FYP-INPUT] Parameters: `con`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.

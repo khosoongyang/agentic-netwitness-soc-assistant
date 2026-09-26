@@ -539,8 +539,8 @@ def test_late_worker_cannot_overwrite_newer_worker_result():
     ok_b = sw.complete_stage(
         "INC-1", run_id, worker_b, stage="threat_intel",
         result_column="threat_intel_result_json", result={"status": "completed", "marker": "B"},
-        status_updates={"threat_intel_status": "Complete", "investigation_status": "Processing",
-                        "workflow_status": "Processing"})
+        status_updates={"threat_intel_status": "Complete", "investigation_status": "Pending",
+                        "workflow_status": "Awaiting Action"})
     assert ok_b is True
     ok_a = sw.complete_stage(
         "INC-1", run_id, worker_a, stage="threat_intel",
@@ -682,7 +682,9 @@ def test_resume_after_triage_approval_survives_fresh_state_reload(monkeypatch):
     assert result["status"] in ("completed", "completed_with_warnings")
     state = wss.get_state("INC-1")
     assert state["threat_intel_status"] in ("Complete", "Complete with Warnings")
-    assert state["investigation_status"] == "Processing"
+    # Completion only unlocks Investigation — it never starts it.
+    assert state["investigation_status"] == "Pending"
+    assert state["workflow_status"] == "Awaiting Action"
 
 
 # [FYP-FUNCTION] `test_new_process_can_resume_using_only_persisted_state` — verifies new process can resume using only persisted state behaviour and protects the related test and validation code path.
@@ -899,7 +901,7 @@ def test_full_failure_blocks_investigation(monkeypatch):
 # Retry
 # ══════════════════════════════════════════════════════════════════════════
 
-# [FYP-FUNCTION] `test_retry_threat_intel_reruns_only_threat_intel_then_investigation` — verifies retry threat intel reruns only threat intel then investigation behaviour and protects the related test and validation code path.
+# [FYP-FUNCTION] `test_retry_threat_intel_reruns_only_threat_intel_and_stops` — verifies a Threat Intelligence retry reruns only Threat Intelligence and stops with Investigation Pending (never auto-started).
 # [FYP-INPUT] Parameters: `monkeypatch`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
@@ -907,7 +909,7 @@ def test_full_failure_blocks_investigation(monkeypatch):
 # [FYP-CALLS] Calls: `Mock`, `_approve_triage`, `_mock_all_ti_keys_absent`, `_save_raw_incident`, `_start_and_reach_triage_approval`, `assert_called_once_with`, `commit`, `db_connect`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def test_retry_threat_intel_reruns_only_threat_intel_then_investigation(monkeypatch):
+def test_retry_threat_intel_reruns_only_threat_intel_and_stops(monkeypatch):
     run_id = _start_and_reach_triage_approval("INC-1")
     _save_raw_incident("INC-1", run_id)
     _approve_triage("INC-1", run_id)
@@ -917,7 +919,7 @@ def test_retry_threat_intel_reruns_only_threat_intel_then_investigation(monkeypa
                    ("INC-1",))
         con.commit()
 
-    fake_run_investigation_stage = Mock(return_value={"status": "awaiting_approval"})
+    fake_run_investigation_stage = Mock(side_effect=AssertionError("must not be called"))
     monkeypatch.setattr(sw, "run_investigation_stage", fake_run_investigation_stage)
     _mock_all_ti_keys_absent(monkeypatch)
 
@@ -926,10 +928,12 @@ def test_retry_threat_intel_reruns_only_threat_intel_then_investigation(monkeypa
 
     state = wss.get_state("INC-1")
     assert state["threat_intel_status"] in ("Complete", "Complete with Warnings")
-    fake_run_investigation_stage.assert_called_once_with("INC-1", run_id)
+    assert state["investigation_status"] == "Pending"
+    assert state["workflow_status"] == "Awaiting Action"
+    fake_run_investigation_stage.assert_not_called()
 
 
-# [FYP-FUNCTION] `test_retry_continues_to_investigation_exactly_once` — verifies retry continues to investigation exactly once behaviour and protects the related test and validation code path.
+# [FYP-FUNCTION] `test_retry_then_explicit_start_runs_investigation_exactly_once` — verifies a retry never starts Investigation, and a later explicit begin_stage() start runs it exactly once.
 # [FYP-INPUT] Parameters: `monkeypatch`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
@@ -937,7 +941,7 @@ def test_retry_threat_intel_reruns_only_threat_intel_then_investigation(monkeypa
 # [FYP-CALLS] Calls: `Mock`, `_approve_triage`, `_mock_all_ti_keys_absent`, `_save_raw_incident`, `_start_and_reach_triage_approval`, `commit`, `db_connect`, `execute`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def test_retry_continues_to_investigation_exactly_once(monkeypatch):
+def test_retry_then_explicit_start_runs_investigation_exactly_once(monkeypatch):
     run_id = _start_and_reach_triage_approval("INC-1")
     _save_raw_incident("INC-1", run_id)
     _approve_triage("INC-1", run_id)
@@ -949,6 +953,10 @@ def test_retry_continues_to_investigation_exactly_once(monkeypatch):
     _mock_all_ti_keys_absent(monkeypatch)
 
     wss.retry_threat_intel("INC-1", run_id)
+    sw.run_stage_chain("INC-1", run_id)
+    assert fake_inv.call_count == 0   # retry alone never starts Investigation
+
+    wss.begin_stage("INC-1", run_id, "investigation")   # explicit analyst start
     sw.run_stage_chain("INC-1", run_id)
     assert fake_inv.call_count == 1
 
@@ -979,6 +987,103 @@ def test_rerun_threat_intel_invalidates_downstream():
     assert state["investigation_result_json"] is None
     assert state["reporting_status"] == "Pending"
     assert state["reporting_result_json"] is None
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Threat Intelligence completion UNLOCKS Investigation, never STARTS it.
+#
+# Regression: resume_after_triage_approval() used to write
+# investigation_status="Processing" on success, so run_stage_chain() fell
+# straight through into run_investigation_stage() in the same worker thread
+# — Investigation ran without the analyst ever starting it. Completion must
+# leave Investigation "Pending" / workflow "Awaiting Action"; only the
+# Investigation stage's own start action (commands.start_stage ->
+# wss.begin_stage) may set it to "Processing".
+# ══════════════════════════════════════════════════════════════════════════
+
+def _assert_threat_intel_stopped_before_investigation(run_id: str) -> None:
+    from workflow import commands
+
+    state = wss.get_state("INC-1")
+    assert state["threat_intel_status"] in ("Complete", "Complete with Warnings")
+    assert state["threat_intel_result_json"]
+    assert state["investigation_status"] == "Pending"
+    assert state["workflow_status"] == "Awaiting Action"
+    assert state["reporting_status"] == "Pending"
+    assert commands.get_run_status(run_id)["poll"] is False
+
+    actions = commands.available_actions(state)["stages"]
+    inv_start = [a for a in actions["investigation"] if a["type"] == "start"]
+    assert inv_start and inv_start[0]["enabled"] is True
+    ti_rerun = [a for a in actions["threat_intel"] if a["type"] == "rerun"]
+    assert ti_rerun and ti_rerun[0]["enabled"] is True
+
+
+# [FYP-FUNCTION] `test_run_stage_chain_stops_after_threat_intel_without_starting_investigation` — verifies run_stage_chain() never falls through from Threat Intelligence into run_investigation_stage().
+
+def test_run_stage_chain_stops_after_threat_intel_without_starting_investigation(monkeypatch):
+    _mock_all_ti_keys_absent(monkeypatch)
+    run_id = _start_and_reach_triage_approval("INC-1")
+    _save_raw_incident("INC-1", run_id)
+    _approve_triage("INC-1", run_id)   # approve + explicit begin_stage("threat_intel")
+    fake_inv = Mock(side_effect=AssertionError("Investigation must not auto-start"))
+    fake_rep = Mock(side_effect=AssertionError("Reporting must not auto-start"))
+    monkeypatch.setattr(sw, "run_investigation_stage", fake_inv)
+    monkeypatch.setattr(sw, "run_reporting_stage", fake_rep)
+
+    sw.run_stage_chain("INC-1", run_id)
+
+    fake_inv.assert_not_called()
+    fake_rep.assert_not_called()
+    _assert_threat_intel_stopped_before_investigation(run_id)
+
+
+# [FYP-FUNCTION] `test_rerun_threat_intel_stops_before_investigation` — verifies Re-run Threat Intelligence reruns only Threat Intelligence and waits for the analyst again.
+
+def test_rerun_threat_intel_stops_before_investigation(monkeypatch):
+    _mock_all_ti_keys_absent(monkeypatch)
+    run_id = _start_and_reach_triage_approval("INC-1")
+    _save_raw_incident("INC-1", run_id)
+    _approve_triage("INC-1", run_id)
+    fake_inv = Mock(side_effect=AssertionError("Investigation must not auto-start"))
+    monkeypatch.setattr(sw, "run_investigation_stage", fake_inv)
+    sw.run_stage_chain("INC-1", run_id)
+    first_attempt = wss.get_state("INC-1")["threat_intel_attempt"]
+
+    wss.rerun_stage("INC-1", run_id, "threat_intel")
+    sw.run_stage_chain("INC-1", run_id)
+
+    fake_inv.assert_not_called()
+    assert wss.get_state("INC-1")["threat_intel_attempt"] == first_attempt + 1
+    _assert_threat_intel_stopped_before_investigation(run_id)
+
+
+# [FYP-FUNCTION] `test_investigation_starts_only_via_its_existing_start_action` — verifies the explicit Investigation start action (what "Continue to Investigation" invokes) is what runs Investigation, exactly once.
+
+def test_investigation_starts_only_via_its_existing_start_action(monkeypatch):
+    import threading
+    from workflow import commands
+
+    _mock_all_ti_keys_absent(monkeypatch)
+    run_id = _start_and_reach_triage_approval("INC-1")
+    _save_raw_incident("INC-1", run_id)
+    _approve_triage("INC-1", run_id)
+    fake_inv = Mock(return_value={"status": "awaiting_approval"})
+    monkeypatch.setattr(sw, "run_investigation_stage", fake_inv)
+    sw.run_stage_chain("INC-1", run_id)
+    assert fake_inv.call_count == 0
+
+    # POST /api/cases/<id>/stages/investigation/runs -> commands.start_stage
+    launched = threading.Event()
+
+    def _executor(case_id, launched_run_id):
+        sw.run_stage_chain(case_id, launched_run_id)
+        launched.set()
+
+    result = commands.start_stage("INC-1", "investigation", executor=_executor)
+    assert result["stage"] == "investigation"
+    assert launched.wait(timeout=10)
+    fake_inv.assert_called_once_with("INC-1", run_id)
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -1508,6 +1613,7 @@ def test_investigation_receives_persisted_threat_intel_result(monkeypatch):
     _approve_triage("INC-1", run_id)
     _mock_all_ti_keys_absent(monkeypatch)
     sw.resume_after_triage_approval("INC-1", run_id)
+    wss.begin_stage("INC-1", run_id, "investigation")   # explicit analyst start
 
     captured = {}
 
@@ -1599,8 +1705,9 @@ def test_investigation_failure_persists_actionable_last_error(monkeypatch):
 # is required before Investigation Agent can run.") on every call, which is
 # false under the real workflow: threat_intel is not in
 # workflow/commands.py's APPROVAL_STAGES, and
-# workflow/engine.py::resume_after_triage_approval() advances
-# investigation_status straight to "Processing" automatically on success.
+# workflow/engine.py::resume_after_triage_approval() leaves
+# investigation_status "Pending" (awaiting the analyst's explicit start)
+# on success.
 # The value is now derived only from this stage's own evidence (risk level
 # and its own warnings) and must never claim an approval/orchestration fact
 # — that belongs to the workflow API (see frontend/js/pages/workspace.js::

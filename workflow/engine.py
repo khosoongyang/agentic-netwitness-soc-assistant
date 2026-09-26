@@ -18,9 +18,11 @@
 #   headlessly (`python soc_workflow.py --incident-file ...`).
 #
 # Main functionalities:
-#   1. Stage routing: run_stage_chain() unconditionally sequences every
-#      approved-Triage incident through Threat Intel -> Investigation ->
-#      Reporting; there is no classification-based skip.
+#   1. Stage routing: run_stage_chain() executes whichever stage the
+#      analyst explicitly started (status "Processing"), in the fixed order
+#      Triage -> Threat Intel -> Investigation -> Reporting; there is no
+#      classification-based skip. Each stage's completion only unlocks the
+#      next one ("Pending"); it never starts it.
 #   2. Stage handoffs: handoff_to_investigation(), handoff_to_reporting()
 #      package one stage's output into the next stage's expected input files.
 #   3. Automatic re-run / feedback loop: detect_evidence_gaps() +
@@ -3437,7 +3439,8 @@ def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
     call from a fresh process, a new application session, or after a
     restart, as long as soc_incidents.db still shows this run_id as
     current and threat_intel_status == 'Processing' (set atomically by
-    workflow_state_store.approve_triage() or .retry_threat_intel()). NO
+    workflow_state_store.begin_stage(), .rerun_stage() or
+    .retry_threat_intel() — approve_triage() only leaves it "Pending"). NO
     UI calls; safe to run in a background thread.
 
     [FYP-STAGE-LOCK]: claim_stage(..., expect_status="Processing") is the
@@ -3453,10 +3456,16 @@ def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
     complete_stage(), which atomically checks this worker still owns the
     lease before writing, so a worker that lost its lease mid-run can never
     clobber a newer worker's result. On success, status_updates advances
-    threat_intel_status to Complete/"Complete with Warnings" AND flips
-    investigation_status/workflow_status to "Processing" in the SAME atomic
-    write — this is what makes run_stage_chain()'s next dispatch branch
-    ("if investigation_status == Processing") observe the handoff correctly.
+    threat_intel_status to Complete/"Complete with Warnings" and leaves
+    investigation_status "Pending" with workflow_status "Awaiting Action" in
+    the SAME atomic write — the same unlock-but-don't-start idiom
+    approve_triage()/approve_investigation() use. "Pending" means
+    Investigation is available and waiting for the analyst; "Processing"
+    means it is executing. Threat Intelligence completion must never write
+    "Processing" for Investigation, because run_stage_chain()'s next
+    dispatch branch ("if investigation_status == Processing") would then
+    execute it without an explicit analyst action. Investigation starts only
+    via its own start action (commands.start_stage -> wss.begin_stage).
 
     [FYP-ERROR] [FYP-FALLBACK]: any exception during the threat-intel call
     itself is caught, a best-effort complete_stage() records status="failed"
@@ -3519,7 +3528,9 @@ def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
                 {"threat_intel_status": ("Complete with Warnings"
                                          if ti_result["status"] == "completed_with_warnings"
                                          else "Complete"),
-                 "investigation_status": "Processing", "workflow_status": "Processing"}))
+                 # Unlock, never start: Investigation only begins when the
+                 # analyst explicitly starts it (begin_stage()).
+                 "investigation_status": "Pending", "workflow_status": "Awaiting Action"}))
         if not ok:
             raise StageClaimError(f"threat_intel: lease for {incident_id}/{run_id} "
                                   "was reassigned before this result could be saved")
@@ -4064,8 +4075,10 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
     given run_id. Read this alongside run_triage_stage()/
     resume_after_triage_approval()/run_investigation_stage()/
     run_reporting_stage() to see the full Triage -> Threat Intel ->
-    Investigation -> Reporting chain and how each stage hands off to the
-    next purely via workflow_state_store's *_status columns.
+    Investigation -> Reporting chain. Each stage's completion only unlocks
+    the next ("Pending" = available, waiting for the analyst); only an
+    explicit start/rerun/resume action sets a stage to "Processing"
+    (= execute now), which is the one status this dispatcher acts on.
 
     Top-level worker entry point AND what "Resume Workflow" calls. A
     state-aware dispatcher: reads current state ONCE and resumes
@@ -4087,6 +4100,11 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
         finds nothing to do, with no explicit early-return needed for the
         pause case (unlike investigation's, below).
       - threat_intel: any failure -> return (don't touch investigation).
+        Success ends at investigation_status "Pending" / workflow_status
+        "Awaiting Action" (same as triage's pause) — so the investigation
+        check below finds nothing to do. Investigation only runs through
+        this dispatcher after the analyst's explicit start action
+        (begin_stage) has set it to "Processing".
       - investigation: result status in {"failed", "awaiting_approval"} ->
         return (awaiting_approval is a SUCCESSFUL pause requiring analyst
         action, not a failure — explicitly distinguished from "failed" in
