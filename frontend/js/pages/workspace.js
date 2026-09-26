@@ -100,7 +100,10 @@ function stageCards(stages) {
 // produce a verdict/evidence to distil — Parsing is pure normalisation and
 // Reporting consumes prior findings rather than discovering new ones, so
 // neither gets a card at all (see renderWorkflow()'s hideKeyFindings check).
-const KEY_FINDINGS_STAGES = new Set(["triage", "threat_intel", "investigation"]);
+// Triage is excluded too: its Overview tab already presents the same
+// classification/IOC/risk evidence, so the sidebar only duplicated it and
+// the stage now takes the full width (.workspace-grid.stage-only).
+const KEY_FINDINGS_STAGES = new Set(["threat_intel", "investigation"]);
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -562,64 +565,137 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onContinue
 // metakeys_payload, trace, used_parsed_context, cached, ai_summary,
 // ai_thinking, ai_summary_model, ai_summary_generated_at }. `ticket` and its
 // nested `risk_rating` are TriageTicket/TriageRiskRating's real fields — this
-// renderer draws ONLY on those (plus the trace's own "IOC Checklist" step for
-// the per-category confidentiality/integrity/availability breakdown), no
-// value is invented or hard-coded. Triage never produces a "confidence"
-// field, unlike Investigation, so none is shown here.
+// renderer draws ONLY on those (plus the trace's own "IOC Checklist" step and
+// metakeys_payload.metakey_values for the IOC evidence), no value is invented
+// or hard-coded. Triage never produces a "severity" or "confidence" field,
+// unlike Investigation, so neither is shown here. Presentation reuses the
+// Parsing Overview helpers (_poRows/_poTable/_poValue) so both stages read
+// the same way.
 const _TRIAGE_ACTION_LABELS = { start: "Run Triage", rerun: "Re-run Triage", approve: "Approve & Continue", reject: "Reject Triage" };
 
+// Display names for the closed set of NetWitness metakeys the Triage Agent
+// can extract (soc_triage_agent.py::_METAKEY_MAP). This is the metakey's own
+// meaning, not a semantic role — the raw key is always shown alongside, and
+// any key not listed here is displayed as-is.
+const _TRIAGE_METAKEY_LABELS = {
+  "ip.src": "Source IP",
+  "ip.dst": "Destination IP",
+  "host.name": "Host Name",
+  "user.name": "User Name",
+  "domain": "Domain",
+  "event.type": "Event Type",
+  "bytes.out": "Bytes Out",
+  "protocol": "Protocol",
+  "geo.country": "Country",
+  "file.name": "File Name",
+  "file.hash": "File Hash",
+  "process.name": "Process Name",
+  "os.version": "OS Version",
+};
+
+const _TRIAGE_IOC_CATEGORY_ORDER = ["confidentiality", "integrity", "availability"];
+
+// Approve/Reject sit on the right, everything else (Run/Re-run) on the left;
+// each button keeps its original action type, enabled state and handler.
 function triageActionButtons(stage) {
   const actions = stage.actions || [];
   if (!actions.length) return "";
-  return `<div class="stage-actions" style="margin-top:1rem" aria-label="${escapeHTML(stage.name)} actions">${actions.map((action) => `<button class="action-button ${action.type === "reject" ? "danger" : ""}" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(_TRIAGE_ACTION_LABELS[action.type] || action.label)}</button>`).join("")}</div>`;
+  const button = (action) => `<button class="action-button ${action.type === "reject" ? "danger" : ""}" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(_TRIAGE_ACTION_LABELS[action.type] || action.label)}</button>`;
+  const decision = ["reject", "approve"].map((type) => actions.find((action) => action.type === type)).filter(Boolean);
+  const other = actions.filter((action) => !decision.includes(action));
+  return `<div class="stage-actions triage-workflow-actions" aria-label="${escapeHTML(stage.name)} actions"><div class="triage-action-group">${other.map(button).join("")}</div><div class="triage-action-group">${decision.map(button).join("")}</div></div>`;
 }
 
 function triageTraceStep(result, stepName) {
   return (result?.trace || []).find((step) => step && step.step === stepName) || null;
 }
 
-function triageClassificationCard(ticket) {
-  const rows = [
-    ["Classification", ticket.classification ? severityBadge(ticket.classification) : pendingValue("Not classified")],
-    ["Category", escapeHTML(ticket.incident_category || "—")],
-    ["MITRE Tactic", escapeHTML(ticket.mitre_tactic || "Unknown")],
-    ["MITRE Technique", escapeHTML(ticket.mitre_technique || "Unknown")],
-    ["Initial Response Time", escapeHTML(ticket.initial_response_time || "—")],
-  ];
-  return `<section class="panel"><h3>SOC Classification</h3><div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div></section>`;
+function _triageNormText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function triageIOCCard(iocStep, ticket) {
+// ticket.summary (the classification phase's own summary) leads; the
+// stage-level ai_summary keeps its "AI-generated summary · model" label and
+// is only dropped when it repeats ticket.summary word-for-word.
+function triageExplanation(ticket, result) {
+  const parts = [];
+  if (ticket.summary) parts.push(`<p class="notice triage-explanation">${escapeHTML(ticket.summary)}</p>`);
+  if (result.ai_summary && _triageNormText(result.ai_summary) !== _triageNormText(ticket.summary)) {
+    parts.push(`<p class="notice triage-explanation">${escapeHTML(result.ai_summary)}<small class="triage-attribution">AI-generated summary${result.ai_summary_model ? ` · ${escapeHTML(result.ai_summary_model)}` : ""}</small></p>`);
+  }
+  return parts.join("");
+}
+
+function triageSummarySection(ticket, result) {
+  const rows = _poRows([
+    ["Classification", ticket.classification, (v) => severityBadge(v)],
+    ["Category", ticket.incident_category],
+    ["Overall Risk", ticket.risk_rating?.overall_risk, (v) => severityBadge(v)],
+    ["Initial Response", ticket.initial_response_time],
+  ]);
+  return `<section class="panel"><h3>Triage Summary</h3>${rows.length ? _poTable(rows) : ""}${triageExplanation(ticket, result)}</section>`;
+}
+
+function triageIOCEvidence(iocStep, ticket, result) {
   const count = ticket.matched_ioc_count ?? iocStep?.total_ioc_count ?? 0;
-  const summary = iocStep?.ioc_summary || "";
-  // Array.isArray guards, not just a truthy/length check: a persisted
-  // result the backend sanitizer has redacted-to-string (or any other
-  // unexpected shape) must degrade to an empty list here rather than throw
-  // on .map() below and blank the whole stage.
+  const mono = (v) => _poValue(v, { mono: true });
+
+  // Array.isArray / typeof guards: a persisted result the backend sanitizer
+  // has redacted-to-string (or any other unexpected shape) must degrade to
+  // "no rows" here rather than throw and blank the whole stage.
+  const rawValues = result.metakeys_payload?.metakey_values;
+  const metakeyValues = rawValues && typeof rawValues === "object" && !Array.isArray(rawValues) ? rawValues : {};
+  const observedRows = Object.entries(metakeyValues)
+    .filter(([, value]) => _poHas(value))
+    .map(([key, value]) => [
+      `${escapeHTML(_TRIAGE_METAKEY_LABELS[key] || key)}${_TRIAGE_METAKEY_LABELS[key] ? `<small class="mono triage-metakey">${escapeHTML(key)}</small>` : ""}`,
+      mono(value),
+    ]);
+
+  const rawCategories = iocStep?.per_category;
+  const categories = rawCategories && typeof rawCategories === "object" ? rawCategories : {};
+  const categoryKeys = [
+    ..._TRIAGE_IOC_CATEGORY_ORDER.filter((key) => key in categories),
+    ...Object.keys(categories).filter((key) => !_TRIAGE_IOC_CATEGORY_ORDER.includes(key)),
+  ];
+  const categoryLabel = (key) => key.charAt(0).toUpperCase() + key.slice(1);
+  const categoryRows = [];
+  const reasoningItems = [];
+  categoryKeys.forEach((key) => {
+    const data = categories[key] || {};
+    const names = Array.isArray(data.matched_ioc_names) ? data.matched_ioc_names : [];
+    if (!names.length) return;
+    categoryRows.push([escapeHTML(categoryLabel(key)), escapeHTML(names.join(", "))]);
+    if (data.reasoning) reasoningItems.push(`<li><div><strong>${escapeHTML(categoryLabel(key))}:</strong> ${escapeHTML(data.reasoning)}</div></li>`);
+  });
+
   const ticketKeys = Array.isArray(ticket.metakeys) ? ticket.metakeys : [];
   const traceKeys = Array.isArray(iocStep?.matched_metakeys) ? iocStep.matched_metakeys : [];
   const mkeys = ticketKeys.length ? ticketKeys : traceKeys;
-  const categories = iocStep?.per_category && typeof iocStep.per_category === "object" ? iocStep.per_category : {};
-  const catItems = Object.entries(categories)
-    .map(([name, data]) => {
-      const names = Array.isArray(data?.matched_ioc_names) ? data.matched_ioc_names : [];
-      if (!names.length) return "";
-      const label = name.charAt(0).toUpperCase() + name.slice(1);
-      const reasoning = data.reasoning ? ` — ${escapeHTML(data.reasoning)}` : "";
-      return `<li><div><strong>${escapeHTML(label)}:</strong> ${escapeHTML(names.join(", "))}${reasoning}</div></li>`;
-    })
-    .filter(Boolean)
-    .join("");
+  const iocSummary = iocStep?.ioc_summary || "";
+
+  const technical = [
+    reasoningItems.length ? `<h4 class="triage-subheading">Category Reasoning</h4><ul class="data-list">${reasoningItems.join("")}</ul>` : "",
+    iocSummary ? `<h4 class="triage-subheading">IOC Summary</h4><code class="parsing-overview-code">${escapeHTML(iocSummary)}</code>` : "",
+    mkeys.length ? `<h4 class="triage-subheading">Matched Metakeys</h4><div class="parsing-field-chips">${mkeys.map((key) => `<span class="evidence-chip">${escapeHTML(key)}</span>`).join("")}</div>` : "",
+  ].join("");
+
   return `<article class="panel">
-    <h3>IOC Checklist</h3>
-    <p><strong>IOCs matched:</strong> ${escapeHTML(String(count))}</p>
-    ${summary ? `<p>${escapeHTML(summary)}</p>` : ""}
-    ${catItems ? `<ul class="data-list">${catItems}</ul>` : emptyState("No category-level IOC findings were recorded for this run.")}
-    ${mkeys.length ? `<p class="mono" style="margin-top:0.6rem;opacity:0.75">${mkeys.map((key) => escapeHTML(key)).join(" · ")}</p>` : ""}
+    <h3>IOC Evidence</h3>
+    ${_triageTable([["IOCs Matched", escapeHTML(String(count))]])}
+    ${observedRows.length ? `<h4 class="triage-subheading">Observed IOC Values</h4>${_triageTable(observedRows)}` : ""}
+    ${categoryRows.length ? `<h4 class="triage-subheading">Matched Categories</h4>${_triageTable(categoryRows)}` : ""}
+    ${technical ? `<details class="parsing-field-list"><summary>Technical Details</summary>${technical}</details>` : ""}
   </article>`;
 }
 
-function triageRiskCard(ticket) {
+// Like _poTable, but the label cell is pre-built HTML (used for the
+// metakey label + raw key pair); callers escape their own label text.
+function _triageTable(rows) {
+  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([labelHTML, value]) => `<tr><th scope="row">${labelHTML}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function triageRiskAssessment(ticket) {
   const rr = ticket.risk_rating || {};
   const rows = [
     ["Initiation", rr.likelihood_initiation],
@@ -628,40 +704,70 @@ function triageRiskCard(ticket) {
     ["Overall", rr.overall_risk],
   ];
   return `<article class="panel">
-    <h3>Risk Rating</h3>
+    <h3>Risk Assessment</h3>
     <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Dimension</th><th>Rating</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value ? severityBadge(value) : pendingValue("—")}</td></tr>`).join("")}</tbody></table></div>
-    ${rr.rationale ? `<p class="notice" style="margin-top:0.6rem">${escapeHTML(rr.rationale)}</p>` : ""}
+    ${rr.rationale ? `<div class="notice triage-why"><h4 class="triage-subheading">Why ${escapeHTML(rr.overall_risk || "this rating")}?</h4><p>${escapeHTML(rr.rationale)}</p></div>` : ""}
   </article>`;
 }
 
-function triageSummaryCard(ticket, result) {
-  const parts = [];
-  if (ticket.summary) parts.push(`<p>${escapeHTML(ticket.summary)}</p>`);
-  if (result.ai_summary) parts.push(`<p class="notice">${escapeHTML(result.ai_summary)}<br><small style="opacity:0.75">AI-generated summary${result.ai_summary_model ? ` · ${escapeHTML(result.ai_summary_model)}` : ""}</small></p>`);
-  if (!parts.length) return "";
-  return `<section class="panel" style="margin-top:1rem"><h3>Triage Summary</h3>${parts.join("")}</section>`;
-}
+// Presentation-only split of a leading ATT&CK ID ("T1046 Network Service
+// Scanning" -> T1046 / Network Service Scanning). Anything that doesn't
+// start with a T#### ID is shown intact as a single Technique row.
+const _MITRE_TECHNIQUE_RE = /^(T\d{4}(?:\.\d{3})?)(?:\s*[-–—:]\s*|\s+)(.+)$/i;
 
-function triageMitreCard(ticket) {
+function triageMitreSection(ticket) {
   if (!ticket.mitre_tactic && !ticket.mitre_technique) return "";
-  return `<section class="panel" style="margin-top:1rem"><h3>MITRE ATT&amp;CK</h3><p>${escapeHTML(ticket.mitre_tactic || "Unknown")} · ${escapeHTML(ticket.mitre_technique || "Unknown")}</p></section>`;
+  const known = (value) => value && String(value).toLowerCase() !== "unknown";
+  const technique = String(ticket.mitre_technique || "").trim();
+  const match = technique.match(_MITRE_TECHNIQUE_RE);
+  const idOnly = /^T\d{4}(?:\.\d{3})?$/i.test(technique);
+  const rows = [["Tactic", known(ticket.mitre_tactic) ? escapeHTML(ticket.mitre_tactic) : pendingValue(ticket.mitre_tactic || "Unknown")]];
+  if (match) {
+    rows.push(["Technique ID", `<span class="mono">${escapeHTML(match[1])}</span>`], ["Technique Name", escapeHTML(match[2])]);
+  } else if (idOnly) {
+    rows.push(["Technique ID", `<span class="mono">${escapeHTML(technique)}</span>`]);
+  } else {
+    rows.push(["Technique", known(technique) ? escapeHTML(technique) : pendingValue(technique || "Unknown")]);
+  }
+  return `<section class="panel"><h3>MITRE ATT&amp;CK</h3>${_poTable(rows)}</section>`;
 }
 
-function triageActionsListCard(ticket) {
+function triageRecommendedActions(ticket) {
   const actions = Array.isArray(ticket.recommended_actions) ? ticket.recommended_actions : [];
   if (!actions.length) return "";
-  return `<section class="panel" style="margin-top:1rem"><h3>Recommended Actions</h3><ul class="data-list">${actions.map((action) => `<li><div>${escapeHTML(action)}</div></li>`).join("")}</ul></section>`;
+  return `<section class="panel"><h3>Recommended Actions</h3><ol class="triage-action-list">${actions.map((action) => `<li>${escapeHTML(action)}</li>`).join("")}</ol></section>`;
+}
+
+// The Triage Ticket tab's report viewer (edit/export/versions all live
+// inside it — reports.js::openReportInto) is fetched once, on first open,
+// and its DOM node is kept here so re-renders of this stage (tab switches,
+// stage re-selection, workflow refreshes) re-attach it instead of refetching.
+// Keyed on the ticket's own identity so a re-run's new ticket loads fresh.
+const _triageTicketViews = new Map();
+const _triageSelectedView = new Map();
+
+function _triageTicketKey(caseId, ticket) {
+  return [caseId, ticket.unc || "", ticket.incident_id || "", ticket.created_at || ""].join("::");
+}
+
+function mountTriageTicket(panel, caseId, key) {
+  let view = _triageTicketViews.get(key);
+  // A failed load (errorState rendered at the top level) is retried rather
+  // than cached forever.
+  const failed = view && view.querySelector(":scope > .state-panel.error");
+  if (!view || failed) {
+    view = document.createElement("div");
+    view.id = "triage-ticket-detail";
+    _triageTicketViews.set(key, view);
+    panel.replaceChildren(view);
+    openReportInto(view, { caseId, reportType: TICKET_REPORT_TYPE, mode: "view" });
+    return;
+  }
+  if (view.parentElement !== panel) panel.replaceChildren(view);
 }
 
 function renderTriageStage(root, stage, caseId, lastError, onAction) {
-  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>IOC checklist, risk rating, and SOC classification for this incident.</p></div>${stateBadge(stage)}</div>`;
-  // The Triage Ticket's view/edit/export entry point lives here — on the
-  // Triage stage card, where it belongs — rather than inside Reporting
-  // (they share the same report_edits-style plumbing server-side, via
-  // agents/reporting/triage_ticket_editing.py, but that's an
-  // implementation detail; the ticket is a Triage concern, not one of the
-  // four Reporting reports).
-  const ticketAction = `<div class="stage-actions" style="margin-top:.5rem"><button type="button" class="action-button" id="view-triage-ticket">View Triage Ticket</button></div><div id="triage-ticket-detail"></div>`;
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>IOC assessment, risk evaluation and SOC classification.</p></div>${stateBadge(stage)}</div>`;
 
   if (stage.state === "in_progress") {
     root.innerHTML = `
@@ -697,25 +803,51 @@ function renderTriageStage(root, stage, caseId, lastError, onAction) {
       <div id="action-status" aria-live="polite"></div>
     `;
   } else {
-    const iocStep = triageTraceStep(result, "IOC Checklist");
+    // Overview and Triage Ticket are two views of the same already-loaded
+    // Triage run: Overview is built from stage.result, the Ticket tab is
+    // the existing ticket viewer (lazy-loaded once, see mountTriageTicket).
+    // Switching only toggles `hidden` — it never re-runs Triage.
+    const ticketKey = _triageTicketKey(caseId, ticket);
+    let overviewHTML;
+    try {
+      const iocStep = triageTraceStep(result, "IOC Checklist");
+      overviewHTML = `<div class="triage-overview">
+        ${triageSummarySection(ticket, result)}
+        <div class="integration-grid">${triageIOCEvidence(iocStep, ticket, result)}${triageRiskAssessment(ticket)}</div>
+        ${triageMitreSection(ticket)}
+        ${triageRecommendedActions(ticket)}
+      </div>`;
+    } catch (error) {
+      overviewHTML = errorState(error);
+    }
     root.innerHTML = `
       ${header}
       <div id="action-status" aria-live="polite"></div>
-      ${triageClassificationCard(ticket)}
-      <div class="integration-grid">${triageIOCCard(iocStep, ticket)}${triageRiskCard(ticket)}</div>
-      ${triageSummaryCard(ticket, result)}
-      ${triageMitreCard(ticket)}
-      ${triageActionsListCard(ticket)}
+      <div class="subtab-bar" role="tablist" aria-label="Triage output view">
+        <button type="button" class="subtab-button active" role="tab" id="triage-tab-overview" data-triage-view="overview" aria-selected="true" aria-controls="triage-view-overview">Overview</button>
+        <button type="button" class="subtab-button" role="tab" id="triage-tab-ticket" data-triage-view="ticket" aria-selected="false" aria-controls="triage-view-ticket">Triage Ticket</button>
+      </div>
+      <div id="triage-view-overview" role="tabpanel" aria-labelledby="triage-tab-overview">${overviewHTML}</div>
+      <div id="triage-view-ticket" role="tabpanel" aria-labelledby="triage-tab-ticket" hidden></div>
       ${triageActionButtons(stage)}
-      ${ticketAction}
     `;
+    const viewButtons = [...root.querySelectorAll("[data-triage-view]")];
+    const selectView = (view) => {
+      _triageSelectedView.set(ticketKey, view);
+      viewButtons.forEach((b) => {
+        const active = b.dataset.triageView === view;
+        b.classList.toggle("active", active);
+        b.setAttribute("aria-selected", String(active));
+        const panel = root.querySelector(`#${b.getAttribute("aria-controls")}`);
+        if (panel) panel.hidden = !active;
+      });
+      if (view === "ticket") mountTriageTicket(root.querySelector("#triage-view-ticket"), caseId, ticketKey);
+    };
+    viewButtons.forEach((button) => button.addEventListener("click", () => selectView(button.dataset.triageView)));
+    if (_triageSelectedView.get(ticketKey) === "ticket") selectView("ticket");
   }
   root.querySelectorAll("[data-workflow-action]").forEach((button) => {
     button.addEventListener("click", () => onAction(button.dataset.workflowAction, stage));
-  });
-  root.querySelector("#view-triage-ticket")?.addEventListener("click", () => {
-    const ticketDetail = root.querySelector("#triage-ticket-detail");
-    openReportInto(ticketDetail, { caseId, reportType: TICKET_REPORT_TYPE, mode: "view" });
   });
 }
 

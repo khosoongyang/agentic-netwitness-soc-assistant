@@ -854,6 +854,134 @@ td {
   gap: 0.35rem;
 }
 
+/* Triage — Overview view (workspace.js::renderTriageStage), a read-only
+   projection of stage.result. Mirrors .parsing-overview: reuses .panel,
+   .case-context-table, .integration-grid, .notice and .parsing-field-list;
+   only the bits below are new. */
+.triage-overview {
+  display: grid;
+  gap: 1rem;
+}
+
+.triage-overview .integration-grid {
+  margin-bottom: 0;
+}
+
+/* Same fix as Parsing: cards sit two-up, so drop the table's 26rem floor
+   (the source of the Risk card's horizontal scrollbar) and let long values
+   wrap instead. */
+.triage-overview .case-context-table {
+  min-width: 0;
+}
+
+.triage-overview .case-context-table td {
+  overflow-wrap: anywhere;
+}
+
+.triage-overview .case-context-table-wrap + .case-context-table-wrap,
+.triage-overview .case-context-table-wrap + .triage-subheading {
+  margin-top: 0.9rem;
+}
+
+.triage-subheading {
+  margin: 0.9rem 0 0.45rem;
+  color: #7895bd;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.triage-metakey {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.triage-explanation {
+  margin: 0.9rem 0 0;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.triage-attribution {
+  display: block;
+  margin-top: 0.4rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.triage-why {
+  margin-top: 0.9rem;
+}
+
+.triage-why .triage-subheading {
+  margin-top: 0;
+  color: var(--text);
+  font-size: 0.85rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.triage-why p {
+  margin: 0;
+  line-height: 1.55;
+}
+
+.triage-overview .parsing-field-list .triage-subheading:first-of-type {
+  margin-top: 0;
+}
+
+.triage-action-list {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+  list-style: none;
+  counter-reset: triage-action;
+}
+
+.triage-action-list li {
+  position: relative;
+  padding-left: 2.1rem;
+  line-height: 1.5;
+  counter-increment: triage-action;
+}
+
+.triage-action-list li::before {
+  content: counter(triage-action);
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1.45rem;
+  height: 1.45rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid #376a9e;
+  border-radius: 999px;
+  color: var(--text);
+  background: #12304d;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Re-run on the left, Reject/Approve on the right; wraps to stacked rows
+   when the stage panel is narrow. */
+.triage-workflow-actions {
+  justify-content: space-between;
+}
+
+.triage-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.triage-action-group:empty {
+  display: none;
+}
+
 /* Entity Graph — interactive node-link diagram (workspace.js::
    mountEntityGraph). Colors/layout intentionally reuse the app's existing
    dark palette (--bg/--surface/--accent/...) rather than a separate theme. */
