@@ -283,14 +283,26 @@ def get_parsing_result_download(
     case_id: str, *, database_path: str | Path | None = None
 ) -> tuple[bytes, str]:
     """Return the persisted Parsing & Normalisation result as a downloadable
-    JSON file — the same sanitized object the workspace's Normalised Alert
-    panel renders, not a frontend reconstruction."""
+    JSON file — the complete normalised_alert exactly as stored in
+    parsing_result_json, not a frontend reconstruction.
+
+    The normalised_alert is deliberately NOT passed through
+    _safe_stage_result(): that is an on-screen display sanitiser whose
+    key-name heuristics misfire on the parser's own schema (e.g.
+    parser_metadata.extraction_summary.key_fields_found and
+    raw_meta_key_count tokenise to "key" and come back "«redacted»") and
+    whose 4,000-char truncation would cut long command lines. Legacy
+    records with no normalised_alert still fall back to the sanitised
+    wrapper, which carries local output_files paths."""
     row = _get_case_row(case_id, database_path)
-    result = _safe_stage_result("parsing", row.get("parsing_result_json"))
-    if not result:
-        raise StageResultNotAvailableError()
-    normalised_alert = result.get("normalised_alert")
-    payload = normalised_alert if isinstance(normalised_alert, dict) and normalised_alert else result
+    stored = _json_object(row.get("parsing_result_json"))
+    normalised_alert = stored.get("normalised_alert")
+    if isinstance(normalised_alert, dict) and normalised_alert:
+        payload = normalised_alert
+    else:
+        payload = _safe_stage_result("parsing", row.get("parsing_result_json"))
+        if not payload:
+            raise StageResultNotAvailableError()
     data = json.dumps(payload, indent=2, default=str).encode("utf-8")
     return data, f"{case_id}_normalised_alert.json"
 

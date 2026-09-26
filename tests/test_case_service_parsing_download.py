@@ -49,6 +49,28 @@ def test_download_returns_the_persisted_normalised_alert(db_path):
     assert payload == normalised_alert
 
 
+def test_download_is_not_passed_through_the_display_sanitiser(db_path):
+    # The display sanitiser redacts any key tokenising to "key" and
+    # truncates strings over 4,000 chars -- both of which would corrupt the
+    # parser's real schema (extraction_summary.key_fields_found,
+    # raw_meta_key_count) and long command lines in the downloaded file.
+    long_command = "powershell.exe -NoProfile " + "A" * 5000
+    normalised_alert = {
+        "alert_summary": {"alert_id": "INC-DL-4"},
+        "process_indicators": {"command_lines": [long_command]},
+        "parser_metadata": {
+            "raw_meta_key_count": 20,
+            "extraction_summary": {"key_fields_found": ["alert_id"], "key_fields_missing": ["protocol"]},
+        },
+        "data_quality": {"raw_meta_key_count": 20},
+    }
+    _seed_case("INC-DL-4", parsing_result={"status": "completed", "normalised_alert": normalised_alert})
+
+    data, _ = case_service.get_parsing_result_download("INC-DL-4", database_path=db_path)
+
+    assert json.loads(data) == normalised_alert
+
+
 def test_download_falls_back_to_whole_result_when_normalised_alert_absent(db_path):
     # Defensive path: if a persisted result somehow has no normalised_alert
     # (e.g. an older/partial record), the download must not come back empty.

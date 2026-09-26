@@ -792,6 +792,68 @@ td {
   background: var(--surface-raised);
 }
 
+/* Parsing & Normalisation — Overview view (workspace.js::parsingOverview),
+   a read-only projection of stage.result.normalised_alert. Reuses .panel,
+   .case-context-table and .integration-grid; only the bits below are new. */
+.parsing-overview {
+  display: grid;
+  gap: 1rem;
+}
+
+.parsing-overview .integration-grid {
+  margin-bottom: 0;
+}
+
+/* Cards sit two-up in .integration-grid, so drop the table's 26rem floor
+   and let long values (IPs, hashes, command lines) wrap instead of forcing
+   horizontal scroll inside a half-width card. */
+.parsing-overview .case-context-table {
+  min-width: 0;
+}
+
+.parsing-overview .case-context-table td {
+  overflow-wrap: anywhere;
+}
+
+.parsing-overview-code {
+  display: block;
+  margin: 0.15rem 0;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.35rem;
+  color: #bdd0e8;
+  background: #07101c;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.parsing-field-list {
+  margin-top: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.5rem;
+  background: var(--surface-raised);
+}
+
+.parsing-field-list summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.parsing-field-list[open] summary {
+  margin-bottom: 0.6rem;
+  color: var(--text);
+}
+
+.parsing-field-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 /* Entity Graph — interactive node-link diagram (workspace.js::
    mountEntityGraph). Colors/layout intentionally reuse the app's existing
    dark palette (--bg/--surface/--accent/...) rather than a separate theme. */
