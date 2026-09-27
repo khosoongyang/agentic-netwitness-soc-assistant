@@ -868,6 +868,50 @@ td {
   gap: 0.35rem;
 }
 
+/* Investigation — Unified Verdict card (workspace.js::unifiedVerdictBlock).
+   Reuses .case-context-table, .triage-subheading, .parsing-field-chips and
+   .evidence-chip; only the bits below are new. */
+.unified-verdict {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem 1rem;
+}
+
+.unified-verdict h3 {
+  margin: 0 0 0.7rem;
+}
+
+.unified-verdict-overall {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.5rem;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+/* Factor names are analyst-facing labels, not keys — drop the mono face. */
+.unified-verdict .evidence-chip {
+  font-family: inherit;
+  padding: 0.15rem 0.5rem;
+}
+
+.unified-verdict .case-context-table {
+  min-width: 0;
+}
+
+.unified-verdict .case-context-table tbody th[scope="row"] {
+  padding-left: 0;
+}
+
+.unified-verdict .case-context-table tbody td {
+  overflow-wrap: anywhere;
+}
+
 /* Triage — Overview view (workspace.js::renderTriageStage), a read-only
    projection of stage.result. Mirrors .parsing-overview: reuses .panel,
    .case-context-table, .integration-grid, .notice and .parsing-field-list;

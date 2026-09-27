@@ -1175,10 +1175,63 @@ function provenanceRow(label, entry) {
   return `<tr><th scope="row">${escapeHTML(label)}</th><td title="${escapeHTML(title)}">${escapeHTML(e.value ?? "—")}</td></tr>`;
 }
 
+// Presentation-only labels for aggregate_verdict()'s signal names, which reach
+// the frontend as snake_case `source_stages` and as the "name: label" prefix of
+// each `reasons` entry. Key order is the display order of the evidence rows.
+const _VERDICT_FACTOR_LABELS = {
+  base_severity: "Base Severity",
+  investigation_severity: "Investigation Severity",
+  asset_criticality: "Asset Criticality",
+  internal_IOC_correlation: "Internal IOC Correlation",
+  external_threat_intel: "External Threat Intelligence",
+};
+const _VERDICT_FACTOR_ORDER = Object.keys(_VERDICT_FACTOR_LABELS);
+const _SEVERITY_BANDS = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
+
+function _verdictFactorKey(name) {
+  return String(name || "").trim().replace(/\s+/g, "_");
+}
+
+function _verdictFactorLabel(key) {
+  return _VERDICT_FACTOR_LABELS[key]
+    || key.split("_").filter(Boolean).map((w) => (w === w.toUpperCase() ? w : w[0].toUpperCase() + w.slice(1))).join(" ");
+}
+
+function _verdictEvidenceValue(text) {
+  const upper = text.toUpperCase();
+  if (_SEVERITY_BANDS.has(upper)) return severityBadge(upper);
+  return escapeHTML(text.charAt(0).toUpperCase() + text.slice(1));
+}
+
+// Unified Verdict card: overall band, the factors the backend says it scored
+// (source_stages), then the per-factor values it reported (reasons). Only
+// reformats those three fields — no value is derived or filled in here.
+function unifiedVerdictBlock(verdict) {
+  if (!verdict.value || verdict.value === "—") return "";
+  const factors = [...new Set((verdict.source_stages || []).map(_verdictFactorKey).filter(Boolean))];
+  const rank = (key) => { const i = _VERDICT_FACTOR_ORDER.indexOf(key); return i === -1 ? _VERDICT_FACTOR_ORDER.length : i; };
+  const evidence = (verdict.reasons || [])
+    .map((r) => {
+      const text = String(r ?? "");
+      const i = text.indexOf(":");
+      return i > 0 ? { key: _verdictFactorKey(text.slice(0, i)), value: text.slice(i + 1).trim() } : { key: "", value: text.trim() };
+    })
+    .filter((e) => e.value)
+    .sort((a, b) => rank(a.key) - rank(b.key));
+  const evidenceRows = evidence.map((e) => (e.key
+    ? `<tr><th scope="row">${escapeHTML(_verdictFactorLabel(e.key))}</th><td>${_verdictEvidenceValue(e.value)}</td></tr>`
+    : `<tr><td colspan="2">${escapeHTML(e.value)}</td></tr>`)).join("");
+  return `<div class="case-context-table-wrap unified-verdict">
+    <h3>Unified Verdict</h3>
+    <div class="unified-verdict-overall"><span>Overall Verdict</span>${severityBadge(String(verdict.value).toUpperCase())}</div>
+    ${factors.length ? `<h4 class="triage-subheading">Verdict Factors</h4><div class="parsing-field-chips">${factors.map((k) => `<span class="evidence-chip">${escapeHTML(_verdictFactorLabel(k))}</span>`).join("")}</div>` : ""}
+    ${evidenceRows ? `<h4 class="triage-subheading">Contributing Evidence</h4><table class="case-context-table"><tbody>${evidenceRows}</tbody></table>` : ""}
+  </div>`;
+}
+
 function investigationOverviewTab(workspace) {
   const ctx = workspace?.overview?.case_context || {};
   if (!Object.keys(ctx).length) return emptyState("No case overview is available yet.");
-  const verdict = ctx.unified_verdict || {};
   const rows = [
     provenanceRow("NetWitness Severity", ctx.netwitness_severity),
     provenanceRow("Triage Classification", ctx.triage_classification),
@@ -1188,10 +1241,7 @@ function investigationOverviewTab(workspace) {
     provenanceRow("Workflow Status", ctx.workflow_status),
     provenanceRow("IOC IP Count", ctx.ioc_ip_count),
   ].join("");
-  const verdictBlock = verdict.value
-    ? `<div class="table-wrap case-context-table-wrap" style="margin-top:1rem"><h3>Unified Verdict</h3><p>${severityBadge(verdict.value)} <span class="mono">${escapeHTML((verdict.source_stages || []).join(", "))}</span></p>${(verdict.reasons || []).length ? `<ul class="data-list">${verdict.reasons.map((r) => `<li>${escapeHTML(r)}</li>`).join("")}</ul>` : ""}</div>`
-    : "";
-  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>${verdictBlock}`;
+  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>${unifiedVerdictBlock(ctx.unified_verdict || {})}`;
 }
 
 function _pickAnalysisField(result, key) {
