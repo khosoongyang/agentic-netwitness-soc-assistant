@@ -1039,6 +1039,118 @@ def _collect_alert_titles(incident: dict, state: dict) -> list[str]:
     return titles
 
 
+# ══════════════════════════════════════════════════════════════════════════
+# Unified Verdict signal exposure (explainability only)
+# ══════════════════════════════════════════════════════════════════════════
+# aggregate_verdict() (agents/investigation/tools/triage_verdict.py) already
+# evaluates up to five signals. build_overview() used to forward only their
+# names (`source_stages`) and the level>0 subset (`reasons`), which silently
+# dropped LOW/level-0 inputs and never said where "base severity" came from.
+# _unified_verdict_signals() republishes the SAME evaluated signal dicts —
+# nothing is re-scored, re-weighted or re-banded here — with an analyst-facing
+# display name, source and status so the UI never has to infer them.
+
+_VERDICT_BANDS = {"CRITICAL", "HIGH", "MEDIUM", "LOW", "UNRATED"}
+
+# aggregate_verdict() signal name -> (key, display name, source_stage, source).
+# "base severity" is resolved separately via _BASE_SEVERITY_SOURCES: it is an
+# internal aggregation anchor and is never shown to the analyst under that name.
+_VERDICT_SIGNAL_META = {
+    "base severity": ("base_severity", None, None, None),
+    "asset criticality": ("asset_criticality", "Asset Criticality", "asset_criticality",
+                          "Asset criticality assessment"),
+    "internal IOC correlation": ("internal_ioc_correlation", "Internal IOC Correlation",
+                                 "ioc_correlation", "Internal IOC correlation against prior cases"),
+    "external threat intel": ("external_threat_intel", "Threat Intelligence Risk", "threat_intel",
+                              "Threat Intelligence Enrichment (enrichment_risk_level)"),
+    "investigation severity": ("investigation_severity", "Investigation Severity", "investigation",
+                               "Investigation Agent (investigation_result.severity)"),
+}
+
+# triage_verdict._base_severity()'s own source tag -> what the analyst sees.
+_BASE_SEVERITY_SOURCES = {
+    "triage classification": ("Triage Classification", "triage",
+                              "Triage Agent classification (ticket.classification)"),
+    "incident severity": ("NetWitness Severity", "raw_incident",
+                          "NetWitness incident priority/severity"),
+    "no severity on incident": ("NetWitness Severity", "raw_incident",
+                                "No Triage classification or NetWitness severity was available"),
+}
+
+# Canonical signals aggregate_verdict() omits entirely (returns None) when
+# their input was not supplied — listed as "not_evaluated" so the calculation
+# view still accounts for all five inputs.
+_NOT_EVALUATED_REASONS = {
+    "asset criticality": "Asset criticality assessment was not available to the verdict calculation.",
+    "internal IOC correlation": "Internal IOC correlation was not available to the verdict calculation.",
+    "investigation severity": "No completed Investigation severity was available to the verdict calculation.",
+}
+
+
+def _verdict_signal_status(signal: dict) -> str:
+    if signal.get("absent"):
+        return "absent"
+    if signal.get("error"):
+        return "unavailable" if str(signal.get("label") or "").strip() == "unavailable" else "error"
+    return "scored"
+
+
+def _verdict_signal_display_name(signal: dict) -> str:
+    """Analyst-facing name for one aggregate_verdict() signal. Base severity
+    is named after its actual source (Triage Classification / NetWitness
+    Severity), never "Base Severity"."""
+    name = signal.get("name", "")
+    if name == "base severity":
+        return _BASE_SEVERITY_SOURCES.get(signal.get("detail", ""), ("NetWitness Severity",))[0]
+    meta = _VERDICT_SIGNAL_META.get(name)
+    return meta[1] if meta else str(name).title()
+
+
+def _unified_verdict_signals(verdict: dict) -> list[dict]:
+    """[FYP-FUNCTION] Every signal aggregate_verdict() evaluated, in its own
+    evaluation order, as {key, display_name, value, level, status, counted,
+    source, source_stage, detail, reason}. `value` is the signal's own label
+    (band labels upper-cased for display); non-scored signals carry value
+    None and explain why in `reason`. Presentation only — reads `verdict`,
+    never recomputes it."""
+    if not verdict.get("available"):
+        return []
+    evaluated = {s.get("name"): s for s in verdict.get("signals", []) if isinstance(s, dict)}
+    out: list[dict] = []
+    for name, (key, display_name, source_stage, source) in _VERDICT_SIGNAL_META.items():
+        signal = evaluated.get(name)
+        if signal is None:
+            if name not in _NOT_EVALUATED_REASONS:
+                continue
+            out.append({"key": key, "display_name": display_name, "value": None, "level": None,
+                        "status": "not_evaluated", "counted": False, "source": source,
+                        "source_stage": source_stage, "detail": "",
+                        "reason": _NOT_EVALUATED_REASONS[name]})
+            continue
+        status = _verdict_signal_status(signal)
+        label = str(signal.get("label") or "").strip()
+        detail = str(signal.get("detail") or "").strip()
+        if name == "base severity":
+            display_name, source_stage, source = _BASE_SEVERITY_SOURCES.get(
+                detail, ("NetWitness Severity", "raw_incident", detail))
+        if name in ("base severity", "investigation severity"):
+            detail = ""  # these signals' `detail` is only a source tag, already in `source`
+        scored = status == "scored"
+        out.append({
+            "key": key,
+            "display_name": display_name,
+            "value": (label.upper() if label.upper() in _VERDICT_BANDS else label) if scored else None,
+            "level": signal.get("level"),
+            "status": status,
+            "counted": scored,
+            "source": source,
+            "source_stage": source_stage,
+            "detail": detail,
+            "reason": "" if scored else label,
+        })
+    return out
+
+
 def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -> dict:
     """
     [FYP-FUNCTION] Case Overview tab data — key findings + provenance-
@@ -1113,15 +1225,10 @@ def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -
 
     if verdict.get("available"):
         _conf = {3: "high", 2: "elevated", 1: "moderate", 0: "low"}
-        _signal_display_name = {
-            "base severity": {"triage classification": "Triage Classification",
-                              "incident severity": "NetWitness Severity"},
-        }
         for s in sorted(verdict.get("signals", []), key=lambda s: -s.get("level", 0)):
             if s.get("error") or s.get("absent") or s.get("level", 0) == 0:
                 continue
-            display_name = _signal_display_name.get(s["name"], {}).get(
-                s.get("detail", ""), s["name"].title())
+            display_name = _verdict_signal_display_name(s)
             key_findings.append({
                 "icon": "!", "title": f"{display_name} — {s['label']}",
                 "desc": s.get("detail", ""), "confidence": _conf.get(s["level"], ""),
@@ -1178,6 +1285,7 @@ def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -
                               if not s.get("error") and not s.get("absent")],
             "reasons": [f"{s['name']}: {s['label']}" for s in verdict.get("rationale", [])
                        if s.get("level", 0) > 0],
+            "signals": _unified_verdict_signals(verdict),
             "rule": "aggregate_verdict_v1",
             "incident_id": str(incident_id), "run_id": run_id,
         },

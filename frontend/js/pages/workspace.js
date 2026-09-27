@@ -2,6 +2,10 @@ import { fetchJSON } from "../api.js";
 import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, openModal, provenanceValue, severityBadge, stateBadge } from "../ui.js";
 import { TICKET_REPORT_TYPE, mountReportsPanel, openReportInto } from "./reports.js";
 import { bindContinueButton, stageActionModel } from "../stageContinue.js";
+import {
+  assessmentCard, assessmentHeadline, assessmentSection, assessmentTable, assessmentWhy,
+  bandValue, confidenceBadge, hasValue, pendingValue, unifiedVerdictCard,
+} from "../assessment.js";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
@@ -23,17 +27,7 @@ function statusBadge(status) {
   return badge(status, tone);
 }
 
-function confidenceBadge(level, justification) {
-  const tone = String(level || "").toLowerCase() === "high" ? "confidence-high"
-    : String(level || "").toLowerCase() === "medium" ? "confidence-medium" : "confidence-low";
-  return badge(level, tone, justification || "");
-}
-
-function pendingValue(text) {
-  return `<span class="value-pending">${escapeHTML(text)}</span>`;
-}
-
-function caseContext(detail) {
+export function caseContext(detail) {
   const context = detail.case.context || {};
   const overviewContext = detail.workspace?.overview?.case_context || {};
   const investigation = detail.workspace?.output?.investigation_result || null;
@@ -74,12 +68,14 @@ function caseContext(detail) {
     ["Status", statusBadge(detail.case.status)],
     ["NetWitness Severity", netwitnessSeverity ? severityBadge(netwitnessSeverity) : pendingValue("Not Identified")],
     ["Current Stage", stageBadge(detail.case.current_stage)],
-    ["Aegis Severity", investigation?.severity
+    // investigation_result.severity — the Investigation stage's own
+    // conclusion, deliberately not the incident-level Unified Verdict.
+    ["Investigation Severity", investigation?.severity
       ? severityBadge(investigation.severity, investigation.severity_justification)
       : pendingValue(investigationFieldFallback)],
     ["Triage Classification", triageClassification ? severityBadge(triageClassification) : pendingValue("Pending Triage")],
     ["Unified Verdict", unifiedVerdict ? severityBadge(unifiedVerdict) : pendingValue("Not Identified")],
-    ["Confidence", investigation?.confidence
+    ["Investigation Confidence", investigation?.confidence
       ? confidenceBadge(investigation.confidence, investigation.confidence_justification)
       : pendingValue(investigationFieldFallback)],
     ["Host", escapeHTML(hostValue || "Not Identified")],
@@ -353,7 +349,9 @@ function _poNotObserved(context, flags) {
 }
 
 // `summaryTextHTML` is parserSummaryText(stage.result) — the run-level
-// summary sentence — placed directly after the alert fields.
+// summary sentence — placed directly after the alert fields. The alert's
+// NetWitness severity/risk score are not repeated here: they are the
+// stage's headline assessment (parsingAssessment()).
 function _poParserSummary(na, summaryTextHTML) {
   const summary = na.alert_summary || {};
   const ids = na.identifiers || {};
@@ -363,9 +361,7 @@ function _poParserSummary(na, summaryTextHTML) {
     ["Incident Title", summary.incident_title !== alertName ? summary.incident_title : null],
     ["Alert ID", summary.alert_id, (v) => _poValue(v, { mono: true })],
     ["Incident ID", summary.incident_id, (v) => _poValue(v, { mono: true })],
-    ["Severity", summary.severity, (v) => severityBadge(v)],
     ["Incident Priority", summary.incident_priority],
-    ["Risk Score", summary.risk_score],
     ["Alert Time", summary.alert_time, (v) => escapeHTML(formatDate(v))],
     ["Detection Source", summary.detection_source],
     ["Detection Name", summary.detection_name !== alertName ? summary.detection_name : null],
@@ -459,9 +455,10 @@ function _poProcessFile(na, context) {
   });
 }
 
+// PowerShell Risk (risk_assessment) lives in the parsing details view, not
+// here, so the main view carries no competing risk value.
 function _poDetection(na) {
   const psa = na.powershell_analysis || {};
-  const risk = psa.risk_assessment || {};
   const threat = na.threat_context || {};
   const mono = (v) => _poValue(v, { mono: true });
   const rows = _poRows([
@@ -470,8 +467,6 @@ function _poDetection(na) {
     ["PowerShell Decode Status", psa.decode_status, (v) => escapeHTML(_poHumanise(v))],
     ["Encoded Command Count", psa.encoded_command_count],
     ["Decoded Command Count", psa.decoded_command_count],
-    ["PowerShell Risk Level", risk.risk_level, (v) => severityBadge(v)],
-    ["PowerShell Risk Score", risk.risk_score],
     ["Suspicious Behaviours", psa.suspicious_behaviours],
     ["PowerShell Extracted IOCs", psa.extracted_iocs, mono],
     ["MITRE Tactics", threat.mitre_tactics],
@@ -487,31 +482,65 @@ function _poDetection(na) {
   return _poSection("Detection / Risk Indicators", rows, { extra: summary });
 }
 
-function _poDataQuality(na, context) {
+// A field list's count: the list's length, or the number itself when the
+// parser stored a count rather than the list.
+function _poCount(value) {
+  if (Array.isArray(value)) return value.length;
+  return typeof value === "number" ? value : null;
+}
+
+// Parsing is a normalisation stage, so its headline is the two values it
+// actually carries — the NetWitness alert's own severity (as extracted by
+// the parser; Parsing does not produce a severity) and the parser's
+// confidence. No overall "Parsing risk" is invented. Everything else —
+// PowerShell Risk (scoped to PowerShell only), data quality and
+// normalisation metadata — sits in the parsing details view.
+export function parsingAssessment(na, context = na?.observed_data_context || {}) {
+  const summary = na.alert_summary || {};
+  const risk = na.powershell_analysis?.risk_assessment || {};
   const dq = na.data_quality || {};
   const meta = na.parser_metadata || {};
   const confidence = dq.parser_confidence || meta.parser_confidence;
   const score = dq.parser_confidence_score ?? meta.parser_confidence_score;
+
+  const headlines = [
+    assessmentHeadline("NetWitness Severity", hasValue(summary.severity) ? bandValue(summary.severity) : pendingValue("Not provided in the alert")),
+    assessmentHeadline("Parser Confidence", hasValue(confidence) ? confidenceBadge(confidence) : pendingValue("Not recorded")),
+  ];
+
   const rows = _poRows([
-    ["Parser Confidence", confidence, (v) => `${confidenceBadge(v)}${score !== undefined && score !== null ? ` <span class="mono">${escapeHTML(String(score))}/100</span>` : ""}`],
+    ["NetWitness Severity", summary.severity, bandValue],
+    ["NetWitness Risk Score", summary.risk_score],
+    ["PowerShell Risk", risk.risk_level, bandValue],
+    ["PowerShell Risk Score", risk.risk_score],
+    ["Parser Confidence", confidence, (v) => confidenceBadge(v)],
+    ["Parser Confidence Score", score, (v) => `<span class="mono">${escapeHTML(String(v))}/100</span>`],
     ["Confidence Explanation", dq.confidence_explanation],
+    ["Normalisation Status", meta.normalisation_status, (v) => escapeHTML(_poHumanise(v))],
+    ["Missing Optional Fields", _poCount(dq.missing_optional_fields)],
+    ["Not Applicable Fields", _poCount(dq.not_applicable_fields)],
+    ["Normalised Event Count", dq.normalised_event_count],
+  ]);
+  const warnings = Array.isArray(dq.warnings) ? dq.warnings.filter((w) => _poHas(w)) : [];
+  const metadataRows = _poRows([
     ["Missing Required Fields", dq.missing_required_fields, (v) => _poValue(v, { mono: true })],
     ["Missing Context Fields", dq.missing_context_fields, (v) => _poValue(v, { mono: true })],
-    ["Normalised Event Count", dq.normalised_event_count],
     ["Primary Data Source", context.primary_data_source],
     ["Observed Data Types", context.observed_data_types],
-    ["Normalisation Status", meta.normalisation_status],
     ["Input Format", meta.input_format],
     ["Alert Count", meta.alert_count],
     ["Parser", meta.parser && meta.parser_version ? `${meta.parser} · ${meta.parser_version}` : meta.parser || meta.parser_version],
   ]);
-  const warnings = Array.isArray(dq.warnings) ? dq.warnings.filter((w) => _poHas(w)) : [];
-  const extra = [
-    warnings.length ? `<div class="notice" style="margin-top:0.75rem"><strong>Warnings</strong><ul class="data-list">${warnings.map((w) => `<li><div>${escapeHTML(w)}</div></li>`).join("")}</ul></div>` : "",
-    _poFieldList("Missing Optional Fields", dq.missing_optional_fields),
-    _poFieldList("Not Applicable Fields", dq.not_applicable_fields),
+  const details = [
+    assessmentSection("Assessment Details", assessmentTable(rows)),
+    assessmentSection("Warnings", warnings.length ? `<ul class="data-list">${warnings.map((w) => `<li><div>${escapeHTML(w)}</div></li>`).join("")}</ul>` : ""),
+    assessmentSection("Normalisation Metadata", assessmentTable(metadataRows)),
+    assessmentSection("", [
+      _poFieldList("Missing Optional Fields", dq.missing_optional_fields),
+      _poFieldList("Not Applicable Fields", dq.not_applicable_fields),
+    ].join(""), { className: "assessment-field-lists" }),
   ].join("");
-  return _poSection("Normalisation / Data Quality", rows, { extra });
+  return assessmentCard({ headlines, noun: "parsing details", details });
 }
 
 function parsingOverview(result) {
@@ -533,9 +562,9 @@ function parsingOverview(result) {
     _poDetection(normalisedAlert),
   ].filter(Boolean).join("");
   return `<div class="parsing-overview">
+    ${parsingAssessment(normalisedAlert, context)}
     ${_poParserSummary(normalisedAlert, summaryTextHTML)}
     ${detailCards ? `<div class="integration-grid">${detailCards}</div>` : ""}
-    ${_poDataQuality(normalisedAlert, context)}
   </div>`;
 }
 
@@ -665,14 +694,15 @@ function triageExplanation(ticket, result) {
   return parts.join("");
 }
 
+// Classification/category/risk are the Triage assessment (triageAssessment());
+// the summary keeps only what is not repeated there.
 function triageSummarySection(ticket, result) {
   const rows = _poRows([
-    ["Classification", ticket.classification, (v) => severityBadge(v)],
-    ["Category", ticket.incident_category],
-    ["Overall Risk", ticket.risk_rating?.overall_risk, (v) => severityBadge(v)],
     ["Initial Response", ticket.initial_response_time],
   ]);
-  return `<section class="panel"><h3>Triage Summary</h3>${rows.length ? _poTable(rows) : ""}${triageExplanation(ticket, result)}</section>`;
+  const explanation = triageExplanation(ticket, result);
+  if (!rows.length && !explanation) return "";
+  return `<section class="panel"><h3>Triage Summary</h3>${rows.length ? _poTable(rows) : ""}${explanation}</section>`;
 }
 
 function triageIOCEvidence(iocStep, ticket, result) {
@@ -734,19 +764,32 @@ function _triageTable(rows) {
   return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([labelHTML, value]) => `<tr><th scope="row">${labelHTML}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
-function triageRiskAssessment(ticket) {
+// Headline = ticket.risk_rating.overall_risk (the Triage Agent's own overall
+// rating). Triage produces no severity or confidence field, so neither is
+// shown. ticket.classification and ticket.incident_category are separate
+// fields and stay separate rows.
+export function triageAssessment(ticket) {
   const rr = ticket.risk_rating || {};
-  const rows = [
-    ["Initiation", rr.likelihood_initiation],
-    ["Occurrence", rr.likelihood_occurrence],
-    ["Adverse Impact", rr.likelihood_adverse_impact],
-    ["Overall", rr.overall_risk],
-  ];
-  return `<article class="panel">
-    <h3>Risk Assessment</h3>
-    <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Dimension</th><th>Rating</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value ? severityBadge(value) : pendingValue("—")}</td></tr>`).join("")}</tbody></table></div>
-    ${rr.rationale ? `<div class="notice triage-why"><h4 class="triage-subheading">Why ${escapeHTML(rr.overall_risk || "this rating")}?</h4><p>${escapeHTML(rr.rationale)}</p></div>` : ""}
-  </article>`;
+  const overall = rr.overall_risk;
+  const classificationRows = _poRows([
+    ["Triage Classification", ticket.classification, bandValue],
+    ["Incident Category", ticket.incident_category],
+  ]);
+  const riskRows = _poRows([
+    ["Initiation Risk", rr.likelihood_initiation, bandValue],
+    ["Occurrence Risk", rr.likelihood_occurrence, bandValue],
+    ["Adverse Impact", rr.likelihood_adverse_impact, bandValue],
+    ["Overall Triage Risk", overall, bandValue],
+  ]);
+  const details = [
+    assessmentSection("Classification", assessmentTable(classificationRows)),
+    assessmentSection("Risk Assessment", assessmentTable(riskRows)),
+    rr.rationale ? assessmentWhy(`Why ${overall || "this rating"}?`, rr.rationale) : "",
+  ].join("");
+  return assessmentCard({
+    headlines: [assessmentHeadline("Overall Triage Risk", hasValue(overall) ? bandValue(overall) : pendingValue("Not recorded"))],
+    details,
+  });
 }
 
 // Presentation-only split of a leading ATT&CK ID ("T1046 Network Service
@@ -849,8 +892,9 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
     try {
       const iocStep = triageTraceStep(result, "IOC Checklist");
       overviewHTML = `<div class="triage-overview">
+        ${triageAssessment(ticket)}
         ${triageSummarySection(ticket, result)}
-        <div class="integration-grid">${triageIOCEvidence(iocStep, ticket, result)}${triageRiskAssessment(ticket)}</div>
+        ${triageIOCEvidence(iocStep, ticket, result)}
         ${triageMitreSection(ticket)}
         ${triageRecommendedActions(ticket)}
       </div>`;
@@ -990,10 +1034,11 @@ function tiWorkflowStatusLine(workflow) {
   return _INVESTIGATION_STATE_LINES[investigation.state] || "";
 }
 
+// Threat Intelligence Risk (level/score/reasons/recommendation) is the
+// stage's headline assessment (tiAssessment()); the summary carries the
+// narrative and the live workflow line only.
 function tiSummaryCard(result, workflow) {
   const rows = [
-    ["Risk level", result.enrichment_risk_level ? severityBadge(result.enrichment_risk_level) : tiDash()],
-    ["Risk score", tiText(result.enrichment_risk_score)],
     ["Last enriched", (result.generated_at || result.created_at) ? escapeHTML(formatDate(result.generated_at || result.created_at)) : tiDash()],
   ];
   const table = `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
@@ -1001,17 +1046,9 @@ function tiSummaryCard(result, workflow) {
   const aiPara = result.ai_summary
     ? `<p class="notice">${escapeHTML(result.ai_summary)}<br><small style="opacity:0.75">AI-generated summary${result.ai_summary_model ? ` · ${escapeHTML(result.ai_summary_model)}` : ""}</small></p>`
     : "";
-  // Labelled explicitly as a Threat Intelligence recommendation (not "Next
-  // step"/"Workflow") so it can never be misread as an orchestration
-  // decision — see tiWorkflowStatusLine() above for the actual live
-  // workflow-state line, sourced independently from the Investigation
-  // stage's own state.
-  const recommendation = result.recommended_next_action
-    ? `<p class="notice"><strong>Threat Intelligence recommendation:</strong> ${escapeHTML(result.recommended_next_action)}</p>`
-    : "";
   const workflowLine = tiWorkflowStatusLine(workflow);
   const workflowPara = workflowLine ? `<p class="notice"><strong>Workflow:</strong> ${escapeHTML(workflowLine)}</p>` : "";
-  return table + summaryPara + aiPara + recommendation + workflowPara;
+  return table + summaryPara + aiPara + workflowPara;
 }
 
 // Mirrors agents/reporting/triage_ticket_editing.py::_threat_intel_blocks()'s
@@ -1038,12 +1075,13 @@ function tiIOCsCard(iocs) {
 // a compact field table, never as a raw nested JSON dump. When the decoder
 // found no encoded command at all, this degrades to a one-line empty state
 // instead of a table of all-empty fields.
+// Returns the body only; tiProviderResults() wraps it in its section.
 function tiPowerShellCard(psa) {
   if (!psa || typeof psa !== "object" || !Object.keys(psa).length) return "";
   const hasActivity = Boolean(psa.encoded_command_present || psa.powershell_indicator_present)
     || Boolean(psa.decode_status && !["not_present", "not_found"].includes(psa.decode_status));
   if (!hasActivity) {
-    return `<article class="panel"><h3>PowerShell Analysis</h3>${emptyState(psa.decoded_command_summary || "No PowerShell activity was detected for this alert.")}</article>`;
+    return emptyState(psa.decoded_command_summary || "No PowerShell activity was detected for this alert.");
   }
   const risk = psa.risk_assessment || {};
   const extracted = psa.extracted_iocs || {};
@@ -1052,8 +1090,8 @@ function tiPowerShellCard(psa) {
     ["Encoded command detected", psa.encoded_command_present ? "Yes" : "No"],
     ["Encoded command count", tiText(psa.encoded_command_count)],
     ["Decoded command count", tiText(psa.decoded_command_count)],
-    ["PowerShell risk level", risk.risk_level ? severityBadge(risk.risk_level) : tiDash()],
-    ["PowerShell risk score", tiText(risk.risk_score)],
+    ["PowerShell Risk", risk.risk_level ? bandValue(risk.risk_level) : tiDash()],
+    ["PowerShell Risk Score", tiText(risk.risk_score)],
     ["Extracted URLs", tiJoined(extracted.urls)],
     ["Extracted domains", tiJoined(extracted.domains)],
     ["Extracted public IPs", tiJoined(extracted.public_ips)],
@@ -1062,8 +1100,8 @@ function tiPowerShellCard(psa) {
     ["Extracted file names", tiJoined(extracted.file_names)],
   ];
   const table = `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
-  const summary = psa.decoded_command_summary ? `<p class="notice">${escapeHTML(psa.decoded_command_summary)}</p>` : "";
-  return `<article class="panel"><h3>PowerShell Analysis</h3>${table}${summary}</article>`;
+  const summary = psa.decoded_command_summary ? `<p class="notice ti-provider-note">${escapeHTML(psa.decoded_command_summary)}</p>` : "";
+  return `${table}${summary}`;
 }
 
 // Columns mirror _threat_intel_blocks()'s VirusTotal table (Type/Indicator/
@@ -1078,47 +1116,180 @@ function tiVirusTotalCard(vt, iocs) {
   }
   for (const r of vt?.ip_results || []) rows.push([tiText("IP"), tiText(r.indicator), providerStatusCell(r), tiText(r.malicious), tiText(r.suspicious), tiText(r.reputation)]);
   for (const r of vt?.domain_results || []) rows.push([tiText("Domain"), tiText(r.indicator), providerStatusCell(r), tiText(r.malicious), tiText(r.suspicious), tiText(r.reputation)]);
-  if (!rows.length) return emptyState("No VirusTotal lookups were performed for this run.");
+  if (!rows.length) return emptyState(_TI_NO_VT_LOOKUPS);
   const body = rows.map(([type, indicator, status, malicious, suspicious, reputation]) => `<tr><td>${type}</td><td class="mono">${indicator}</td><td>${status}</td><td>${malicious}</td><td>${suspicious}</td><td>${reputation}</td></tr>`).join("");
   return tiTable(["Type", "Indicator", "Status", "Malicious", "Suspicious", "Reputation"], [body]);
 }
 
+// No-result wording shared by the full provider tables and the Provider
+// Overview, keyed only on which indicators extraction actually produced.
+const _TI_NO_VT_LOOKUPS = "No VirusTotal lookups were performed for this run.";
+
+function _tiAbuseEmptyText(iocs) {
+  return (iocs?.ip_indicators || []).length
+    ? "AbuseIPDB did not return a result for the extracted IP indicator(s)."
+    : "No AbuseIPDB results for this run — no usable public IP indicator was extracted.";
+}
+
+function _tiOTXEmptyText(iocs) {
+  const hasIndicator = Boolean(iocs?.file_hash) || (iocs?.ip_indicators || []).length || (iocs?.domain_indicators || []).length;
+  return hasIndicator
+    ? "AlienVault OTX did not return a result for the extracted indicator(s)."
+    : "No AlienVault OTX results for this run — no usable indicator was extracted.";
+}
+
 function tiAbuseIPDBCard(abuse, iocs) {
   const rows = abuse?.ip_results || [];
-  if (!rows.length) {
-    return emptyState((iocs?.ip_indicators || []).length
-      ? "AbuseIPDB did not return a result for the extracted IP indicator(s)."
-      : "No AbuseIPDB results for this run — no usable public IP indicator was extracted.");
-  }
+  if (!rows.length) return emptyState(_tiAbuseEmptyText(iocs));
   const body = rows.map((r) => `<tr><td class="mono">${tiText(r.indicator)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.abuse_confidence_score)}</td><td>${tiText(r.total_reports)}</td><td>${tiText(r.country_code)}</td><td>${tiText(r.isp)}</td><td>${tiText(r.usage_type)}</td><td>${r.last_reported_at ? escapeHTML(formatDate(r.last_reported_at)) : tiDash()}</td></tr>`).join("");
   return tiTable(["IP", "Status", "Abuse confidence", "Total reports", "Country", "ISP", "Usage type", "Last reported"], [body]);
 }
 
 function tiOTXCard(otx, iocs) {
   const rows = otx?.otx_results || [];
-  if (!rows.length) {
-    const hasIndicator = Boolean(iocs?.file_hash) || (iocs?.ip_indicators || []).length || (iocs?.domain_indicators || []).length;
-    return emptyState(hasIndicator
-      ? "AlienVault OTX did not return a result for the extracted indicator(s)."
-      : "No AlienVault OTX results for this run — no usable indicator was extracted.");
-  }
+  if (!rows.length) return emptyState(_tiOTXEmptyText(iocs));
   const body = rows.map((r) => `<tr><td class="mono">${tiText(r.indicator)}</td><td>${tiText(r.indicator_type)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.pulse_count)}</td><td>${tiJoined(r.related_pulses)}</td><td>${tiJoined(r.sections_available)}</td></tr>`).join("");
   return tiTable(["Indicator", "Type", "Status", "Pulse count", "Related pulses", "Available sections"], [body]);
 }
 
-// enrichment_risk_reasons is already a list of finished, human-readable
-// sentences produced by threat_intel.py::calculate_enrichment_risk() — this
-// only renders them as bullets, it never re-derives a score from provider
-// fields.
-function tiRiskAssessmentCard(result) {
+// ── Provider Overview (concise, inside the assessment) ─────────────────────
+// One line per lookup the provider result already contains: the lookup's own
+// status/reason, or — for a completed lookup — the provider's own counts
+// (VirusTotal malicious/suspicious, AbuseIPDB abuse_confidence_score/
+// total_reports, OTX pulse_count). Nothing is summed, weighted or turned into
+// a per-provider verdict; the full rows live in tiProviderResults().
+
+const _TI_OVERVIEW_MAX_LINES = 3;
+
+const TI_PROVIDER_SECTION_IDS = {
+  virustotal: "ti-provider-virustotal",
+  abuseipdb: "ti-provider-abuseipdb",
+  otx: "ti-provider-otx",
+  powershell: "ti-provider-powershell",
+};
+
+function _tiCount(value, word) {
+  if (value === null || value === undefined || value === "") return `— ${word}s`;
+  return `${value} ${word}${Number(value) === 1 ? "" : "s"}`;
+}
+
+function _tiLookupLine(label, lookup, completedText) {
+  const status = String(lookup?.status || "unknown");
+  if (status === "completed") return `${label}: ${completedText}`;
+  const why = lookup?.reason || (lookup?.status_code ? `HTTP ${lookup.status_code}` : "");
+  return `${label}: ${_poHumanise(status)}${why ? ` (${why})` : ""}`;
+}
+
+function _tiOverviewLines(provider, block) {
+  const iocs = block.iocs || {};
+  if (provider === "virustotal") {
+    const vt = block.virustotal || {};
+    const counts = (r) => `${_tiCount(r.malicious, "malicious detection")}, ${r.suspicious ?? "—"} suspicious`;
+    const lines = [];
+    if (vt.file_hash && typeof vt.file_hash === "object") {
+      const hash = vt.file_hash.indicator || iocs.file_hash;
+      lines.push(_tiLookupLine(`File hash${hash ? ` ${hash}` : ""}`, vt.file_hash, counts(vt.file_hash)));
+    }
+    (vt.ip_results || []).forEach((r) => lines.push(_tiLookupLine(`IP ${r.indicator ?? "—"}`, r, counts(r))));
+    (vt.domain_results || []).forEach((r) => lines.push(_tiLookupLine(`Domain ${r.indicator ?? "—"}`, r, counts(r))));
+    return lines.length ? lines : [_TI_NO_VT_LOOKUPS];
+  }
+  if (provider === "abuseipdb") {
+    const rows = block.abuseipdb?.ip_results || [];
+    if (!rows.length) return [_tiAbuseEmptyText(iocs)];
+    return rows.map((r) => _tiLookupLine(String(r.indicator ?? "—"), r,
+      `abuse confidence ${r.abuse_confidence_score ?? "—"}, ${_tiCount(r.total_reports, "report")}`));
+  }
+  const rows = block.alienvault_otx?.otx_results || [];
+  if (!rows.length) return [_tiOTXEmptyText(iocs)];
+  return rows.map((r) => _tiLookupLine(`${r.indicator ?? "—"}${r.indicator_type ? ` (${r.indicator_type})` : ""}`, r,
+    _tiCount(r.pulse_count, "related pulse")));
+}
+
+function tiProviderOverview(block) {
+  const providers = [["virustotal", "VirusTotal"], ["abuseipdb", "AbuseIPDB"], ["otx", "AlienVault OTX"]];
+  const items = providers.map(([key, name]) => {
+    const lines = _tiOverviewLines(key, block);
+    const shown = lines.slice(0, _TI_OVERVIEW_MAX_LINES).map((line) => `<span>${escapeHTML(line)}</span>`);
+    if (lines.length > _TI_OVERVIEW_MAX_LINES) {
+      shown.push(`<span class="value-pending">+${lines.length - _TI_OVERVIEW_MAX_LINES} more — see full results</span>`);
+    }
+    const target = TI_PROVIDER_SECTION_IDS[key];
+    return `<li class="provider-overview-item">
+      <a class="provider-overview-link" href="#${target}" data-scroll-target="${target}" title="Jump to the full ${escapeHTML(name)} results">${escapeHTML(name)}<span class="provider-overview-chevron" aria-hidden="true">›</span></a>
+      <div class="provider-overview-summary">${shown.join("")}</div>
+    </li>`;
+  });
+  return `<ul class="provider-overview" aria-label="Provider overview">${items.join("")}</ul>`;
+}
+
+// Headline = enrichment_risk_level, the Threat Intelligence stage's own
+// case-level risk (threat_intel.py::calculate_enrichment_risk()), labelled
+// "Threat Intelligence Risk" so it is never read as an overall incident risk.
+// The details are a concise explanation only: enrichment_risk_reasons (that
+// calculation's own finished sentences), the Provider Overview and the
+// recommendation. The full provider output is stage output, rendered
+// separately by tiProviderResults() — never inside this assessment.
+export function tiAssessment(result, block = result.threat_intelligence || {}) {
   const level = result.enrichment_risk_level;
-  const score = result.enrichment_risk_score;
   const reasons = (Array.isArray(result.enrichment_risk_reasons) ? result.enrichment_risk_reasons : []).filter((r) => String(r || "").trim());
-  const heading = level ? `${escapeHTML(level)} risk (score ${score != null ? escapeHTML(String(score)) : "—"})` : "Risk not assessed";
-  const list = reasons.length
-    ? `<ul class="data-list">${reasons.map((r) => `<li><div>${escapeHTML(r)}</div></li>`).join("")}</ul>`
-    : emptyState("No risk reasons were recorded for this run.");
-  return `<article class="panel"><h3>Risk Assessment</h3><p><strong>${heading}</strong></p>${list}</article>`;
+  const rows = _poRows([
+    ["Threat Intelligence Risk", level, bandValue],
+    ["Risk Score", result.enrichment_risk_score],
+  ]);
+  // Labelled explicitly as a Threat Intelligence recommendation (not "Next
+  // step"/"Workflow") so it can never be misread as an orchestration
+  // decision — see tiWorkflowStatusLine() above for the actual live
+  // workflow-state line, sourced independently from the Investigation
+  // stage's own state.
+  const recommendation = result.recommended_next_action
+    ? `<p class="assessment-rationale">${escapeHTML(result.recommended_next_action)}</p>`
+    : "";
+  const details = [
+    assessmentSection("", assessmentTable(rows)),
+    assessmentSection(`Why ${level || "this rating"}?`, reasons.length
+      ? `<ul class="data-list">${reasons.map((r) => `<li><div>${escapeHTML(r)}</div></li>`).join("")}</ul>`
+      : `<p class="value-pending">No risk reasons were recorded for this run.</p>`),
+    assessmentSection("Provider Overview", tiProviderOverview(block)),
+    assessmentSection("Threat Intelligence Recommendation", recommendation),
+  ].join("");
+  return assessmentCard({
+    headlines: [assessmentHeadline("Threat Intelligence Risk", hasValue(level) ? bandValue(level) : pendingValue("Not assessed"))],
+    details,
+  });
+}
+
+// The stage's actual output: each provider's full existing table (and the
+// PowerShell analysis) as its own section, each an in-page scroll target for
+// the Provider Overview links above.
+export function tiProviderResults(block) {
+  const iocs = block.iocs || {};
+  const section = (key, title, body) => (body
+    ? `<section class="panel ti-provider-section" id="${TI_PROVIDER_SECTION_IDS[key]}" tabindex="-1" aria-labelledby="${TI_PROVIDER_SECTION_IDS[key]}-title"><h3 id="${TI_PROVIDER_SECTION_IDS[key]}-title">${escapeHTML(title)}</h3>${body}</section>`
+    : "");
+  return `<section class="ti-provider-results" aria-labelledby="ti-provider-results-title">
+    <h3 class="ti-provider-results-title" id="ti-provider-results-title">Threat Intelligence Provider Results</h3>
+    ${section("virustotal", "VirusTotal", tiVirusTotalCard(block.virustotal, iocs))}
+    ${section("abuseipdb", "AbuseIPDB", tiAbuseIPDBCard(block.abuseipdb, iocs))}
+    ${section("otx", "AlienVault OTX", tiOTXCard(block.alienvault_otx, iocs))}
+    ${section("powershell", "PowerShell Analysis", tiPowerShellCard(iocs.powershell_analysis))}
+  </section>`;
+}
+
+// Provider Overview links scroll within the page. The default `#fragment`
+// navigation is prevented because it fires `popstate`, which the router
+// (router.js::installRouter) treats as a navigation and re-renders on.
+function bindInPageLinks(root) {
+  root.querySelectorAll("[data-scroll-target]").forEach((link) => {
+    link.addEventListener("click", (event) => {
+      const target = root.querySelector(`#${link.dataset.scrollTarget}`);
+      if (!target) return;
+      event.preventDefault();
+      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+      target.focus({ preventScroll: true });
+    });
+  });
 }
 
 // notes (informational — why a lookup was skipped, PowerShell handling,
@@ -1133,7 +1304,7 @@ function tiNotesCard(result) {
     ? `<ul class="data-list">${notes.map((n) => `<li><div>${escapeHTML(n)}</div></li>`).join("")}</ul>`
     : emptyState("No enrichment notes were recorded for this run.");
   const warningsBlock = warnings.length
-    ? `<div class="notice notice-error" style="margin-top:0.75rem"><strong>Warnings</strong><ul class="data-list">${warnings.map((w) => `<li><div>${escapeHTML(w)}</div></li>`).join("")}</ul></div>`
+    ? `<div class="notice notice-error ti-provider-note"><strong>Warnings</strong><ul class="data-list">${warnings.map((w) => `<li><div>${escapeHTML(w)}</div></li>`).join("")}</ul></div>`
     : "";
   return `<article class="panel"><h3>Notes</h3>${notesBlock}${warningsBlock}</article>`;
 }
@@ -1165,20 +1336,20 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
     `;
   } else {
     const iocs = block.iocs || {};
-    const psaHTML = tiPowerShellCard(iocs.powershell_analysis);
+    // Assessment (concise conclusion) first, then the stage's own output.
     root.innerHTML = `
       ${header}
-      <section class="panel"><h3>Summary</h3>${tiSummaryCard(result, workflow)}</section>
-      <section class="panel" style="margin-top:1rem"><h3>Extracted IOCs</h3>${tiIOCsCard(iocs)}</section>
-      ${psaHTML ? `<div style="margin-top:1rem">${psaHTML}</div>` : ""}
-      <section class="panel" style="margin-top:1rem"><h3>VirusTotal</h3>${tiVirusTotalCard(block.virustotal, iocs)}</section>
-      <section class="panel" style="margin-top:1rem"><h3>AbuseIPDB</h3>${tiAbuseIPDBCard(block.abuseipdb, iocs)}</section>
-      <section class="panel" style="margin-top:1rem"><h3>AlienVault OTX</h3>${tiOTXCard(block.alienvault_otx, iocs)}</section>
-      <div style="margin-top:1rem">${tiRiskAssessmentCard(result)}</div>
-      <div style="margin-top:1rem">${tiNotesCard(result)}</div>
+      <div class="stage-sections">
+        ${tiAssessment(result, block)}
+        <section class="panel"><h3>Summary</h3>${tiSummaryCard(result, workflow)}</section>
+        <section class="panel"><h3>Extracted IOCs</h3>${tiIOCsCard(iocs)}</section>
+        ${tiProviderResults(block)}
+        ${tiNotesCard(result)}
+      </div>
       ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
+    bindInPageLinks(root);
   }
   bindStageActions(root, stage, workflow, onAction, onNavigate);
 }
@@ -1205,63 +1376,60 @@ function provenanceRow(label, entry) {
   return `<tr><th scope="row">${escapeHTML(label)}</th><td title="${escapeHTML(title)}">${escapeHTML(e.value ?? "—")}</td></tr>`;
 }
 
-// Presentation-only labels for aggregate_verdict()'s signal names, which reach
-// the frontend as snake_case `source_stages` and as the "name: label" prefix of
-// each `reasons` entry. Key order is the display order of the evidence rows.
-const _VERDICT_FACTOR_LABELS = {
-  base_severity: "Base Severity",
-  investigation_severity: "Investigation Severity",
-  asset_criticality: "Asset Criticality",
-  internal_IOC_correlation: "Internal IOC Correlation",
-  external_threat_intel: "External Threat Intelligence",
+const _BUSINESS_IMPACT_LABELS = {
+  critical_system: "Critical System",
+  essential_service: "Essential Service",
+  data_sensitivity: "Data Sensitivity",
+  operational_impact: "Operational Impact",
 };
-const _VERDICT_FACTOR_ORDER = Object.keys(_VERDICT_FACTOR_LABELS);
-const _SEVERITY_BANDS = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
 
-function _verdictFactorKey(name) {
-  return String(name || "").trim().replace(/\s+/g, "_");
+// Headline = investigation_result.severity: the Investigation stage's own
+// conclusion from its own evidence. It is deliberately a separate card from
+// the Unified Verdict (the incident-level aggregation across stages). The
+// details show only what the Investigation result actually stored —
+// severity/confidence justifications, severity_divergence and the
+// business_impact_checklist — and say so when an older run lacks them.
+export function investigationAssessment(result) {
+  if (!result || !Object.keys(result).length) return "";
+  const severity = _pickAnalysisField(result, "severity");
+  const severityWhy = _pickAnalysisField(result, "severity_justification");
+  const confidence = _pickAnalysisField(result, "confidence");
+  const confidenceWhy = _pickAnalysisField(result, "confidence_justification");
+  const divergence = result.severity_divergence;
+  const impact = _pickAnalysisField(result, "business_impact_checklist");
+
+  const parts = [
+    hasValue(severityWhy)
+      ? assessmentWhy(`Why ${severity || "this severity"}?`, severityWhy)
+      : assessmentSection("", `<p class="value-pending">Severity justification was not recorded for this Investigation run.</p>`),
+  ];
+  if (hasValue(confidence)) {
+    parts.push(assessmentSection("", assessmentTable([["Investigation Confidence", confidenceBadge(confidence)]])));
+    if (hasValue(confidenceWhy)) parts.push(assessmentWhy(`Why ${confidence}?`, confidenceWhy));
+  }
+  if (divergence && typeof divergence === "object") {
+    parts.push(assessmentSection("Severity Divergence", assessmentTable(_poRows([
+      ["Triage", divergence.triage, bandValue],
+      ["Investigation", divergence.investigation, bandValue],
+      ["Direction", divergence.direction, (v) => escapeHTML(String(v).charAt(0).toUpperCase() + String(v).slice(1))],
+    ]))));
+  }
+  if (impact && typeof impact === "object") {
+    const rows = Object.entries(impact)
+      .filter(([, v]) => _poHas(v))
+      .map(([k, v]) => [_BUSINESS_IMPACT_LABELS[k] || _poHumanise(k), escapeHTML(String(v))]);
+    parts.push(assessmentSection("Business Impact Checklist", assessmentTable(rows)));
+  }
+  return assessmentCard({
+    headlines: [assessmentHeadline("Investigation Severity", hasValue(severity) ? bandValue(severity) : pendingValue("Not recorded"))],
+    details: parts.join(""),
+  });
 }
 
-function _verdictFactorLabel(key) {
-  return _VERDICT_FACTOR_LABELS[key]
-    || key.split("_").filter(Boolean).map((w) => (w === w.toUpperCase() ? w : w[0].toUpperCase() + w.slice(1))).join(" ");
-}
-
-function _verdictEvidenceValue(text) {
-  const upper = text.toUpperCase();
-  if (_SEVERITY_BANDS.has(upper)) return severityBadge(upper);
-  return escapeHTML(text.charAt(0).toUpperCase() + text.slice(1));
-}
-
-// Unified Verdict card: overall band, the factors the backend says it scored
-// (source_stages), then the per-factor values it reported (reasons). Only
-// reformats those three fields — no value is derived or filled in here.
-function unifiedVerdictBlock(verdict) {
-  if (!verdict.value || verdict.value === "—") return "";
-  const factors = [...new Set((verdict.source_stages || []).map(_verdictFactorKey).filter(Boolean))];
-  const rank = (key) => { const i = _VERDICT_FACTOR_ORDER.indexOf(key); return i === -1 ? _VERDICT_FACTOR_ORDER.length : i; };
-  const evidence = (verdict.reasons || [])
-    .map((r) => {
-      const text = String(r ?? "");
-      const i = text.indexOf(":");
-      return i > 0 ? { key: _verdictFactorKey(text.slice(0, i)), value: text.slice(i + 1).trim() } : { key: "", value: text.trim() };
-    })
-    .filter((e) => e.value)
-    .sort((a, b) => rank(a.key) - rank(b.key));
-  const evidenceRows = evidence.map((e) => (e.key
-    ? `<tr><th scope="row">${escapeHTML(_verdictFactorLabel(e.key))}</th><td>${_verdictEvidenceValue(e.value)}</td></tr>`
-    : `<tr><td colspan="2">${escapeHTML(e.value)}</td></tr>`)).join("");
-  return `<div class="case-context-table-wrap unified-verdict">
-    <h3>Unified Verdict</h3>
-    <div class="unified-verdict-overall"><span>Overall Verdict</span>${severityBadge(String(verdict.value).toUpperCase())}</div>
-    ${factors.length ? `<h4 class="triage-subheading">Verdict Factors</h4><div class="parsing-field-chips">${factors.map((k) => `<span class="evidence-chip">${escapeHTML(_verdictFactorLabel(k))}</span>`).join("")}</div>` : ""}
-    ${evidenceRows ? `<h4 class="triage-subheading">Contributing Evidence</h4><table class="case-context-table"><tbody>${evidenceRows}</tbody></table>` : ""}
-  </div>`;
-}
-
-function investigationOverviewTab(workspace) {
+export function investigationOverviewTab(workspace) {
   const ctx = workspace?.overview?.case_context || {};
-  if (!Object.keys(ctx).length) return emptyState("No case overview is available yet.");
+  const assessment = investigationAssessment(workspace?.output?.investigation_result);
+  if (!Object.keys(ctx).length) return assessment || emptyState("No case overview is available yet.");
   const rows = [
     provenanceRow("NetWitness Severity", ctx.netwitness_severity),
     provenanceRow("Triage Classification", ctx.triage_classification),
@@ -1271,7 +1439,16 @@ function investigationOverviewTab(workspace) {
     provenanceRow("Workflow Status", ctx.workflow_status),
     provenanceRow("IOC IP Count", ctx.ioc_ip_count),
   ].join("");
-  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>${unifiedVerdictBlock(ctx.unified_verdict || {})}`;
+  // Investigation Severity (stage conclusion) and the Unified Verdict
+  // (case-level aggregation) are deliberately separate groups: the verdict
+  // sits in its own divided .verdict-section, never inside the Investigation
+  // assessment.
+  const verdict = unifiedVerdictCard(ctx.unified_verdict);
+  return `<div class="stage-sections">
+    ${assessment}
+    ${verdict ? `<div class="verdict-section" aria-label="Case-level assessment">${verdict}</div>` : ""}
+    <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>
+  </div>`;
 }
 
 function _pickAnalysisField(result, key) {
