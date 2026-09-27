@@ -982,6 +982,26 @@ td {
   display: none;
 }
 
+/* Bottom action area for Parsing / Triage / Threat Intelligence /
+   Investigation (stageActionButtons(..., { footer: true })): sits after the
+   stage output, separated by a divider. Buttons wrap rather than widen the
+   stage panel. */
+.stage-actions-footer {
+  margin: 1.25rem 0 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.stage-actions-footer .triage-action-group {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.stage-actions-footer .action-button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 /* Entity Graph — interactive node-link diagram (workspace.js::
    mountEntityGraph). Colors/layout intentionally reuse the app's existing
    dark palette (--bg/--surface/--accent/...) rather than a separate theme. */

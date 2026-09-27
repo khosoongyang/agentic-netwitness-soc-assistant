@@ -205,8 +205,10 @@ function findings(workspace, stageKey) {
 // left, [Reject <stage>] [Approve <stage>] on the right while a gate is
 // awaiting a decision. Every button keeps its backend action's enabled state
 // and reason; Continue is enabled only while the NEXT stage's `start` action
-// is (i.e. the backend has unlocked it).
-function stageActionButtons(stage, workflow, { style = "" } = {}) {
+// is (i.e. the backend has unlocked it). `footer` renders the bar as the
+// stage's bottom action area (divider above it) — Parsing, Triage, Threat
+// Intelligence and Investigation place it after all of their stage output.
+function stageActionButtons(stage, workflow, { footer = false } = {}) {
   const model = stageActionModel(stage, workflow);
   if (!model.primary.length && !model.decision.length && !model.continueTo) return "";
   const button = (action) => `<button class="action-button ${action.danger ? "danger" : ""}" data-workflow-action="${escapeHTML(action.type)}" ${action.enabled ? "" : "disabled"} title="${escapeHTML(action.reason || action.label)}">${escapeHTML(action.label)}</button>`;
@@ -214,7 +216,7 @@ function stageActionButtons(stage, workflow, { style = "" } = {}) {
   const continueButton = cont
     ? `<button class="action-button" data-continue-stage="${escapeHTML(cont.nextStage.key)}" ${cont.enabled ? "" : "disabled"} title="${escapeHTML(cont.reason || `Start ${cont.nextStage.name}`)}">${escapeHTML(cont.label)}</button>`
     : "";
-  return `<div class="stage-actions triage-workflow-actions"${style ? ` style="${style}"` : ""} aria-label="${escapeHTML(stage.name)} actions"><div class="triage-action-group">${model.primary.map(button).join("")}${continueButton}</div><div class="triage-action-group">${model.decision.map(button).join("")}</div></div>`;
+  return `<div class="stage-actions triage-workflow-actions${footer ? " stage-actions-footer" : ""}" aria-label="${escapeHTML(stage.name)} actions"><div class="triage-action-group">${model.primary.map(button).join("")}${continueButton}</div><div class="triage-action-group">${model.decision.map(button).join("")}</div></div>`;
 }
 
 // Continue = navigation, Run = execution. The stage's own buttons (Run/
@@ -522,7 +524,7 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate
     root.innerHTML = `
       ${header}
       <div class="state-panel error"><div>${escapeHTML(lastError || "Parsing failed for this run.")}</div></div>
-      ${stageActionButtons(stage, workflow)}
+      ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
   } else if (stage.state === "completed") {
@@ -538,7 +540,6 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate
     }
     root.innerHTML = `
       ${header}
-      <div id="action-status" aria-live="polite"></div>
       <div class="subtab-bar" role="tablist" aria-label="Parsing output view">
         <button type="button" class="subtab-button active" role="tab" id="parsing-tab-overview" data-parsing-view="overview" aria-selected="true" aria-controls="parsing-view-overview">Overview</button>
         <button type="button" class="subtab-button" role="tab" id="parsing-tab-json" data-parsing-view="json" aria-selected="false" aria-controls="parsing-view-json">JSON</button>
@@ -548,13 +549,14 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate
         <div class="panel-header-row"><h3>Normalised Alert</h3>${downloadButton}</div>
         ${jsonPreview(stage.result?.normalised_alert || stage.result)}
       </section>
-      ${stageActionButtons(stage, workflow, { style: "margin-top:1rem" })}
+      ${stageActionButtons(stage, workflow, { footer: true })}
+      <div id="action-status" aria-live="polite"></div>
     `;
   } else {
     // not_started
     root.innerHTML = `
       ${header}
-      ${stageActionButtons(stage, workflow)}
+      ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
   }
@@ -801,7 +803,7 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
       ${stage.state === "failed"
         ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Triage failed for this run.")}</div></div>`
         : emptyState("No persisted Triage output is available for this run yet.")}
-      ${stageActionButtons(stage, workflow)}
+      ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
   } else {
@@ -824,14 +826,14 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
     }
     root.innerHTML = `
       ${header}
-      <div id="action-status" aria-live="polite"></div>
       <div class="subtab-bar" role="tablist" aria-label="Triage output view">
         <button type="button" class="subtab-button active" role="tab" id="triage-tab-overview" data-triage-view="overview" aria-selected="true" aria-controls="triage-view-overview">Overview</button>
         <button type="button" class="subtab-button" role="tab" id="triage-tab-ticket" data-triage-view="ticket" aria-selected="false" aria-controls="triage-view-ticket">Triage Ticket</button>
       </div>
       <div id="triage-view-overview" role="tabpanel" aria-labelledby="triage-tab-overview">${overviewHTML}</div>
       <div id="triage-view-ticket" role="tabpanel" aria-labelledby="triage-tab-ticket" hidden></div>
-      ${stageActionButtons(stage, workflow)}
+      ${stageActionButtons(stage, workflow, { footer: true })}
+      <div id="action-status" aria-live="polite"></div>
     `;
     const viewButtons = [...root.querySelectorAll("[data-triage-view]")];
     const selectView = (view) => {
@@ -1125,7 +1127,7 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
       ${stage.state === "failed"
         ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Threat Intelligence enrichment failed for this run.")}</div></div>`
         : emptyState("No persisted Threat Intelligence output is available for this run yet.")}
-      ${stageActionButtons(stage, workflow)}
+      ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
   } else {
@@ -1133,7 +1135,6 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
     const psaHTML = tiPowerShellCard(iocs.powershell_analysis);
     root.innerHTML = `
       ${header}
-      <div id="action-status" aria-live="polite"></div>
       <section class="panel"><h3>Summary</h3>${tiSummaryCard(result, workflow)}</section>
       <section class="panel" style="margin-top:1rem"><h3>Extracted IOCs</h3>${tiIOCsCard(iocs)}</section>
       ${psaHTML ? `<div style="margin-top:1rem">${psaHTML}</div>` : ""}
@@ -1142,7 +1143,8 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
       <section class="panel" style="margin-top:1rem"><h3>AlienVault OTX</h3>${tiOTXCard(block.alienvault_otx, iocs)}</section>
       <div style="margin-top:1rem">${tiRiskAssessmentCard(result)}</div>
       <div style="margin-top:1rem">${tiNotesCard(result)}</div>
-      ${stageActionButtons(stage, workflow, { style: "margin-top:1rem" })}
+      ${stageActionButtons(stage, workflow, { footer: true })}
+      <div id="action-status" aria-live="polite"></div>
     `;
   }
   bindStageActions(root, stage, workflow, onAction, onNavigate);
@@ -1634,11 +1636,13 @@ const _INVESTIGATION_SUBTABS = [
 
 // Approve Investigation only unlocks Reporting (it stays "Pending"); "Continue
 // to Reporting" only navigates there, and Reporting runs from its own Run
-// Reporting button (stageActionButtons()).
+// Reporting button (stageActionButtons()). The action bar sits after the
+// sub-tab body, so switching tabs never moves or re-renders it.
 function renderInvestigationStage(root, stage, caseId, lastError, onAction, onNavigate, workflow, workspace) {
-  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>${stageActionButtons(stage, workflow)}<div id="action-status" aria-live="polite"></div>`;
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>`;
   const nav = `<div class="subtab-bar" role="tablist">${_INVESTIGATION_SUBTABS.map(([key, label]) => `<button type="button" class="subtab-button" data-subtab="${key}" role="tab">${escapeHTML(label)}</button>`).join("")}</div>`;
-  root.innerHTML = `${header}${nav}<div id="investigation-subtab-body"></div>`;
+  const actions = `${stageActionButtons(stage, workflow, { footer: true })}<div id="action-status" aria-live="polite"></div>`;
+  root.innerHTML = `${header}${nav}<div id="investigation-subtab-body"></div>${actions}`;
   bindStageActions(root, stage, workflow, onAction, onNavigate);
   const body = root.querySelector("#investigation-subtab-body");
   const buttons = [...root.querySelectorAll("[data-subtab]")];
