@@ -244,6 +244,20 @@
 .finding-item > div {
   flex: 1;
   min-width: 0;
+  /* Registry paths, hashes and command lines have no natural break points;
+     "anywhere" (unlike break-word) also lowers min-content, so the
+     single-column workspace-grid can't be stretched past the page either. */
+  overflow-wrap: anywhere;
+}
+
+/* Inside finding prose, chips flow inline so a long value wraps with the
+   text rather than overflowing as one unbreakable inline-block; clone keeps
+   the chip's border/padding on every wrapped fragment. Chip lists elsewhere
+   keep the inline-block default. */
+.finding-item .evidence-chip {
+  display: inline;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 .finding-heading {
