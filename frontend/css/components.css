@@ -299,6 +299,59 @@
   border-color: #6d5531;
 }
 
+/* The Investigation Agent's own reading of the timeline — kept visually
+   distinct from Observed so interpretation never passes for telemetry. */
+.finding-category.cat-agent_inference {
+  color: #d4bcff;
+  border-color: #5a4a80;
+}
+
+/* Evidence chip row under a finding: values extracted from the finding's
+   full source text. Chips wrap as whole units, and a single over-long value
+   (registry path, hash, URL, command line) breaks inside its own chip, so
+   nothing overflows the Key findings card. */
+.finding-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+  min-width: 0;
+}
+
+.finding-evidence .finding-evidence-label,
+.finding-meta .finding-source {
+  font-size: 0.66rem;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.finding-evidence .finding-evidence-label {
+  text-transform: uppercase;
+}
+
+.finding-evidence .evidence-chip {
+  display: inline-block;
+  max-width: 100%;
+  color: var(--accent);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.finding-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  margin-top: 0.35rem;
+  min-width: 0;
+}
+
+.finding-meta .finding-mitre {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.7rem;
+  color: #ff8fc7;
+}
+
 /* Evidence chip: a value pulled directly from stage telemetry/logs, kept
    visually distinct from surrounding explanatory prose at a glance. */
 .evidence-chip {

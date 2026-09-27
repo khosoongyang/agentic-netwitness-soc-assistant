@@ -126,8 +126,9 @@ const EVIDENCE_PATTERNS = [
   /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
   /(?<=:)\d{2,5}\b/g,
   /\bport\s+\d{1,5}\b/gi,
-  /\b[\w-]+\.(?:exe|dll|ps1|psm1|bat|cmd|sh|py|js|vbs|scr|msi|jar)\b/gi,
-  /\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|ru|cn|info|biz|xyz|top|club|online|site|dev|co|uk|de|fr|gov|edu|int|mil|app|cloud)\b/gi,
+  /\b[\w-]+\.(?:exe|dll|ps1|psm1|bat|cmd|sh|py|js|vbs|hta|scr|msi|jar)\b/gi,
+  // Trailing lookahead: never chip a truncated domain ("starhub.net" out of "starhub.net.sg").
+  /\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|ru|cn|info|biz|xyz|top|club|online|site|dev|co|uk|de|fr|gov|edu|int|mil|app|cloud)\b(?!\.?[\w-])/gi,
   /(?:\/[\w.-]+){2,}/g,
   /\b(?:Event ID|EventID|Process ID|Parent Process ID|PID|PPID)\s*[:#]?\s*\d+\b/gi,
   /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g,
@@ -182,7 +183,34 @@ function highlightEvidence(text, evidenceMap) {
   return out;
 }
 
-const FINDING_CATEGORY_LABELS = { observed: "Observed", correlation: "Correlation", assessment: "Assessment" };
+const FINDING_CATEGORY_LABELS = {
+  observed: "Observed",
+  correlation: "Correlation",
+  agent_inference: "Agent inference",
+  assessment: "Assessment",
+};
+
+// Evidence values the backend extracted from the finding's full source text
+// (evidence_values) that the short summary doesn't already show inline.
+function findingEvidenceChips(item) {
+  const desc = item.desc || "";
+  const values = (item.evidence_values || []).filter((v) => v && !desc.includes(v));
+  if (!values.length) return "";
+  return `<div class="finding-evidence"><span class="finding-evidence-label">Evidence</span>${values.map((v) => `<span class="evidence-chip">${escapeHTML(v)}</span>`).join("")}</div>`;
+}
+
+// MITRE IDs + where the finding came from (playbook step / MITRE mapping);
+// the hover text carries the original playbook question or tactic/phase.
+function findingMeta(item) {
+  const parts = [];
+  if (item.mitre_ids?.length) parts.push(`<span class="finding-mitre">MITRE ${item.mitre_ids.map((id) => escapeHTML(id)).join(" · ")}</span>`);
+  const source = item.source || {};
+  if (source.label) {
+    const suffix = item.truncated && source.full_text ? ` · full text in ${source.full_text}` : "";
+    parts.push(`<span class="finding-source" title="${escapeHTML(source.detail || "")}">${escapeHTML(source.label + suffix)}</span>`);
+  }
+  return parts.length ? `<div class="finding-meta">${parts.join("")}</div>` : "";
+}
 
 function findings(workspace, stage) {
   if (!stage || !KEY_FINDINGS_STAGES.has(stage.key)) return "";
@@ -197,6 +225,8 @@ function findings(workspace, stage) {
       <div>
         <div class="finding-heading"><strong>${escapeHTML(item.title || "Finding")}</strong>${categoryLabel ? `<span class="finding-category cat-${escapeHTML(item.category)}">${escapeHTML(categoryLabel)}</span>` : ""}</div>
         <p>${highlightEvidence(item.desc || "", item.evidence)}</p>
+        ${findingEvidenceChips(item)}
+        ${findingMeta(item)}
       </div>
       ${item.confidence ? `<span>${escapeHTML(item.confidence)}</span>` : ""}
     </li>`;

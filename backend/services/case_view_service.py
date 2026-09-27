@@ -319,7 +319,9 @@ def _extract_agent_key_findings(inv_result: dict | None, triage_result: dict | N
 # other: each only has access to, and only reads, its own stage's fields.
 #
 # Shape: {"title", "desc", "category" ("observed"|"correlation"|
-# "assessment"), "confidence", "evidence"}. `evidence` is a flat
+# "assessment"|"agent_inference"), "confidence", "evidence"}; Investigation
+# findings omit "confidence" and add "evidence_values", "mitre_ids",
+# "source" and "truncated" (see _build_investigation_key_findings). `evidence` is a flat
 # {label: value} map of real structured values (IPs, hashes, technique IDs,
 # matched metakey values, …) drawn from the stage's own result — the
 # frontend highlights these exact values wherever they appear in `desc`.
@@ -490,65 +492,491 @@ def _build_threat_intel_key_findings(ti_result: dict | None) -> list[dict]:
     return findings[:5]
 
 
+# ── Investigation Key findings helpers ───────────────────────────────────
+# Every text field in the Investigation result (execution_trace.findings,
+# mitre_mappings.observed_evidence, recommended_containment, …) is authored
+# by the Investigation Agent, not copied from raw telemetry — so none of
+# these findings is labelled "observed", and none carries a confidence
+# (the result has only a case-level confidence, shown in Case Context).
+#   execution_trace step (MET)          -> "agent_inference"
+#   execution_trace containment step    -> "assessment"
+#   mitre_mappings entry                -> "correlation"
+#   recommended_containment / severity  -> "assessment" (fallbacks only)
+
+_INV_MAX_FINDINGS = 5
+_INV_SUMMARY_MAX_CHARS = 260
+_INV_MAX_CHIPS = 6
+
+# Evidence-token shapes (same families as workspace.js EVIDENCE_PATTERNS,
+# minus prose-level ones like timestamps/ports). Earlier patterns claim a
+# span first, so an IP inside a URL or a file name inside a path is not
+# extracted twice. Only literal substrings of the stored text are returned.
+_INV_TOKEN_PATTERNS = [
+    re.compile(r"https?://[^\s\"'<>)\],;]+", re.I),
+    re.compile(r"\bHK(?:EY_LOCAL_MACHINE|EY_CURRENT_USER|LM|CU|CR|U|CC)\\[^\s,;\"']+", re.I),
+    re.compile(r"\b[A-Za-z]:\\(?:[^\\/:*?\"<>|\r\n]+\\)*[^\\/:*?\"<>|\r\n\s,;']+\.\w{2,4}\b"),
+    re.compile(r"\b[a-fA-F0-9]{64}\b|\b[a-fA-F0-9]{40}\b|\b[a-fA-F0-9]{32}\b"),
+    re.compile(r"\bNT AUTHORITY\\(?:SYSTEM|LOCAL SERVICE|NETWORK SERVICE)\b", re.I),
+    re.compile(r"\b[\w-]+\.(?:exe|dll|ps1|psm1|bat|cmd|vbs|hta|msi|scr|jar)\b", re.I),
+    re.compile(r"\b(?:[0-9a-fA-F]{1,4}:){3,7}[0-9a-fA-F]{1,4}\b"),
+    re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b"),
+    # The trailing lookahead stops "starhub.net" being chipped out of
+    # "starhub.net.sg" (a truncated value is worse than no chip).
+    re.compile(r"\b(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|net|org|io|ru|cn|info|biz|"
+               r"xyz|top|club|online|site|dev|co|uk|de|fr|gov|edu|int|mil|app|cloud)\b(?!\.?[\w-])",
+               re.I),
+]
+_IPV4_RE = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$")
+
+
+def _inv_evidence_tokens(text: str) -> list[str]:
+    """Order-preserving, de-duplicated literal evidence values in `text`."""
+    text = str(text or "")
+    claimed: list[tuple[int, int]] = []
+    found: list[tuple[int, str]] = []
+    for pattern in _INV_TOKEN_PATTERNS:
+        for m in pattern.finditer(text):
+            start, end = m.span()
+            if any(start < e and end > s for s, e in claimed):
+                continue
+            value = m.group(0).rstrip(".")
+            if _IPV4_RE.match(value) and any(int(o) > 255 for o in value.split(".")):
+                continue
+            claimed.append((start, end))
+            found.append((start, value))
+    seen: set[str] = set()
+    tokens: list[str] = []
+    for _, value in sorted(found):
+        if value.lower() not in seen:
+            seen.add(value.lower())
+            tokens.append(value)
+    return tokens
+
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
+
+
+def _inv_sentences(text: str) -> list[str]:
+    return [s for s in _SENTENCE_SPLIT_RE.split(" ".join(str(text or "").split())) if s]
+
+
+def _inv_concise(text: str, *, drop_answer_lead: bool = False) -> tuple[str, bool]:
+    """Presentation-only excerpt: the first 1–2 whole sentences that fit in
+    _INV_SUMMARY_MAX_CHARS; if the first sentence alone is longer, cut at a
+    ';' clause and then a word boundary, marked with '…'. `drop_answer_lead`
+    removes a bare leading answer ("Yes.", "Horizontal movement.") that the
+    title already states. Returns (excerpt, shortened?)."""
+    normalised = " ".join(str(text or "").split())
+    sentences = _inv_sentences(normalised)
+    if drop_answer_lead and len(sentences) > 1 and len(sentences[0].split()) <= 3:
+        sentences = sentences[1:]
+    out = ""
+    for sentence in sentences[:2]:
+        candidate = f"{out} {sentence}".strip()
+        if len(candidate) > _INV_SUMMARY_MAX_CHARS:
+            break
+        out = candidate
+    if not out and sentences:
+        first = sentences[0]
+        for clause in re.split(r"(?<=;)\s+", first):
+            candidate = f"{out} {clause}".strip()
+            if len(candidate) > _INV_SUMMARY_MAX_CHARS:
+                break
+            out = candidate
+        if not out:
+            out = first[:_INV_SUMMARY_MAX_CHARS].rsplit(" ", 1)[0]
+        out = out.rstrip(" ;,:") + "…"
+    return out, out != normalised
+
+
+# Playbook-step intent, classified from the step's own `instruction` text.
+# Order matters: the process-tree instruction also mentions "lateral
+# movement", so it is checked before the movement intent.
+_STEP_INTENTS = (
+    ("process_tree", re.compile(r"\bprocess tree\b", re.I)),
+    ("movement", re.compile(r"\b(?:horizontal|vertical|lateral)\b", re.I)),
+    ("process", re.compile(r"\bmalicious process|\bprocess\b.*\bspawn|\bspawn\w*\b.*\bprocess", re.I)),
+    ("phishing_payload", re.compile(r"\b(?:url|attachment)s?\b", re.I)),
+    ("identity", re.compile(r"\b(?:user\s?name|computer name|host\s?name|login|logon|"
+                            r"operating system|email address|sender|receiver)\b", re.I)),
+    ("decision", re.compile(r"\b(?:containment|further investigation)\b", re.I)),
+)
+
+# Topic words for a neutral "<topic> Review" title when a step's intent is
+# unrecognised — never the raw question, never a conclusion.
+_STEP_TOPICS = (
+    (re.compile(r"phish|e-?mail|mailbox", re.I), "Email / Phishing Review"),
+    (re.compile(r"credential|password", re.I), "Credential Activity Review"),
+    (re.compile(r"exfiltrat", re.I), "Data Exfiltration Review"),
+    (re.compile(r"persist", re.I), "Persistence Review"),
+    (re.compile(r"registry", re.I), "Registry Activity Review"),
+    (re.compile(r"network|connection|traffic|beacon", re.I), "Network Activity Review"),
+    (re.compile(r"file|hash|payload", re.I), "File Artifact Review"),
+    (re.compile(r"user|account", re.I), "Account Activity Review"),
+)
+
+# A conclusion sentence is ignored when it only says the answer could not be
+# determined.
+_UNDETERMINED_RE = re.compile(
+    r"\b(?:cannot|can't|could not|unable|insufficient|inconclusive|unclear|whether|"
+    r"not (?:clearly |be |been )?(?:determin|establish|confirm|possible))", re.I)
+_NEGATION_BEFORE_RE = re.compile(r"(?:\bno|\bnot|\bnor|\bthan|\binstead of)\s+(?:\w+\s+){0,2}$", re.I)
+
+
+def _affirmed(sentence: str, term_re: re.Pattern) -> bool:
+    """True when `term_re` occurs in `sentence` at least once without a
+    negation ("no", "not", "rather than", …) in the two words before it."""
+    return any(not _NEGATION_BEFORE_RE.search(sentence[:m.start()])
+               for m in term_re.finditer(sentence))
+
+
+def _step_intent(instruction: str) -> str:
+    return next((name for name, rx in _STEP_INTENTS if rx.search(instruction)), "generic")
+
+
+def _step_conclusion(intent: str, instruction: str, text: str, step_id: str) -> dict:
+    """Deterministic analyst-facing title for one MET playbook step, read
+    from the conclusion sentence of its own `findings` text. When no
+    conclusion can be read safely, a neutral topic title is returned
+    instead (never the raw playbook question).
+
+    Returns {"title", "tier", "theme", "category", "drop_lead"}. `tier`
+    drives ranking (see _build_investigation_key_findings); `theme` is the
+    ATT&CK tactic the conclusion corresponds to, used only to fold a
+    matching MITRE mapping into this finding."""
+    sentences = _inv_sentences(text)
+    first = sentences[0] if sentences else ""
+    determined = not _UNDETERMINED_RE.search(first)
+    lead = first.lower()
+    result = {"title": "", "tier": 5, "theme": None, "category": "agent_inference",
+              "drop_lead": False}
+
+    if intent == "process":
+        affirmative = determined and (
+            re.match(r"yes\b", lead) is not None
+            or (re.search(r"\b(?:malicious|suspicious) process(?:es)? (?:was|were) "
+                          r"(?:spawned|executed|created|observed|identified)", lead) is not None
+                and not re.search(r"\b(?:no|not)\b", lead)))
+        negative = determined and not affirmative and (
+            re.match(r"no\b[.,]", lead) is not None
+            or re.search(r"\bno (?:malicious|suspicious) process(?:es)? (?:was|were)\b"
+                         r"|\bno evidence of (?:a |any )?(?:malicious|suspicious) process", lead) is not None)
+        if affirmative:
+            result.update(title="Suspicious Process Activity Identified", tier=7,
+                          theme="execution", drop_lead=True)
+        elif negative:
+            result.update(title="No Malicious Process Identified", tier=4, drop_lead=True)
+        else:
+            result.update(title="Process Execution Review")
+    elif intent == "movement":
+        horizontal = determined and _affirmed(first, re.compile(r"\b(?:horizontal|lateral)\b", re.I))
+        vertical = determined and _affirmed(first, re.compile(r"\bvertical\b", re.I))
+        if horizontal and not vertical:
+            result.update(title="Horizontal Movement Identified", tier=6,
+                          theme="lateral movement", drop_lead=True)
+        elif vertical and not horizontal:
+            result.update(title="Vertical Movement Identified", tier=6,
+                          theme="privilege escalation", drop_lead=True)
+        else:
+            result.update(title="Movement Direction Assessment")
+    elif intent == "phishing_payload":
+        window = " ".join(sentences[:2]).lower()
+        if determined and re.match(r"yes\b", lead):
+            has_url = re.search(r"\b(?:url|link)s?\b", window) is not None
+            has_att = re.search(r"\battachments?\b", window) is not None
+            what = ("URL and Attachment" if has_url and has_att else
+                    "URL" if has_url else "Attachment" if has_att else "URL or Attachment")
+            result.update(title=f"Phishing Email Contains {what}", tier=6,
+                          theme="initial access", drop_lead=True)
+        elif determined and re.match(r"no\b[.,]", lead):
+            result.update(title="No URL or Attachment Identified", tier=4, drop_lead=True)
+        else:
+            result.update(title="Phishing Payload Review")
+    elif intent == "identity":
+        email = re.search(r"email|sender|receiver", instruction, re.I) is not None
+        result.update(title="Sender and Recipient Details Identified" if email
+                      else "User and Host Context Identified", tier=4)
+    elif intent == "process_tree":
+        result.update(title="Process Tree Analysis", theme="execution")
+    elif intent == "decision":
+        investigate = re.search(r"further investigation is (?:necessary|required|warranted|"
+                                r"recommended|needed)", lead) is not None
+        contain = re.search(r"containment (?:is |steps are )?(?:warranted|recommended|required|"
+                            r"necessary)", lead) is not None
+        title = ("Further Investigation Required" if investigate else
+                 "Containment Recommended" if contain else "Investigation Next Steps")
+        result.update(title=title, tier=1, category="assessment")
+    else:
+        topic = next((t for rx, t in _STEP_TOPICS if rx.search(instruction)), None)
+        result.update(title=topic or f"Playbook {step_id or 'Step'} Finding".strip())
+    return result
+
+
+# ATT&CK tactic -> (card title, SOC priority weight). Higher weight ranks
+# first within the MITRE tier. Unknown tactics fall back to "<Tactic>
+# Activity" with weight 3.
+_TACTIC_TITLES = {
+    "impact": ("Impact Activity", 9),
+    "exfiltration": ("Data Exfiltration Activity", 9),
+    "credential access": ("Credential Access Activity", 8),
+    "command and control": ("Command-and-Control Activity", 8),
+    "lateral movement": ("Lateral Movement Activity", 7),
+    "privilege escalation": ("Privilege Escalation Activity", 7),
+    "persistence": ("Persistence Activity", 7),
+    "execution": ("Execution Activity", 6),
+    "defense evasion": ("Defense Evasion Activity", 5),
+    "initial access": ("Initial Access Activity", 5),
+    "collection": ("Data Collection Activity", 4),
+    "discovery": ("Discovery Activity", 3),
+    "reconnaissance": ("Reconnaissance Activity", 2),
+    "resource development": ("Resource Development Activity", 2),
+}
+
+# The agent's own wording that a mapping is tentative ("Unconfirmed
+# lateral-movement label", "Potential staging", "but no hash … was
+# available"). A hedged mapping drops one tier and its title says "Possible".
+_HEDGE_RE = re.compile(
+    r"\b(?:unconfirmed|potential|possible|possibly|suspected)\b|\bbut\b[^.;]{0,40}\bno\b"
+    r"|\bno [^.;]{0,60}\b(?:was|were) (?:present|available|confirmed)\b", re.I)
+
+
+def _technique_family(technique_id: str) -> str | None:
+    m = re.match(r"\s*(T\d{4})", str(technique_id or ""), re.I)
+    return m.group(1).upper() if m else None
+
+
+# Ubiquitous Windows process names / accounts that appear across unrelated
+# behaviours — they never count towards evidence overlap (they are still
+# shown as chips).
+_INV_AMBIENT_TOKENS = {"svchost.exe", "services.exe", "conhost.exe", "explorer.exe",
+                       "nt authority\\system", "nt authority\\local service",
+                       "nt authority\\network service"}
+
+
+def _inv_candidate(finding: dict, *, tier: int, weight: int, theme: str | None,
+                   tokens: list[str], order: int, mitre_id: str = "",
+                   kind: str = "behaviour", alt_title: str = "") -> dict:
+    return {
+        "finding": finding, "tier": tier, "weight": weight, "order": order,
+        "theme": theme, "kind": kind, "chips": list(tokens), "alt_title": alt_title,
+        # Overlap is always tested against the candidate's OWN tokens, never
+        # against chips it absorbed, so merges cannot chain/drift.
+        "tokens": {t.lower() for t in tokens} - _INV_AMBIENT_TOKENS,
+        "family": _technique_family(mitre_id), "is_mitre": bool(mitre_id),
+    }
+
+
+def _inv_strong_duplicate(kept: dict, cand: dict) -> bool:
+    """Rules (a) same technique family and (b) playbook conclusion <->
+    MITRE mapping of the same tactic theme."""
+    if kept["family"] and kept["family"] == cand["family"]:
+        return True
+    return bool(kept["theme"] and kept["theme"] == cand["theme"]
+                and kept["is_mitre"] != cand["is_mitre"])
+
+
+def _inv_token_duplicate(kept: dict, cand: dict, common: set[str]) -> bool:
+    """Rule (c): >= 2 shared distinctive tokens covering >= 60% of the
+    smaller token set."""
+    a, b = kept["tokens"] - common, cand["tokens"] - common
+    shared = a & b
+    smaller = min(len(a), len(b))
+    return len(shared) >= 2 and smaller > 0 and len(shared) / smaller >= 0.6
+
+
+def _inv_find_duplicate(kept: list[dict], cand: dict, common: set[str]) -> dict | None:
+    """The kept finding `cand` duplicates, preferring a family/theme match
+    over a token match (so a Lateral Movement mapping folds into the
+    movement conclusion, not whichever card happens to share two process
+    names). Assessments are never folded into behaviour findings."""
+    if cand["kind"] == "assessment":
+        return None
+    behaviour = [k for k in kept if k["kind"] != "assessment"]
+    return (next((k for k in behaviour if _inv_strong_duplicate(k, cand)), None)
+            or next((k for k in behaviour if _inv_token_duplicate(k, cand, common)), None))
+
+
+def _inv_merge(kept: dict, cand: dict) -> None:
+    ids = kept["finding"].setdefault("mitre_ids", [])
+    for tid in cand["finding"].get("mitre_ids") or []:
+        if tid not in ids:
+            ids.append(tid)
+    seen = {c.lower() for c in kept["chips"]}
+    kept["chips"].extend(c for c in cand["chips"] if c.lower() not in seen)
+
+
+def _inv_display_chips(chips: list[str]) -> list[str]:
+    """Up to _INV_MAX_CHIPS chips, skipping any value already contained in
+    a longer chosen value (e.g. an IP that is part of a chipped URL)."""
+    chosen: list[str] = []
+    for chip in sorted(chips, key=len, reverse=True):
+        if not any(chip.lower() in c.lower() for c in chosen):
+            chosen.append(chip)
+    ordered = [c for c in chips if c in chosen]
+    return ordered[:_INV_MAX_CHIPS]
+
+
 def _build_investigation_key_findings(inv_result: dict | None) -> list[dict]:
-    """The most evidence-driven card: MITRE technique <-> observed-evidence
-    correlations (process/host/network chains Investigation itself
-    reconstructed) and MET-milestone findings from the execution trace.
+    """Up to five prioritised, de-duplicated Investigation conclusions.
     Deliberately excludes raw indicator reputation (VirusTotal/AbuseIPDB/OTX
     verdicts) — that is Threat Intelligence's own finding surface, not
-    Investigation's."""
+    Investigation's.
+
+    Candidates: every MET execution_trace step (title derived from its own
+    conclusion sentence by _step_conclusion(), never the raw instruction)
+    and every mitre_mappings entry with observed_evidence + tactic.
+
+    Ranking — sort key (tier, tactic weight, evidence-token count, original
+    order), highest first:
+      tier 7  affirmative suspicious/malicious process conclusion
+      tier 6  movement conclusion (horizontal/vertical), phishing payload found
+      tier 5  other MET behavioural steps (process tree, unrecognised steps,
+              steps whose conclusion could not be read)
+      tier 4  identity / host scope, negative conclusions
+      tier 3  MITRE correlation (weight = _TACTIC_TITLES priority)
+      tier 2  MITRE correlation the agent itself hedged (_HEDGE_RE)
+      tier 1  containment / further-investigation decision step
+      then recommended_containment (only if < 2 findings) and
+      severity_justification (only if none) as fallbacks.
+
+    De-duplication — walking candidates in rank order, a candidate is folded
+    into an already-kept finding (its MITRE ID and evidence chips are added
+    to that finding, its body is not shown) when:
+      a) both are MITRE mappings of the same technique family (T1071 ~
+         T1071.001), or
+      b) a playbook conclusion and a MITRE mapping share the same tactic
+         theme (e.g. "Horizontal Movement" ~ Lateral Movement), or
+      c) they share >= 2 evidence tokens covering >= 60% of the smaller
+         token set; ubiquitous tokens (_INV_AMBIENT_TOKENS) and, with >= 5
+         candidates, tokens present in >= 60% of them (case-wide scope)
+         are ignored.
+    A family/theme match is preferred over a token match; overlap is tested
+    against each kept finding's own tokens only. Assessments are never
+    folded. Only the first five survivors are kept.
+
+    `desc` is a presentation-only excerpt (_inv_concise); the stored result
+    is never modified and its full text stays in the Output / MITRE ATT&CK
+    tabs."""
     if not inv_result or not isinstance(inv_result, dict):
         return []
-    findings: list[dict] = []
-
-    for mapping in (inv_result.get("mitre_mappings") or [])[:2]:
-        if not isinstance(mapping, dict):
-            continue
-        evidence_text = (mapping.get("observed_evidence") or "").strip()
-        tactic = mapping.get("tactic") or ""
-        technique = mapping.get("technique_name") or ""
-        technique_id = mapping.get("technique_id") or ""
-        if not evidence_text or not tactic:
-            continue
-        title = tactic if not technique else f"{tactic} — {technique}"
-        findings.append(_finding(title, evidence_text, category="correlation",
-                                 confidence="high",
-                                 evidence={"technique_id": technique_id}))
+    candidates: list[dict] = []
 
     for step in (inv_result.get("execution_trace") or []):
-        if len(findings) >= 5:
-            break
         if not isinstance(step, dict) or step.get("status") != "MET":
             continue
         text = (step.get("findings") or "").strip()
         if not text or len(text) < 15:
             continue
-        instruction = (step.get("instruction") or "Investigation milestone").strip()
-        findings.append(_finding(instruction, text, category="observed",
-                                 confidence="elevated", evidence={}))
+        instruction = str(step.get("instruction") or "").strip()
+        step_id = str(step.get("step_id") or "").strip()
+        intent = _step_intent(instruction)
+        conclusion = _step_conclusion(intent, instruction, text, step_id)
+        desc, shortened = _inv_concise(text, drop_answer_lead=conclusion["drop_lead"])
+        finding = _finding(conclusion["title"], desc, category=conclusion["category"])
+        finding.update(
+            mitre_ids=[], truncated=shortened,
+            source={"label": f"Playbook {step_id}".strip() if step_id else "Playbook step",
+                    "detail": f"Playbook question: {instruction}" if instruction else "",
+                    "full_text": "Output tab"})
+        candidates.append(_inv_candidate(
+            finding, tier=conclusion["tier"], weight=0, theme=conclusion["theme"],
+            tokens=_inv_evidence_tokens(text), order=len(candidates),
+            kind="assessment" if conclusion["category"] == "assessment" else "behaviour"))
 
-    if len(findings) < 2:
+    for mapping in (inv_result.get("mitre_mappings") or []):
+        if not isinstance(mapping, dict):
+            continue
+        evidence_text = (mapping.get("observed_evidence") or "").strip()
+        tactic = str(mapping.get("tactic") or "").strip()
+        if not evidence_text or not tactic:
+            continue
+        technique = str(mapping.get("technique_name") or "").strip()
+        technique_id = str(mapping.get("technique_id") or "").strip()
+        phase = str(mapping.get("timeline_phase") or "").strip()
+        title, weight = _TACTIC_TITLES.get(tactic.lower(), (f"{tactic} Activity", 3))
+        hedged = bool(_HEDGE_RE.search(f"{phase} {evidence_text}"))
+        prefix = "Possible " if hedged else ""
+        desc, shortened = _inv_concise(evidence_text)
+        finding = _finding(f"{prefix}{title}", desc, category="correlation")
+        finding.update(
+            mitre_ids=[technique_id] if technique_id else [], truncated=shortened,
+            source={"label": f"MITRE mapping: {technique}" if technique else "MITRE mapping",
+                    "detail": " · ".join(p for p in (tactic, phase) if p),
+                    "full_text": "MITRE ATT&CK tab"})
+        candidates.append(_inv_candidate(
+            finding, tier=2 if hedged else 3, weight=weight, theme=tactic.lower(),
+            tokens=_inv_evidence_tokens(evidence_text), order=len(candidates),
+            mitre_id=technique_id or "mitre",
+            alt_title=f"{prefix}{technique}" if technique else ""))
+
+    common: set[str] = set()
+    if len(candidates) >= 5:
+        counts: dict[str, int] = {}
+        for cand in candidates:
+            for token in cand["tokens"]:
+                counts[token] = counts.get(token, 0) + 1
+        common = {t for t, n in counts.items() if n >= 0.6 * len(candidates)}
+
+    ranked = sorted(candidates, key=lambda c: (-c["tier"], -c["weight"],
+                                               -min(len(c["tokens"]), 5), c["order"]))
+    kept: list[dict] = []
+    for cand in ranked:
+        match = _inv_find_duplicate(kept, cand, common)
+        if match is not None:
+            _inv_merge(match, cand)
+        elif len(kept) < _INV_MAX_FINDINGS:
+            kept.append(cand)
+
+    findings: list[dict] = []
+    used_titles: set[str] = set()
+    for cand in kept:
+        finding = cand["finding"]
+        # Two distinct mappings of one tactic (e.g. a web-protocol beacon and
+        # an ingress tool transfer, both Command and Control) survive
+        # de-duplication as different behaviours; the lower-ranked one is
+        # titled by its own technique name so the cards don't read as repeats.
+        if finding["title"].lower() in used_titles and cand["alt_title"]:
+            finding["title"] = cand["alt_title"][:120]
+        used_titles.add(finding["title"].lower())
+        finding["evidence_values"] = _inv_display_chips(cand["chips"])
+        findings.append(finding)
+
+    if len(findings) < 2 and not any(f["category"] == "assessment" for f in findings):
         containment = inv_result.get("recommended_containment") or []
-        if containment:
-            first = str(containment[0]).strip()
-            if first:
-                findings.append(_finding("Containment recommended", first,
-                                         category="assessment", evidence={}))
+        first = str(containment[0]).strip() if containment else ""
+        if first:
+            desc, shortened = _inv_concise(first)
+            finding = _finding("Containment Recommended", desc, category="assessment")
+            finding.update(mitre_ids=[], truncated=shortened,
+                           evidence_values=_inv_display_chips(_inv_evidence_tokens(first)),
+                           source={"label": "Recommended containment", "detail": "",
+                                   "full_text": "Output tab"})
+            findings.append(finding)
 
     if not findings:
         justification = (inv_result.get("severity_justification") or "").strip()
         severity = inv_result.get("severity")
         if justification:
-            findings.append(_finding(
-                f"Severity assessment: {severity}" if severity else "Severity assessment",
-                justification, category="assessment", evidence={}))
+            desc, shortened = _inv_concise(justification)
+            finding = _finding(
+                f"Severity Assessment: {severity}" if severity else "Severity Assessment",
+                desc, category="assessment")
+            finding.update(mitre_ids=[], truncated=shortened, evidence_values=[],
+                           source={"label": "Severity justification", "detail": "",
+                                   "full_text": "Output tab"})
         else:
-            findings.append(_finding(
+            # A statement about the result itself, not telemetry or an
+            # assessment — so it carries no category label.
+            finding = _finding(
                 "Limited investigation telemetry",
                 "Investigation completed but did not record milestone-level findings "
-                "for this incident.", category="observed", evidence={}))
+                "for this incident.", category="")
+            finding.update(mitre_ids=[], truncated=False, evidence_values=[], source={})
+        findings.append(finding)
 
-    return findings[:5]
+    for finding in findings:
+        finding.pop("confidence", None)
+    return findings[:_INV_MAX_FINDINGS]
 
 
 # [FYP-FUNCTION] `_collect_alert_titles` — implements the collect alert titles operation used by the surrounding SOC analysis support workflow.
