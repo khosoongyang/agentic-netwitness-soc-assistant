@@ -184,9 +184,12 @@ function highlightEvidence(text, evidenceMap) {
 
 const FINDING_CATEGORY_LABELS = { observed: "Observed", correlation: "Correlation", assessment: "Assessment" };
 
-function findings(workspace, stageKey) {
-  if (!KEY_FINDINGS_STAGES.has(stageKey)) return "";
-  const items = workspace?.overview?.key_findings_by_stage?.[stageKey] || [];
+function findings(workspace, stage) {
+  if (!stage || !KEY_FINDINGS_STAGES.has(stage.key)) return "";
+  // While the stage is running, key_findings_by_stage can still hold the
+  // previous run's findings (a re-run leaves the old result persisted until
+  // the new one lands), so it is ignored until the stage leaves Processing.
+  const items = stage.state === "in_progress" ? [] : (workspace?.overview?.key_findings_by_stage?.[stage.key] || []);
   if (!items.length) return emptyState("No key findings have been distilled for this stage yet.");
   return `<ul class="data-list findings-list">${items.slice(0, 5).map((item) => {
     const categoryLabel = FINDING_CATEGORY_LABELS[item.category] || "";
@@ -1638,8 +1641,26 @@ const _INVESTIGATION_SUBTABS = [
 // to Reporting" only navigates there, and Reporting runs from its own Run
 // Reporting button (stageActionButtons()). The action bar sits after the
 // sub-tab body, so switching tabs never moves or re-renders it.
+//
+// While Processing, only progress is shown (same loadingState() panel as
+// renderThreatIntelStage()) — no sub-tabs, since `workspace` may still carry
+// a previous run's result during a re-run. The backend attaches a `resume`
+// action to every Processing stage but enables it only when the worker lease
+// has lapsed (workflow/commands.py::available_actions()), so Resume is shown
+// only in that genuinely interrupted case.
 function renderInvestigationStage(root, stage, caseId, lastError, onAction, onNavigate, workflow, workspace) {
-  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>`;
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>Playbook-driven investigation of the enriched case — evidence collection, timeline reconstruction, MITRE ATT&amp;CK mapping, and entity correlation.</p></div>${stateBadge(stage)}</div>`;
+  if (stage.state === "in_progress") {
+    const resumable = { ...stage, actions: (stage.actions || []).filter((action) => action.type === "resume" && action.enabled) };
+    root.innerHTML = `
+      ${header}
+      ${loadingState("Running Investigation…")}
+      ${stageActionButtons(resumable, workflow, { footer: true })}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+    bindStageActions(root, stage, workflow, onAction, onNavigate);
+    return;
+  }
   const nav = `<div class="subtab-bar" role="tablist">${_INVESTIGATION_SUBTABS.map(([key, label]) => `<button type="button" class="subtab-button" data-subtab="${key}" role="tab">${escapeHTML(label)}</button>`).join("")}</div>`;
   const actions = `${stageActionButtons(stage, workflow, { footer: true })}<div id="action-status" aria-live="polite"></div>`;
   root.innerHTML = `${header}${nav}<div id="investigation-subtab-body"></div>${actions}`;
@@ -1768,7 +1789,7 @@ export async function renderWorkspace(root, { navigate, route }) {
       <section class="page-header"><div><p class="mono">${escapeHTML(detail.case.id)}</p><h1>${escapeHTML(detail.case.title)}</h1><p>${escapeHTML(detail.case.status)} · ${escapeHTML(detail.case.assignee)}</p></div><div class="stage-actions" style="margin:0"><button class="action-button" id="load-raw">View Raw Incident JSON</button></div></section>
       <section class="panel" id="case-context-panel"><h2>Case context</h2>${caseContext(detail)}</section>
       <section class="panel" id="workflow-panel" style="margin-top:1rem"></section>
-      <section class="workspace-grid${KEY_FINDINGS_STAGES.has(selectedStageKey) ? "" : " stage-only"}" id="stage-workspace-grid"><article class="panel" id="key-findings-panel" ${KEY_FINDINGS_STAGES.has(selectedStageKey) ? "" : "hidden"}><h2>Key findings</h2>${findings(detail.workspace, selectedStageKey)}</article><article class="panel" id="stage-output"></article></section>`;
+      <section class="workspace-grid${KEY_FINDINGS_STAGES.has(selectedStageKey) ? "" : " stage-only"}" id="stage-workspace-grid"><article class="panel" id="key-findings-panel" ${KEY_FINDINGS_STAGES.has(selectedStageKey) ? "" : "hidden"}><h2>Key findings</h2>${findings(detail.workspace, workflow.stages.find((stage) => stage.key === selectedStageKey))}</article><article class="panel" id="stage-output"></article></section>`;
     root.querySelector("#load-raw").addEventListener("click", async () => {
       const modal = openModal("Raw Incident JSON");
       modal.setBody(loadingState("Loading raw incident…"));
@@ -1793,7 +1814,7 @@ export async function renderWorkspace(root, { navigate, route }) {
       keyFindingsPanel.hidden = !showKeyFindings;
       stageWorkspaceGrid.classList.toggle("stage-only", !showKeyFindings);
       if (showKeyFindings) {
-        keyFindingsPanel.innerHTML = `<h2>Key findings</h2>${findings(detail.workspace, selected.key)}`;
+        keyFindingsPanel.innerHTML = `<h2>Key findings</h2>${findings(detail.workspace, selected)}`;
       }
       renderSelectedStage(outputRoot, selected, caseId, workflow.last_error, handleAction, selectStage, workflow, detail.workspace);
       workflowRoot.querySelectorAll("[data-stage]").forEach((button) => {
