@@ -42,25 +42,66 @@ export function assessmentHeadline(label, valueHTML) {
   return `<div class="assessment-headline"><span class="assessment-headline-label">${escapeHTML(label)}</span><span class="assessment-headline-value">${valueHTML}</span></div>`;
 }
 
-// [label, html] rows -> the standard label/value table. Callers drop rows
-// whose source value is absent before calling, so nothing is backfilled.
+// Small stroked icons for section headings, in the same inline-SVG style
+// the rest of Aegis already uses (overview.js summaryIcons, reports.js) —
+// decorative only (aria-hidden), no icon library.
+const _ICON_PATHS = {
+  document: '<path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v5h5"/><path d="M9 13h6M9 17h6M9 9h2"/>',
+  clipboard: '<rect x="6" y="4" width="12" height="17" rx="1.5"/><path d="M9 4V3h6v1"/><path d="M9 10h6M9 14h6M9 18h3"/>',
+  bars: '<path d="M4 20h16"/><path d="M7 16v-5M12 16V6M17 16v-8"/>',
+  bulb: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3Z"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  target: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/>',
+  shield: '<path d="M12 3 5 6v5c0 4.4 3 8.3 7 10 4-1.7 7-5.6 7-10V6l-7-3Z"/>',
+  arrows: '<path d="M4 8h14l-3-3M20 16H6l3 3"/>',
+  database: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+};
+
+function _icon(name) {
+  const paths = _ICON_PATHS[name];
+  if (!paths) return "";
+  return `<span class="assessment-section-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths}</svg></span>`;
+}
+
+// [label, valueHTML, noteHTML?] rows -> the shared label/value list (a <dl>
+// in a rounded inner card). The optional third column is static UI text
+// (e.g. what a risk dimension means), never incident evidence. Callers drop
+// rows whose source value is absent before calling, so nothing is backfilled.
 export function assessmentTable(rows) {
   if (!rows.length) return "";
-  return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
+  const withNotes = rows.some((row) => row[2]);
+  return `<dl class="assessment-rows${withNotes ? " has-notes" : ""}">${rows.map(([label, value, note]) => `<div class="assessment-row"><dt class="assessment-row-label">${escapeHTML(label)}</dt><dd class="assessment-row-value">${value}</dd>${note ? `<dd class="assessment-row-note">${note}</dd>` : ""}</div>`).join("")}</dl>`;
 }
 
-// One titled block inside a details view. Consecutive sections are spaced
-// and divided by CSS (.assessment-section + .assessment-section), so callers
-// never add their own margins. Empty bodies render nothing.
-export function assessmentSection(title, bodyHTML, { className = "" } = {}) {
-  if (!bodyHTML) return "";
-  const heading = title ? `<h4 class="triage-subheading assessment-section-title">${escapeHTML(title)}</h4>` : "";
-  return `<section class="assessment-section${className ? ` ${escapeHTML(className)}` : ""}">${heading}${bodyHTML}</section>`;
+// One titled block inside a details view: optional icon beside the
+// heading, optional `aside` (e.g. a badge) on the heading's right. Spacing
+// and the divider between consecutive sections come from CSS, so callers
+// never add their own margins. Renders nothing without a body or aside.
+export function assessmentSection(title, bodyHTML, { className = "", icon = "", aside = "" } = {}) {
+  if (!bodyHTML && !aside) return "";
+  const heading = title || aside
+    ? `<div class="assessment-section-head">${title ? `<h4 class="assessment-section-title">${escapeHTML(title)}</h4>` : ""}${aside ? `<span class="assessment-section-aside">${aside}</span>` : ""}</div>`
+    : "";
+  const classes = ["assessment-section", icon ? "has-icon" : "", className].filter(Boolean).map(escapeHTML).join(" ");
+  return `<section class="${classes}">${_icon(icon)}<div class="assessment-section-body">${heading}${bodyHTML || ""}</div></section>`;
 }
 
-// "Why <value>?" section around a rationale string the backend already stored.
-export function assessmentWhy(heading, text) {
-  return assessmentSection(heading, `<p class="assessment-rationale">${escapeHTML(text)}</p>`);
+// Stored prose (a rationale/justification string, or a list of finished
+// sentences) as paragraphs. Blank-line breaks in the stored text become
+// paragraph breaks; the wording itself is never changed.
+export function assessmentProse(text) {
+  const items = (Array.isArray(text) ? text : [text])
+    .flatMap((item) => String(item ?? "").split(/\n\s*\n/))
+    .map((item) => item.trim())
+    .filter(Boolean);
+  if (!items.length) return "";
+  return `<div class="assessment-rationale">${items.map((item) => `<p>${escapeHTML(item)}</p>`).join("")}</div>`;
+}
+
+// The "Assessment Rationale" section every stage uses for its own stored
+// explanation; `fallback` (an already-built note) is shown when it is absent.
+export function assessmentRationale(text, { fallback = "", icon = "document" } = {}) {
+  return assessmentSection("Assessment Rationale", assessmentProse(text) || fallback, { icon });
 }
 
 // `noun` is the thing being disclosed: "assessment details", "parsing
@@ -112,7 +153,7 @@ export function unifiedVerdictCard(verdict) {
   const rows = signals.map((signal) => [signal.display_name, _signalValueCell(signal)]);
   const details = rows.length
     ? [
-      assessmentSection("Contributing Signals", assessmentTable(rows)),
+      assessmentSection("Contributing Signals", assessmentTable(rows), { icon: "bars" }),
       assessmentSection("", `<p class="assessment-footnote">The Unified Verdict is the incident-level assessment across these signals. It is separate from Investigation Severity, which is the Investigation stage's own conclusion.</p>`),
     ].join("")
     : `<p class="value-pending">The verdict signal breakdown is not available for this case.</p>`;

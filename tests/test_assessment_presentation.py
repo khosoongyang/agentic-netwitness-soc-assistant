@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import copy
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -305,6 +306,24 @@ def _headline(html: str) -> str:
     return html.split("<details", 1)[0]
 
 
+def _provider_rows(html: str) -> dict:
+    """Provider Summary rows -> {provider: {summary, statuses, details}}."""
+    body = html.split('class="provider-summary-table"', 1)[1].split("<tbody>", 1)[1].split("</tbody>", 1)[0]
+    rows = {}
+    for tr in body.split("<tr>")[1:]:
+        name = re.search(r'class="provider-summary-link"[^>]*>([^<]+)<', tr).group(1)
+
+        def cell(label, tr=tr):
+            return tr.split(f'data-label="{label}">', 1)[1].split("</td>", 1)[0]
+
+        rows[name] = {
+            "summary": cell("Summary"),
+            "statuses": re.findall(r'class="badge [^"]*">([^<]+)<', cell("Status")),
+            "details": cell("Details"),
+        }
+    return rows
+
+
 PARSING_NA = {
     "alert_summary": {"severity": "High", "risk_score": 70},
     "powershell_analysis": {"risk_assessment": {"risk_level": "Low", "risk_score": 0}},
@@ -347,11 +366,47 @@ def test_triage_headline_and_details():
     assert "Overall Triage Risk" in head and "severity-medium" in head
     assert "Triage Classification" not in head
     assert "View assessment details" in html and "Hide assessment details" in html
-    for label in ("Triage Classification", "Incident Category", "Initiation Risk",
-                  "Occurrence Risk", "Adverse Impact", "Why Medium?"):
+    for label in ("Triage Assessment", "Triage Classification", "Incident Category", "Risk Assessment",
+                  "Initiation Risk", "Occurrence Risk", "Adverse Impact", "Assessment Rationale"):
         assert label in html, label
     assert "Unknown Source IP" in html
     assert "Triage Severity" not in html and "Confidence" not in html
+    assert "Why " not in html and ">Classification<" not in html
+
+
+@requires_node
+def test_triage_overall_risk_is_headline_only():
+    html = _render({"ticket": TRIAGE["ticket"]})["triage"]
+    assert html.count("Overall Triage Risk") == 1
+    assert "Overall Triage Risk" in _headline(html)
+
+
+@requires_node
+def test_triage_risk_definitions_are_static_notes_not_findings():
+    html = _render({"ticket": TRIAGE["ticket"]})["triage"]
+    risk = html.split("Risk Assessment", 1)[1].split("Assessment Rationale", 1)[0]
+    assert risk.count('class="assessment-row-note"') == 3
+    assert "Likelihood that an adversary initiates the threat event." in risk
+    # The classification rows carry no definition column.
+    triage = html.split("Triage Assessment", 1)[1].split("Risk Assessment", 1)[0]
+    assert "assessment-row-note" not in triage
+
+
+@requires_node
+def test_triage_rationale_is_stored_text_verbatim():
+    ticket = copy.deepcopy(TRIAGE["ticket"])
+    ticket["risk_rating"]["rationale"] = "First paragraph <b>as stored</b>.\n\nSecond paragraph."
+    html = _render({"ticket": ticket})["triage"]
+    assert "<p>First paragraph &lt;b&gt;as stored&lt;/b&gt;.</p><p>Second paragraph.</p>" in html
+
+
+@requires_node
+def test_triage_omits_absent_risk_dimensions():
+    ticket = copy.deepcopy(TRIAGE["ticket"])
+    del ticket["risk_rating"]["likelihood_adverse_impact"]
+    del ticket["risk_rating"]["rationale"]
+    html = _render({"ticket": ticket})["triage"]
+    assert "Adverse Impact" not in html and "Assessment Rationale" not in html
 
 
 @requires_node
@@ -361,10 +416,12 @@ def test_threat_intel_headline_and_details():
     assert "Threat Intelligence Risk" in head and "severity-low" in head
     assert "Risk level" not in html
     assert "Risk Score" in html and ">25<" in html
-    assert "Why Low?" in html and "9 malicious detection" in html
-    assert "Threat Intelligence Recommendation" in html
+    assert "Assessment Rationale" in html and "9 malicious detection" in html
+    assert "Recommended Next Action" in html
     assert "No elevated enrichment risk was identified." in html
-    assert "Provider Overview" in html
+    assert "Provider Summary" in html
+    for old in ("Why Low?", "Threat Intelligence Recommendation", "Provider Overview", "Risk Level"):
+        assert old not in html, old
 
 
 @requires_node
@@ -379,11 +436,12 @@ def test_threat_intel_assessment_holds_only_a_concise_provider_overview():
     assert "IP 188.40.170.197: 9 malicious detections, 0 suspicious" in html
     assert "188.40.170.197: abuse confidence 0, 0 reports" in html
     assert "188.40.170.197 (IPv4): 0 related pulses" in html
-    # Each provider name links to its full section, which exists exactly once.
+    # The provider name and the row's trailing arrow both link to its full
+    # section, which exists exactly once.
     results = out["tiResults"]
     for target in ("ti-provider-virustotal", "ti-provider-abuseipdb", "ti-provider-otx"):
-        assert f'data-scroll-target="{target}"' in html
-        assert f'href="#{target}"' in html
+        assert html.count(f'data-scroll-target="{target}"') == 2
+        assert html.count(f'href="#{target}"') == 2
         assert results.count(f'id="{target}"') == 1
 
 
@@ -398,12 +456,61 @@ def test_threat_intel_provider_results_are_full_stage_output():
 
 
 @requires_node
-def test_threat_intel_overview_without_indicators_uses_existing_wording():
+def test_threat_intel_summary_without_indicators_is_not_a_clean_result():
     html = _render({"ti": TI_NO_INDICATORS})["ti"]
     assert "No risk reasons were recorded for this run." in html
-    assert "no usable public IP indicator was extracted" in html
-    assert "no usable indicator was extracted" in html
-    assert "File hash: skipped (No file hash was available.)" in html
+    rows = _provider_rows(html)
+    # VirusTotal's file-hash entry is the backend's own "skipped" status.
+    assert rows["VirusTotal"]["summary"] == "No usable indicator"
+    assert rows["VirusTotal"]["statuses"] == ["Skipped"]
+    assert "File hash: skipped (No file hash was available.)" in rows["VirusTotal"]["details"]
+    # No lookup entry at all -> neutral "Not Queried", never a result.
+    assert rows["AbuseIPDB"]["summary"] == "No usable public IP"
+    assert rows["AbuseIPDB"]["statuses"] == ["Not Queried"]
+    assert "No public IP indicator was extracted." in rows["AbuseIPDB"]["details"]
+    assert rows["AlienVault OTX"]["summary"] == "No usable indicator"
+    assert rows["AlienVault OTX"]["statuses"] == ["Not Queried"]
+    assert "Completed" not in html
+
+
+@requires_node
+def test_threat_intel_summary_with_completed_lookups():
+    rows = _provider_rows(_render({"ti": TI})["ti"])
+    assert rows["VirusTotal"]["summary"] == "1 IP"
+    assert rows["VirusTotal"]["statuses"] == ["Skipped", "Completed"]
+    assert rows["AbuseIPDB"]["summary"] == "1 public IP"
+    assert rows["AbuseIPDB"]["statuses"] == ["Completed"]
+    assert rows["AlienVault OTX"]["summary"] == "1 indicator"
+    assert rows["AlienVault OTX"]["statuses"] == ["Completed"]
+
+
+@requires_node
+def test_threat_intel_summary_shows_error_and_not_found_as_recorded():
+    ti = copy.deepcopy(TI)
+    ti["threat_intelligence"]["abuseipdb"]["ip_results"][0] = {
+        "indicator": "188.40.170.197", "status": "error", "status_code": 429}
+    ti["threat_intelligence"]["alienvault_otx"]["otx_results"][0]["status"] = "not_found"
+    rows = _provider_rows(_render({"ti": ti})["ti"])
+    assert rows["AbuseIPDB"]["statuses"] == ["Error"]
+    assert "HTTP 429" in rows["AbuseIPDB"]["details"]
+    assert rows["AlienVault OTX"]["statuses"] == ["Not Found"]
+
+
+@requires_node
+def test_threat_intel_risk_score_is_secondary_and_uncapped():
+    html = _render({"ti": {**TI, "enrichment_risk_score": 180, "enrichment_risk_level": "High"}})["ti"]
+    assert '<p class="assessment-score">180</p>' in html
+    assert "/ 100" not in html and "/100" not in html
+    assert "severity-high" in _headline(html)
+
+
+@requires_node
+def test_threat_intel_rationale_and_recommendation_are_verbatim():
+    reasons = ["First stored reason.", "Second stored reason."]
+    action = "Stored recommendation, unchanged."
+    html = _render({"ti": {**TI, "enrichment_risk_reasons": reasons, "recommended_next_action": action}})["ti"]
+    assert "<p>First stored reason.</p><p>Second stored reason.</p>" in html
+    assert f"<p>{action}</p>" in html
 
 
 @requires_node
@@ -427,16 +534,73 @@ def test_investigation_headline_and_details():
     head = _headline(html)
     assert "Investigation Severity" in head and "severity-high" in head
     assert "Unified Verdict" not in html
-    for text in ("Why High?", "Investigation Confidence", "Why Medium?", "Severity Divergence",
-                 "Upgraded", "Business Impact Checklist", "Critical System", "Operational Impact"):
+    for text in ("Assessment Rationale", "Investigation Confidence", "Assessment Change",
+                 "Previous Triage Assessment", "Investigation Assessment", "Upgraded",
+                 "Business Impact", "Critical System", "Operational Impact"):
         assert text in html, text
+    for old in ("Why High?", "Why Medium?", "Severity Divergence", "Business Impact Checklist"):
+        assert old not in html, old
+    # Confidence badge sits on the heading row, followed by its justification.
+    confidence = html.split("Investigation Confidence", 1)[1]
+    assert confidence.index("confidence-medium") < confidence.index("Medium because endpoint telemetry is missing.")
 
 
 @requires_node
 def test_investigation_without_justification_uses_neutral_message():
     html = _render({"inv": {"status": "completed", "severity": "High"}})["inv"]
     assert "Severity justification was not recorded for this Investigation run." in html
+    assert "Assessment Rationale" in html
     assert "Why High?" not in html
+    assert "Assessment Change" not in html and "Business Impact" not in html
+
+
+@requires_node
+@pytest.mark.parametrize("direction,arrow,label", [
+    ("upgraded", "\u2191", "Upgraded"), ("downgraded", "\u2193", "Downgraded"),
+    ("unchanged", "\u2192", "Unchanged")])
+def test_assessment_change_direction_formatting(direction, arrow, label):
+    inv = {**INVESTIGATION, "severity_divergence": {**INVESTIGATION["severity_divergence"], "direction": direction}}
+    html = _render({"inv": inv})["inv"]
+    change = html.split(">Change<", 1)[1].split("</dd>", 1)[0]
+    assert arrow in change and label in change
+    assert f"assessment-change-{direction}" in change
+
+
+@requires_node
+def test_assessment_change_unknown_direction_is_shown_as_stored():
+    inv = {**INVESTIGATION, "severity_divergence": {"triage": "Medium", "investigation": "High", "direction": "re_rated"}}
+    change = _render({"inv": inv})["inv"].split(">Change<", 1)[1].split("</dd>", 1)[0]
+    assert "re rated" in change
+    assert not any(arrow in change for arrow in "\u2191\u2193\u2192")
+
+
+@requires_node
+def test_business_impact_distinguishes_no_from_unknown():
+    inv = copy.deepcopy(INVESTIGATION)
+    inv["investigation_analysis"]["business_impact_checklist"] = {
+        "critical_system": "no", "essential_service": "unknown", "data_sensitivity": "yes",
+        "operational_impact": "partial outage"}
+    html = _render({"inv": inv})["inv"]
+    impact = html.split("Business Impact", 1)[1]
+    labels = ["Critical System", "Data Sensitivity", "Essential Service", "Operational Impact"]
+    positions = [impact.index(label) for label in labels]
+    assert positions == sorted(positions)
+
+    def row(label):
+        return impact.split(label, 1)[1].split("</dd>", 1)[0]
+
+    assert "impact-no" in row("Critical System") and ">No<" in row("Critical System")
+    assert "impact-unknown" in row("Essential Service") and ">Unknown<" in row("Essential Service")
+    assert "impact-yes" in row("Data Sensitivity")
+    assert "partial outage" in row("Operational Impact") and "badge" not in row("Operational Impact")
+
+
+@requires_node
+def test_confidence_without_justification_still_shows_badge():
+    inv = copy.deepcopy(INVESTIGATION)
+    del inv["investigation_analysis"]["confidence_justification"]
+    html = _render({"inv": inv})["inv"]
+    assert "Investigation Confidence" in html and "confidence-medium" in html
 
 
 @requires_node
@@ -456,7 +620,7 @@ def test_unified_verdict_card_shows_every_signal_with_source_names():
 @requires_node
 def test_unified_verdict_card_shows_low_threat_intel():
     html = _render({"verdict": _unified(_state())})["verdict"]
-    row = html.split("Threat Intelligence Risk", 1)[1].split("</tr>", 1)[0]
+    row = html.split("Threat Intelligence Risk", 1)[1].split('class="assessment-row"', 1)[0]
     assert "severity-low" in row and ">LOW<" in row
 
 

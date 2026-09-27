@@ -3,8 +3,8 @@ import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loa
 import { TICKET_REPORT_TYPE, mountReportsPanel, openReportInto } from "./reports.js";
 import { bindContinueButton, stageActionModel } from "../stageContinue.js";
 import {
-  assessmentCard, assessmentHeadline, assessmentSection, assessmentTable, assessmentWhy,
-  bandValue, confidenceBadge, hasValue, pendingValue, unifiedVerdictCard,
+  assessmentCard, assessmentHeadline, assessmentProse, assessmentRationale, assessmentSection,
+  assessmentTable, bandValue, confidenceBadge, hasValue, pendingValue, unifiedVerdictCard,
 } from "../assessment.js";
 
 const POLL_INTERVAL_MS = 2000;
@@ -764,10 +764,25 @@ function _triageTable(rows) {
   return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([labelHTML, value]) => `<tr><th scope="row">${labelHTML}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
+// Static definitions of the three risk dimensions, worded after the Triage
+// Agent's own rubric (agents/triage/soc_triage_agent.py::
+// RISK_RATING_GUIDANCE). They describe what each field means — they are not
+// findings about the incident.
+const _TRIAGE_RISK_DEFINITIONS = {
+  initiation: "Likelihood that an adversary initiates the threat event.",
+  occurrence: "Likelihood that the threat event occurs.",
+  adverse: "Likelihood that the threat event results in adverse impact.",
+};
+
+function _definition(text) {
+  return `<span class="assessment-definition">${escapeHTML(text)}</span>`;
+}
+
 // Headline = ticket.risk_rating.overall_risk (the Triage Agent's own overall
-// rating). Triage produces no severity or confidence field, so neither is
-// shown. ticket.classification and ticket.incident_category are separate
-// fields and stay separate rows.
+// rating) — shown once, as the headline, not repeated in the Risk table.
+// Triage produces no severity or confidence field, so neither is shown.
+// ticket.classification and ticket.incident_category are separate fields
+// and stay separate rows.
 export function triageAssessment(ticket) {
   const rr = ticket.risk_rating || {};
   const overall = rr.overall_risk;
@@ -775,16 +790,16 @@ export function triageAssessment(ticket) {
     ["Triage Classification", ticket.classification, bandValue],
     ["Incident Category", ticket.incident_category],
   ]);
-  const riskRows = _poRows([
-    ["Initiation Risk", rr.likelihood_initiation, bandValue],
-    ["Occurrence Risk", rr.likelihood_occurrence, bandValue],
-    ["Adverse Impact", rr.likelihood_adverse_impact, bandValue],
-    ["Overall Triage Risk", overall, bandValue],
-  ]);
+  const riskRows = [
+    ["Initiation Risk", rr.likelihood_initiation, _TRIAGE_RISK_DEFINITIONS.initiation],
+    ["Occurrence Risk", rr.likelihood_occurrence, _TRIAGE_RISK_DEFINITIONS.occurrence],
+    ["Adverse Impact", rr.likelihood_adverse_impact, _TRIAGE_RISK_DEFINITIONS.adverse],
+  ].filter(([, value]) => _poHas(value))
+    .map(([label, value, definition]) => [label, bandValue(value), _definition(definition)]);
   const details = [
-    assessmentSection("Classification", assessmentTable(classificationRows)),
-    assessmentSection("Risk Assessment", assessmentTable(riskRows)),
-    rr.rationale ? assessmentWhy(`Why ${overall || "this rating"}?`, rr.rationale) : "",
+    assessmentSection("Triage Assessment", assessmentTable(classificationRows), { icon: "clipboard" }),
+    assessmentSection("Risk Assessment", assessmentTable(riskRows), { icon: "bars" }),
+    assessmentRationale(rr.rationale, { icon: "bulb" }),
   ].join("");
   return assessmentCard({
     headlines: [assessmentHeadline("Overall Triage Risk", hasValue(overall) ? bandValue(overall) : pendingValue("Not recorded"))],
@@ -981,14 +996,14 @@ function tiTable(columns, rows) {
 // whatever status string the provider call already returned
 // (completed/skipped/not_found/error/unknown) — it never re-derives whether
 // a lookup "worked".
-function providerStatusBadge(status) {
+function providerStatusBadge(status, label = status || "unknown") {
   const s = String(status || "").toLowerCase();
   const tone = s === "completed" ? "state-completed"
     : s === "error" ? "state-failed"
     : s === "not_found" ? "state-awaiting_approval"
     : s === "skipped" ? "state-locked"
     : "state-not_started";
-  return badge(status || "unknown", tone);
+  return badge(label, tone);
 }
 
 // Skipped/error results carry their own explanatory "reason" (or an HTTP
@@ -1122,7 +1137,7 @@ function tiVirusTotalCard(vt, iocs) {
 }
 
 // No-result wording shared by the full provider tables and the Provider
-// Overview, keyed only on which indicators extraction actually produced.
+// Summary, keyed only on which indicators extraction actually produced.
 const _TI_NO_VT_LOOKUPS = "No VirusTotal lookups were performed for this run.";
 
 function _tiAbuseEmptyText(iocs) {
@@ -1152,14 +1167,113 @@ function tiOTXCard(otx, iocs) {
   return tiTable(["Indicator", "Type", "Status", "Pulse count", "Related pulses", "Available sections"], [body]);
 }
 
-// ── Provider Overview (concise, inside the assessment) ─────────────────────
-// One line per lookup the provider result already contains: the lookup's own
-// status/reason, or — for a completed lookup — the provider's own counts
-// (VirusTotal malicious/suspicious, AbuseIPDB abuse_confidence_score/
-// total_reports, OTX pulse_count). Nothing is summed, weighted or turned into
-// a per-provider verdict; the full rows live in tiProviderResults().
+// ── Provider Summary (concise, inside the assessment) ──────────────────────
+// One row per provider: which indicators it was given, the lookup statuses
+// the provider result itself recorded, and one line per lookup — its own
+// status/reason or, when completed, the provider's own counts (VirusTotal
+// malicious/suspicious, AbuseIPDB abuse_confidence_score/total_reports, OTX
+// pulse_count). Nothing is summed, weighted or turned into a per-provider
+// verdict; the full rows live in tiProviderResults().
+//
+// "No malicious result" and "never queried" stay distinct: a completed
+// lookup shows COMPLETED plus its counts, a lookup the backend skipped shows
+// its own SKIPPED status and reason, and a provider with no lookup entry at
+// all (no usable indicator reached it) shows NOT QUERIED.
 
 const _TI_OVERVIEW_MAX_LINES = 3;
+
+const _TI_PROVIDERS = [["virustotal", "VirusTotal"], ["abuseipdb", "AbuseIPDB"], ["otx", "AlienVault OTX"]];
+
+const _TI_STATUS_LABELS = { completed: "Completed", skipped: "Skipped", not_found: "Not Found", error: "Error" };
+
+function _tiList(value) {
+  return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : [];
+}
+
+// Every lookup entry the provider result holds, tagged with its kind.
+function _tiLookups(provider, block) {
+  if (provider === "virustotal") {
+    const vt = block.virustotal || {};
+    return [
+      ...(vt.file_hash && typeof vt.file_hash === "object" ? [{ kind: "hash", lookup: vt.file_hash }] : []),
+      ..._tiList(vt.ip_results).map((lookup) => ({ kind: "ip", lookup })),
+      ..._tiList(vt.domain_results).map((lookup) => ({ kind: "domain", lookup })),
+    ];
+  }
+  if (provider === "abuseipdb") return _tiList(block.abuseipdb?.ip_results).map((lookup) => ({ kind: "ip", lookup }));
+  return _tiList(block.alienvault_otx?.otx_results).map((lookup) => ({ kind: "indicator", lookup }));
+}
+
+function _tiPlural(count, word) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+// Which extracted indicators actually reached this provider. VirusTotal's
+// file_hash entry exists even when no hash was extracted (as an explicit
+// "skipped"), so it only counts when a hash is on the lookup or in the IOCs.
+function _tiSummaryText(provider, lookups, iocs) {
+  const hasIPs = (iocs.ip_indicators || []).length > 0;
+  const hasAny = Boolean(iocs.file_hash) || hasIPs || (iocs.domain_indicators || []).length > 0;
+  if (provider === "virustotal") {
+    const hash = lookups.some(({ kind, lookup }) => kind === "hash" && (lookup.indicator || iocs.file_hash));
+    const ips = lookups.filter(({ kind }) => kind === "ip").length;
+    const domains = lookups.filter(({ kind }) => kind === "domain").length;
+    const parts = [hash ? "File hash" : "", ips ? _tiPlural(ips, "IP") : "", domains ? _tiPlural(domains, "domain") : ""].filter(Boolean);
+    if (parts.length) return parts.join(" + ");
+    return hasAny ? "No lookup recorded" : "No usable indicator";
+  }
+  if (provider === "abuseipdb") {
+    if (lookups.length) return _tiPlural(lookups.length, "public IP");
+    return hasIPs ? "No lookup recorded" : "No usable public IP";
+  }
+  if (lookups.length) return _tiPlural(lookups.length, "indicator");
+  return hasAny ? "No lookup recorded" : "No usable indicator";
+}
+
+// Short no-lookup wording for the summary table (the full provider sections
+// keep their longer _tiAbuseEmptyText()/_tiOTXEmptyText() sentences).
+function _tiNoLookupDetail(provider, iocs) {
+  const hasIPs = (iocs.ip_indicators || []).length > 0;
+  const hasAny = Boolean(iocs.file_hash) || hasIPs || (iocs.domain_indicators || []).length > 0;
+  if (provider === "abuseipdb") {
+    return hasIPs ? "AbuseIPDB did not return a result for the extracted IP indicator(s)." : "No public IP indicator was extracted.";
+  }
+  if (provider === "otx") {
+    return hasAny ? "AlienVault OTX did not return a result for the extracted indicator(s)." : "No indicator was extracted for OTX lookup.";
+  }
+  return hasAny ? _TI_NO_VT_LOOKUPS : "No file hash, IP or domain indicator was extracted.";
+}
+
+function _tiStatusBadges(lookups) {
+  if (!lookups.length) return badge("Not Queried", "state-locked");
+  const statuses = [...new Set(lookups.map(({ lookup }) => String(lookup.status || "unknown").toLowerCase()))];
+  return statuses.map((status) => providerStatusBadge(status, _TI_STATUS_LABELS[status] || _poHumanise(status))).join("");
+}
+
+function tiProviderSummary(block) {
+  const iocs = block.iocs || {};
+  const rows = _TI_PROVIDERS.map(([key, name]) => {
+    const lookups = _tiLookups(key, block);
+    const lines = lookups.length ? _tiOverviewLines(key, block) : [_tiNoLookupDetail(key, iocs)];
+    const shown = lines.slice(0, _TI_OVERVIEW_MAX_LINES).map((line) => `<span>${escapeHTML(line)}</span>`);
+    if (lines.length > _TI_OVERVIEW_MAX_LINES) {
+      shown.push(`<span class="value-pending">+${lines.length - _TI_OVERVIEW_MAX_LINES} more — see full results</span>`);
+    }
+    const target = TI_PROVIDER_SECTION_IDS[key];
+    const jump = `Jump to the full ${escapeHTML(name)} results`;
+    return `<tr>
+      <th scope="row" data-label="Provider"><a class="provider-summary-link" href="#${target}" data-scroll-target="${target}" title="${jump}">${escapeHTML(name)}<span class="provider-summary-chevron" aria-hidden="true">›</span></a></th>
+      <td data-label="Summary">${escapeHTML(_tiSummaryText(key, lookups, iocs))}</td>
+      <td data-label="Status"><span class="provider-summary-status">${_tiStatusBadges(lookups)}</span></td>
+      <td data-label="Details"><span class="provider-summary-details">${shown.join("")}</span></td>
+      <td class="provider-summary-go"><a class="provider-summary-arrow" href="#${target}" data-scroll-target="${target}" tabindex="-1" aria-hidden="true" title="${jump}">›</a></td>
+    </tr>`;
+  });
+  return `<div class="provider-summary"><table class="provider-summary-table" aria-label="Provider summary">
+    <thead><tr><th scope="col">Provider</th><th scope="col">Summary</th><th scope="col">Status</th><th scope="col">Details</th><th scope="col"><span class="provider-summary-sr">Open full results</span></th></tr></thead>
+    <tbody>${rows.join("")}</tbody>
+  </table></div>`;
+}
 
 const TI_PROVIDER_SECTION_IDS = {
   virustotal: "ti-provider-virustotal",
@@ -1206,52 +1320,32 @@ function _tiOverviewLines(provider, block) {
     _tiCount(r.pulse_count, "related pulse")));
 }
 
-function tiProviderOverview(block) {
-  const providers = [["virustotal", "VirusTotal"], ["abuseipdb", "AbuseIPDB"], ["otx", "AlienVault OTX"]];
-  const items = providers.map(([key, name]) => {
-    const lines = _tiOverviewLines(key, block);
-    const shown = lines.slice(0, _TI_OVERVIEW_MAX_LINES).map((line) => `<span>${escapeHTML(line)}</span>`);
-    if (lines.length > _TI_OVERVIEW_MAX_LINES) {
-      shown.push(`<span class="value-pending">+${lines.length - _TI_OVERVIEW_MAX_LINES} more — see full results</span>`);
-    }
-    const target = TI_PROVIDER_SECTION_IDS[key];
-    return `<li class="provider-overview-item">
-      <a class="provider-overview-link" href="#${target}" data-scroll-target="${target}" title="Jump to the full ${escapeHTML(name)} results">${escapeHTML(name)}<span class="provider-overview-chevron" aria-hidden="true">›</span></a>
-      <div class="provider-overview-summary">${shown.join("")}</div>
-    </li>`;
-  });
-  return `<ul class="provider-overview" aria-label="Provider overview">${items.join("")}</ul>`;
-}
-
 // Headline = enrichment_risk_level, the Threat Intelligence stage's own
 // case-level risk (threat_intel.py::calculate_enrichment_risk()), labelled
 // "Threat Intelligence Risk" so it is never read as an overall incident risk.
 // The details are a concise explanation only: enrichment_risk_reasons (that
-// calculation's own finished sentences), the Provider Overview and the
-// recommendation. The full provider output is stage output, rendered
-// separately by tiProviderResults() — never inside this assessment.
+// calculation's own finished sentences) as the rationale, the Provider
+// Summary, the score and recommended_next_action — each shown verbatim. The
+// full provider output is stage output, rendered separately by
+// tiProviderResults() — never inside this assessment.
+//
+// enrichment_risk_score is additive and uncapped (several flagged indicators
+// can take it past 100), so it is shown as the raw score, never "/ 100", and
+// kept visually secondary to the headline level. recommended_next_action is
+// threat_intel.py's risk-derived recommendation, not a workflow-state claim
+// — the live workflow line stays in tiSummaryCard() (tiWorkflowStatusLine()).
 export function tiAssessment(result, block = result.threat_intelligence || {}) {
   const level = result.enrichment_risk_level;
   const reasons = (Array.isArray(result.enrichment_risk_reasons) ? result.enrichment_risk_reasons : []).filter((r) => String(r || "").trim());
-  const rows = _poRows([
-    ["Threat Intelligence Risk", level, bandValue],
-    ["Risk Score", result.enrichment_risk_score],
-  ]);
-  // Labelled explicitly as a Threat Intelligence recommendation (not "Next
-  // step"/"Workflow") so it can never be misread as an orchestration
-  // decision — see tiWorkflowStatusLine() above for the actual live
-  // workflow-state line, sourced independently from the Investigation
-  // stage's own state.
-  const recommendation = result.recommended_next_action
-    ? `<p class="assessment-rationale">${escapeHTML(result.recommended_next_action)}</p>`
+  const score = result.enrichment_risk_score;
+  const scoreHTML = hasValue(score)
+    ? `<p class="assessment-score">${escapeHTML(String(score))}</p><p class="assessment-footnote">Calculated from the provider results (additive score, not a percentage).</p>`
     : "";
   const details = [
-    assessmentSection("", assessmentTable(rows)),
-    assessmentSection(`Why ${level || "this rating"}?`, reasons.length
-      ? `<ul class="data-list">${reasons.map((r) => `<li><div>${escapeHTML(r)}</div></li>`).join("")}</ul>`
-      : `<p class="value-pending">No risk reasons were recorded for this run.</p>`),
-    assessmentSection("Provider Overview", tiProviderOverview(block)),
-    assessmentSection("Threat Intelligence Recommendation", recommendation),
+    assessmentRationale(reasons, { fallback: `<p class="value-pending">No risk reasons were recorded for this run.</p>` }),
+    assessmentSection("Provider Summary", tiProviderSummary(block), { icon: "globe" }),
+    assessmentSection("Risk Score", scoreHTML, { icon: "bars" }),
+    assessmentSection("Recommended Next Action", assessmentProse(result.recommended_next_action), { icon: "target" }),
   ].join("");
   return assessmentCard({
     headlines: [assessmentHeadline("Threat Intelligence Risk", hasValue(level) ? bandValue(level) : pendingValue("Not assessed"))],
@@ -1261,7 +1355,7 @@ export function tiAssessment(result, block = result.threat_intelligence || {}) {
 
 // The stage's actual output: each provider's full existing table (and the
 // PowerShell analysis) as its own section, each an in-page scroll target for
-// the Provider Overview links above.
+// the Provider Summary links above.
 export function tiProviderResults(block) {
   const iocs = block.iocs || {};
   const section = (key, title, body) => (body
@@ -1276,7 +1370,7 @@ export function tiProviderResults(block) {
   </section>`;
 }
 
-// Provider Overview links scroll within the page. The default `#fragment`
+// Provider Summary links scroll within the page. The default `#fragment`
 // navigation is prevented because it fires `popstate`, which the router
 // (router.js::installRouter) treats as a navigation and re-renders on.
 function bindInPageLinks(root) {
@@ -1376,18 +1470,49 @@ function provenanceRow(label, entry) {
   return `<tr><th scope="row">${escapeHTML(label)}</th><td title="${escapeHTML(title)}">${escapeHTML(e.value ?? "—")}</td></tr>`;
 }
 
+// Display order follows the reference layout; any key the checklist adds
+// later is still shown, after these.
 const _BUSINESS_IMPACT_LABELS = {
   critical_system: "Critical System",
-  essential_service: "Essential Service",
   data_sensitivity: "Data Sensitivity",
+  essential_service: "Essential Service",
   operational_impact: "Operational Impact",
 };
+
+// The checklist answers are yes/no/unknown strings (orchestrator.py::
+// BusinessImpactChecklist). "No" (assessed, not applicable) and "Unknown"
+// (not enough information) mean different things, so they get different
+// badges — Unknown is a muted neutral, and is never shown as No. Any other
+// string is shown as stored.
+const _IMPACT_TONES = { yes: "impact-yes", no: "impact-no", unknown: "impact-unknown" };
+
+function _impactValue(value) {
+  const key = String(value).trim().toLowerCase();
+  if (!_IMPACT_TONES[key]) return escapeHTML(String(value));
+  return badge(key.charAt(0).toUpperCase() + key.slice(1), _IMPACT_TONES[key]);
+}
+
+// Presentation of severity_divergence.direction only — the stored value is
+// never changed; anything unrecognised is shown humanised, without an arrow.
+const _DIRECTION_DISPLAY = {
+  upgraded: ["↑", "Upgraded"],
+  downgraded: ["↓", "Downgraded"],
+  unchanged: ["→", "Unchanged"],
+};
+
+function _directionValue(value) {
+  const key = String(value).trim().toLowerCase();
+  const known = _DIRECTION_DISPLAY[key];
+  if (!known) return escapeHTML(_poHumanise(value));
+  return `<span class="assessment-change assessment-change-${key}"><span class="assessment-change-arrow" aria-hidden="true">${known[0]}</span>${known[1]}</span>`;
+}
 
 // Headline = investigation_result.severity: the Investigation stage's own
 // conclusion from its own evidence. It is deliberately a separate card from
 // the Unified Verdict (the incident-level aggregation across stages). The
 // details show only what the Investigation result actually stored —
-// severity/confidence justifications, severity_divergence and the
+// severity/confidence justifications, severity_divergence (written by
+// workflow/engine.py only when Triage and Investigation disagree) and the
 // business_impact_checklist — and say so when an older run lacks them.
 export function investigationAssessment(result) {
   if (!result || !Object.keys(result).length) return "";
@@ -1399,26 +1524,31 @@ export function investigationAssessment(result) {
   const impact = _pickAnalysisField(result, "business_impact_checklist");
 
   const parts = [
-    hasValue(severityWhy)
-      ? assessmentWhy(`Why ${severity || "this severity"}?`, severityWhy)
-      : assessmentSection("", `<p class="value-pending">Severity justification was not recorded for this Investigation run.</p>`),
+    assessmentRationale(severityWhy, {
+      fallback: `<p class="value-pending">Severity justification was not recorded for this Investigation run.</p>`,
+    }),
   ];
   if (hasValue(confidence)) {
-    parts.push(assessmentSection("", assessmentTable([["Investigation Confidence", confidenceBadge(confidence)]])));
-    if (hasValue(confidenceWhy)) parts.push(assessmentWhy(`Why ${confidence}?`, confidenceWhy));
+    parts.push(assessmentSection("Investigation Confidence", assessmentProse(confidenceWhy), {
+      icon: "shield", aside: confidenceBadge(confidence),
+    }));
   }
   if (divergence && typeof divergence === "object") {
-    parts.push(assessmentSection("Severity Divergence", assessmentTable(_poRows([
-      ["Triage", divergence.triage, bandValue],
-      ["Investigation", divergence.investigation, bandValue],
-      ["Direction", divergence.direction, (v) => escapeHTML(String(v).charAt(0).toUpperCase() + String(v).slice(1))],
-    ]))));
+    parts.push(assessmentSection("Assessment Change", assessmentTable(_poRows([
+      ["Previous Triage Assessment", divergence.triage, bandValue],
+      ["Investigation Assessment", divergence.investigation, bandValue],
+      ["Change", divergence.direction, _directionValue],
+    ])), { icon: "arrows" }));
   }
   if (impact && typeof impact === "object") {
-    const rows = Object.entries(impact)
-      .filter(([, v]) => _poHas(v))
-      .map(([k, v]) => [_BUSINESS_IMPACT_LABELS[k] || _poHumanise(k), escapeHTML(String(v))]);
-    parts.push(assessmentSection("Business Impact Checklist", assessmentTable(rows)));
+    const keys = [
+      ...Object.keys(_BUSINESS_IMPACT_LABELS).filter((k) => k in impact),
+      ...Object.keys(impact).filter((k) => !(k in _BUSINESS_IMPACT_LABELS)),
+    ];
+    const rows = keys
+      .filter((k) => _poHas(impact[k]))
+      .map((k) => [_BUSINESS_IMPACT_LABELS[k] || _poHumanise(k), _impactValue(impact[k])]);
+    parts.push(assessmentSection("Business Impact", assessmentTable(rows), { icon: "database" }));
   }
   return assessmentCard({
     headlines: [assessmentHeadline("Investigation Severity", hasValue(severity) ? bandValue(severity) : pendingValue("Not recorded"))],

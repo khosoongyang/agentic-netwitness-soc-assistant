@@ -924,21 +924,32 @@ td {
 /* Stage assessment cards (frontend/js/assessment.js) — one headline value
    per stage, details on demand. The disclosure is the existing
    .parsing-field-list <details> with an .assessment-details modifier; the
-   View/Hide wording swaps on [open] with no JS. Used by Parsing, Triage,
-   Threat Intelligence, Investigation and the Unified Verdict.
+   View/Hide wording swaps on [open] with no JS. Shared by Parsing, Triage,
+   Threat Intelligence, Investigation and the Unified Verdict, so every
+   stage reads the same:
 
-   Spacing comes from four tokens only, so every stage reads the same:
+     headline row (label + badge)
+     [View / Hide ... details]
+       section: icon | heading (+ aside badge) | body
+       -------------
+       section: ...
+
+   Spacing comes from four tokens only:
      --assess-space-1  tight   (between headline rows, list lines)
      --assess-space-2  small   (heading -> its content)
-     --assess-space-3  medium  (inside a section / after the summary)
-     --assess-space-4  large   (between sections and major stage areas)
+     --assess-space-3  medium  (inside a section / between stage areas)
+     --assess-space-4  large   (between sections inside the details)
    Consecutive .assessment-section blocks get a subtle divider; callers never
-   add their own margins. */
+   add their own margins. Narrow layouts are driven by a container query on
+   the details body (so the Ask Aegis panel narrowing the page counts too),
+   not the viewport. */
 :root {
   --assess-space-1: 0.5rem;
   --assess-space-2: 0.75rem;
   --assess-space-3: 1rem;
   --assess-space-4: 1.5rem;
+  --assess-icon-size: 2.75rem;
+  --assess-label-col: minmax(8rem, 36%);
 }
 
 @media (max-width: 620px) {
@@ -950,7 +961,7 @@ td {
 
 .assessment-card {
   margin-bottom: var(--assess-space-3);
-  padding: var(--assess-space-3) 1.1rem 1.1rem;
+  padding: 1.1rem;
 }
 
 /* Grid containers already space their children. */
@@ -967,13 +978,13 @@ td {
   align-items: center;
   justify-content: space-between;
   gap: var(--assess-space-1) var(--assess-space-3);
-  padding: 0.65rem 0.85rem;
+  padding: 0.85rem 1.1rem;
   border: 1px solid var(--border-soft);
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   background: var(--surface);
   color: var(--text);
-  font-size: 0.9rem;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 700;
 }
 
 .assessment-headline + .assessment-headline {
@@ -981,19 +992,27 @@ td {
 }
 
 .assessment-headline-value .badge {
-  padding: 0.3rem 0.7rem;
-  font-size: 0.78rem;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
 
 .assessment-details {
   margin-top: var(--assess-space-2);
+  padding: 0.75rem 1.1rem;
+  border-radius: 0.6rem;
 }
 
 .assessment-details > summary {
-  color: var(--accent);
+  color: var(--text);
+  font-size: 0.88rem;
   font-weight: 600;
+}
+
+.assessment-details > summary:hover,
+.assessment-details > summary:focus-visible {
+  color: var(--accent);
 }
 
 .assessment-details > summary .assessment-when-open,
@@ -1006,36 +1025,106 @@ td {
 }
 
 .assessment-details[open] > summary {
-  margin-bottom: var(--assess-space-3);
+  margin-bottom: var(--assess-space-4);
   padding-bottom: var(--assess-space-2);
   border-bottom: 1px solid var(--border-soft);
 }
 
 .assessment-details-body {
-  padding: 0 0.1rem 0.25rem;
+  container: assessment / inline-size;
+  padding: 0 0.1rem 0.5rem;
 }
 
 /* One titled block inside a details view (assessment.js::assessmentSection). */
 .assessment-section + .assessment-section {
   margin-top: var(--assess-space-4);
-  padding-top: var(--assess-space-3);
+  padding-top: var(--assess-space-4);
   border-top: 1px solid var(--border-soft);
 }
 
-.assessment-section-title.triage-subheading {
-  margin: 0 0 var(--assess-space-2);
+.assessment-section.has-icon {
+  display: grid;
+  grid-template-columns: var(--assess-icon-size) minmax(0, 1fr);
+  column-gap: var(--assess-space-3);
+  align-items: start;
 }
 
-/* Rationale is prose, not another table row: no accent bar, readable measure. */
-.assessment-rationale {
+.assessment-section-body {
+  min-width: 0;
+}
+
+.assessment-section-icon {
+  width: var(--assess-icon-size);
+  height: var(--assess-icon-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #22395a;
+  border-radius: 999px;
+  background: #0f2037;
+  color: var(--accent);
+}
+
+.assessment-section-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.assessment-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--assess-space-1) var(--assess-space-3);
+  margin-bottom: var(--assess-space-2);
+}
+
+/* Heading sits on the icon's centre line. */
+.assessment-section.has-icon .assessment-section-head {
+  min-height: var(--assess-icon-size);
+  margin-bottom: var(--assess-space-1);
+}
+
+.assessment-section-title {
   margin: 0;
-  max-width: 78ch;
   color: var(--text);
-  font-size: 0.86rem;
-  line-height: 1.6;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
-/* Lists (risk reasons, warnings) read at the same size as the tables. */
+.assessment-section-aside .badge,
+.assessment-row-value .badge,
+.provider-summary-status .badge {
+  padding: 0.28rem 0.75rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Display case only, matching the headline badges. */
+.assessment-section-aside .badge {
+  text-transform: uppercase;
+}
+
+/* Rationale is prose, not another table row: readable measure and leading. */
+.assessment-rationale {
+  max-width: 80ch;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.assessment-rationale p {
+  margin: 0;
+}
+
+.assessment-rationale p + p {
+  margin-top: var(--assess-space-2);
+}
+
+/* Lists (parsing warnings) read at the same size as the rows. */
 .assessment-section .data-list li {
   padding: var(--assess-space-1) 0;
   font-size: 0.86rem;
@@ -1050,19 +1139,70 @@ td {
   margin-top: var(--assess-space-1);
 }
 
-.assessment-details .case-context-table {
+/* Label / value (/ definition) rows in a rounded inner card
+   (assessment.js::assessmentTable). The label column has the same width in
+   every section of a card, so values line up down the whole details view. */
+.assessment-rows {
+  margin: 0;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.assessment-row {
+  display: grid;
+  grid-template-columns: var(--assess-label-col) minmax(0, 1fr);
+  gap: 0.35rem var(--assess-space-3);
+  align-items: center;
+  padding: 0.8rem 1.1rem;
+}
+
+.assessment-rows.has-notes .assessment-row {
+  grid-template-columns: var(--assess-label-col) minmax(5.5rem, 9rem) minmax(0, 1fr);
+}
+
+.assessment-row + .assessment-row {
+  border-top: 1px solid var(--border-soft);
+}
+
+.assessment-row-label {
+  color: #b8c6da;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.assessment-row-value {
   min-width: 0;
-}
-
-.assessment-details .case-context-table tbody th[scope="row"],
-.assessment-details .case-context-table tbody td {
-  vertical-align: top;
-}
-
-/* Values (hashes, IPs, long reasons) may break anywhere; labels only
-   between words, so "Threat Intelligence Risk" never splits mid-word. */
-.assessment-details .case-context-table tbody td {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+/* Static field definitions (e.g. what "Initiation Risk" means) — muted so
+   they never read as incident evidence. */
+.assessment-row-note {
+  min-width: 0;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+/* Secondary numeric value (Threat Intelligence Risk Score) — deliberately
+   quieter than the headline badge. */
+.assessment-score {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.assessment-score + .assessment-footnote {
+  margin-top: 0.2rem;
 }
 
 .assessment-note {
@@ -1080,6 +1220,50 @@ td {
   line-height: 1.5;
 }
 
+/* Investigation — Assessment Change direction (display of
+   severity_divergence.direction only). */
+.assessment-change {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+}
+
+.assessment-change-arrow {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+.assessment-change-upgraded {
+  color: var(--danger);
+}
+
+.assessment-change-downgraded {
+  color: var(--success);
+}
+
+.assessment-change-unchanged {
+  color: var(--muted);
+}
+
+/* Investigation — Business Impact answers. No (assessed, not applicable)
+   and Unknown (insufficient information) must never look alike. */
+.badge.impact-yes {
+  color: #ffd89a;
+  border-color: #6d5531;
+}
+
+.badge.impact-no {
+  color: #9ff0ca;
+  border-color: #28604c;
+}
+
+.badge.impact-unknown {
+  color: #8f9cb0;
+  border-color: #2c3a50;
+  background: #111b2a;
+}
+
 /* Vertical rhythm between a stage's major areas (assessment, summary,
    provider results, notes) — replaces per-element inline margins. */
 .stage-sections {
@@ -1091,7 +1275,7 @@ td {
 /* Unified Verdict: case-level aggregation, visibly its own group below the
    Investigation assessment rather than another Investigation detail. */
 .verdict-section {
-  margin-top: var(--assess-space-2);
+  margin-top: var(--assess-space-4);
   padding-top: var(--assess-space-4);
   border-top: 1px solid var(--border);
 }
@@ -1100,60 +1284,184 @@ td {
   border-color: #2a4466;
 }
 
-/* Threat Intelligence — Provider Overview (inside the assessment): one line
-   per lookup, provider name links to its full section below. */
-.provider-overview {
-  display: grid;
-  gap: var(--assess-space-1);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.provider-overview-item {
-  display: grid;
-  grid-template-columns: minmax(8.5rem, 11rem) minmax(0, 1fr);
-  gap: var(--assess-space-1) var(--assess-space-3);
-  align-items: start;
-  padding: 0.6rem 0.8rem;
+/* Threat Intelligence — Provider Summary (inside the assessment): one row
+   per provider; the name and the trailing arrow scroll to its full section
+   below. Stacks into one card per provider when the details are narrow. */
+.provider-summary {
   border: 1px solid var(--border-soft);
-  border-radius: 0.5rem;
+  border-radius: 0.6rem;
   background: var(--surface);
+  overflow: hidden;
 }
 
-.provider-overview-link {
+.provider-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.provider-summary-table th,
+.provider-summary-table td {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 0;
+  vertical-align: middle;
+}
+
+.provider-summary-table thead th {
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.provider-summary-table tbody tr + tr > * {
+  border-top: 1px solid var(--border-soft);
+}
+
+.provider-summary-table tbody th {
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.provider-summary-table td {
+  color: #cdd7e5;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.provider-summary-link {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   color: var(--accent);
-  font-size: 0.85rem;
-  font-weight: 600;
   text-decoration: none;
 }
 
-.provider-overview-link:hover,
-.provider-overview-link:focus-visible {
+.provider-summary-link:hover,
+.provider-summary-link:focus-visible {
   text-decoration: underline;
 }
 
-.provider-overview-chevron {
+.provider-summary-chevron {
   font-size: 1rem;
   line-height: 1;
 }
 
-.provider-overview-summary {
+.provider-summary-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.provider-summary-status .badge {
+  text-transform: uppercase;
+}
+
+.provider-summary-details {
   display: grid;
   gap: 0.2rem;
   min-width: 0;
   color: var(--muted);
-  font-size: 0.8rem;
   line-height: 1.45;
-  overflow-wrap: anywhere;
 }
 
-@media (max-width: 620px) {
-  .provider-overview-item {
+.provider-summary-go {
+  width: 1.5rem;
+  text-align: right;
+}
+
+.provider-summary-arrow {
+  color: var(--accent);
+  font-size: 1.25rem;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.provider-summary-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Narrow details view: icons shrink and the Provider Summary becomes one
+   labelled card per provider — no horizontal scroll at any width or zoom. */
+@container assessment (max-width: 44rem) {
+  .assessment-section.has-icon {
+    --assess-icon-size: 2.25rem;
+    column-gap: var(--assess-space-2);
+  }
+
+  .provider-summary-table thead {
+    display: none;
+  }
+
+  .provider-summary-table,
+  .provider-summary-table tbody,
+  .provider-summary-table tr,
+  .provider-summary-table th,
+  .provider-summary-table td {
+    display: block;
+  }
+
+  .provider-summary-table tbody tr {
+    position: relative;
+    padding: 0.75rem 2.4rem 0.75rem 0.9rem;
+  }
+
+  .provider-summary-table tbody tr + tr {
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .provider-summary-table tbody tr + tr > * {
+    border-top: 0;
+  }
+
+  .provider-summary-table th,
+  .provider-summary-table td {
+    padding: 0.2rem 0;
+  }
+
+  .provider-summary-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.15rem;
+    color: #7895bd;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .provider-summary-go {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.9rem;
+    width: auto;
+  }
+}
+
+/* Very narrow: rows stack label-over-value and icons drop out. */
+@container assessment (max-width: 32rem) {
+  .assessment-row,
+  .assessment-rows.has-notes .assessment-row {
     grid-template-columns: minmax(0, 1fr);
+    gap: 0.3rem;
+    padding: 0.7rem 0.9rem;
+  }
+
+  .assessment-section.has-icon {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assessment-section.has-icon > .assessment-section-icon {
+    display: none;
+  }
+
+  .assessment-section.has-icon .assessment-section-head {
+    min-height: 0;
   }
 }
 
