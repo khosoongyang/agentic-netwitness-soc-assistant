@@ -31,6 +31,11 @@ from agents.triage.triage_result import (
     dump_triage_agent_output,
     validate_triage_agent_output,
 )
+# [FYP-TRIAGE-STEP1] The success contract now requires evidence_packet /
+# assessment and ticket.disposition / uncertainty. The fixtures below build
+# them with the real deterministic builders (offline, no DB, no LLM).
+from triage_step1_payloads import assessment as _step1_assessment
+from triage_step1_payloads import evidence_packet as _step1_evidence_packet
 
 
 # =============================================================================
@@ -66,6 +71,9 @@ def _ticket_kwargs() -> dict:
                               "Reset the targeted account credentials"],
         matched_ioc_count=3,
         metakeys=["ip.src", "user.name", "host.name"],
+        # [FYP-TRIAGE-STEP1] contract change: required on the ticket.
+        disposition="true_positive",
+        uncertainty="medium",
     )
 
 
@@ -104,6 +112,9 @@ def _success_output_kwargs() -> dict:
                                                "Reset the targeted account credentials"]}},
         ],
         used_parsed_context=False,
+        # [FYP-TRIAGE-STEP1] contract change: required top-level fields.
+        evidence_packet=_step1_evidence_packet(),
+        assessment=_step1_assessment(),
         error=None,
     )
 
@@ -280,7 +291,8 @@ def test_malformed_matched_ioc_count_type_fails_validation():
 # 12. Missing required success field fails validation
 # =============================================================================
 
-@pytest.mark.parametrize("missing_top_level_field", ["metakeys_payload", "ticket", "trace", "used_parsed_context"])
+@pytest.mark.parametrize("missing_top_level_field", ["metakeys_payload", "ticket", "trace", "used_parsed_context",
+                                                     "evidence_packet", "assessment"])
 def test_missing_required_top_level_field_fails_validation(missing_top_level_field):
     payload = _success_output_kwargs()
     del payload[missing_top_level_field]
@@ -292,7 +304,8 @@ def test_missing_required_top_level_field_fails_validation(missing_top_level_fie
     "missing_ticket_field",
     ["unc", "incident_id", "title", "classification", "risk_rating",
      "incident_category", "mitre_tactic", "mitre_technique", "summary",
-     "recommended_actions", "matched_ioc_count", "metakeys"],
+     "recommended_actions", "matched_ioc_count", "metakeys",
+     "disposition", "uncertainty"],
 )
 def test_missing_required_ticket_field_fails_validation(missing_ticket_field):
     payload = _success_output_kwargs()

@@ -974,9 +974,16 @@ def run_triage(incident: dict, progress_fn=None,
     [FYP-USED-BY]: run_until_triage_approval() (this module) — the only
     caller; not called by app.py directly (only indirectly through
     run_until_triage_approval).
+
+    [FYP-TRIAGE-STEP1] The historical baseline DB is passed explicitly as
+    workflow.state_store.DB_FILE, read at CALL time (not import time) so
+    conftest.py's per-test monkeypatch of that path is honoured and agents/
+    never has to import workflow/. run_triage_stage() reaches this function
+    too, so both durable and combined paths use the same DB.
     """
     from agents.triage import OpenAILLMConfig, TriageAgent
-    agent = TriageAgent(cfg=OpenAILLMConfig(), progress_fn=progress_fn)
+    agent = TriageAgent(cfg=OpenAILLMConfig(), progress_fn=progress_fn,
+                        baseline_db_path=wss.DB_FILE)
     return agent.triage(incident, force=force, parsed_context=parsed_context)
 
 
@@ -1081,11 +1088,41 @@ def mock_triage_result(incident: dict) -> dict:
     soc_triage_agent.py:1460). Added below so this mock validates against
     the same agents.triage.triage_result.TriageAgentSuccessOutput contract
     a real run does. No previously-relied-upon key was removed or renamed.
+
+    [FYP-TRIAGE-STEP1] Also carries the new evidence_packet/assessment and
+    ticket.disposition/uncertainty. The packet and the guard pipeline are
+    the REAL deterministic code (baseline read-only from
+    workflow.state_store.DB_FILE); only the "model output" fed to the guards
+    is canned. Its claims cite detection.riskScore/alertCount, so on an
+    incident without those fields the guards honestly downgrade the mock
+    proposal to needs_info -- the mock never fakes a verified verdict.
     """
+    from agents.triage.baseline import compute_baseline
+    from agents.triage.evidence_packet import build_evidence_packet
+    from agents.triage.guards import build_assessment
+
     inc_id  = str(incident.get("id") or incident.get("incidentId") or "unknown")
     title   = incident.get("title") or incident.get("name") or "Untitled"
     now_iso = datetime.utcnow().isoformat()
     metakeys = ["ip.src", "ip.dst", "user.name", "host.name"]
+    evidence_packet = build_evidence_packet(
+        incident, None, compute_baseline(incident, wss.DB_FILE))
+    assessment = build_assessment({
+        "proposed_disposition": "true_positive",
+        "hypotheses": {
+            "malicious": {"evidence_for": [
+                {"claim": "MOCK: NetWitness scored this incident as high risk.",
+                 "cites": ["detection.riskScore", "detection.priority"]}]},
+            "benign": {"evidence_against": [
+                {"claim": "MOCK: more than one alert was grouped into the incident.",
+                 "cites": ["detection.alertCount"]}]},
+        },
+        "lookalike_ruled_out": {
+            "lookalike": "MOCK: credential brute force", "ruled_out": False,
+            "reason": "MOCK: offline substitute, not evaluated", "cites": []},
+        "fn_cost_if_wrong": "MOCK: an active intrusion would be missed.",
+        "evidence_checked": ["detection.riskScore", "baseline.status"],
+    }, evidence_packet)
     return {
         "mock": True,
         "metakeys_payload": {
@@ -1114,11 +1151,15 @@ def mock_triage_result(incident: dict) -> dict:
             "recommended_actions": ["Isolate the affected host",
                                     "Reset the targeted account credentials"],
             "matched_ioc_count": 3, "metakeys": metakeys,
+            "disposition": assessment["disposition"],
+            "uncertainty": assessment["uncertainty"],
         },
         "trace": [{"step": "IOC Checklist", "status": "ok",
                    "ioc_summary": "MOCK ioc summary", "total_ioc_count": 3,
                    "matched_metakeys": metakeys, "per_category": {}}],
         "used_parsed_context": False,
+        "evidence_packet": evidence_packet,
+        "assessment": assessment,
         "error": None,
     }
 

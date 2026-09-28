@@ -32,6 +32,9 @@ from agents.triage.triage_result import (
     dump_triage_agent_output,
     validate_triage_agent_output,
 )
+# [FYP-TRIAGE-STEP1] builders for the new required success-contract fields.
+from triage_step1_payloads import assessment as _step1_assessment
+from triage_step1_payloads import evidence_packet as _step1_evidence_packet
 
 SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "reporting" / "triage_result_schema.json"
 
@@ -76,6 +79,9 @@ def _ticket_kwargs() -> dict:
                               "Reset the targeted account credentials"],
         matched_ioc_count=3,
         metakeys=["ip.src", "user.name", "host.name"],
+        # [FYP-TRIAGE-STEP1] contract change: required on the ticket.
+        disposition="true_positive",
+        uncertainty="medium",
     )
 
 
@@ -102,6 +108,9 @@ def _success_payload() -> dict:
                 ticket=_ticket_kwargs(),
                 trace=[{"step": "IOC Checklist", "status": "ok"}],
                 used_parsed_context=False,
+                # [FYP-TRIAGE-STEP1] contract change: required fields.
+                evidence_packet=_step1_evidence_packet(),
+                assessment=_step1_assessment(),
                 error=None,
             )
         )
@@ -162,6 +171,13 @@ def test_success_and_error_are_the_only_modelled_shapes():
         "TriageTicket",
         "TriageAgentSuccessOutput",
         "TriageAgentErrorOutput",
+        # [FYP-TRIAGE-STEP1] contract change: nested definitions of the
+        # additive evidence_packet / assessment fields.
+        "EvidenceLeaf", "EvidenceDetection", "EvidenceEntity",
+        "EvidenceDataQuality", "EvidenceBaseline", "EvidenceContext",
+        "EvidencePacket", "TriageClaim", "TriageHypothesis",
+        "TriageHypotheses", "TriageLookalike", "TriageCitationError",
+        "TriageGuardAction", "TriageAssessment",
     }
 
 

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "triage_result_schema.json",
-  "$comment": "Documentation/reference schema only -- NOT wired into runtime jsonschema validation (see agents/triage/triage_result.py for the canonical, enforced Pydantic contract; this file is generated from that module's model_json_schema() output, field-for-field, not hand-invented). Generated 2026-09 during Triage Result migration Phase 5B from TriageAgentSuccessOutput and TriageAgentErrorOutput in agents/triage/triage_result.py -- the canonical shape of agents.triage.soc_triage_agent.TriageAgent.triage()'s real return value (fresh or cache-served). Does NOT model deep_triage_supplement()'s output, alert_triage.py's pre-ingest verdict, or workflow/engine.py's flattened Reporting handoff -- see that module's docstring for why each is a separate concern.",
+  "$comment": "Documentation/reference schema only -- NOT wired into runtime jsonschema validation (see agents/triage/triage_result.py for the canonical, enforced Pydantic contract; this file is generated from that module's model_json_schema() output, field-for-field, not hand-invented). Generated 2026-09 during Triage Result migration Phase 5B from TriageAgentSuccessOutput and TriageAgentErrorOutput in agents/triage/triage_result.py -- the canonical shape of agents.triage.soc_triage_agent.TriageAgent.triage()'s real return value (fresh or cache-served). Does NOT model deep_triage_supplement()'s output, alert_triage.py's pre-ingest verdict, or workflow/engine.py's flattened Reporting handoff -- see that module's docstring for why each is a separate concern. Regenerated 2026-09 for Triage upgrade Step 1 ([FYP-TRIAGE-STEP1]): additive evidence_packet/assessment top-level fields and ticket.disposition/uncertainty, plus their nested Evidence*/Triage* definitions, from the same model_json_schema() output.",
   "description": "A validated TriageAgent.triage() return is exactly one of: TriageAgentSuccessOutput (successful run, error=null) or TriageAgentErrorOutput (exception branch, error=<message>). See `oneOf` below.",
   "oneOf": [
     {
@@ -179,6 +179,25 @@
           },
           "title": "Metakeys",
           "type": "array"
+        },
+        "disposition": {
+          "enum": [
+            "true_positive",
+            "false_positive",
+            "benign_expected",
+            "needs_info"
+          ],
+          "title": "Disposition",
+          "type": "string"
+        },
+        "uncertainty": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Uncertainty",
+          "type": "string"
         }
       },
       "required": [
@@ -196,7 +215,9 @@
         "summary",
         "recommended_actions",
         "matched_ioc_count",
-        "metakeys"
+        "metakeys",
+        "disposition",
+        "uncertainty"
       ],
       "title": "TriageTicket",
       "type": "object"
@@ -223,6 +244,12 @@
           "title": "Used Parsed Context",
           "type": "boolean"
         },
+        "evidence_packet": {
+          "$ref": "#/$defs/EvidencePacket"
+        },
+        "assessment": {
+          "$ref": "#/$defs/TriageAssessment"
+        },
         "error": {
           "default": null,
           "title": "Error",
@@ -238,8 +265,11 @@
         "metakeys_payload",
         "ticket",
         "trace",
-        "used_parsed_context"
+        "used_parsed_context",
+        "evidence_packet",
+        "assessment"
       ],
+      "title": "TriageAgentSuccessOutput",
       "type": "object"
     },
     "TriageAgentErrorOutput": {
@@ -272,6 +302,498 @@
       "required": [
         "error"
       ],
+      "type": "object"
+    },
+    "EvidenceBaseline": {
+      "additionalProperties": false,
+      "description": "The measured historical prior (agents/triage/baseline.py).",
+      "properties": {
+        "status": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "reason": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_source_entity_7d": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_source_entity_30d": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_source_entity_90d": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_source_entity_all_time": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_source_entity_annualized": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_entity_7d": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_entity_30d": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_entity_90d": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "same_entity_all_time": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "first_seen": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "last_seen": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "is_first_occurrence": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "is_known_noisy": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "coverage_start": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "coverage_end": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        }
+      },
+      "required": [
+        "status",
+        "reason",
+        "same_source_entity_7d",
+        "same_source_entity_30d",
+        "same_source_entity_90d",
+        "same_source_entity_all_time",
+        "same_source_entity_annualized",
+        "same_entity_7d",
+        "same_entity_30d",
+        "same_entity_90d",
+        "same_entity_all_time",
+        "first_seen",
+        "last_seen",
+        "is_first_occurrence",
+        "is_known_noisy",
+        "coverage_start",
+        "coverage_end"
+      ],
+      "title": "EvidenceBaseline",
+      "type": "object"
+    },
+    "EvidenceContext": {
+      "additionalProperties": false,
+      "description": "Business context. Always status \"missing\" in Step 1 (placeholders\nfilled by later steps) -- so benign_expected is unreachable by design.",
+      "properties": {
+        "asset_context": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "change_context": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "confirmed_benign_history": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        }
+      },
+      "required": [
+        "asset_context",
+        "change_context",
+        "confirmed_benign_history"
+      ],
+      "title": "EvidenceContext",
+      "type": "object"
+    },
+    "EvidenceDataQuality": {
+      "additionalProperties": false,
+      "description": "Parsing-stage data quality, copied from parsed_context.",
+      "properties": {
+        "parser_status": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "parser_confidence": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "missing_fields": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "data_quality": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        }
+      },
+      "required": [
+        "parser_status",
+        "parser_confidence",
+        "missing_fields",
+        "data_quality"
+      ],
+      "title": "EvidenceDataQuality",
+      "type": "object"
+    },
+    "EvidenceDetection": {
+      "additionalProperties": false,
+      "description": "What fired: NetWitness incident-level detection facts.",
+      "properties": {
+        "createdBy": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "ruleId": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "created": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "sources": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "riskScore": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "priority": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "alertCount": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "eventCount": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "tactics": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "techniques": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        }
+      },
+      "required": [
+        "createdBy",
+        "ruleId",
+        "created",
+        "sources",
+        "riskScore",
+        "priority",
+        "alertCount",
+        "eventCount",
+        "tactics",
+        "techniques"
+      ],
+      "title": "EvidenceDetection",
+      "type": "object"
+    },
+    "EvidenceEntity": {
+      "additionalProperties": false,
+      "description": "The resolved primary entity and its kind (ip_internal/ip_external/\nhostname/user/file/unresolved).",
+      "properties": {
+        "value": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "kind": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        }
+      },
+      "required": [
+        "value",
+        "kind"
+      ],
+      "title": "EvidenceEntity",
+      "type": "object"
+    },
+    "EvidenceLeaf": {
+      "additionalProperties": false,
+      "description": "One citable fact in the evidence packet. `status` says how it is\nknown: measured (observed), inferred (derived by code) or missing\n(unknown -- never to be read as \"safe\").",
+      "properties": {
+        "value": {
+          "default": null,
+          "title": "Value"
+        },
+        "status": {
+          "enum": [
+            "measured",
+            "inferred",
+            "missing"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "source"
+      ],
+      "title": "EvidenceLeaf",
+      "type": "object"
+    },
+    "EvidencePacket": {
+      "additionalProperties": false,
+      "description": "[FYP-EVALUATOR] The whole evidence packet. `rule_signals` is keyed by\nindicator label (plus `scan_summary`) because the set of deterministic\nhits varies per incident; every other section has a fixed field set.",
+      "properties": {
+        "detection": {
+          "$ref": "#/$defs/EvidenceDetection"
+        },
+        "entity": {
+          "$ref": "#/$defs/EvidenceEntity"
+        },
+        "data_quality": {
+          "$ref": "#/$defs/EvidenceDataQuality"
+        },
+        "baseline": {
+          "$ref": "#/$defs/EvidenceBaseline"
+        },
+        "rule_signals": {
+          "additionalProperties": {
+            "$ref": "#/$defs/EvidenceLeaf"
+          },
+          "title": "Rule Signals",
+          "type": "object"
+        },
+        "context": {
+          "$ref": "#/$defs/EvidenceContext"
+        }
+      },
+      "required": [
+        "detection",
+        "entity",
+        "data_quality",
+        "baseline",
+        "context"
+      ],
+      "title": "EvidencePacket",
+      "type": "object"
+    },
+    "TriageAssessment": {
+      "additionalProperties": false,
+      "description": "[FYP-EVALUATOR] Disposition + the reasoning trail behind it.\n\n`proposed_disposition` is what the model proposed; `disposition` is what\nsurvived citation verification and the guards in agents/triage/guards.py\n(every change is listed in `guard_actions`).",
+      "properties": {
+        "disposition": {
+          "enum": [
+            "true_positive",
+            "false_positive",
+            "benign_expected",
+            "needs_info"
+          ],
+          "title": "Disposition",
+          "type": "string"
+        },
+        "proposed_disposition": {
+          "enum": [
+            "true_positive",
+            "false_positive",
+            "benign_expected",
+            "needs_info"
+          ],
+          "title": "Proposed Disposition",
+          "type": "string"
+        },
+        "uncertainty": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ],
+          "title": "Uncertainty",
+          "type": "string"
+        },
+        "hypotheses": {
+          "$ref": "#/$defs/TriageHypotheses"
+        },
+        "lookalike_ruled_out": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TriageLookalike"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "fn_cost_if_wrong": {
+          "title": "Fn Cost If Wrong",
+          "type": "string"
+        },
+        "evidence_checked": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidence Checked",
+          "type": "array"
+        },
+        "citation_errors": {
+          "items": {
+            "$ref": "#/$defs/TriageCitationError"
+          },
+          "title": "Citation Errors",
+          "type": "array"
+        },
+        "guard_actions": {
+          "items": {
+            "$ref": "#/$defs/TriageGuardAction"
+          },
+          "title": "Guard Actions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "disposition",
+        "proposed_disposition",
+        "uncertainty",
+        "hypotheses",
+        "fn_cost_if_wrong",
+        "evidence_checked",
+        "citation_errors",
+        "guard_actions"
+      ],
+      "title": "TriageAssessment",
+      "type": "object"
+    },
+    "TriageCitationError": {
+      "additionalProperties": false,
+      "description": "A citation removed by verify_citations(): `error` is\n\"unknown_path\" or \"missing_status\" (or \"uncited_claim_dropped\").",
+      "properties": {
+        "location": {
+          "title": "Location",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "error": {
+          "title": "Error",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location",
+        "path",
+        "error"
+      ],
+      "title": "TriageCitationError",
+      "type": "object"
+    },
+    "TriageClaim": {
+      "additionalProperties": false,
+      "description": "One piece of reasoning with the evidence-packet dot-paths it rests\non. After agents/triage/guards.verify_citations() every surviving claim\nhas >= 1 valid cite (existing path, status != missing).",
+      "properties": {
+        "claim": {
+          "title": "Claim",
+          "type": "string"
+        },
+        "cites": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cites",
+          "type": "array"
+        }
+      },
+      "required": [
+        "claim",
+        "cites"
+      ],
+      "title": "TriageClaim",
+      "type": "object"
+    },
+    "TriageGuardAction": {
+      "additionalProperties": false,
+      "description": "One Python-guard override of the model's disposition. Serialized\nwith the key \"from\" (a Python keyword, hence the `from_` alias).",
+      "properties": {
+        "rule": {
+          "title": "Rule",
+          "type": "string"
+        },
+        "from": {
+          "title": "From",
+          "type": "string"
+        },
+        "to": {
+          "title": "To",
+          "type": "string"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rule",
+        "from",
+        "to",
+        "reason"
+      ],
+      "title": "TriageGuardAction",
+      "type": "object"
+    },
+    "TriageHypotheses": {
+      "additionalProperties": false,
+      "description": "The two competing explanations: malicious activity vs normal\noperations.",
+      "properties": {
+        "malicious": {
+          "$ref": "#/$defs/TriageHypothesis"
+        },
+        "benign": {
+          "$ref": "#/$defs/TriageHypothesis"
+        }
+      },
+      "title": "TriageHypotheses",
+      "type": "object"
+    },
+    "TriageHypothesis": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_for": {
+          "items": {
+            "$ref": "#/$defs/TriageClaim"
+          },
+          "title": "Evidence For",
+          "type": "array"
+        },
+        "evidence_against": {
+          "items": {
+            "$ref": "#/$defs/TriageClaim"
+          },
+          "title": "Evidence Against",
+          "type": "array"
+        }
+      },
+      "title": "TriageHypothesis",
+      "type": "object"
+    },
+    "TriageLookalike": {
+      "additionalProperties": false,
+      "description": "The most plausible malicious explanation and whether the cited\nevidence rules it out.",
+      "properties": {
+        "lookalike": {
+          "title": "Lookalike",
+          "type": "string"
+        },
+        "ruled_out": {
+          "title": "Ruled Out",
+          "type": "boolean"
+        },
+        "reason": {
+          "title": "Reason",
+          "type": "string"
+        },
+        "cites": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Cites",
+          "type": "array"
+        }
+      },
+      "required": [
+        "lookalike",
+        "ruled_out",
+        "reason",
+        "cites"
+      ],
+      "title": "TriageLookalike",
       "type": "object"
     }
   }

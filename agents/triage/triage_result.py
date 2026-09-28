@@ -32,13 +32,222 @@ particular, Triage does NOT produce `severity`, `confidence`,
 `missing_evidence`/`missing_fields`, `containment_action`, or a structured
 `mitre_mappings` list (only scalar `mitre_tactic`/`mitre_technique`) -- so
 none of those appear here. `classification` IS a real, Triage-owned field.
+
+[FYP-TRIAGE-STEP1] Deliberate, additive extension (Triage upgrade Step 1):
+  - `evidence_packet` (top level): the code-built, citable evidence record
+    (agents/triage/evidence_packet.py). Every leaf is
+    {value, status: measured|inferred|missing, source}.
+  - `assessment` (top level): the disposition -- true_positive /
+    false_positive / benign_expected / needs_info -- which is ORTHOGONAL to
+    the unchanged `classification` severity, plus the competing hypotheses,
+    lookalike, citation errors and Python guard overrides behind it.
+  - `ticket.disposition` / `ticket.uncertainty`: copies for the UI/exports.
+Nothing existing was renamed or removed; `extra="forbid"` is kept on every
+model, including the new ones. `uncertainty` is computed deterministically
+from evidence completeness (agents/triage/guards.py), never a model-reported
+number -- so the long-standing "no invented confidence" rule still holds.
 """
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
+
+
+# =============================================================================
+# [FYP-SECTION] Step 1 additions: evidence packet + assessment models
+# =============================================================================
+
+Disposition = Literal["true_positive", "false_positive", "benign_expected", "needs_info"]
+Uncertainty = Literal["low", "medium", "high"]
+EvidenceStatus = Literal["measured", "inferred", "missing"]
+
+DISPOSITIONS: tuple[str, ...] = ("true_positive", "false_positive", "benign_expected", "needs_info")
+UNCERTAINTY_LEVELS: tuple[str, ...] = ("low", "medium", "high")
+
+
+class EvidenceLeaf(BaseModel):
+    """One citable fact in the evidence packet. `status` says how it is
+    known: measured (observed), inferred (derived by code) or missing
+    (unknown -- never to be read as "safe")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: Any = None
+    status: EvidenceStatus
+    source: str
+
+
+class EvidenceDetection(BaseModel):
+    """What fired: NetWitness incident-level detection facts."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    createdBy: EvidenceLeaf
+    ruleId: EvidenceLeaf
+    created: EvidenceLeaf
+    sources: EvidenceLeaf
+    riskScore: EvidenceLeaf
+    priority: EvidenceLeaf
+    alertCount: EvidenceLeaf
+    eventCount: EvidenceLeaf
+    tactics: EvidenceLeaf
+    techniques: EvidenceLeaf
+
+
+class EvidenceEntity(BaseModel):
+    """The resolved primary entity and its kind (ip_internal/ip_external/
+    hostname/user/file/unresolved)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: EvidenceLeaf
+    kind: EvidenceLeaf
+
+
+class EvidenceDataQuality(BaseModel):
+    """Parsing-stage data quality, copied from parsed_context."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    parser_status: EvidenceLeaf
+    parser_confidence: EvidenceLeaf
+    missing_fields: EvidenceLeaf
+    data_quality: EvidenceLeaf
+
+
+class EvidenceBaseline(BaseModel):
+    """The measured historical prior (agents/triage/baseline.py)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    status: EvidenceLeaf
+    reason: EvidenceLeaf
+    same_source_entity_7d: EvidenceLeaf
+    same_source_entity_30d: EvidenceLeaf
+    same_source_entity_90d: EvidenceLeaf
+    same_source_entity_all_time: EvidenceLeaf
+    same_source_entity_annualized: EvidenceLeaf
+    same_entity_7d: EvidenceLeaf
+    same_entity_30d: EvidenceLeaf
+    same_entity_90d: EvidenceLeaf
+    same_entity_all_time: EvidenceLeaf
+    first_seen: EvidenceLeaf
+    last_seen: EvidenceLeaf
+    is_first_occurrence: EvidenceLeaf
+    is_known_noisy: EvidenceLeaf
+    coverage_start: EvidenceLeaf
+    coverage_end: EvidenceLeaf
+
+
+class EvidenceContext(BaseModel):
+    """Business context. Always status "missing" in Step 1 (placeholders
+    filled by later steps) -- so benign_expected is unreachable by design."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    asset_context: EvidenceLeaf
+    change_context: EvidenceLeaf
+    confirmed_benign_history: EvidenceLeaf
+
+
+class EvidencePacket(BaseModel):
+    """[FYP-EVALUATOR] The whole evidence packet. `rule_signals` is keyed by
+    indicator label (plus `scan_summary`) because the set of deterministic
+    hits varies per incident; every other section has a fixed field set."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    detection: EvidenceDetection
+    entity: EvidenceEntity
+    data_quality: EvidenceDataQuality
+    baseline: EvidenceBaseline
+    rule_signals: dict[str, EvidenceLeaf] = Field(default_factory=dict)
+    context: EvidenceContext
+
+
+class TriageClaim(BaseModel):
+    """One piece of reasoning with the evidence-packet dot-paths it rests
+    on. After agents/triage/guards.verify_citations() every surviving claim
+    has >= 1 valid cite (existing path, status != missing)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    claim: str
+    cites: list[str]
+
+
+class TriageHypothesis(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    evidence_for: list[TriageClaim] = Field(default_factory=list)
+    evidence_against: list[TriageClaim] = Field(default_factory=list)
+
+
+class TriageHypotheses(BaseModel):
+    """The two competing explanations: malicious activity vs normal
+    operations."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    malicious: TriageHypothesis = Field(default_factory=TriageHypothesis)
+    benign: TriageHypothesis = Field(default_factory=TriageHypothesis)
+
+
+class TriageLookalike(BaseModel):
+    """The most plausible malicious explanation and whether the cited
+    evidence rules it out."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    lookalike: str
+    ruled_out: bool
+    reason: str
+    cites: list[str]
+
+
+class TriageCitationError(BaseModel):
+    """A citation removed by verify_citations(): `error` is
+    "unknown_path" or "missing_status" (or "uncited_claim_dropped")."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    location: str
+    path: str
+    error: str
+
+
+class TriageGuardAction(BaseModel):
+    """One Python-guard override of the model's disposition. Serialized
+    with the key "from" (a Python keyword, hence the `from_` alias)."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    rule: str
+    from_: str = Field(alias="from")
+    to: str
+    reason: str
+
+
+class TriageAssessment(BaseModel):
+    """[FYP-EVALUATOR] Disposition + the reasoning trail behind it.
+
+    `proposed_disposition` is what the model proposed; `disposition` is what
+    survived citation verification and the guards in agents/triage/guards.py
+    (every change is listed in `guard_actions`)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    disposition: Disposition
+    proposed_disposition: Disposition
+    uncertainty: Uncertainty
+    hypotheses: TriageHypotheses
+    lookalike_ruled_out: Optional[TriageLookalike] = None
+    fn_cost_if_wrong: str
+    evidence_checked: list[str]
+    citation_errors: list[TriageCitationError]
+    guard_actions: list[TriageGuardAction]
 
 
 class TriageRiskRating(BaseModel):
@@ -110,6 +319,10 @@ class TriageTicket(BaseModel):
     recommended_actions: list[str]
     matched_ioc_count: int
     metakeys: list[str]
+    # [FYP-TRIAGE-STEP1] Copies of assessment.disposition/.uncertainty for
+    # the UI and exports. Orthogonal to `classification` (severity).
+    disposition: Disposition
+    uncertainty: Uncertainty
 
 
 class TriageAgentSuccessOutput(BaseModel):
@@ -132,6 +345,12 @@ class TriageAgentSuccessOutput(BaseModel):
     ticket: TriageTicket
     trace: list[dict[str, Any]]
     used_parsed_context: bool
+    # [FYP-TRIAGE-STEP1] Required on every new result. A cache row written
+    # before Step 1 lacks both, fails validation, and is therefore treated
+    # as an ordinary cache miss by TriageAgent.triage() (it is also keyed by
+    # a new fingerprint -- see TRIAGE_PROMPT_VERSION).
+    evidence_packet: EvidencePacket
+    assessment: TriageAssessment
     error: None = None
     # Added by triage() itself -- `cached["cached"] = True` -- only on the
     # cache-hit return path, immediately before return
@@ -209,14 +428,36 @@ def dump_triage_agent_output(
     dict never had a `"cached"` key at all -- only a cache-hit ever set it
     (to `True`). This helper omits `"cached"` exactly when it is `False`,
     so a fresh result's external shape is unchanged and a cache-hit's
-    `"cached": true` is preserved exactly as before."""
-    dumped = output.model_dump(mode="json")
+    `"cached": true` is preserved exactly as before.
+
+    `by_alias=True` only affects TriageGuardAction.from_ (serialized as
+    "from"); no other model declares an alias."""
+    dumped = output.model_dump(mode="json", by_alias=True)
     if isinstance(output, TriageAgentSuccessOutput) and not output.cached:
         dumped.pop("cached", None)
     return dumped
 
 
 __all__ = [
+    "Disposition",
+    "Uncertainty",
+    "EvidenceStatus",
+    "DISPOSITIONS",
+    "UNCERTAINTY_LEVELS",
+    "EvidenceLeaf",
+    "EvidenceDetection",
+    "EvidenceEntity",
+    "EvidenceDataQuality",
+    "EvidenceBaseline",
+    "EvidenceContext",
+    "EvidencePacket",
+    "TriageClaim",
+    "TriageHypothesis",
+    "TriageHypotheses",
+    "TriageLookalike",
+    "TriageCitationError",
+    "TriageGuardAction",
+    "TriageAssessment",
     "TriageRiskRating",
     "TriageMetakeysPayload",
     "TriageTicket",
