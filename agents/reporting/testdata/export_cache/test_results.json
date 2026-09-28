@@ -1,0 +1,54 @@
+{
+  "success": true,
+  "passed": 5,
+  "failed": 0,
+  "results": [
+    {
+      "case": "first_docx_generation",
+      "status": "passed",
+      "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.docx"
+    },
+    {
+      "case": "second_docx_uses_cache",
+      "status": "passed",
+      "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.docx"
+    },
+    {
+      "case": "pdf_generation_from_cached_docx",
+      "status": "passed",
+      "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.pdf"
+    },
+    {
+      "case": "export_status_reports_ready",
+      "status": "passed",
+      "status_payload": {
+        "docx": {
+          "status": "ready",
+          "generated_at": "2026-06-18T15:08:34.132198+00:00",
+          "updated_at": "2026-06-18T15:08:34.132180+00:00",
+          "message": "Word export cache is ready.",
+          "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.docx"
+        },
+        "pdf": {
+          "status": "ready",
+          "generated_at": "2026-06-18T15:08:37.288902+00:00",
+          "updated_at": "2026-06-18T15:08:37.288878+00:00",
+          "message": "PDF export cache is ready.",
+          "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.pdf"
+        },
+        "json": {
+          "status": "ready",
+          "generated_at": "2026-06-18T15:08:34.015187+00:00",
+          "updated_at": "2026-06-18T15:08:34.015165+00:00",
+          "message": "JSON export cache is ready.",
+          "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.json"
+        }
+      }
+    },
+    {
+      "case": "source_hash_invalidation",
+      "status": "passed",
+      "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.docx"
+    }
+  ]
+}

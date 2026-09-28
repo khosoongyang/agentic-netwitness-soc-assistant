@@ -1,0 +1,31 @@
+{
+  "status": "completed_with_evidence_gaps",
+  "incident_id": "unknown",
+  "severity": "High",
+  "confidence": "High",
+  "classification": "Investigation completed with evidence gaps",
+  "likely_scenario": "Endpoint malware execution",
+  "summary": "Investigation completed with evidence gaps. Reporting can continue with limitations.",
+  "findings": [
+    "Affected host: wkstn-sg-ti-raw-001"
+  ],
+  "missing_evidence": [
+    {
+      "gap": "email_datetime",
+      "priority": "High",
+      "reason": "Email datetime is missing."
+    },
+    {
+      "gap": "sender_or_receiver_email",
+      "priority": "High",
+      "reason": "Sender/receiver is missing."
+    },
+    {
+      "gap": "email_subject",
+      "priority": "High",
+      "reason": "Subject is missing."
+    }
+  ],
+  "reporting_allowed": true,
+  "reporting_mode": "with_limitations"
+}

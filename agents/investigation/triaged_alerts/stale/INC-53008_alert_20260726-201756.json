@@ -1,0 +1,767 @@
+{
+  "incident_id": "INC-53008",
+  "incident_details": {
+    "timestamp": "2025-07-23T09:42:45+00:00",
+    "description": "The alert shows suspicious execution involving splunkd.exe from a user-writable directory on the KELLYWANG host, which is inconsistent with normal software placement and suggests a potentially malicious or masquerading binary. The presence of Password_Reset.hta further increases concern for unauthorized script-based execution on the endpoint, though no PowerShell encoded command or network activity was observed.",
+    "mitre_att&ck": {
+      "tactic": "Execution",
+      "technique": "T1218.005 Mshta"
+    }
+  },
+  "classification": {
+    "alert_type": "Compromised asset (non-critical)",
+    "soc_classification": "HIGH"
+  },
+  "log_indicators": {
+    "target_user": "Unknown",
+    "computer_name": "KELLYWANG",
+    "operating_system": "windows"
+  },
+  "network_indicators": {
+    "source_ip": "192.168.20.16",
+    "destination_ip": null,
+    "domain": null
+  },
+  "observed_indicators": {
+    "usernames": [],
+    "hostnames": [
+      "KELLYWANG"
+    ],
+    "ip_addresses": [
+      "192.168.20.22",
+      "192.168.10.204",
+      "192.168.20.16"
+    ],
+    "source_ips": [
+      "192.168.20.16"
+    ],
+    "destination_ips": [],
+    "entity_from_alert_title": "KELLYWANG"
+  },
+  "triage": {
+    "ticket_unc": "#00050A",
+    "risk_rating": {
+      "likelihood_initiation": "High",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "High",
+      "overall_risk": "High",
+      "rationale": "High-risk NetWitness alert with score 70, suspicious unknown binary splunkd.exe running from a user-writable path plus Password_Reset.hta IOC matches indicate likely adversary initiation and meaningful impact, while only 4 raw events and missing command-line/context limit occurrence confidence to medium."
+    },
+    "ioc_summary": "[INTEGRITY] Unknown binaries installed, Unknown process running — A suspicious binary/process named splunkd.exe is running from a user-writable location, which supports an unknown binary and unknown process. The HTA file further reinforces unexpected executable content on the endpoint.",
+    "matched_metakeys": [
+      "endpoint",
+      "file",
+      "file.hash",
+      "file.name",
+      "file.path",
+      "host.name",
+      "process",
+      "process.name",
+      "process.path",
+      "process.pid"
+    ],
+    "metakey_values": {
+      "file.name": [
+        "splunkd.exe",
+        "Password_Reset.hta"
+      ],
+      "host.name": "KELLYWANG"
+    },
+    "matched_ioc_count": 2
+  },
+  "source_incident": {
+    "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "summary": ""
+  },
+  "enrichment": {
+    "endpoint_identity": {
+      "hostnames": [
+        "KELLYWANG"
+      ],
+      "users": [],
+      "mac_addresses": [],
+      "dns_domains": [],
+      "source_ips": [
+        "192.168.20.16"
+      ],
+      "destination_ips": []
+    },
+    "behavioural_alerts": {
+      "alert_titles": [
+        "Possible Autorun Abuse (Kelly)",
+        "Malicious HTA file detected (kelly)"
+      ],
+      "alert_types": [
+        "Endpoint"
+      ],
+      "mitre_tactics": [],
+      "mitre_techniques": []
+    },
+    "file_indicators": {
+      "hashes": [],
+      "names": [
+        "splunkd.exe",
+        "Password_Reset.hta"
+      ],
+      "paths": []
+    },
+    "process_indicators": {
+      "names": [],
+      "paths": [],
+      "pids": []
+    },
+    "process_tree": {
+      "processes": [],
+      "process_paths": [],
+      "pids": [],
+      "parent_processes": [],
+      "command_lines": [],
+      "lineage": []
+    },
+    "network_activity": {
+      "source_ips": [
+        "192.168.20.16"
+      ],
+      "destination_ips": [],
+      "ports": [],
+      "protocols": [],
+      "network_services": [],
+      "bytes": [],
+      "geo": [],
+      "domains": []
+    },
+    "host_behaviour": {
+      "config_changes": [],
+      "cpu_usage": [],
+      "device_types": [],
+      "user_roles": [],
+      "operating_systems": [
+        "windows",
+        "Microsoft Windows 10 Pro"
+      ]
+    },
+    "event_context": {
+      "event_types": [],
+      "event_times": []
+    },
+    "all_metakey_values": {
+      "file.name": [
+        "splunkd.exe",
+        "Password_Reset.hta"
+      ],
+      "host.name": "KELLYWANG"
+    },
+    "alert_statistics": {
+      "alert_count": 2,
+      "event_count": 2,
+      "risk_score": 70,
+      "average_alert_risk_score": 70,
+      "matched_ioc_count": 2
+    },
+    "matched_metakey_catalog": [
+      "endpoint",
+      "file",
+      "file.hash",
+      "file.name",
+      "file.path",
+      "host.name",
+      "process",
+      "process.name",
+      "process.path",
+      "process.pid"
+    ],
+    "ioc_summary": "[INTEGRITY] Unknown binaries installed, Unknown process running — A suspicious binary/process named splunkd.exe is running from a user-writable location, which supports an unknown binary and unknown process. The HTA file further reinforces unexpected executable content on the endpoint.",
+    "triage_summary": "The alert shows suspicious execution involving splunkd.exe from a user-writable directory on the KELLYWANG host, which is inconsistent with normal software placement and suggests a potentially malicious or masquerading binary. The presence of Password_Reset.hta further increases concern for unauthorized script-based execution on the endpoint, though no PowerShell encoded command or network activity was observed.",
+    "_note": "Agent-to-agent enrichment: the incident's own evidence forwarded from triage. The triage report and ticket shown in the UI are intentionally unchanged/simple."
+  },
+  "enriched_alert": {
+    "current_stage": "threat_intelligence_completed",
+    "alert_id": "INC-53008",
+    "alert_title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "alert_source": "NetWitness",
+    "alert_created_time": "2025-07-23T09:42:45.925+00:00",
+    "incident_risk_score": 70.0,
+    "event_domain": "['KELLYWANG']",
+    "possible_file_name": "splunkd.exe",
+    "process_name": "splunkd.exe",
+    "powershell_analysis": {
+      "encoded_command_present": false,
+      "powershell_indicator_present": false,
+      "decode_status": "not_found",
+      "encoded_command_count": 0,
+      "decoded_command_count": 0,
+      "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+      "risk_assessment": {
+        "risk_level": "Low",
+        "risk_score": 0
+      }
+    },
+    "powershell_decode_status": "not_found",
+    "event_source_id": "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:1226241",
+    "timestamp": "2025-07-23T09:42:45.925+00:00",
+    "parser_confidence": "Medium",
+    "parser_warnings": [
+      "Missing context-relevant parsing fields: severity, username, command_line"
+    ],
+    "missing_fields": [
+      "severity",
+      "username",
+      "command_line"
+    ],
+    "parser_status": "completed",
+    "normalisation_status": "success",
+    "alert_name": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "source": "NetWitness",
+    "risk_score": 70.0,
+    "first_seen": "2025-07-23T09:42:45.925+00:00",
+    "host": "['KELLYWANG']",
+    "hostname": "['KELLYWANG']",
+    "domain": "['KELLYWANG']",
+    "file_name": "splunkd.exe",
+    "process_path": "['C:\\\\Users\\\\Public\\\\']",
+    "decoded_powershell_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+    "analyst_summary": "Unknown alert involving suspicious file splunkd.exe.",
+    "iocs": [
+      {
+        "type": "hostname",
+        "value": "['KELLYWANG']"
+      },
+      {
+        "type": "hostname",
+        "value": "KELLYWANG"
+      },
+      {
+        "type": "file_name",
+        "value": "splunkd.exe"
+      },
+      {
+        "type": "file_name",
+        "value": "Password_Reset.hta"
+      },
+      {
+        "type": "domain",
+        "value": "['KELLYWANG']"
+      },
+      {
+        "type": "domain",
+        "value": "KELLYWANG"
+      }
+    ],
+    "ioc_summary": {
+      "hostnames": [
+        "['KELLYWANG']",
+        "KELLYWANG"
+      ],
+      "files": [
+        "splunkd.exe",
+        "Password_Reset.hta"
+      ],
+      "domains": [
+        "['KELLYWANG']",
+        "KELLYWANG"
+      ]
+    },
+    "normalised_alert": {
+      "schema_version": "1.0",
+      "current_stage": "new_alert",
+      "alert_summary": {
+        "alert_id": "INC-53008",
+        "alert_name": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+        "alert_title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+        "alert_time": "2025-07-23T09:42:45.925+00:00",
+        "alert_time_epoch_ms": 1753263765925,
+        "risk_score": 70.0,
+        "detection_source": "NetWitness",
+        "detection_name": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+        "raw_event_count": 4,
+        "analyst_summary": "Unknown alert involving suspicious file splunkd.exe."
+      },
+      "identifiers": {
+        "event_source_ids": [
+          "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:1226241",
+          "1226241",
+          "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:1226172",
+          "1226172"
+        ]
+      },
+      "user_and_host_indicators": {
+        "hostnames": [
+          "['KELLYWANG']",
+          "KELLYWANG"
+        ],
+        "domains": [
+          "['KELLYWANG']",
+          "KELLYWANG"
+        ]
+      },
+      "email_indicators": {
+        "attachment_names": [
+          "splunkd.exe",
+          "Password_Reset.hta"
+        ],
+        "attachment_extensions": [
+          "exe",
+          "hta"
+        ]
+      },
+      "file_indicators": {
+        "file_names": [
+          "splunkd.exe",
+          "Password_Reset.hta"
+        ],
+        "file_extensions": [
+          "exe",
+          "hta"
+        ]
+      },
+      "process_indicators": {
+        "process_names": [
+          "splunkd.exe",
+          "Password_Reset.hta"
+        ],
+        "process_paths": [
+          "['C:\\\\Users\\\\Public\\\\']",
+          "C:\\Users\\Public\\",
+          "['C:\\\\Users\\\\Kelly Wang\\\\Downloads\\\\ResetTool\\\\']",
+          "C:\\Users\\Kelly Wang\\Downloads\\ResetTool\\"
+        ]
+      },
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "observed_data_context": {
+        "primary_data_source": "endpoint",
+        "observed_data_types": [
+          "endpoint",
+          "process",
+          "file"
+        ],
+        "evidence_sources": [
+          "endpoint",
+          "process",
+          "file"
+        ],
+        "has_email_data": false,
+        "has_endpoint_data": true,
+        "has_network_data": false,
+        "has_process_data": true,
+        "has_file_data": true,
+        "has_web_data": false
+      },
+      "threat_context": {
+        "related_iocs": [
+          "['KELLYWANG']",
+          "KELLYWANG",
+          "splunkd.exe",
+          "Password_Reset.hta"
+        ]
+      },
+      "ioc_summary": {
+        "hostnames": [
+          "['KELLYWANG']",
+          "KELLYWANG"
+        ],
+        "files": [
+          "splunkd.exe",
+          "Password_Reset.hta"
+        ],
+        "domains": [
+          "['KELLYWANG']",
+          "KELLYWANG"
+        ]
+      },
+      "normalised_events": [
+        {
+          "event_index": 0,
+          "event_time": "2025-07-23T09:18:24+00:00",
+          "event_time_epoch_ms": 1753262304000,
+          "hostname": "['KELLYWANG']",
+          "domain": "['KELLYWANG']",
+          "file_name": "splunkd.exe",
+          "file_path": "['C:\\\\Users\\\\Public\\\\']",
+          "process_name": "splunkd.exe",
+          "process_path": "['C:\\\\Users\\\\Public\\\\']",
+          "event_source_id": "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:1226241"
+        },
+        {
+          "event_index": 1,
+          "event_time": "2025-07-23T09:18:24+00:00",
+          "event_time_epoch_ms": 1753262304000,
+          "hostname": "KELLYWANG",
+          "domain": "KELLYWANG",
+          "file_path": "C:\\Users\\Public\\",
+          "process_path": "C:\\Users\\Public\\",
+          "event_source_id": "1226241"
+        },
+        {
+          "event_index": 2,
+          "event_time": "2025-07-23T09:18:24+00:00",
+          "event_time_epoch_ms": 1753262304000,
+          "hostname": "['KELLYWANG']",
+          "domain": "['KELLYWANG']",
+          "file_name": "Password_Reset.hta",
+          "file_path": "['C:\\\\Users\\\\Kelly Wang\\\\Downloads\\\\ResetTool\\\\']",
+          "process_name": "Password_Reset.hta",
+          "process_path": "['C:\\\\Users\\\\Kelly Wang\\\\Downloads\\\\ResetTool\\\\']",
+          "event_source_id": "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:1226172"
+        },
+        {
+          "event_index": 3,
+          "event_time": "2025-07-23T09:18:24+00:00",
+          "event_time_epoch_ms": 1753262304000,
+          "hostname": "KELLYWANG",
+          "domain": "KELLYWANG",
+          "file_path": "C:\\Users\\Kelly Wang\\Downloads\\ResetTool\\",
+          "process_path": "C:\\Users\\Kelly Wang\\Downloads\\ResetTool\\",
+          "event_source_id": "1226172"
+        }
+      ],
+      "parser_metadata": {
+        "parser": "soc_netwitness_parser",
+        "parser_version": "3.4-context-aware-normalised",
+        "input_format": "generic_dictionary",
+        "normalisation_status": "success",
+        "selected_alert_index": 0,
+        "alert_count": 1,
+        "raw_event_count": 4,
+        "raw_meta_key_count": 35,
+        "parser_confidence": "Medium",
+        "parser_confidence_score": 55,
+        "missing_fields": [
+          "severity",
+          "username",
+          "command_line"
+        ],
+        "warnings": [
+          "Missing context-relevant parsing fields: severity, username, command_line"
+        ],
+        "debug_available": true,
+        "extraction_summary": {
+          "key_fields_found": [
+            "alert_id",
+            "alert_name",
+            "alert_time",
+            "file_name"
+          ],
+          "key_fields_missing": [
+            "severity",
+            "username",
+            "command_line"
+          ],
+          "fallback_fields_used": false
+        },
+        "generated_at": "2026-07-26T11:58:52.109008+00:00"
+      },
+      "data_quality": {
+        "parser_confidence": "Medium",
+        "parser_confidence_score": 55,
+        "confidence_explanation": "Some parser fields for observed data types (endpoint, process, file) are missing, so downstream systems should review the gaps.",
+        "missing_required_fields": [
+          "severity"
+        ],
+        "missing_context_fields": {
+          "endpoint": [
+            "username"
+          ],
+          "process": [
+            "command_line"
+          ]
+        },
+        "missing_optional_fields": [
+          "session_id",
+          "record_id",
+          "signature_id",
+          "community_id",
+          "file_hash"
+        ],
+        "not_applicable_fields": [
+          "source_email",
+          "destination_email",
+          "reply_to_email",
+          "email_subject",
+          "mail_client",
+          "source_ip",
+          "destination_ip",
+          "destination_port",
+          "protocol",
+          "community_id",
+          "url",
+          "domain",
+          "user_agent"
+        ],
+        "warnings": [
+          "Missing context-relevant parsing fields: severity, username, command_line"
+        ],
+        "normalised_event_count": 4,
+        "raw_meta_key_count": 35
+      },
+      "compatibility_view": {
+        "current_stage": "new_alert",
+        "alert_id": "INC-53008",
+        "alert_title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+        "alert_source": "NetWitness",
+        "alert_created_time": "2025-07-23T09:42:45.925+00:00",
+        "incident_risk_score": 70.0,
+        "event_domain": "['KELLYWANG']",
+        "possible_file_name": "splunkd.exe",
+        "process_name": "splunkd.exe",
+        "powershell_analysis": {
+          "encoded_command_present": false,
+          "powershell_indicator_present": false,
+          "decode_status": "not_found",
+          "encoded_command_count": 0,
+          "decoded_command_count": 0,
+          "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+          "risk_assessment": {
+            "risk_level": "Low",
+            "risk_score": 0
+          }
+        },
+        "powershell_decode_status": "not_found",
+        "event_source_id": "ba15c6b9-5dfe-49a5-99c1-ac91470557d3:50005:1226241",
+        "timestamp": "2025-07-23T09:42:45.925+00:00",
+        "parser_confidence": "Medium",
+        "parser_warnings": [
+          "Missing context-relevant parsing fields: severity, username, command_line"
+        ],
+        "missing_fields": [
+          "severity",
+          "username",
+          "command_line"
+        ]
+      }
+    },
+    "parser_metadata": {
+      "parser": "soc_netwitness_parser",
+      "parser_version": "3.4-context-aware-normalised",
+      "input_format": "generic_dictionary",
+      "normalisation_status": "success",
+      "selected_alert_index": 0,
+      "alert_count": 1,
+      "raw_event_count": 4,
+      "raw_meta_key_count": 35,
+      "parser_confidence": "Medium",
+      "parser_confidence_score": 55,
+      "missing_fields": [
+        "severity",
+        "username",
+        "command_line"
+      ],
+      "warnings": [
+        "Missing context-relevant parsing fields: severity, username, command_line"
+      ],
+      "debug_available": true,
+      "extraction_summary": {
+        "key_fields_found": [
+          "alert_id",
+          "alert_name",
+          "alert_time",
+          "file_name"
+        ],
+        "key_fields_missing": [
+          "severity",
+          "username",
+          "command_line"
+        ],
+        "fallback_fields_used": false
+      },
+      "generated_at": "2026-07-26T11:58:52.109008+00:00"
+    },
+    "data_quality": {
+      "parser_confidence": "Medium",
+      "parser_confidence_score": 55,
+      "confidence_explanation": "Some parser fields for observed data types (endpoint, process, file) are missing, so downstream systems should review the gaps.",
+      "missing_required_fields": [
+        "severity"
+      ],
+      "missing_context_fields": {
+        "endpoint": [
+          "username"
+        ],
+        "process": [
+          "command_line"
+        ]
+      },
+      "missing_optional_fields": [
+        "session_id",
+        "record_id",
+        "signature_id",
+        "community_id",
+        "file_hash"
+      ],
+      "not_applicable_fields": [
+        "source_email",
+        "destination_email",
+        "reply_to_email",
+        "email_subject",
+        "mail_client",
+        "source_ip",
+        "destination_ip",
+        "destination_port",
+        "protocol",
+        "community_id",
+        "url",
+        "domain",
+        "user_agent"
+      ],
+      "warnings": [
+        "Missing context-relevant parsing fields: severity, username, command_line"
+      ],
+      "normalised_event_count": 4,
+      "raw_meta_key_count": 35
+    },
+    "threat_context": {
+      "related_iocs": [
+        "['KELLYWANG']",
+        "KELLYWANG",
+        "splunkd.exe",
+        "Password_Reset.hta"
+      ]
+    },
+    "user_and_host_indicators": {
+      "hostnames": [
+        "['KELLYWANG']",
+        "KELLYWANG"
+      ],
+      "domains": [
+        "['KELLYWANG']",
+        "KELLYWANG"
+      ]
+    },
+    "file_indicators": {
+      "file_names": [
+        "splunkd.exe",
+        "Password_Reset.hta"
+      ],
+      "file_extensions": [
+        "exe",
+        "hta"
+      ]
+    },
+    "process_indicators": {
+      "process_names": [
+        "splunkd.exe",
+        "Password_Reset.hta"
+      ],
+      "process_paths": [
+        "['C:\\\\Users\\\\Public\\\\']",
+        "C:\\Users\\Public\\",
+        "['C:\\\\Users\\\\Kelly Wang\\\\Downloads\\\\ResetTool\\\\']",
+        "C:\\Users\\Kelly Wang\\Downloads\\ResetTool\\"
+      ]
+    },
+    "source_ip": null,
+    "destination_ip": null,
+    "file_hash": null,
+    "incident_id": null,
+    "incident_title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "url": null,
+    "threat_intelligence": {
+      "iocs": {
+        "possible_file_name": "splunkd.exe",
+        "file_hash": null,
+        "ip_indicators": [],
+        "domain_indicators": [],
+        "url_indicators": [],
+        "powershell_analysis": {
+          "encoded_command_present": false,
+          "powershell_indicator_present": false,
+          "decode_status": "not_found",
+          "encoded_command_count": 0,
+          "decoded_command_count": 0,
+          "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+          "risk_assessment": {
+            "risk_level": "Low",
+            "risk_score": 0
+          }
+        },
+        "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+      },
+      "virustotal": {
+        "file_hash": {
+          "status": "skipped",
+          "reason": "No file hash was available."
+        },
+        "ip_results": [],
+        "domain_results": []
+      },
+      "abuseipdb": {
+        "ip_results": []
+      },
+      "alienvault_otx": {
+        "otx_results": []
+      },
+      "notes": [
+        "splunkd.exe was extracted, but no file hash was found. VirusTotal and OTX file reputation checks require a hash.",
+        "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+        "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+      ]
+    },
+    "enrichment_risk_score": 0,
+    "enrichment_risk_level": "Low",
+    "enrichment_risk_reasons": [
+      "No confirmed malicious external intelligence was found, or no usable IOC was available."
+    ],
+    "agent": "Threat Intelligence Enrichment",
+    "agent_source": "threat_intel.py",
+    "status": "completed",
+    "created_at": "2026-07-26T12:03:05.836466+00:00",
+    "recommended_next_action": "Submit the enriched case for SOC analyst approval before Investigation.",
+    "warnings": []
+  },
+  "threat_intelligence": {
+    "iocs": {
+      "possible_file_name": "splunkd.exe",
+      "file_hash": null,
+      "ip_indicators": [],
+      "domain_indicators": [],
+      "url_indicators": [],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [],
+      "domain_results": []
+    },
+    "abuseipdb": {
+      "ip_results": []
+    },
+    "alienvault_otx": {
+      "otx_results": []
+    },
+    "notes": [
+      "splunkd.exe was extracted, but no file hash was found. VirusTotal and OTX file reputation checks require a hash.",
+      "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

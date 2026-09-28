@@ -1,0 +1,180 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# Important dependencies: __future__, config, json, os, pathlib, reporting, sys.
+# =============================================================================
+# File: soc_reporting_agent/adapters/export_documents.py
+# Purpose: This module exports reporting results into analyst-downloadable document artifacts.
+# Main functionality: main.
+# Inputs: Function parameters, configured environment values, persisted artifacts,
+#   or framework callbacks identified by the documented entry points below.
+# Outputs: Return values and documented file, database, workflow-state, or UI
+#   side effects consumed by the next stage or analyst-facing component.
+# Workflow position: Part of the Aegis stage adapter component.
+# Called by: Direct callers are identified on each function/class annotation;
+#   framework and command-line entry points are marked explicitly.
+# Calls / important dependencies: __future__, config, json, os, pathlib, reporting, sys.
+# Important side effects: See [FYP-OUTPUT], [FYP-STATE], [FYP-DATABASE],
+#   [FYP-EXPORT], and [FYP-UI] annotations on the affected operations.
+# Error and fallback behaviour: Local try/except and fallback paths are marked
+#   per function; otherwise failures propagate to the documented caller.
+# Key evaluator search terms: main, [FYP-FUNCTION], [FYP-EVALUATOR].
+# =============================================================================
+
+"""Headless DOCX/PDF export adapter.
+
+Confirms all report sections and exports the combined incident report as
+Word + PDF using the reporting package's own exporters. Used by the SOC
+workflow orchestrator after a reporting run; the Flask dashboard's manual
+confirm/export flow is unaffected.
+
+Usage:  python adapters/export_documents.py [incident_id]
+Prints a single machine-readable line:  EXPORT_JSON:{...}
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+PROJECT_ROOT_BOOTSTRAP = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT_BOOTSTRAP) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT_BOOTSTRAP))
+# Phase 8: template_document_exporter.py (lazily imported by
+# reporting.editable_reports for PDF conversion) now reaches
+# integrations.openai.client and agents.reporting.export_cache - both
+# repo-root packages, outside this subprocess's own PROJECT_ROOT_BOOTSTRAP.
+# Also guards against agents/reporting/agents/ (the donor reporting_agent.py)
+# shadowing the real top-level agents/ package the same way Batch C's
+# run_parser_normalisation.py fix does.
+REPO_ROOT_BOOTSTRAP = str(PROJECT_ROOT_BOOTSTRAP.parent.parent)
+sys.path = [p for p in sys.path if p != REPO_ROOT_BOOTSTRAP]
+sys.path.insert(0, REPO_ROOT_BOOTSTRAP)
+
+from config import settings
+from reporting import editable_reports as er
+
+
+# =============================================================================
+# [FYP-SECTION] STAGE ADAPTER EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
+# =============================================================================
+
+# [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered stage adapter operations.
+# [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
+# [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
+# [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `candidate_manifest_path`, `confirm_report`, `dumps`, `export_docx`, `export_pdf`, `export_section_docx`, `export_section_pdf`, `finalize_candidate_manifest`.
+# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+
+def main() -> int:
+    incident_id = sys.argv[1] if len(sys.argv) > 1 else None
+    output_dir = settings.OUTPUT_DIR
+    result: dict = {"incident_id": incident_id}
+
+    # Combined export requires every section confirmed; the workflow is
+    # headless so sections are auto-confirmed here. Analysts can still edit
+    # and re-confirm in the reporting dashboard afterwards.
+    try:
+        er.confirm_report(output_dir, analyst="SOC Workflow (auto-confirm)",
+                          incident_id=incident_id)
+    except Exception as exc:
+        result["confirm_error"] = str(exc)
+
+    try:
+        docx = er.export_docx(output_dir, incident_id=incident_id)
+        result["docx"] = docx.get("path")
+    except Exception as exc:
+        result["docx_error"] = str(exc)
+
+    try:
+        pdf = er.export_pdf(output_dir, incident_id=incident_id)
+        result["pdf"] = pdf.get("path")
+    except Exception as exc:
+        result["pdf_error"] = str(exc)
+
+    # Individual section exports — powers per-section downloads in the
+    # dashboard's Generated Files panel. Best-effort: a failure on one
+    # section must not block the combined docx/pdf produced above.
+    for section_key in ("executive_summary", "technical_findings",
+                        "soc_analyst_review"):
+        try:
+            section_docx = er.export_section_docx(output_dir, section_key,
+                                                   incident_id=incident_id)
+            result[f"{section_key}_docx"] = section_docx.get("path")
+        except Exception as exc:
+            result[f"{section_key}_docx_error"] = str(exc)
+        try:
+            section_pdf = er.export_section_pdf(output_dir, section_key,
+                                                 incident_id=incident_id)
+            result[f"{section_key}_pdf"] = section_pdf.get("path")
+        except Exception as exc:
+            result[f"{section_key}_pdf_error"] = str(exc)
+
+    # Immutable final snapshot — only after every section above has been
+    # confirmed and exported. run_id/reporting_stage_attempt are threaded
+    # through as env vars (set by soc_workflow.run_reporting_stage()
+    # alongside REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR) rather than new
+    # positional CLI args, so the existing `python export_documents.py
+    # [incident_id]` invocation shape is unchanged.
+    run_id = os.getenv("SOC_RUN_ID")
+    attempt_raw = os.getenv("SOC_REPORTING_ATTEMPT")
+    try:
+        reporting_stage_attempt = int(attempt_raw) if attempt_raw else 1
+    except ValueError:
+        reporting_stage_attempt = 1
+    try:
+        candidate_manifest = er.finalize_candidate_manifest(
+            output_dir, incident_id, run_id, reporting_stage_attempt)
+        result["candidate_manifest_path"] = str(
+            er.candidate_manifest_path(output_dir, incident_id))
+        result["report_set_id"] = candidate_manifest.get("report_set_id")
+        result["candidate_manifest_sha256"] = candidate_manifest.get("candidate_manifest_sha256")
+        # Phase 6 registration hook: records this original AI-generated
+        # candidate as report_sets row #1 (status='generated',
+        # based_on_report_set_id=NULL) — the lineage root every later
+        # reviewed-candidate materialisation (agents/reporting/
+        # report_editing.py::submit_for_approval()) chains from. Called
+        # only AFTER the manifest/hash above already exist on disk, never
+        # before — this never changes what finalize_candidate_manifest()
+        # itself does. Best-effort: a registration failure (e.g. the
+        # workflow DB being briefly unavailable) must not turn an otherwise
+        # successful export into a reported failure, and a repeat call for
+        # an already-registered report_set_id (the idempotent-no-op path
+        # above) is expected, not an error.
+        try:
+            from workflow import state_store as wss
+            wss.create_report_set(
+                incident_id, run_id,
+                report_set_id=candidate_manifest["report_set_id"],
+                based_on_report_set_id=None,
+                manifest_path=result["candidate_manifest_path"],
+                manifest_sha256=candidate_manifest["candidate_manifest_sha256"],
+                report_version_ids={},
+                status="generated", created_by="Aegis")
+        except Exception as exc:
+            result["report_set_registration_note"] = str(exc)
+    except er.CandidateManifestConflictError as exc:
+        # A published candidate set already exists and differs — this is
+        # not a generation failure, it's a bug-guard; surface it loudly
+        # rather than silently accepting either version.
+        result["candidate_manifest_error"] = str(exc)
+        print("EXPORT_JSON:" + json.dumps(result, default=str))
+        return 1
+    except Exception as exc:
+        # Any other failure here (missing/unreadable DOCX or PDF, a
+        # ReportIntegrityError from report_validator, etc.) means no
+        # candidate manifest was published — a generation/validator
+        # execution failure. run_reporting_stage() must see this as a
+        # failed attempt (Reporting=Failed, Workflow=Failed), never as a
+        # published-but-blocked candidate set.
+        result["candidate_manifest_error"] = str(exc)
+        print("EXPORT_JSON:" + json.dumps(result, default=str))
+        return 1
+
+    print("EXPORT_JSON:" + json.dumps(result, default=str))
+    return 0 if (result.get("docx") or result.get("pdf")) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

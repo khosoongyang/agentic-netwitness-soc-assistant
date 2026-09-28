@@ -1,0 +1,46 @@
+{
+  "incident_id": "INC-WANNACRY-TEST",
+  "alert_id": "NW-WCRY-445-0001",
+  "severity": "Critical",
+  "confidence": "High",
+  "classification": "Ransomware",
+  "likely_scenario": "WannaCry ransomware activity",
+  "matched_iocs": [
+    "104.17.244.81",
+    "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+    "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"
+  ],
+  "evidence": [
+    "severity: Critical",
+    "risk_score: 98.0",
+    "host: FINANCE-WKS-017",
+    "ip: 10.20.14.117",
+    "username: ACME\\\\lim.huiwen",
+    "file_name: mssecsvc.exe",
+    "process_path: C:\\Windows\\mssecsvc.exe",
+    "parent_process_name: lsass.exe",
+    "command_line: C:\\Windows\\mssecsvc.exe -m security",
+    "destination_ip: 104.17.244.81",
+    "destination_port: 80",
+    "protocol: HTTP",
+    "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+    "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+    "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+    "mitre_technique_id: T1486"
+  ],
+  "metakeys_payload": {
+    "host": "FINANCE-WKS-017",
+    "source_ip": "10.20.14.117",
+    "destination_ip": "104.17.244.81",
+    "domain": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+    "url": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+    "sha256": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+    "file_name": "mssecsvc.exe",
+    "mitre_technique_id": "T1486",
+    "mitre_technique": "Data Encrypted for Impact"
+  },
+  "recommended_actions": [
+    "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+    "Validate whether mssecsvc.exe is present and running on the host."
+  ]
+}

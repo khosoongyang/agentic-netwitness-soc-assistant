@@ -1,0 +1,18 @@
+{
+  "passed": 3,
+  "failed": 0,
+  "results": [
+    {
+      "test": "test_context_and_templates",
+      "status": "passed"
+    },
+    {
+      "test": "test_adapter_success_wrapper",
+      "status": "passed"
+    },
+    {
+      "test": "test_failed_subprocess_not_completed",
+      "status": "passed"
+    }
+  ]
+}

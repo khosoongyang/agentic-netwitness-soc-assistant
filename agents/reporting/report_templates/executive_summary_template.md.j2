@@ -1,0 +1,109 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/executive_summary_template.md.j2
+   Purpose: Renders the concise management-facing executive-summary section.
+   Main functionality: Converts verified reporting context fields into Jinja2 Markdown.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: executive_summary text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting generation, before analyst review and export.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: executive_summary, Executive Summary, [FYP-EXPORT]. #}
+# Executive Summary
+
+## 1. Executive Snapshot
+
+| Field | Value |
+|---|---|
+| Incident ID | {{ incident_id }} |
+| Alert ID | {{ alert_id }} |
+| Case Title | {{ case_title }} |
+| Severity | {{ severity.label }} |
+| Confidence | {{ confidence.label }} |
+| Classification | {{ classification }} |
+| Likely Scenario | {{ likely_scenario }} |
+| Report Status | {{ report_status_display | default(report_status) }} |
+| Validation Status | {{ validation_status_display | default(validation_status) }} |
+| Containment Status | {{ containment.status }} |
+| Report Generation Approval Status | {{ report_generation_approval.status | default("Not Recorded") }} |
+| Containment Approval Status | {{ containment.approval_status | default("Pending analyst approval") }} |
+| Containment Execution Status | {{ containment.execution_status | default(containment.status) | replace("_", " ") }} |
+| Final Analyst Review Status | {{ final_analyst_review_status | default("Requires final analyst review") }} |
+
+---
+
+## 2. What Happened
+
+{{ active_narrative.executive_summary }}
+
+---
+
+## 3. Executive Impact View
+
+| Area | Assessment |
+|---|---|
+| Business Impact | {{ impact_assessment.business }} |
+| Security Risk | {{ impact_assessment.security }} |
+| Not Yet Confirmed | {{ impact_assessment.unconfirmed }} |
+| Affected Assets | {{ affected_assets | length }} |
+| Affected Users | {{ affected_users | length }} |
+| IOCs | {{ iocs | length }} |
+| Evidence Items | {{ evidence | length }} |
+| Timeline Events | {{ timeline | length }} |
+
+---
+
+## 4. Key Findings
+
+{% if evidence_backed_findings %}
+| Finding | Status | Confidence | Evidence |
+|---|---|---|---|
+{% for finding in evidence_backed_findings[:5] %}
+| {{ finding.statement }} | {{ finding.status }} | {{ finding.confidence }} | {{ finding.evidence_refs | join(", ") }} |
+{% endfor %}
+{% else %}
+No executive findings were generated.
+{% endif %}
+
+---
+
+## 5. Decisions Required
+
+| Decision Area | Required Decision |
+|---|---|
+| Containment | Confirm whether the recommended containment action should proceed. |
+| Evidence Gaps | Confirm whether high-priority evidence gaps have been closed or accepted as limitations. |
+| Business Impact | Confirm whether any business service, customer, financial, or regulatory impact exists. |
+| Incident Closure | Confirm whether the incident can be closed after analyst validation. |
+
+---
+
+## 6. Priority Recommendations
+
+{% if management_action_plan %}
+{% set tbl = compact_tables.recommendations | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows[:5] %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No management action plan was generated.
+{% endif %}
+
+---
+
+## 7. Current Status and Report Quality
+
+| Field | Value |
+|---|---|
+| Missing Fields | {{ missing_required_fields | join(", ") if missing_required_fields else "None" }} |
+| RAG Status | {{ rag_status_display | default(rag_status) }} |
+| LLM Enhancement Status | {{ llm_status_display | default(llm_status) }} |
+| LLM Quality Status / Enhancement Quality | {{ llm_quality_status }} |
+| LLM Explanation | {{ llm_status_explanation | default("See section guardrail summary" if llm_quality_issues else "None") }} |
+| Report Ready for Management Review | {{ "Yes" if validation_status == "passed" else "No, missing information required" }} |

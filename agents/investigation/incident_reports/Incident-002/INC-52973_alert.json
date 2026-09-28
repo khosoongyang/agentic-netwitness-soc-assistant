@@ -1,0 +1,174 @@
+{
+  "incident_id": "INC-52973",
+  "classification": {
+    "alert_type": "Suspicious External Egress / Potential C2",
+    "severity": "MEDIUM",
+    "risk_score": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is medium because the alert has a high risk score (70) and repeated outbound HTTPS/DNS activity to external IPs, occurrence is medium because only 10 related network events are present rather than sustained high-volume evidence, and adverse impact is medium because there are IOC matches and anomalous outbound traffic but no endpoint, process, file, or PowerShell evidence of confirmed compromise."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: ESA for 192.168.10.205",
+    "timestamp": "2025-07-15T09:46:25+00:00",
+    "description": "This is a network-only alert showing repeated outbound connections from internal host 192.168.10.205 to external IPs over HTTPS and DNS, including a high-risk destination. There is no endpoint, process, file, or PowerShell evidence to confirm compromise, so this is suspicious activity that warrants investigation rather than an immediate high-severity escalation.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control",
+      "technique": "T1071 Application Layer Protocol"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.205",
+      "mac_address": [
+        "00:0c:29:f3:50:e1",
+        "f0:7f:06:7e:c4:26"
+      ]
+    },
+    "destination": {
+      "ip_address": "8.8.8.8",
+      "domain": "googleusercontent.com"
+    }
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_3: Was any malicious process spawned on the victim's machine?",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System"
+    ],
+    "gap_findings": {
+      "step_3: Was any malicious process spawned on the victim's machine?": "No process creation evidence is present in the incident data. The only concrete activity is a network egress session from 192.168.10.205:32946 to 34.107.243.93:443 (googleusercontent.com) flagged by 'Chu Wen - Lateral Move Detected.' Because the payload is only 28 bytes and there are no process names, parent/child references, command lines, hashes, or host telemetry, we cannot confirm a spawned malicious process from this dataset.",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "A process tree is not present in the incident data, so direct analysis is impossible. However, the alert title and network metadata suggest possible lateral movement rather than privilege escalation: the source IP is 192.168.10.205 and the destination is an external Google Cloud IP (34.107.243.93) over HTTPS, which is inconsistent with classic internal-to-internal lateral movement. The session is labeled 'data push' and 'not top 20 dst' with a very small payload, which could indicate beaconing or small-volume exfiltration, but there is no host process context to support that. No evidence of privilege escalation artifacts, spawned shells, service creation, or remote execution is visible here.",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System": "IP address is directly present as 192.168.10.205. Username is not populated in the alert, but the NetWitness source trail includes 'admin2@192.168.20.14:50005', which strongly suggests an administrative user or analyst context associated with the session chain; this is likely the investigating/admin trail rather than the endpoint user, so confidence is limited. Login details are absent in the incident record (no logon type, time, source workstation, or authentication event). Computer name/host name is missing; only the IP and MAC address 00:0c:29:f3:50:e1 identify the endpoint. Operating system is not present; no OS metadata is populated in the alert."
+    },
+    "confidence_per_gap": {
+      "step_3: Was any malicious process spawned on the victim's machine?": "none",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "low",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System": "medium"
+    },
+    "actionable_queries": {
+      "step_3: Was any malicious process spawned on the victim's machine?": "Collect endpoint process telemetry from EDR or Windows Security log Event ID 4688 (Process Creation) on host 192.168.10.205 for the timeframe around 2025-07-15 08:56:46 UTC. If Sysmon is deployed, query Event ID 1 for process creation with parent/child chain, command line, and hashes. Recommended EDR search: host.ip=192.168.10.205 AND event.type=process AND @timestamp:[2025-07-15T08:45:00Z TO 2025-07-15T09:10:00Z].",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "Pull the full process tree from EDR for host 192.168.10.205 around the alert time, including parent PID, child PID, command line, integrity level, token elevation, and signer. On Windows, query Security Event ID 4688, 4672 (Special Privileges Assigned), 4624/4634 (logon/logoff), 4697/7045 (service creation), 7040 (service change), 7045, and Sysmon Event IDs 1, 3, 7, 10, 11, 12, 13, 22. If remote execution is suspected, also query 5140/5145 (share access) and 7040/7045 for service-based lateral movement.",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System": "Query Windows Security Logs on the endpoint and domain controller: Event ID 4624 to identify the successful logon username, source IP, logon type, and workstation name; Event ID 4625 for failed attempts; Event ID 4672 for privileged logons; and Event ID 4768/4769/4771 on the DC for Kerberos authentication context. For host identity and OS, query EDR asset inventory or run 'hostname' and 'systeminfo' on 192.168.10.205; if remote shell access is available, use PowerShell 'Get-ComputerInfo | Select OsName, OsVersion, CsName' and 'Get-NetIPAddress' to confirm hostname and OS."
+    },
+    "extracted_values": {
+      "incident.id": "INC-52973",
+      "incident.title": "High Risk Alerts: ESA for 192.168.10.205",
+      "host.ip": "192.168.10.205",
+      "network.src_ip": "192.168.10.205",
+      "network.src_port": "32946",
+      "network.dst_ip": "34.107.243.93",
+      "network.dst_port": "443",
+      "network.dst_domain": "googleusercontent.com",
+      "network.dst_org": "Google Cloud",
+      "network.dst_country": "United States",
+      "source_mac": "00:0c:29:f3:50:e1",
+      "destination_mac": "f0:7f:06:7e:c4:26",
+      "alert_title": "Chu Wen - Lateral Move Detected",
+      "alert_type": "Network",
+      "alert_severity": "7",
+      "source_trail": "admin2@192.168.20.14:50005",
+      "time_of_activity_utc": "2025-07-15T08:56:46.409+00:00",
+      "payload_bytes": "28",
+      "direction": "outbound"
+    },
+    "mitre_tactic": "Command and Control",
+    "incident_category": "Suspicious External Egress / Potential C2",
+    "classification": "HIGH",
+    "deep_dive_summary": "The only directly supported evidence is a small outbound HTTPS session from 192.168.10.205 to a Google Cloud-hosted IP, associated with an ESA rule named 'Chu Wen - Lateral Move Detected.' There is no process, logon, hostname, or OS evidence in the incident payload, so malicious process spawning and process-tree analysis remain unproven. The data more strongly fits suspicious external egress or possible command-and-control than true lateral movement, so additional endpoint and Windows authentica",
+    "feedback_pass": 1
+  },
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "ip_indicators": [
+        "34.107.243.93"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "34.107.243.93",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 54,
+          "undetected": 37,
+          "reputation": -7,
+          "country": "US",
+          "as_owner": "Google LLC"
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "34.107.243.93",
+          "abuse_confidence_score": 89,
+          "total_reports": 166,
+          "country_code": "US",
+          "isp": "Google LLC",
+          "domain": "google.com",
+          "usage_type": "Content Delivery Network",
+          "last_reported_at": "2026-07-27T17:05:01+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "34.107.243.93",
+          "indicator_type": "IPv4",
+          "pulse_count": 50,
+          "related_pulses": [
+            "IOC Records Provided by @NextRayAI",
+            "Malware, Scanner's, Brute, Bad IP's",
+            "SOHO Router Scanning",
+            "Credit: disable_duck [title: n0paste,  show paste :/ no problems] ",
+            "Credit: disable_duck [title: n0paste,  show paste :/ no problems] "
+          ],
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 50,
+  "enrichment_risk_level": "Medium",
+  "enrichment_risk_reasons": [
+    "AbuseIPDB abuse confidence score is high for 34.107.243.93: 89.",
+    "AlienVault OTX found 50 related pulse(s) for 34.107.243.93."
+  ]
+}

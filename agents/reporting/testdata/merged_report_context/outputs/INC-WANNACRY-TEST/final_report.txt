@@ -1,0 +1,531 @@
+Draft Incident Report for SOC Analyst Review
+
+Document Control
+Report Title: Draft Incident Report for SOC Analyst Review
+Incident ID: INC-WANNACRY-TEST
+Alert ID: NW-WCRY-445-0001
+Case Title: WannaCry Ransomware Activity - mssecsvc.exe
+Report Version: 1.0
+Report Status: Generated for analyst review
+Validation Status: Requires analyst validation
+Report Completeness Score: 65/100
+Report Completeness Status: Completeness needs review
+Report Classification: Internal / Restricted
+Prepared By: Reporting Agent
+Reviewed By: SOC Analyst, pending
+Report Generation Approved By: Soong Yang
+Created At: 2026-07-03T09:22:16.235255+00:00
+Source System: NetWitness SIEM
+Generation Mode: deterministic_facts_plus_template_export
+RAG Used: True
+RAG Status: Local template export context built
+
+1. Executive Summary
+
+1.1 Incident Overview
+This incident is assessed as a Critical-severity, High-confidence Likely True Positive involving WannaCry ransomware activity. The known affected scope is FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint) and ACME\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation). The case is supported by EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\lim.huiwen. Malicious or suspicious indicators include No malicious or suspicious IOCs provided. Containment is currently not_contained. Report generation approval status: Approved by Soong Yang. Containment approval status: Pending Analyst Approval. Recommended containment action: Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval. Containment execution status: Not Contained. Final analyst review status: Requires Final Analyst Review. Data impact assessment: No evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.
+- Data access: No evidence provided, requires validation
+- Data exfiltration: No evidence provided, requires validation
+- Encryption / modification / deletion: Not confirmed by supplied host telemetry
+- Personal data involvement: Cannot determine from current evidence
+- Notification requirement: Legal / Compliance decision only if data impact is confirmed
+- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.
+- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps. The report is not finalised because these validation items remain open: Medium: No additional host telemetry was supplied.
+
+1.2 Executive Conclusion
+Based on the available evidence, this incident is assessed as Critical severity with High confidence. The current classification is Likely True Positive, and the most likely scenario is WannaCry ransomware activity.
+Incident Status: Generated for analyst review
+Current Lifecycle Stage: Reporting and analyst review
+Containment Status: not_contained
+Report Generation Approval Status: approved
+Report Generation Approved By: Soong Yang
+Containment Approval Status: Pending analyst approval
+Containment Execution Status: not contained
+Final Analyst Review Status: Requires final analyst review
+Final Disposition: Pending SOC analyst review
+
+1.2.1 Correlated Alerts in This Incident
+No additional confirmed correlated alerts were attached to this incident ticket at report generation time.
+
+1.2.2 PowerShell Encoded Command Analysis
+No decoded PowerShell command analysis was available for this incident. If this was a PowerShell Encoded Command alert, investigation confidence is limited by missing command-line telemetry.
+
+1.3 Business Impact Summary
+Known Business Impact: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.
+Security Risk: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps.
+Unconfirmed Impact: Further compromise, spread, persistence, and data exposure remain subject to analyst validation.
+Affected Assets Count: 1
+Affected Users Count: 1
+IOC Count: 9
+Evidence Item Count: 16
+Timeline Event Count: 5
+
+1.4 Key Findings
+Finding ID | Finding | Status | Confidence | Evidence References | Interpretation
+KF-001 | The incident classification is Likely True Positive. | Fact | High | investigation_result.json | Classification is taken from investigation output first, with triage as fallback.
+KF-002 | Affected scope has available context. | Fact | High | EV-003, EV-004 | Assets and users are derived only from supplied ticket, alert, triage, and investigation context.
+KF-003 | Approval status is approved. | Fact | High | approval_result.json | Approval data is recorded only from analyst approval context.
+
+2. Basis of Review
+
+2.1 Purpose of Report
+This report provides a structured post-incident review of incident INC-WANNACRY-TEST. It is intended to support SOC analyst review, management decision-making, technical remediation, control improvement, and future response readiness.
+
+2.2 Review Scope
+This review covers the available evidence relating to alert detection, entity extraction, alert normalisation, threat intelligence enrichment, triage assessment, investigation findings, containment and approval status, impact assessment, lessons learnt, and remediation planning.
+
+2.3 Out of Scope
+The following areas are outside the scope of this report unless separately authorised: full legal investigation, full forensic disk imaging, malware reverse engineering, regulatory breach determination, disciplinary investigation, third-party contractual liability assessment, and complete enterprise-wide compromise assessment.
+
+2.4 Evidence Basis
+This report was prepared using the evidence available at generation time, including SIEM alerts, endpoint telemetry, network logs, authentication logs, threat intelligence enrichment, analyst notes, approval records, and local policies, procedures, or playbooks.
+Findings may be updated if additional logs, forensic artefacts, stakeholder inputs, or external intelligence become available.
+
+2.5 Review Limitations
+Log Availability: Dependent on submitted input files and available SOC telemetry.
+Endpoint Visibility: Dependent on endpoint evidence included in investigation_result.json.
+Network Visibility: Dependent on available SIEM, NetWitness, proxy, DNS, and firewall logs.
+Threat Intelligence Coverage: Threat intelligence reputation may be incomplete and must be interpreted with local telemetry.
+Timestamp Accuracy: Timeline accuracy depends on source clock synchronisation.
+Evidence Completeness: Missing evidence is documented as evidence gaps for analyst follow-up.
+
+3. Severity, Confidence and Evidence Methodology
+
+3.1 Severity Rating Methodology
+Critical: Confirmed or highly likely compromise affecting critical systems, sensitive data, essential services, or requiring urgent containment.
+High: Strong evidence of malicious activity with meaningful risk to systems, users, data, or operations.
+Medium: Suspicious activity requiring investigation, but limited evidence of compromise or business impact.
+Low: Weak indicators, limited exposure, minimal impact, or activity likely to be benign.
+Informational: Not an incident, but useful for awareness, monitoring, or tuning.
+
+3.2 Applied Severity Assessment
+Severity: Critical
+Severity Reason: No explicit severity rationale was supplied; validate against triage and investigation evidence.
+Confidence: High
+Confidence Reason: No explicit confidence rationale was supplied; validate against evidence completeness and source telemetry.
+Overall Report Confidence: High
+
+3.3 Confidence Rating Methodology
+High: Multiple reliable evidence sources support the finding, with minimal conflicting information.
+Medium: Some evidence supports the finding, but there are evidence gaps or unresolved questions.
+Low: Limited evidence, incomplete logs, uncertain threat intelligence correlation, or unverified assumptions.
+
+3.4 Evidence Reliability Model
+Evidence Type | Reliability | Notes
+Raw SIEM Logs | High | Strong evidence if source integrity, timestamp accuracy, and log completeness are reliable.
+Endpoint Telemetry | High | Strong evidence for process, file, registry, user, and host-level activity.
+Network Logs | High | Strong evidence for traffic flows, destinations, ports, and protocol activity.
+Authentication Logs | High | Strong evidence for login activity, failed attempts, access patterns, and privilege use.
+SIEM Correlation Alert | Medium | Useful for detection, but should be validated against raw logs or supporting telemetry.
+Threat Intelligence Match | Medium | Useful for context, but reputation alone should not confirm compromise.
+Analyst Notes | Medium | Useful for interpretation, but should be supported by technical evidence.
+User Report | Low to Medium | Useful for context, but requires technical validation.
+External Advisory | Medium | Useful for broader threat context, but may not prove local compromise.
+
+4. Incident Background
+
+4.1 Environment Context
+Environment Type: SOC-monitored environment
+Alert Source: NetWitness SIEM
+Alert Name: WannaCry Ransomware Activity - mssecsvc.exe
+Alert Timestamp: 
+Asset Criticality: See affected assets table
+Business Owner: 
+Technical Owner: 
+
+4.2 Detection Context
+Initial Detection Time: 
+Alert ID: NW-WCRY-445-0001
+Rule ID: 
+Original Alert Risk Score: 98.0
+Enriched Risk Score: Not Provided
+Final Risk Rating: Critical
+
+4.3 Incident Classification
+Incident Type: Likely True Positive
+Attack Category: Requires analyst validation
+Malware / Threat Family: 
+Threat Actor: 
+Likely Scenario: WannaCry ransomware activity
+Incident Priority: Critical
+Escalation Level: SOC analyst review
+
+5. Incident Timeline
+Time | Event | Source | Evidence | Significance
+| Alert first observed by monitoring source | NetWitness SIEM | enriched_alert | Supports analyst timeline reconstruction.
+| Triage completed and severity/confidence assigned | Triage Agent | triage_result.json | Supports analyst timeline reconstruction.
+| Investigation completed or completed with limitations | Investigation Agent | investigation_result.json | Supports analyst timeline reconstruction.
+| SOC analyst approval decision recorded | SOC Analyst | approval_result.json | Supports analyst timeline reconstruction.
+2026-07-03T09:22:16.235255+00:00 | Report generated for SOC analyst review | Reporting Agent | final_report | Supports analyst timeline reconstruction.
+
+5.1 Key Response Milestones
+First Alert Generated: 
+Triage Completed: No standalone triage summary was supplied.
+Investigation Completed: No standalone investigation summary was supplied.
+Containment Approval Status: Pending analyst approval
+Containment Execution: not contained
+Report Generated: 2026-07-03T09:22:16.235255+00:00
+Incident Closure: Pending analyst review
+
+6. Technical Findings
+
+6.1 Alert and Telemetry Analysis
+From a SOC investigation perspective, the available evidence shows alert first observed by monitoring source, followed by triage completed and severity/confidence assigned, followed by investigation completed or completed with limitations. This activity is consistent with WannaCry ransomware activity, supported by EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\lim.huiwen. MITRE ATT&CK context includes Impact: T1486 Data Encrypted for Impact.
+The current evidence supports a Critical-severity, High-confidence Likely True Positive, but it does not fully confirm whether payload execution completed, whether credentials or sessions were exposed, or whether follow-on access occurred. The analyst should validate script block logs, process completion status, identity logs, mailbox audit logs, and outbound network telemetry before closure.
+Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.
+
+6.2 Affected Assets
+Affected assets summary:
+- FINANCE-WKS-017: 10.20.14.117, Endpoint
+- Evidence gap: No additional host telemetry was supplied.
+Hostname | IP Address | Type
+FINANCE-WKS-017 | 10.20.14.117 | Endpoint
+
+6.3 Affected Users
+Affected users summary:
+- ACME\lim.huiwen (values unavailable)
+- Evidence gap: No additional host telemetry was supplied.
+Username
+ACME\lim.huiwen
+
+6.4 Indicators of Compromise
+IOC | Type | Reputation | Confidence | Source | Evidence
+104.17.244.81 | ip | -113 | High | VirusTotal | EV-010
+ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa | sha256 | -2986 | High | VirusTotal | EV-015
+www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com | domain | -165 | High | VirusTotal | EV-013
+http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/ | url | No external reputation supplied | Observed | Reporting Context | EV-014
+mssecsvc.exe | file_name | No external reputation supplied | Observed | Reporting Context | EV-006
+10.20.14.117 | ip | No external reputation supplied | Observed | NetWitness Alert | EV-004
+C:\Windows\mssecsvc.exe | process_path | No external reputation supplied | Observed | enriched_alert | EV-007
+lsass.exe | file_name | No external reputation supplied | Observed | Reporting Context | EV-008
+C:\Windows\mssecsvc.exe -m security | command_line | No external reputation supplied | Observed | Reporting Context | EV-009
+
+6.5 Evidence Register
+Evidence register summary:
+- EV-001: Reporting Context, Evidence, severity: Critical
+- EV-002: Reporting Context, Evidence, risk_score: 98.0
+- EV-003: Reporting Context, Evidence, host: FINANCE-WKS-017
+- EV-004: Reporting Context, Evidence, ip: 10.20.14.117
+- EV-005: Reporting Context, Evidence, username: ACME\\lim.huiwen
+- EV-006: Reporting Context, Evidence, file_name: mssecsvc.exe
+- EV-007: Reporting Context, Evidence, process_path: C:\Windows\mssecsvc.exe
+- EV-008: Reporting Context, Evidence, parent_process_name: lsass.exe
+- Evidence gap: No additional host telemetry was supplied.
+Evidence ID | Source | Type | Description
+EV-001 | Reporting Context | Evidence | severity: Critical
+EV-002 | Reporting Context | Evidence | risk_score: 98.0
+EV-003 | Reporting Context | Evidence | host: FINANCE-WKS-017
+EV-004 | Reporting Context | Evidence | ip: 10.20.14.117
+EV-005 | Reporting Context | Evidence | username: ACME\\lim.huiwen
+EV-006 | Reporting Context | Evidence | file_name: mssecsvc.exe
+EV-007 | Reporting Context | Evidence | process_path: C:\Windows\mssecsvc.exe
+EV-008 | Reporting Context | Evidence | parent_process_name: lsass.exe
+EV-009 | Reporting Context | Evidence | command_line: C:\Windows\mssecsvc.exe -m security
+EV-010 | Reporting Context | Evidence | destination_ip: 104.17.244.81
+EV-011 | Reporting Context | Evidence | destination_port: 80
+EV-012 | Reporting Context | Evidence | protocol: HTTP
+EV-013 | Reporting Context | Evidence | domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com
+EV-014 | Reporting Context | Evidence | url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/
+EV-015 | Reporting Context | Evidence | sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa
+EV-016 | Reporting Context | Evidence | mitre_technique_id: T1486
+> Timestamps were not supplied with the current export. Evidence IDs are generated from available reporting context for analyst traceability.
+> Confidence values were not supplied with the current export and remain pending analyst validation.
+> Raw event references were not supplied with the current export. Evidence IDs are generated from available reporting context for analyst traceability.
+
+6.6 Evidence Gaps and Limitations
+Priority | Evidence Gap | Required Data / Reason
+Medium | No additional host telemetry was supplied. | None
+
+7. Attack Mapping
+
+7.1 MITRE ATT&CK Mapping
+Tactic | Technique | Reason / Evidence | Confidence
+Impact | T1486 Data Encrypted for Impact | Recovered from deterministic report context. | High
+
+7.2 Cyber Kill Chain Mapping
+Kill Chain Phase | Observed? | Evidence
+Reconnaissance | Not Confirmed | No evidence provided unless listed in timeline.
+Weaponisation | Not Confirmed | No evidence provided unless listed in timeline.
+Delivery | Not Confirmed | No direct evidence provided.
+Exploitation | Requires validation | Validate payload execution, suspicious commands, or vulnerable service activity.
+Installation | Requires validation | Validate persistence, dropped files, services, scheduled tasks, or registry changes.
+Command and Control | Requires validation | Validate network connections, DNS, proxy logs, and threat intelligence matches.
+Actions on Objectives | Requires validation | Validate data access, exfiltration, encryption, disruption, or lateral movement.
+
+7.3 Attack Narrative
+Based on the available evidence, the likely attack narrative is:
+The likely attack sequence began with alert first observed by monitoring source, followed by triage completed and severity/confidence assigned, followed by investigation completed or completed with limitations. This sequence is consistent with WannaCry ransomware activity, with observed evidence including EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\lim.huiwen. The activity has been mapped to Impact: T1486 Data Encrypted for Impact.
+However, the current evidence does not fully confirm payload completion, persistence, credential or session exposure, lateral movement, data access, or exfiltration. These items should remain open until the SOC analyst validates the relevant endpoint, identity, network, and application logs. Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.
+
+8. Impact Assessment
+Business Impact: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.
+Security Risk: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps.
+Not Yet Confirmed: Further compromise, spread, persistence, and data exposure remain subject to analyst validation.
+Impact Confidence: High
+
+8.1 Analyst Impact Explanation
+Current business impact depends on validated affected assets, users, data access, and service disruption evidence. Security risk: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps. Not yet confirmed: Further compromise, spread, persistence, and data exposure remain subject to analyst validation.
+
+8.2 Data Impact Assessment
+Data impact assessment: No evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.
+- Data access: No evidence provided, requires validation
+- Data exfiltration: No evidence provided, requires validation
+- Encryption / modification / deletion: Not confirmed by supplied host telemetry
+- Personal data involvement: Cannot determine from current evidence
+- Notification requirement: Legal / Compliance decision only if data impact is confirmed
+- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.
+- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps.
+
+9. SOC Analyst Review Guidance
+
+9.1 Analyst Review Guidance
+The SOC analyst should review this case by validating the evidence that supports the Critical severity, High confidence, and Likely True Positive classification. The most important review areas are the affected scope (FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint)), the affected user context (ACME\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation)), suspicious indicators (No malicious or suspicious IOCs provided), and the timeline sequence (Alert first observed by monitoring source. Triage completed and severity/confidence assigned. Investigation completed or completed with limitations. SOC analyst approval decision recorded. Report generated for SOC analyst review.). The analyst should confirm whether the evidence supports containment, escalation, closure, or further investigation, especially because these validation items remain open: Medium: No additional host telemetry was supplied. If containment is disruptive, the analyst should confirm the approval status (approved) and containment status (not_contained) before action is taken. Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use. Any finding that cannot be verified from the provided evidence should remain marked as not confirmed rather than being treated as a confirmed compromise.
+
+9.2 SOC Analyst Review Checklist
+1. Confirm that the incident ID, alert ID, severity (Critical), confidence (High), and classification (Likely True Positive) match the latest triage and investigation records. 2. Validate the affected scope by checking whether FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint) and ACME\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation) are present in the original alert, endpoint telemetry, identity logs, or NetWitness evidence. 3. Review the listed IOCs and supporting evidence references, especially No malicious or suspicious IOCs provided, before blocking, isolating, or escalating based on indicator reputation. 4. Reconstruct the timeline using the available events (Alert first observed by monitoring source. Triage completed and severity/confidence assigned. Investigation completed or completed with limitations. SOC analyst approval decision recorded. Report generated for SOC analyst review.) and confirm whether payload execution, persistence, credential exposure, lateral movement, data access, or exfiltration is not confirmed in the provided evidence. 5. Compare the technical evidence against the mapped MITRE ATT&CK context (Impact: T1486 Data Encrypted for Impact) and record whether each mapped behaviour is observed, suggested, or still pending validation. 6. Review unresolved evidence gaps (Medium: No additional host telemetry was supplied.) and collect the required endpoint, identity, network, email, or application logs before closure. 7. Decide whether containment or approval should proceed by checking the current approval status (approved) and containment status (not_contained). 8. Record the final analyst decision, including whether the case should be escalated, contained, closed as false positive, or kept open for further investigation.
+
+10. Response Actions Taken
+
+10.1 Triage and Escalation
+Action | Status | Evidence / Notes
+Alert reviewed | Completed if triage result is present | No standalone triage summary was supplied.
+Severity assigned | Critical | No explicit severity rationale was supplied; validate against triage and investigation evidence.
+Confidence assigned | High | No explicit confidence rationale was supplied; validate against evidence completeness and source telemetry.
+Threat intelligence checked | Completed | 9 IOC(s) recorded.
+Escalation decision made | approved | No approval comments supplied.
+
+10.2 Containment and Approval Status
+Report generation approval status: Approved by Soong Yang.
+Containment approval status: Pending Analyst Approval.
+Recommended containment action: Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.
+Containment execution status: Not Contained.
+Final analyst review status: Requires Final Analyst Review.
+
+10.3 Recommended Actions
+Priority | Action | Owner | Approval Required | Rationale
+P1 | Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval. | Endpoint Response Team | Yes | Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-003).
+P2 | Validate whether mssecsvc.exe is present and running on the host. | Endpoint Response Team | No | Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-006).
+
+11. Root Cause and Contributing Factors
+
+11.1 Root Cause Assessment
+Likely Root Cause: Pending further analyst validation
+Root Cause Category: Requires analyst validation
+Root Cause Confidence: High
+Evidence Basis: Based on classification, likely scenario, timeline, IOCs, and available investigation evidence.
+
+11.2 Contributing Factors
+Factor | Description | Impact
+Evidence completeness gap | One or more required reporting or investigation fields are missing or require validation. | Limits confidence in scope, root cause, and final disposition.
+
+12. Governance, Risk and Compliance Considerations
+
+12.1 Governance Assessment
+Incident Response Plan Followed: Requires analyst validation against local case notes.
+Escalation Process Followed: Recorded in approval context
+Relevant Playbook Followed: ransomware_response_playbook.md
+Playbook Selection Note: Ransomware reporting context selected because the supplied case context references WannaCry/ransomware activity.
+Analyst Approval Required: Yes
+Report Generation Approval Status: approved
+Final Analyst Review Status: Requires final analyst review
+Management Notification Required: To Be Determined
+Evidence Preservation Required: Yes, if incident remains High/Critical or involves sensitive data.
+Evidence Preservation Completed: Not evidenced in supplied source context.
+
+12.2 Regulatory and Notification Considerations
+Personal Data Involved: Cannot determine from current evidence.
+Customer Notification Required: To Be Determined by Legal / Compliance
+Regulator Notification Required: To Be Determined by Legal / Compliance
+Law Enforcement Notification Required: To Be Determined by Management / Legal
+Contractual Notification Required: To Be Determined by Service Owner / Legal
+Notification Status: Legal / Compliance decision only if data impact is confirmed.
+
+12.3 Control Gap Assessment
+Control Domain | Gap Identified | Risk Level
+Identity and Access Management | Validate credential exposure, MFA status, suspicious logins, and privileged access. | Critical
+Endpoint Security | Validate endpoint process execution, malware artefacts, containment status, and persistence. | Critical
+Network Security | Validate suspicious outbound traffic, C2 indicators, DNS, proxy, and firewall activity. | Critical
+Logging and Monitoring | Validate whether logs are complete enough to reconstruct the incident. | High
+Vulnerability Management | Validate whether exploitation involved known vulnerability or missing patch. | Requires validation
+Backup and Recovery | Validate restoration needs if disruption, encryption, or destructive activity is found. | Requires validation
+User Awareness | Validate whether user action contributed to the incident, especially for phishing. | Requires validation
+Incident Response Process | Validate approval, escalation, evidence preservation, and closure workflow. | Critical
+
+13. Control and Framework Mapping
+
+13.2 Policy Application Summary
+Source | Relevant Guidance | Application to This Case
+incident_severity_policy.md | Severity should reflect evidence, impact, and confidence. | Current severity is Critical and should be analyst validated.
+report_writing_sop.md | Reports must separate evidence-backed facts from gaps. | The export keeps missing facts as evidence gaps rather than inventing details.
+
+13.3 Knowledge Files Used
+- policies/incident_severity_policy.md
+- procedures/report_writing_sop.md
+- procedures/investigation_sop.md
+- playbooks/ransomware_response_playbook.md
+
+13.4 Playbooks Excluded in This Version
+- malware_response_playbook.md
+> Raw retrieved RAG snippets are stored in enriched_reporting_context.json for traceability, but this report only shows the analyst-friendly policy application summary.
+
+14. Lessons Learnt
+
+14.1 What Worked Well
+Detection: Alert context was available from NetWitness SIEM.
+Alert Processing: Reporting Agent consolidated enriched alert, triage, investigation, and approval inputs.
+Threat Intelligence: 9 IOC(s) were available for reporting and evidence linking.
+Triage: Severity and confidence were normalised, with stale or missing fields flagged.
+Reporting: Evidence gaps and validation status were explicitly documented.
+
+14.2 What Did Not Work Well / Requires Validation
+Evidence gaps and limitations are listed once in section 6.6. Use that section for analyst validation before closure.
+
+14.3 Opportunities for Improvement
+Detection Engineering: Tune detection rules based on confirmed true positive or false positive outcome.
+Threat Intelligence: Record IOC source, confidence, reputation, and evidence references.
+Playbook Maturity: Ensure the relevant playbook lists required evidence, approval points, and closure criteria.
+Automation: Prevent stale context by validating severity, confidence, incident ID, and latest workflow stage before report generation.
+Analyst Review: Require human review before closure, disruptive containment, or management reporting.
+Evidence Handling: Preserve evidence references and avoid unsupported narrative claims.
+
+15. Recommendations and Remediation Roadmap
+
+15.1 Priority Recommendations
+Priority recommendations are listed in section 10.3 Recommended Actions to avoid repeating the same action table without additional value.
+
+15.2 Short-Term Actions, 0 to 30 Days
+- Validate missing evidence gaps listed in this report.
+- Confirm containment and analyst approval status.
+- Review and block confirmed malicious IOCs where appropriate.
+- Preserve relevant logs, alerts, and endpoint evidence.
+
+15.3 Medium-Term Actions, 31 to 90 Days
+- Improve detection logic based on confirmed findings.
+- Update the relevant playbook with any missing investigation pivots.
+- Review account, endpoint, email, and network controls related to the incident.
+- Conduct a post-incident review with SOC, IT operations, and business stakeholders.
+
+15.4 Long-Term Actions, Beyond 90 Days
+- Improve incident response maturity using lessons learnt.
+- Build stronger control mapping across detection, response, and recovery.
+- Expand automation coverage for evidence collection, validation, and report quality checks.
+- Maintain a prior-case knowledge base after SOC analyst approval.
+
+16. Management Response and Action Plan
+Management response is required for the recommended actions above. Target dates and owners should be assigned during management review when they are not already present in the source case context.
+
+17. Final Assessment
+The report is suitable for SOC analyst review with status Generated for analyst review. Before closure, the analyst should validate unresolved evidence gaps, confirm containment or approval decisions, and determine whether any business, data, regulatory, or recovery impact exists. Any disruptive action, such as endpoint isolation or credential revocation, should follow the recorded approval workflow. Data impact assessment: No evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.
+- Data access: No evidence provided, requires validation
+- Data exfiltration: No evidence provided, requires validation
+- Encryption / modification / deletion: Not confirmed by supplied host telemetry
+- Personal data involvement: Cannot determine from current evidence
+- Notification requirement: Legal / Compliance decision only if data impact is confirmed
+- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.
+- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps.
+Incident severity confirmed: Pass
+Confidence confirmed: Pass
+Root cause assessed: Partial
+Containment status recorded: Pass
+Recovery validated: Requires analyst review
+Business owner informed: Not evidenced in supplied source context
+Recommendations documented: Pass
+Analyst review completed: Requires final analyst review
+
+18. Appendices
+The appendices below are analyst-facing summaries. Full raw artefacts remain available through the JSON export and system evidence files.
+
+Appendix A: Raw Alert / Enriched Alert Summary
+Field | Value
+Alert ID | NW-WCRY-445-0001
+Source | NetWitness SIEM
+Alert Name | WannaCry Ransomware Activity - mssecsvc.exe
+First Seen |
+Host | FINANCE-WKS-017
+Severity | Critical
+Confidence | High
+Original Alert Risk Score | 98.0
+Enriched Risk Score |
+Final Risk Rating | Critical
+Primary IOC | 104.17.244.81
+
+Appendix B: Triage Summary
+Field | Value
+Classification | Ransomware
+Severity | Critical
+Confidence | High
+Next Action | No standalone next action supplied.
+Containment Status | not_contained
+Recommended Action Count | 2
+
+Appendix C: Investigation Summary
+Field | Value
+Classification | Likely True Positive
+Likely Scenario | WannaCry ransomware activity
+Status | completed_with_evidence_gaps
+Finding Count | 0
+Missing Evidence | No additional host telemetry was supplied.
+Recommended Next Action | No standalone investigation next action supplied.
+
+Appendix D: Approval Summary
+Field | Value
+Report Generation Approval Status | approved
+Report Generation Approved By | Soong Yang
+Containment Approval Status | Pending analyst approval
+Containment Execution Status | not_contained
+Final Analyst Review Status | Requires final analyst review
+Comments | No approval comments supplied.
+
+Appendix E: Chain of Custody
+Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.
+
+19. Report Validation Checklist
+Validation Item | Status
+Incident ID present | Pass
+Alert ID present | Pass
+Severity present | Pass
+Confidence present | Pass
+Affected asset context present | Pass
+Timeline reconstructed | Pass
+Evidence present | Pass
+IOC evidence links recovered | Pass
+MITRE mapping present | Pass
+
+20. Reporting Agent Quality Checks
+Missing required fields: No additional host telemetry was supplied.
+Recovered fields: host, source_ip, destination_ip, domain, url, sha256, process_name, process_path, mitre_technique_id, severity, confidence, classification, approval_status, analyst_decision, approved_by, asset_ip
+Fields recovered from fallback sources: 2
+IOCs deduplicated: 41
+Evidence links recovered: 11
+Placeholders reduced: 84
+Fields still genuinely unavailable: 51
+Conflicting severity values detected: Not Detected
+Conflicting confidence values detected: Not Detected
+Stale context detected: Not Detected
+Triage result available: Yes
+Investigation result available: Yes
+Threat intelligence result available: Yes
+Human approval required: Yes
+Report Generation Approval Status: approved
+Report Generation Approved By: Soong Yang
+Containment Approval Status: Pending analyst approval
+Containment Execution Status: not contained
+Final Analyst Review Status: Requires final analyst review
+Fallback logic used: Yes
+LLM Used: False
+LLM enhancement status: llm_disabled_deterministic_generation
+LLM Quality Status / Enhancement Quality: not_used
+LLM Attempt Count: 0
+LLM Cache Status: not_used
+LLM Explanation: LLM disabled or unavailable; deterministic fallback narrative was used.
+Rule-based validation status: Requires analyst validation
+
+20.1 LLM Section Guardrail Summary
+Section | Status | Hard Fail Issues | Soft Warnings
+executive_summary | not_used | None | None
+technical_analysis | not_used | None | None
+business_impact_explanation | not_used | None | None
+attack_narrative | not_used | None | None
+conclusion | not_used | None | None
+analyst_friendly_explanation | not_used | None | None
+soc_analyst_review_checklist | not_used | None | None

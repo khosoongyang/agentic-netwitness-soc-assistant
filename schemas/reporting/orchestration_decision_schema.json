@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SOC Orchestration Decision",
+  "type": "object",
+  "required": ["status", "workflow_decision", "allowed", "can_continue", "reason", "created_at"],
+  "properties": {
+    "status": {"type": "string"},
+    "agent": {"type": ["string", "null"]},
+    "ticket_id": {"type": ["string", "null"]},
+    "current_stage": {"type": ["string", "null"]},
+    "workflow_decision": {"type": "string"},
+    "next_agent": {"type": ["string", "null"]},
+    "next_label": {"type": ["string", "null"]},
+    "label": {"type": ["string", "null"]},
+    "allowed": {"type": "boolean"},
+    "can_continue": {"type": "boolean"},
+    "requires_human_approval": {"type": "boolean"},
+    "approval_gate": {"type": ["string", "null"]},
+    "reason": {"type": "string"},
+    "required_inputs": {"type": "array", "items": {"type": "string"}},
+    "missing_inputs": {"type": "array", "items": {"type": "string"}},
+    "risk_notes": {"type": "array", "items": {"type": "string"}},
+    "validation_status": {"type": "string"},
+    "created_at": {"type": "string"}
+  },
+  "additionalProperties": true
+}

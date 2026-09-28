@@ -1,0 +1,216 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/technical_findings_template.md.j2
+   Purpose: Renders detailed technical evidence and investigation findings for SOC readers.
+   Main functionality: Presents affected entities, IOCs, events, MITRE mappings, and evidence gaps.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: technical_findings text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting generation, after investigation and before analyst confirmation.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: technical_findings, Technical Findings, [FYP-PROCESS]. #}
+# Technical Findings
+
+## 1. Technical Context
+
+| Field | Value |
+|---|---|
+| Incident ID | {{ incident_id }} |
+| Alert ID | {{ alert_id }} |
+| Severity | {{ severity.label }} |
+| Confidence | {{ confidence.label }} |
+| Classification | {{ classification }} |
+| Likely Scenario | {{ likely_scenario }} |
+| Scenario Type | {{ scenario_type }} |
+| Report Status | {{ report_status_display | default(report_status) }} |
+| Investigation Completeness | {{ investigation_completeness_status | default("Not Provided") }} |
+| Reporting Mode | {{ reporting_mode | default("standard") }} |
+
+{{ investigation_completeness_note | default("Investigation completeness was not provided.") }}
+
+---
+
+## 2. Evidence Inventory
+
+{% set er = compact_evidence_register | default({}) %}
+{% if er %}
+{% if er.summary %}
+{{ er.summary }}
+
+{% endif %}
+{% if er.columns %}
+{% set cols = er.columns %}
+{% set rows = er.rows %}
+| {% for col in cols %}{{ col }} | {% endfor %}
+| {% for col in cols %}--- | {% endfor %}
+{% for row in rows %}
+| {{ row[0] | default("") }} | {% for cell in row[1:] %}{{ cell | default("") }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% if er.notes %}
+{% for note in er.notes %}
+- {{ note }}
+{% endfor %}
+{% endif %}
+{% else %}
+{% if evidence %}
+| Evidence ID | Source | Type | Description | Timestamp | Confidence | Raw Reference |
+|---|---|---|---|---|---|---|
+{% for item in evidence %}
+| {{ item.id }} | {{ item.source }} | {{ item.type }} | {{ item.description }} | {{ item.timestamp }} | {{ item.confidence }} | {{ item.raw_reference }} |
+{% endfor %}
+{% else %}
+No evidence was provided.
+{% endif %}
+{% endif %}
+
+---
+
+## 3. Evidence Reliability Guidance
+
+| Evidence Type | Reliability | Analyst Note |
+|---|---|---|
+| Raw SIEM / NetWitness logs | High | Validate timestamp, parser quality, and source integrity. |
+| Endpoint telemetry | High | Validate process tree, file artefacts, persistence, and user context. |
+| Network telemetry | High | Validate direction, destination, protocol, and whether traffic succeeded. |
+| Threat intelligence | Medium | Treat as context until supported by local telemetry. |
+| Analyst notes | Medium | Useful for reasoning, but should reference technical evidence. |
+
+---
+
+## 4. Affected Assets
+
+{% if affected_assets %}
+{% set tbl = compact_tables.assets | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No affected assets were provided.
+{% endif %}
+
+---
+
+## 5. Affected Users
+
+{% if affected_users %}
+{% set tbl = compact_tables.users | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No affected users were provided.
+{% endif %}
+
+---
+
+## 6. IOC Analysis
+
+{% if iocs %}
+{% set tbl = compact_tables.iocs | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No IOCs were provided.
+{% endif %}
+
+---
+
+## 7. Evidence-Backed Findings
+
+{% if evidence_backed_findings %}
+| Finding | Status | Confidence | Evidence References | Interpretation |
+|---|---|---|---|---|
+{% for finding in evidence_backed_findings %}
+| {{ finding.statement }} | {{ finding.status }} | {{ finding.confidence }} | {{ finding.evidence_refs | join(", ") }} | {{ finding.interpretation }} |
+{% endfor %}
+{% else %}
+No evidence-backed findings were generated.
+{% endif %}
+
+---
+
+## 8. Timeline
+
+{% if timeline %}
+{% set tbl = compact_tables.timeline | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No timeline was provided.
+{% endif %}
+
+---
+
+## 9. MITRE ATT&CK / Kill Chain Mapping
+
+{% if mitre_attack_mapping %}
+{% set tbl = compact_tables.mitre | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No MITRE ATT&CK mapping was provided.
+{% endif %}
+
+---
+
+## 10. Evidence Gaps
+
+{% if evidence_gaps %}
+| Priority | Gap | Required Data |
+|---|---|---|
+{% for gap in evidence_gaps %}
+| {{ gap.priority | default("Not Provided") }} | {{ gap.gap | default(gap.missing_field | default("Not Provided")) }} | {{ gap.required_data | default(gap.reason_needed | default("Not Provided")) }} |
+{% endfor %}
+{% else %}
+No evidence gaps were recorded.
+{% endif %}
+
+---
+
+## 11. Technical Conclusion
+
+{{ active_narrative.technical_analysis }}
+
+{{ active_narrative.conclusion }}

@@ -1,0 +1,165 @@
+{
+  "results": [
+    {
+      "name": "ticket completed_limited unlocks reporting with approval",
+      "passed": true,
+      "resolved_exists": true,
+      "resolved_usable": true,
+      "resolved_source": "ticket.investigation_result",
+      "approval_usable": true,
+      "input_copied": true,
+      "ensure_result": {
+        "investigation": {
+          "exists": true,
+          "usable": true,
+          "data": {
+            "status": "completed_limited",
+            "summary": "Investigation completed with limited endpoint telemetry.",
+            "missing_evidence": [
+              {
+                "gap": "process_tree",
+                "priority": "High"
+              }
+            ]
+          },
+          "source": "ticket.investigation_result",
+          "message": "Ticket investigation result is usable for Reporting."
+        },
+        "investigation_approval": {
+          "exists": true,
+          "usable": true,
+          "data": {
+            "decision": "approved",
+            "analyst": "SOC Analyst"
+          },
+          "source": "ticket.investigation_approval_result",
+          "message": "Investigation approval is approved."
+        }
+      }
+    },
+    {
+      "name": "outputs completed_with_evidence_gaps is discovered",
+      "passed": true,
+      "resolved_exists": true,
+      "resolved_usable": true,
+      "resolved_source": "outputs/investigation_result.json",
+      "approval_usable": true,
+      "input_copied": true,
+      "ensure_result": {
+        "investigation": {
+          "exists": true,
+          "usable": true,
+          "data": {
+            "status": "completed_with_evidence_gaps",
+            "summary": "Investigation produced usable findings, but DNS telemetry is missing.",
+            "findings": [
+              "Host executed suspicious binary."
+            ]
+          },
+          "source": "outputs/investigation_result.json",
+          "message": "Investigation result found and usable for Reporting."
+        },
+        "investigation_approval": {
+          "exists": true,
+          "usable": true,
+          "data": {
+            "decision": "approved"
+          },
+          "source": "outputs/investigation_approval_result.json",
+          "message": "Investigation approval found and approved."
+        }
+      }
+    },
+    {
+      "name": "outputs/unknown needs_more_data with summary is discovered",
+      "passed": true,
+      "resolved_exists": true,
+      "resolved_usable": true,
+      "resolved_source": "outputs/unknown/investigation_result.json",
+      "approval_usable": true,
+      "input_copied": true,
+      "ensure_result": {
+        "investigation": {
+          "exists": true,
+          "usable": true,
+          "data": {
+            "status": "needs_more_data",
+            "summary": "Playbook could not be fully answered due to missing network telemetry.",
+            "missing_fields": [
+              "netflow",
+              "dns_logs"
+            ]
+          },
+          "source": "outputs/unknown/investigation_result.json",
+          "message": "Investigation result found and usable for Reporting."
+        },
+        "investigation_approval": {
+          "exists": true,
+          "usable": true,
+          "data": {
+            "status": "completed"
+          },
+          "source": "inputs/investigation_approval_result.json",
+          "message": "Investigation approval found and approved."
+        }
+      }
+    },
+    {
+      "name": "failed investigation remains blocked",
+      "passed": true,
+      "resolved_exists": true,
+      "resolved_usable": false,
+      "resolved_source": "outputs/investigation_result.json",
+      "approval_usable": true,
+      "input_copied": true,
+      "ensure_result": {
+        "investigation": {
+          "exists": true,
+          "usable": false,
+          "data": {
+            "status": "failed",
+            "summary": "Investigation adapter crashed."
+          },
+          "source": "outputs/investigation_result.json",
+          "message": "Investigation result exists but is failed, invalid, or missing usable findings."
+        },
+        "investigation_approval": {
+          "exists": true,
+          "usable": true,
+          "data": {
+            "decision": "approved"
+          },
+          "source": "outputs/investigation_approval_result.json",
+          "message": "Investigation approval found and approved."
+        }
+      }
+    },
+    {
+      "name": "missing investigation remains blocked",
+      "passed": true,
+      "resolved_exists": false,
+      "resolved_usable": false,
+      "resolved_source": null,
+      "approval_usable": false,
+      "input_copied": false,
+      "ensure_result": {
+        "investigation": {
+          "exists": false,
+          "usable": false,
+          "data": {},
+          "source": null,
+          "message": "No investigation result was found in ticket context, inputs, or known outputs paths."
+        },
+        "investigation_approval": {
+          "exists": false,
+          "usable": false,
+          "data": {},
+          "source": null,
+          "message": "No investigation approval result was found."
+        }
+      }
+    }
+  ],
+  "passed": 5,
+  "failed": 0
+}

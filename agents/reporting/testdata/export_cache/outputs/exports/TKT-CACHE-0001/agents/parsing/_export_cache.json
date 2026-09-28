@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "entries": {
+    "json": {
+      "status": "ready",
+      "updated_at": "2026-06-18T15:08:37.358049+00:00",
+      "source_hash": "a7b9bf4f422cdba664e38112356535b49bd609def8e5ce47c8c50577efca6d07",
+      "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.json",
+      "message": "JSON export cache is ready.",
+      "generated_at": "2026-06-18T15:08:37.358068+00:00"
+    },
+    "docx": {
+      "status": "ready",
+      "updated_at": "2026-06-18T15:08:37.474645+00:00",
+      "source_hash": "a7b9bf4f422cdba664e38112356535b49bd609def8e5ce47c8c50577efca6d07",
+      "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.docx",
+      "message": "Word export cache is ready.",
+      "related_paths": {
+        "json": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.json"
+      },
+      "generated_at": "2026-06-18T15:08:37.474663+00:00"
+    },
+    "pdf": {
+      "status": "ready",
+      "updated_at": "2026-06-18T15:08:37.288878+00:00",
+      "source_hash": "da7f4408139d4b6664344130f6ee78cf51adc462f9bc819e59fd79252047079e",
+      "path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.pdf",
+      "message": "PDF export cache is ready.",
+      "related_paths": {
+        "docx": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/testdata/export_cache/outputs/exports/TKT-CACHE-0001/agents/parsing/TKT-CACHE-0001_parsing_normalisation.docx"
+      },
+      "generated_at": "2026-06-18T15:08:37.288902+00:00"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "incident_id": "INC-TI-RAW-0001",
+  "alert_id": "ALERT-TI-RAW-0001",
+  "severity": "High",
+  "confidence": "High",
+  "classification": "Suspicious endpoint malware activity",
+  "likely_scenario": "Endpoint malware execution with external DNS/HTTPS activity"
+}

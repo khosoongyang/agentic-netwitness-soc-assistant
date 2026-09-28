@@ -1,0 +1,60 @@
+{
+  "agent": "Reporting Agent",
+  "agent_source": "agents/reporting_agent.py",
+  "status": "failed",
+  "report_status": "failed",
+  "ticket_id": "TKT-FAIL",
+  "incident_id": "INC-TI-RAW-0001",
+  "alert_id": "ALERT-TI-RAW-0001",
+  "title": "Suspicious File Execution with External DNS Lookup",
+  "reporting_mode": "with_limitations",
+  "summary": "Reporting Agent failed before generating report sections.",
+  "error_summary": "jinja2.exceptions.UndefinedError: 'appendix_summaries' is undefined",
+  "limitations": [
+    {
+      "gap": "email_datetime",
+      "priority": "High",
+      "reason": "Email datetime is missing."
+    },
+    {
+      "gap": "sender_or_receiver_email",
+      "priority": "High",
+      "reason": "Sender/receiver is missing."
+    },
+    {
+      "gap": "email_subject",
+      "priority": "High",
+      "reason": "Subject is missing."
+    }
+  ],
+  "investigation_status": "completed_with_evidence_gaps",
+  "investigation_limitations": [
+    {
+      "gap": "email_datetime",
+      "priority": "High",
+      "reason": "Email datetime is missing."
+    },
+    {
+      "gap": "sender_or_receiver_email",
+      "priority": "High",
+      "reason": "Sender/receiver is missing."
+    },
+    {
+      "gap": "email_subject",
+      "priority": "High",
+      "reason": "Subject is missing."
+    }
+  ],
+  "report_manifest": {},
+  "generated_reports": {},
+  "recommended_next_action": "Fix the Reporting Agent error and rerun Reporting.",
+  "subprocess": {
+    "success": false,
+    "returncode": 1,
+    "started_at": "2099-01-01T00:00:00+00:00",
+    "stderr": "jinja2.exceptions.UndefinedError: 'appendix_summaries' is undefined",
+    "stdout": "",
+    "script": "agents/reporting_agent.py"
+  },
+  "created_at": "2026-07-27T03:44:06.127941+00:00"
+}

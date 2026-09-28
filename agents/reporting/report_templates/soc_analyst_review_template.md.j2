@@ -1,0 +1,143 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/soc_analyst_review_template.md.j2
+   Purpose: Renders the analyst-review section used to assess investigation evidence and gaps.
+   Main functionality: Presents review findings, decisions, caveats, and recommended follow-up.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: soc_analyst_review text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting review, before confirmation and export.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: soc_analyst_review, SOC Analyst Review, [FYP-APPROVAL]. #}
+# SOC Analyst Review
+
+## 1. Review Metadata
+
+| Field | Value |
+|---|---|
+| Incident ID | {{ incident_id }} |
+| Alert ID | {{ alert_id }} |
+| Report Status | {{ report_status_display | default(report_status) }} |
+| Final Analyst Review Status | {{ final_analyst_review_status | default("Requires final analyst review") }} |
+| Report Generation Approval Status | {{ report_generation_approval.status | default("Not Recorded") }} |
+| Report Generation Approved By | {{ report_generation_approval.approved_by | default("Not Recorded") }} |
+| Containment Approval Status | {{ containment.approval_status | default("Pending analyst approval") }} |
+| Containment Execution Status | {{ containment.execution_status | default(containment.status) | replace("_", " ") }} |
+
+---
+
+## 2. Validation Checklist
+
+| Check | Status |
+|---|---|
+| Incident ID present | {{ "Pass" if incident_id != "UNKNOWN-INCIDENT" else "Fail" }} |
+| Alert ID present | {{ "Pass" if alert_id != "UNKNOWN-ALERT" else "Fail" }} |
+| Severity present | {{ "Pass" if severity.label != "Not Provided" else "Fail" }} |
+| Confidence present | {{ "Pass" if confidence.label != "Not Provided" else "Fail" }} |
+| Classification present | {{ "Pass" if classification != "Not Provided" else "Fail" }} |
+| Evidence present | {{ "Pass" if evidence else "Fail" }} |
+| IOCs present | {{ "Pass" if iocs else "Fail" }} |
+| LLM output quality acceptable | {{ "Pass" if llm_quality_status in ["accepted", "accepted_with_warnings", "not_used"] else "Review Required" }} |
+| IOC evidence links reviewed or summarised as gaps | {{ "Pass" if iocs else "Fail" }} |
+| Containment approval status recorded | {{ "Pass" if containment.approval_status != "Not Provided" else "Fail" }} |
+
+---
+
+## 3. LLM Analyst Review Guidance
+
+{% for point in analyst_guidance_bullets %}
+- {{ point }}
+{% endfor %}
+
+### 3.1 LLM-Generated SOC Analyst Review Checklist
+
+| Step | Analyst Action |
+|---|---|
+{% for item in soc_analyst_review_checklist_items %}
+| {{ loop.index }} | {{ item }} |
+{% endfor %}
+
+---
+
+## 4. Evidence Quality Checks
+
+- Confirm that each major finding has evidence references.
+- Confirm that missing facts are listed as evidence gaps.
+- Confirm that no unsupported IOCs, users, hosts, or timelines were created by the Reporting Agent.
+- Confirm that RAG context is used only for policy/procedure guidance, not incident facts.
+- Validate whether suspicious PowerShell execution completed successfully.
+- Validate whether credential exposure, mailbox rule abuse, OAuth abuse, or session misuse occurred.
+- Validate whether similar phishing emails were delivered to other recipients.
+- Validate whether any IOC without a displayed evidence reference requires additional NetWitness evidence.
+- Confirm whether the LLM narrative was accepted, partially replaced by fallback, or requires analyst correction.
+
+---
+
+## 5. Missing Information
+
+{% if missing_required_fields %}
+| Missing Field |
+|---|
+{% for field in missing_required_fields %}
+| {{ field }} |
+{% endfor %}
+{% else %}
+No required reporting fields are missing.
+{% endif %}
+
+---
+
+## 6. Analyst Corrections
+
+| Field | Analyst Update |
+|---|---|
+| Severity |  |
+| Confidence |  |
+| Classification |  |
+| Executive Summary |  |
+| Recommended Actions |  |
+| Evidence Gaps |  |
+
+---
+
+## 7. Approval Decision
+
+{% if approval_summary_table %}
+| Field | Value |
+|---|---|
+{% for label, value in approval_summary_table %}
+| {{ label }} | {{ value }} |
+{% endfor %}
+{% else %}
+| Field | Value |
+|---|---|
+| Approval Required | {{ approval.approval_required }} |
+| Report Generation Approval Status | {{ report_generation_approval.status | default("Not Recorded") }} |
+| Report Generation Approved By | {{ report_generation_approval.approved_by | default("Not Recorded") }} |
+| Containment Approval Status | {{ containment.approval_status | default("Pending analyst approval") }} |
+| Containment Execution Status | {{ containment.execution_status | default(containment.status) | replace("_", " ") }} |
+| Final Analyst Review Status | {{ final_analyst_review_status | default("Requires final analyst review") }} |
+| Analyst Comments | {{ approval.analyst_comments }} |
+{% endif %}
+
+---
+
+## 8. Learning Loop Feedback
+
+Learning updates should not be stored in ChromaDB unless a SOC analyst approves them.
+
+| Learning Item | Analyst Decision |
+|---|---|
+| Update report writing SOP | Requires analyst decision |
+| Update phishing playbook | Requires analyst decision |
+| Store prior case summary | Requires analyst decision |
+| Store false positive pattern | Requires analyst decision |
+
+---
+
+## 9. Sign-Off
+
+| Field | Value |
+|---|---|
+| Reviewed By |  |
+| Review Completed At |  |
+| Final Decision |  |
+| Digital Sign-Off |  |

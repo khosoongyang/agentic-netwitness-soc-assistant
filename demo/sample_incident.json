@@ -1,0 +1,43 @@
+{
+  "id": "INC-90417",
+  "title": "Repeated failed logons followed by privileged access from single source",
+  "created": "2026-07-13T03:41:22Z",
+  "riskScore": 82,
+  "priority": "High",
+  "status": "New",
+  "summary": "NetWitness detected 47 failed authentication attempts against account svc-backup on host FILESRV-02 from 10.14.77.203 within 6 minutes, followed by a successful interactive logon and immediate addition of the account to the local Administrators group.",
+  "categories": ["Credential Access", "Privilege Escalation"],
+  "alertCount": 3,
+  "sources": ["NetWitness Endpoint", "Windows Security Log"],
+  "eventTime": "2026-07-13T03:35:10Z",
+  "username": "svc-backup",
+  "hostname": "FILESRV-02",
+  "source_ip": "10.14.77.203",
+  "destination_ip": "10.14.20.11",
+  "events": [
+    {
+      "event.type": "authentication_failure",
+      "user.name": "svc-backup",
+      "host.name": "FILESRV-02",
+      "ip.src": "10.14.77.203",
+      "ip.dst": "10.14.20.11",
+      "event.time": "2026-07-13T03:35:10Z",
+      "count": 47
+    },
+    {
+      "event.type": "authentication_success",
+      "user.name": "svc-backup",
+      "user.role": "service_account",
+      "host.name": "FILESRV-02",
+      "ip.src": "10.14.77.203",
+      "event.time": "2026-07-13T03:41:02Z"
+    },
+    {
+      "event.type": "group_membership_change",
+      "change.type": "local_admin_add",
+      "user.name": "svc-backup",
+      "host.name": "FILESRV-02",
+      "event.time": "2026-07-13T03:41:19Z"
+    }
+  ]
+}

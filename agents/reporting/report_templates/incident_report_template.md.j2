@@ -1,0 +1,882 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/incident_report_template.md.j2
+   Purpose: Renders the complete final incident report from verified stage context.
+   Main functionality: Lays out incident facts, findings, timeline, MITRE, evidence, actions, and limitations.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: final_incident_report text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting generation, before analyst review and final approval.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: final_incident_report, Incident Report, [FYP-EXPORT]. #}
+# {{ report_title | default("Final Incident Report") }}
+
+## Document Control
+
+| Field | Value |
+|---|---|
+| Report Title | {{ report_title | default("Final Incident Report") }} |
+| Incident ID | {{ incident_id }} |
+| Alert ID | {{ alert_id }} |
+| Case Title | {{ case_title }} |
+| Report Version | {{ report_version | default("1.0") }} |
+| Report Status | {{ report_status_display | default(report_status) }} |
+| Validation Status | {{ validation_status_display | default(validation_status) }} |
+| Report Completeness Score | {{ report_completeness_score | default(report_quality_score | default("Not Recorded")) }}/100 |
+| Report Completeness Status | {{ report_completeness_status_display | default(report_quality_status | default("Not Recorded")) }} |
+| Report Classification | {{ report_classification | default("Internal / Restricted") }} |
+| Prepared By | {{ prepared_by | default("Reporting Agent") }} |
+| Reviewed By | SOC Analyst, pending |
+| Report Generation Approved By | {{ report_generation_approval.approved_by | default("Pending") }} |
+| Created At | {{ created_at }} |
+| Source System | {{ alert.source }} |
+| Generation Mode | {{ report_generation_mode }} |
+| RAG Used | {{ rag_used }} |
+| RAG Status | {{ rag_status_display | default(rag_status) }} |
+
+---
+
+
+## 1. Executive Summary
+
+### 1.1 Incident Overview
+
+{{ active_narrative.executive_summary }}
+
+### 1.2 Executive Conclusion
+
+Based on the available evidence, this incident is assessed as **{{ severity.label }}** severity with **{{ confidence.label }}** confidence. The current classification is **{{ classification }}**, and the most likely scenario is **{{ likely_scenario }}**.
+
+| Executive Field | Assessment |
+|---|---|
+| Incident Status | {{ report_status_display | default(report_status) }} |
+| Current Lifecycle Stage | {{ current_lifecycle_stage | default("Reporting and analyst review") }} |
+| Containment Status | {{ containment.status }} |
+| Report Generation Approval Status | {{ report_generation_approval.status | default("Not Recorded") }} |
+| Report Generation Approved By | {{ report_generation_approval.approved_by | default("Not Recorded") }} |
+| Containment Approval Status | {{ containment.approval_status | default("Pending analyst approval") }} |
+| Containment Execution Status | {{ containment.execution_status | default(containment.status) | replace("_", " ") }} |
+| Final Analyst Review Status | {{ final_analyst_review_status | default("Requires final analyst review") }} |
+| Final Disposition | {{ final_disposition | default("Pending SOC analyst review") }} |
+
+### 1.2.1 Correlated Alerts in This Incident
+
+{% if correlated_alerts %}
+This incident contains **{{ confirmed_alert_count }}** confirmed linked alert{% if confirmed_alert_count != 1 %}s{% endif %}. These alerts were grouped into the same incident ticket based on confirmed analyst decisions and recorded correlation evidence.
+
+| Alert ID | Alert Name | Source | Severity | Relationship | Linked By | Link Reason |
+|---|---|---|---|---|---|---|
+{% for item in correlated_alerts %}
+| {{ item.alert_id | default("Unknown") }} | {{ item.alert_name | default("Unknown") }} | {{ item.source | default("Unknown") }} | {{ item.severity | default("Unknown") }} | {{ item.relationship | default("Related") }} | {{ item.confirmed_by | default(item.linked_by | default("System")) }} | {{ item.link_reason | default("Confirmed ticket context") }} |
+{% endfor %}
+{% else %}
+No additional confirmed correlated alerts were attached to this incident ticket at report generation time.
+{% endif %}
+
+{% if pending_correlation_recommendations %}
+Pending correlation recommendations exist and should be reviewed separately before final closure. They are not treated as confirmed incident evidence until a SOC analyst confirms them.
+{% endif %}
+
+### 1.2.2 PowerShell Encoded Command Analysis
+
+{% if powershell_analysis %}
+| PowerShell Field | Assessment |
+|---|---|
+| Encoded Command Present | {{ powershell_analysis.encoded_command_present | default("Not Provided") }} |
+| Decode Status | {{ powershell_analysis.decode_status | default("Not Provided") }} |
+| Decoded Command Summary | {{ powershell_analysis.decoded_command_summary | default("Not Provided") }} |
+| PowerShell Risk | {{ powershell_analysis.risk_assessment.risk_level | default("Not Provided") }} |
+
+{% if powershell_analysis.suspicious_behaviours %}
+| Suspicious Behaviour | Risk | Evidence |
+|---|---|---|
+{% for behaviour in powershell_analysis.suspicious_behaviours %}
+| {{ behaviour.behaviour | default("Behaviour") }} | {{ behaviour.risk | default("Unknown") }} | {{ behaviour.evidence | default("Not Provided") }} |
+{% endfor %}
+{% endif %}
+
+{% if powershell_analysis.extracted_iocs %}
+Extracted PowerShell indicators were considered during threat intelligence enrichment where external indicators were available.
+{% endif %}
+
+{% if powershell_analysis.mitre_mapping %}
+| MITRE Technique ID | Technique |
+|---|---|
+{% for item in powershell_analysis.mitre_mapping %}
+| {{ item.technique_id | default("N/A") }} | {{ item.technique | default("Not Provided") }} |
+{% endfor %}
+{% endif %}
+{% else %}
+No decoded PowerShell command analysis was available for this incident. If this was a PowerShell Encoded Command alert, investigation confidence is limited by missing command-line telemetry.
+{% endif %}
+
+{% if archived_duplicate_tickets %}
+### 1.2.2 Analyst-Approved Archive and Merge Decisions
+
+The following grouping/archive actions were confirmed by a SOC analyst. Archived duplicate tickets were not deleted and remain auditable.
+
+| Recommendation | Source Ticket | Target Ticket | Archive Status | Reviewed By | Reason |
+|---|---|---|---|---|---|
+{% for item in archived_duplicate_tickets %}
+| {{ item.recommendation_type | default("Grouping decision") }} | {{ item.source_ticket_id | default("N/A") }} | {{ item.target_ticket_id | default(ticket_id) }} | {{ item.archive_status | default("confirmed") }} | {{ item.reviewed_by | default("SOC Analyst") }} | {{ item.reason | default(item.analyst_comments | default("Analyst-approved grouping/archive decision")) }} |
+{% endfor %}
+{% endif %}
+
+### 1.3 Business Impact Summary
+
+| Impact Area | Assessment |
+|---|---|
+| Known Business Impact | {{ impact_assessment.business | replace("Current business impact is limited to", "Known business impact is limited to") }} |
+| Security Risk | {{ impact_assessment.security }} |
+| Unconfirmed Impact | {{ impact_assessment.unconfirmed }} |
+| Affected Assets Count | {{ affected_assets | length }} |
+| Affected Users Count | {{ affected_users | length }} |
+| IOC Count | {{ iocs | length }} |
+| Evidence Item Count | {{ evidence | length }} |
+| Timeline Event Count | {{ timeline | length }} |
+
+### 1.4 Key Findings
+
+{% if evidence_backed_findings %}
+| Finding ID | Finding | Status | Confidence | Evidence References | Interpretation |
+|---|---|---|---|---|---|
+{% for finding in evidence_backed_findings %}
+| KF-{{ "%03d" | format(loop.index) }} | {{ finding.statement }} | {{ finding.status }} | {{ finding.confidence }} | {{ finding.evidence_refs | join(", ") }} | {{ finding.interpretation }} |
+{% endfor %}
+{% else %}
+No key findings were generated.
+{% endif %}
+
+---
+
+## 2. Basis of Review
+
+### 2.1 Purpose of Report
+
+This report provides a structured post-incident review of incident **{{ incident_id }}**. It is intended to support SOC analyst review, management decision-making, technical remediation, control improvement, and future response readiness.
+
+### 2.2 Review Scope
+
+This review covers the available evidence relating to alert detection, entity extraction, alert normalisation, threat intelligence enrichment, triage assessment, investigation findings, containment and approval status, impact assessment, lessons learnt, and remediation planning.
+
+### 2.3 Out of Scope
+
+The following areas are outside the scope of this report unless separately authorised: full legal investigation, full forensic disk imaging, malware reverse engineering, regulatory breach determination, disciplinary investigation, third-party contractual liability assessment, and complete enterprise-wide compromise assessment.
+
+### 2.4 Evidence Basis
+
+This report was prepared using the evidence available at generation time, including SIEM alerts, endpoint telemetry, network logs, authentication logs, threat intelligence enrichment, analyst notes, approval records, and local policies, procedures, or playbooks.
+
+Findings may be updated if additional logs, forensic artefacts, stakeholder inputs, or external intelligence become available.
+
+### 2.5 Review Limitations
+
+| Limitation Area | Assessment |
+|---|---|
+| Log Availability | {{ review_limitations.log_availability | default("Dependent on submitted input files and available SOC telemetry.") }} |
+| Endpoint Visibility | {{ review_limitations.endpoint_visibility | default("Dependent on available endpoint evidence in the investigation result.") }} |
+| Network Visibility | {{ review_limitations.network_visibility | default("Dependent on available network or SIEM evidence.") }} |
+| Threat Intelligence Coverage | {{ review_limitations.threat_intelligence | default("Public or internal threat intelligence may not cover all newly observed infrastructure.") }} |
+| Timestamp Accuracy | {{ review_limitations.timestamp_accuracy | default("Timeline accuracy depends on source system clock synchronisation.") }} |
+| Evidence Completeness | {{ review_limitations.evidence_completeness | default("Missing evidence is documented in the evidence gap section.") }} |
+
+---
+
+## 3. Severity, Confidence and Evidence Methodology
+
+### 3.1 Severity Rating Methodology
+
+| Severity | Description |
+|---|---|
+| Critical | Confirmed or highly likely compromise affecting critical systems, sensitive data, essential services, or requiring urgent containment. |
+| High | Strong evidence of malicious activity with meaningful risk to systems, users, data, or operations. |
+| Medium | Suspicious activity requiring investigation, but limited evidence of compromise or business impact. |
+| Low | Weak indicators, limited exposure, minimal impact, or activity likely to be benign. |
+| Informational | Not an incident, but useful for awareness, monitoring, or tuning. |
+
+### 3.2 Applied Severity Assessment
+
+| Field | Value |
+|---|---|
+| Severity | {{ severity.label }} |
+| Severity Reason | {{ severity.reason }} |
+| Confidence | {{ confidence.label }} |
+| Confidence Reason | {{ confidence.reason }} |
+| Overall Report Confidence | {{ overall_report_confidence | default(confidence.label) }} |
+
+### 3.3 Confidence Rating Methodology
+
+| Confidence | Description |
+|---|---|
+| High | Multiple reliable evidence sources support the finding, with minimal conflicting information. |
+| Medium | Some evidence supports the finding, but there are evidence gaps or unresolved questions. |
+| Low | Limited evidence, incomplete logs, uncertain threat intelligence correlation, or unverified assumptions. |
+
+### 3.4 Evidence Reliability Model
+
+| Evidence Type | Reliability | Notes |
+|---|---|---|
+| Raw SIEM Logs | High | Strong evidence if source integrity, timestamp accuracy, and log completeness are reliable. |
+| Endpoint Telemetry | High | Strong evidence for process, file, registry, user, and host-level activity. |
+| Network Logs | High | Strong evidence for traffic flows, destinations, ports, and protocol activity. |
+| Authentication Logs | High | Strong evidence for login activity, failed attempts, access patterns, and privilege use. |
+| SIEM Correlation Alert | Medium | Useful for detection, but should be validated against raw logs or supporting telemetry. |
+| Threat Intelligence Match | Medium | Useful for context, but reputation alone should not confirm compromise. |
+| Analyst Notes | Medium | Useful for interpretation, but should be supported by technical evidence. |
+| User Report | Low to Medium | Useful for context, but requires technical validation. |
+| External Advisory | Medium | Useful for broader threat context, but may not prove local compromise. |
+
+---
+
+## 4. Incident Background
+
+### 4.1 Environment Context
+
+| Field | Value |
+|---|---|
+| Environment Type | {{ environment_type | default("SOC-monitored environment") }} |
+| Alert Source | {{ alert.source }} |
+| Alert Name | {{ alert.name }} |
+| Alert Timestamp | {{ alert.timestamp }} |
+| Asset Criticality | {{ asset_criticality | default("See affected assets table") }} |
+| Business Owner | {{ business_owner | default("") }} |
+| Technical Owner | {{ technical_owner | default("") }} |
+
+### 4.2 Detection Context
+
+| Field | Value |
+|---|---|
+| Initial Detection Time | {{ alert.timestamp }} |
+| Alert ID | {{ alert_id }} |
+| Rule ID | {{ rule_id | default("") }} |
+| Original Alert Risk Score | {{ original_alert_risk_score | default(initial_risk_score | default("")) }} |
+| Enriched Risk Score | {{ enriched_risk_score | default(enrichment_risk_score | default("")) }} |
+| Final Risk Rating | {{ final_risk_rating | default(severity.label) }} |
+
+### 4.3 Incident Classification
+
+| Category | Classification |
+|---|---|
+| Incident Type | {{ classification }} |
+| Attack Category | {{ scenario_type }} |
+| Malware / Threat Family | {{ malware_family | default("") }} |
+| Threat Actor | {{ threat_actor | default("") }} |
+| Likely Scenario | {{ likely_scenario }} |
+| Incident Priority | {{ severity.label }} |
+| Escalation Level | {{ escalation_level | default("SOC analyst review") }} |
+
+---
+
+## 5. Incident Timeline
+
+{% if timeline %}
+{% set tbl = compact_tables.timeline | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No timeline was provided. This is recorded as an evidence gap if required.
+{% endif %}
+
+### 5.1 Key Response Milestones
+
+| Milestone | Status |
+|---|---|
+| First Alert Generated | {{ alert.timestamp }} |
+| Triage Completed | See 5.2 Triage Summary below. |
+| Investigation Completed | See 5.2 Investigation Summary below. |
+| Containment Approval Status | {{ containment.approval_status | default("Requires analyst validation") }} |
+| Containment Execution | {{ containment.execution_status | default(containment.status) | replace("_", " ") }} |
+| Report Generated | {{ created_at }} |
+| Incident Closure | Pending analyst review |
+
+### 5.2 Triage and Investigation Summary
+
+**Triage Summary**
+
+{{ triage_summary | default("Not Provided") }}
+
+**Investigation Summary**
+
+{{ investigation_summary | default("Not Provided") }}
+
+---
+
+## 6. Technical Findings
+
+### 6.1 Alert and Telemetry Analysis
+
+{{ active_narrative.technical_analysis }}
+
+### 6.2 Affected Assets
+
+{% if affected_assets %}
+{% set tbl = compact_tables.assets | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No affected assets were provided.
+{% endif %}
+
+### 6.3 Affected Users
+
+{% if affected_users %}
+{% set tbl = compact_tables.users | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No affected users were provided.
+{% endif %}
+
+### 6.4 Indicators of Compromise
+
+{% if iocs %}
+{% set tbl = compact_tables.iocs | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No IOCs were provided.
+{% endif %}
+
+### 6.5 Evidence Register
+
+{% set er = compact_evidence_register | default({}) %}
+{% if er %}
+{% if er.summary %}
+{{ er.summary }}
+
+{% endif %}
+{% if er.columns %}
+{% set cols = er.columns %}
+{% set rows = er.rows %}
+| {% for col in cols %}{{ col }} | {% endfor %}
+| {% for col in cols %}--- | {% endfor %}
+{% for row in rows %}
+| {{ row[0] | default("") }} | {% for cell in row[1:] %}{{ cell | default("") }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% if er.notes %}
+{% for note in er.notes %}
+- {{ note }}
+{% endfor %}
+{% endif %}
+{% else %}
+{% if evidence %}
+| Evidence ID | Source | Type | Description | Timestamp | Confidence | Raw Reference |
+|---|---|---|---|---|---|---|
+{% for item in evidence %}
+| {{ item.id }} | {{ item.source }} | {{ item.type }} | {{ item.description }} | {{ item.timestamp }} | {{ item.confidence }} | {{ item.raw_reference }} |
+{% endfor %}
+{% else %}
+No evidence was provided.
+{% endif %}
+{% endif %}
+
+---
+
+### 6.6 Evidence Gaps and Limitations
+
+{% if evidence_gaps %}
+| Priority | Evidence Gap | Required Data / Reason |
+|---|---|---|
+{% for gap in evidence_gaps %}
+| {{ gap.priority | default("Medium") }} | {{ gap.gap | default(gap.missing_field | default("Not Provided")) }} | {{ gap.required_data | default(gap.reason | default("Required for analyst validation")) }} |
+{% endfor %}
+{% else %}
+No evidence gaps were recorded.
+{% endif %}
+
+---
+
+## 7. Attack Mapping
+
+### 7.1 MITRE ATT&CK Mapping
+
+{% if mitre_attack_mapping %}
+{% set tbl = compact_tables.mitre | default({}) %}
+{% if tbl.summary %}
+{{ tbl.summary }}
+
+{% endif %}
+{% if tbl.columns %}
+| {% for col in tbl.columns %}{{ col }} | {% endfor %}
+| {% for col in tbl.columns %}--- | {% endfor %}
+{% for row in tbl.rows %}
+| {% for cell in row %}{{ cell }} | {% endfor %}
+{% endfor %}
+{% endif %}
+{% else %}
+No MITRE ATT&CK mapping was provided.
+{% endif %}
+
+### 7.2 Cyber Kill Chain Mapping
+
+| Kill Chain Phase | Observed? | Evidence |
+|---|---|---|
+| Reconnaissance | Not Confirmed | No evidence provided unless listed in timeline. |
+| Weaponisation | Not Confirmed | No evidence provided unless listed in timeline. |
+| Delivery | {{ "Observed" if scenario_type == "phishing" else "Not Confirmed" }} | {{ "Phishing scenario indicated by classification or likely scenario." if scenario_type == "phishing" else "No direct evidence provided." }} |
+| Exploitation | Requires validation | Validate payload execution, suspicious commands, or vulnerable service activity. |
+| Installation | Requires validation | Validate persistence, dropped files, services, scheduled tasks, or registry changes. |
+| Command and Control | Requires validation | Validate network connections, DNS, proxy logs, and threat intelligence matches. |
+| Actions on Objectives | Requires validation | Validate data access, exfiltration, encryption, disruption, or lateral movement. |
+
+### 7.3 Attack Narrative
+
+Based on the available evidence, the likely attack narrative is:
+
+{{ active_narrative.attack_narrative }}
+
+---
+
+## 8. Impact Assessment
+
+| Impact Area | Assessment |
+|---|---|
+| Business Impact | {{ impact_assessment.business }} |
+| Security Risk | {{ impact_assessment.security }} |
+| Not Yet Confirmed | {{ impact_assessment.unconfirmed }} |
+| Impact Confidence | {{ confidence.label }} |
+
+### 8.1 Analyst Impact Explanation
+
+{{ active_narrative.business_impact_explanation }}
+
+### 8.2 Data Impact Assessment
+
+{% if data_impact_summary %}
+{{ data_impact_summary }}
+{% else %}
+No evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.
+{% endif %}
+
+---
+
+## 9. SOC Analyst Review Guidance
+
+### 9.1 Analyst Review Guidance
+
+{% for point in analyst_guidance_bullets %}
+- {{ point }}
+{% endfor %}
+
+### 9.2 SOC Analyst Review Checklist
+
+| Step | Analyst Action |
+|---|---|
+{% for item in soc_analyst_review_checklist_items %}
+| {{ loop.index }} | {{ item }} |
+{% endfor %}
+
+---
+
+## 10. Response Actions Taken
+
+### 10.1 Triage and Escalation
+
+| Action | Status | Evidence / Notes |
+|---|---|---|
+| Alert reviewed | Completed if triage result is present | {{ triage_summary | default("Not Provided") }} |
+| Severity assigned | {{ severity.label }} | {{ severity.reason }} |
+| Confidence assigned | {{ confidence.label }} | {{ confidence.reason }} |
+| Threat intelligence checked | {{ "Completed" if iocs else "Not Provided" }} | {{ iocs | length }} IOC(s) recorded. |
+| Escalation decision made | {{ approval.approval_status }} | {{ approval.analyst_comments }} |
+
+### 10.2 Containment and Approval Status
+
+{% if approval_summary_table %}
+| Field | Value |
+|---|---|
+{% for label, value in approval_summary_table %}
+| {{ label }} | {{ value }} |
+{% endfor %}
+{% else %}
+| Field | Value |
+|---|---|
+| Containment Status | {{ containment.status }} |
+| Recommended Containment Action | {{ containment.recommended_action }} |
+| Approval Required | {{ approval.approval_required }} |
+| Report Generation Approval Status | {{ report_generation_approval.status | default("Not Recorded") }} |
+| Report Generation Approved By | {{ report_generation_approval.approved_by | default("Not Recorded") }} |
+| Containment Approval Status | {{ containment.approval_status | default("Pending analyst approval") }} |
+| Containment Execution Status | {{ containment.execution_status | default(containment.status) | replace("_", " ") }} |
+| Final Analyst Review Status | {{ final_analyst_review_status | default("Requires final analyst review") }} |
+| Approved Action | {{ approval.approved_action }} |
+| Analyst Comments | {{ approval.analyst_comments }} |
+{% endif %}
+
+### 10.3 Recommended Actions
+
+{% if recommended_containment_actions %}
+{%- for action in recommended_containment_actions %}
+- {{ action }}
+{%- endfor %}
+{% else %}
+No recommended containment actions were provided by the Investigation Agent.
+{% endif %}
+
+---
+
+## 11. Root Cause and Contributing Factors
+
+### 11.1 Root Cause Assessment
+
+| Field | Assessment |
+|---|---|
+| Likely Root Cause | {{ root_cause.likely_root_cause | default("Pending further analyst validation") }} |
+| Root Cause Category | {{ root_cause.category | default(scenario_type) }} |
+| Root Cause Confidence | {{ root_cause.confidence | default(confidence.label) }} |
+| Evidence Basis | {{ root_cause.evidence_basis | default("Based on classification, likely scenario, timeline, IOCs, and available investigation evidence.") }} |
+
+### 11.2 Contributing Factors
+
+{% if contributing_factors %}
+| Factor | Description | Impact |
+|---|---|---|
+{% for factor in contributing_factors %}
+| {{ factor.factor }} | {{ factor.description }} | {{ factor.impact }} |
+{% endfor %}
+{% else %}
+| Evidence Gap | Additional evidence is required to confirm contributing factors. | Root cause certainty remains limited until investigation pivots are completed. |
+{% endif %}
+
+---
+
+## 12. Governance, Risk and Compliance Considerations
+
+### 12.1 Governance Assessment
+
+| Area | Assessment |
+|---|---|
+| Incident Response Plan Followed | Requires analyst validation against local case notes. |
+| Escalation Process Followed | {{ "Recorded in approval context" if approval.approval_status != "Not Provided" else "Requires analyst validation" }} |
+| Relevant Playbook Followed | {{ relevant_playbook | default("Scenario-specific playbook to be validated") }} |
+| Playbook Selection Note | {{ playbook_selection_note | default("Scenario-specific playbook should be validated by a SOC analyst.") }} |
+| Analyst Approval Required | {{ approval.approval_required }} |
+| Report Generation Approval Status | {{ report_generation_approval.status | default("Not Recorded") }} |
+| Final Analyst Review Status | {{ final_analyst_review_status | default("Requires final analyst review") }} |
+| Management Notification Required | To Be Determined |
+| Evidence Preservation Required | Yes, if incident remains High/Critical or involves sensitive data. |
+| Evidence Preservation Completed | Not evidenced in supplied source context. |
+
+### 12.2 Regulatory and Notification Considerations
+
+| Area | Assessment |
+|---|---|
+| Personal Data Involved | Cannot determine from current evidence. |
+| Customer Notification Required | To Be Determined by Legal / Compliance |
+| Regulator Notification Required | To Be Determined by Legal / Compliance |
+| Law Enforcement Notification Required | To Be Determined by Management / Legal |
+| Contractual Notification Required | To Be Determined by Service Owner / Legal |
+| Notification Status | Legal / Compliance decision only if data impact is confirmed. |
+
+### 12.3 Control Gap Assessment
+
+| Control Domain | Gap Identified | Risk Level |
+|---|---|---|
+| Identity and Access Management | Validate credential exposure, MFA status, suspicious logins, and privileged access. | {{ severity.label }} |
+| Endpoint Security | Validate endpoint process execution, malware artefacts, containment status, and persistence. | {{ severity.label }} |
+| Network Security | Validate suspicious outbound traffic, C2 indicators, DNS, proxy, and firewall activity. | {{ severity.label }} |
+| Logging and Monitoring | Validate whether logs are complete enough to reconstruct the incident. | {{ "High" if evidence_gaps else "Medium" }} |
+| Vulnerability Management | Validate whether exploitation involved known vulnerability or missing patch. | Requires validation |
+| Backup and Recovery | Validate restoration needs if disruption, encryption, or destructive activity is found. | Requires validation |
+| User Awareness | Validate whether user action contributed to the incident, especially for phishing. | {{ "Medium" if scenario_type == "phishing" else "Requires validation" }} |
+| Incident Response Process | Validate approval, escalation, evidence preservation, and closure workflow. | {{ severity.label }} |
+
+---
+
+## 13. Control and Framework Mapping
+
+{% if framework_mappings %}
+### 13.1 NIST Cybersecurity Framework Mapping
+
+| Finding | NIST CSF Function | Control Gap | Recommended Improvement |
+|---|---|---|---|
+{% for item in framework_mappings %}
+| {{ item.finding }} | {{ item.nist_csf_function }} | {{ item.control_gap }} | {{ item.recommended_improvement }} |
+{% endfor %}
+{% endif %}
+
+### 13.2 Policy Application Summary
+
+| Source | Relevant Guidance | Application to This Case |
+|---|---|---|
+{% for item in policy_application_summary %}
+| {{ item.source }} | {{ item.relevant_guidance }} | {{ item.application }} |
+{% endfor %}
+
+### 13.3 Knowledge Files Used
+
+{% for file in loaded_knowledge_files %}
+- {{ file }}
+{% endfor %}
+
+{% if excluded_playbooks %}
+### 13.4 Playbooks Excluded in This Version
+
+{% for file in excluded_playbooks %}
+- {{ file }}
+{% endfor %}
+{% endif %}
+
+Raw retrieved RAG snippets are stored in `enriched_reporting_context.json` for traceability, but this report only shows the analyst-friendly policy application summary.
+
+---
+
+## 14. Lessons Learnt
+
+### 14.1 What Worked Well
+
+| Area | Observation |
+|---|---|
+| Detection | Alert context was available from {{ alert.source }}. |
+| Alert Processing | Reporting Agent consolidated enriched alert, triage, investigation, and approval inputs. |
+| Threat Intelligence | {{ iocs | length }} IOC(s) were available for reporting and evidence linking. |
+| Triage | Severity and confidence were normalised, with stale or missing fields flagged. |
+| Reporting | Evidence gaps and validation status were explicitly documented. |
+
+### 14.2 What Did Not Work Well / Requires Validation
+
+Evidence gaps and limitations are listed once in section 6.6. Use that section for analyst validation before closure.
+
+### 14.3 Opportunities for Improvement
+
+| Improvement Area | Recommendation |
+|---|---|
+| Detection Engineering | Tune detection rules based on confirmed true positive or false positive outcome. |
+| Threat Intelligence | Record IOC source, confidence, reputation, and evidence references. |
+| Playbook Maturity | Ensure the relevant playbook lists required evidence, approval points, and closure criteria. |
+| Automation | Prevent stale context by validating severity, confidence, incident ID, and latest workflow stage before report generation. |
+| Analyst Review | Require human review before closure, disruptive containment, or management reporting. |
+| Evidence Handling | Preserve evidence references and avoid unsupported narrative claims. |
+
+---
+
+## 15. Recommendations and Remediation Roadmap
+
+### 15.1 Priority Recommendations
+
+{% if management_action_plan %}
+Priority recommendations are listed in section 10.3 Recommended Actions to avoid repeating the same action table without additional value.
+{% else %}
+No remediation roadmap was generated.
+{% endif %}
+
+### 15.2 Short-Term Actions, 0 to 30 Days
+
+- Validate missing evidence gaps listed in this report.
+- Confirm containment and analyst approval status.
+- Review and block confirmed malicious IOCs where appropriate.
+- Preserve relevant logs, alerts, and endpoint evidence.
+
+### 15.3 Medium-Term Actions, 31 to 90 Days
+
+- Improve detection logic based on confirmed findings.
+- Update the relevant playbook with any missing investigation pivots.
+- Review account, endpoint, email, and network controls related to the incident.
+- Conduct a post-incident review with SOC, IT operations, and business stakeholders.
+
+### 15.4 Long-Term Actions, Beyond 90 Days
+
+- Improve incident response maturity using lessons learnt.
+- Build stronger control mapping across detection, response, and recovery.
+- Expand automation coverage for evidence collection, validation, and report quality checks.
+- Maintain a prior-case knowledge base after SOC analyst approval.
+
+---
+
+## 16. Management Response and Action Plan
+
+{% if management_action_plan %}
+Management response is required for the recommended actions above. Target dates and owners should be assigned during management review when they are not already present in the source case context.
+{% else %}
+No management action plan was generated.
+{% endif %}
+
+---
+
+## 17. Final Assessment
+
+### 17.1 Assessment Narrative
+
+{{ active_narrative.conclusion }}
+
+### 17.2 Closure Checklist
+
+| Closure Requirement | Status |
+|---|---|
+| Incident severity confirmed | {{ "Pass" if severity.label != "Not Provided" else "Fail" }} |
+| Confidence confirmed | {{ "Pass" if confidence.label != "Not Provided" else "Fail" }} |
+| Root cause assessed | {{ "Partial" if root_cause else "Pending" }} |
+| Containment status recorded | {{ "Pass" if containment.status != "Not Provided" else "Fail" }} |
+| Recovery validated | Requires analyst review |
+| Business owner informed | Not evidenced in supplied source context |
+| Recommendations documented | {{ "Pass" if management_action_plan else "Fail" }} |
+| Analyst review completed | Requires final analyst review |
+
+---
+
+## 18. Appendices
+
+The appendices below are analyst-facing summaries. Full raw artefacts remain available through the JSON export and system evidence files.
+
+{% set appendix = appendix_summaries | default({}) %}
+{% set raw_alert_summary = appendix.get("raw_alert", {}) %}
+{% set triage_appendix = appendix.get("triage", {}) %}
+{% set investigation_appendix = appendix.get("investigation", {}) %}
+{% set approval_appendix = appendix.get("approval", {}) %}
+
+### Appendix A: Raw Alert / Enriched Alert Summary
+
+| Field | Value |
+|---|---|
+{% if raw_alert_summary %}
+{% for field, value in raw_alert_summary.items() %}
+| {{ field }} | {{ value }} |
+{% endfor %}
+{% else %}
+| Summary | Not available in reporting context. |
+{% endif %}
+
+### Appendix B: Triage Summary
+
+| Field | Value |
+|---|---|
+{% if triage_appendix %}
+{% for field, value in triage_appendix.items() %}
+| {{ field }} | {{ value }} |
+{% endfor %}
+{% else %}
+| Summary | Not available in reporting context. |
+{% endif %}
+
+### Appendix C: Investigation Summary
+
+| Field | Value |
+|---|---|
+{% if investigation_appendix %}
+{% for field, value in investigation_appendix.items() %}
+| {{ field }} | {{ value }} |
+{% endfor %}
+{% else %}
+| Summary | Not available in reporting context. |
+{% endif %}
+
+### Appendix D: Approval Summary
+
+| Field | Value |
+|---|---|
+{% if approval_appendix %}
+{% for field, value in approval_appendix.items() %}
+| {{ field }} | {{ value }} |
+{% endfor %}
+{% else %}
+| Summary | Not available in reporting context. |
+{% endif %}
+
+### Appendix E: Chain of Custody
+
+{% if chain_of_custody_note %}
+{{ chain_of_custody_note }}
+{% elif evidence %}
+| Evidence ID | Collected By | Collection Time | Storage Location | Hash / Integrity Check | Notes |
+|---|---|---|---|---|---|
+{% for item in evidence %}
+| {{ item.id }} | {{ item.collector | default("SOC / Reporting Workflow") }} | {{ item.collection_time | default(item.timestamp | default("")) }} | {{ item.storage_location | default("Source system or case folder") }} | {{ item.integrity | default(item.hash | default("")) }} | {{ item.raw_reference | default("") }} |
+{% endfor %}
+{% else %}
+Formal chain-of-custody metadata was not supplied in the current source context. Evidence collection records should be validated against the source case folder or SIEM export before legal or forensic use.
+{% endif %}
+
+---
+
+## 19. Report Validation Checklist
+
+{% if report_validation_checks %}
+| Validation Item | Status |
+|---|---|
+{% for item in report_validation_checks %}
+| {{ item.check }} | {{ item.status }} |
+{% endfor %}
+{% else %}
+No report validation checks were generated.
+{% endif %}
+
+---
+
+## 20. Reporting Agent Quality Checks
+
+| Quality Check | Result |
+|---|---|
+| Missing required fields | {{ missing_required_fields | join(", ") if missing_required_fields else "None" }} |
+| Recovered fields | {{ recovered_fields | map(attribute="field") | join(", ") if recovered_fields else "None" }} |
+| Fields recovered from fallback sources | {{ quality_checks.fields_recovered_from_fallback_sources | default(0) }} |
+| IOCs deduplicated | {{ quality_checks.iocs_deduplicated | default(0) }} |
+| Evidence links recovered | {{ quality_checks.evidence_links_recovered | default(0) }} |
+| Placeholders reduced | {{ quality_checks.placeholders_reduced | default(0) }} |
+| Fields still genuinely unavailable | {{ quality_checks.fields_still_unavailable_from_source_telemetry | default(0) }} |
+| Conflicting severity values detected | {{ quality_checks.conflicting_severity_values_detected | default("Not Detected") }} |
+| Conflicting confidence values detected | {{ quality_checks.conflicting_confidence_values_detected | default("Not Detected") }} |
+| Stale context detected | {{ quality_checks.stale_context_detected | default("Not Detected") }} |
+| Triage result available | {{ quality_checks.triage_result_available | default("Unknown") }} |
+| Investigation result available | {{ quality_checks.investigation_result_available | default("Unknown") }} |
+| Threat intelligence result available | {{ quality_checks.threat_intelligence_result_available | default("Unknown") }} |
+| Human approval required | {{ approval.approval_required }} |
+| Report Generation Approval Status | {{ report_generation_approval.status | default("Not Recorded") }} |
+| Report Generation Approved By | {{ report_generation_approval.approved_by | default("Not Recorded") }} |
+| Containment Approval Status | {{ containment.approval_status | default("Pending analyst approval") }} |
+| Containment Execution Status | {{ containment.execution_status | default(containment.status) | replace("_", " ") }} |
+| Final Analyst Review Status | {{ final_analyst_review_status | default("Requires final analyst review") }} |
+| Fallback logic used | {{ quality_checks.fallback_logic_used | default("See recovered fields and LLM enhancement status") }} |
+| LLM Used | {{ llm_used }} |
+| LLM enhancement status | {{ llm_status_display | default(llm_status) }} |
+| LLM Quality Status / Enhancement Quality | {{ llm_quality_status }} |
+| LLM Attempt Count | {{ llm_attempt_count | default("Not Recorded") }} |
+| LLM Cache Status | {{ llm_cache_status_display | default(llm_cache_status | default("Not Recorded")) }} |
+| LLM Explanation | {{ llm_status_explanation | default("See guardrail summary below" if llm_quality_issues else "None") }} |
+| Rule-based validation status | {{ validation_status_display | default(validation_status) }} |
+
+### 20.1 LLM Section Guardrail Summary
+
+{% if llm_section_results %}
+| Section | Status | Hard Fail Issues | Soft Warnings |
+|---|---|---|---|
+{% for section, result in llm_section_results.items() %}
+| {{ section }} | {{ result.status }} | {{ result.hard_fail_issues | join(", ") if result.hard_fail_issues else "None" }} | {{ result.soft_warnings | join(", ") if result.soft_warnings else "None" }} |
+{% endfor %}
+{% else %}
+No LLM section result details recorded.
+{% endif %}

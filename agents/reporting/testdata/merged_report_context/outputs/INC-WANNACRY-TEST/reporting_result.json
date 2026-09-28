@@ -1,0 +1,517 @@
+{
+    "schema_version": "reporting-result-v1",
+    "incident_id": "INC-WANNACRY-TEST",
+    "alert_id": "NW-WCRY-445-0001",
+    "report_status": "Generated for analyst review",
+    "report_generation_mode": "deterministic_facts_plus_template_export",
+    "validation_status": "Requires analyst validation",
+    "missing_required_fields": [
+        "No additional host telemetry was supplied."
+    ],
+    "recovered_fields": [
+        {
+            "field": "host",
+            "value": "FINANCE-WKS-017",
+            "recovered_from": "enriched_alert",
+            "source_path": "host",
+            "confidence": "High",
+            "evidence_id": "EV-003",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "source_ip",
+            "value": "10.20.14.117",
+            "recovered_from": "enriched_alert",
+            "source_path": "source_ip",
+            "confidence": "High",
+            "evidence_id": "EV-004",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "destination_ip",
+            "value": "104.17.244.81",
+            "recovered_from": "enriched_alert",
+            "source_path": "destination_ip",
+            "confidence": "High",
+            "evidence_id": "EV-010",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "domain",
+            "value": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "recovered_from": "enriched_alert",
+            "source_path": "domain",
+            "confidence": "High",
+            "evidence_id": "EV-013",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "url",
+            "value": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "recovered_from": "enriched_alert",
+            "source_path": "url",
+            "confidence": "High",
+            "evidence_id": "EV-014",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "sha256",
+            "value": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "recovered_from": "enriched_alert",
+            "source_path": "sha256",
+            "confidence": "High",
+            "evidence_id": "EV-015",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "process_name",
+            "value": "mssecsvc.exe",
+            "recovered_from": "enriched_alert",
+            "source_path": "process_name",
+            "confidence": "High",
+            "evidence_id": "EV-006",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "process_path",
+            "value": "C:\\Windows\\mssecsvc.exe",
+            "recovered_from": "enriched_alert",
+            "source_path": "process_path",
+            "confidence": "High",
+            "evidence_id": "EV-007",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "mitre_technique_id",
+            "value": "T1486",
+            "recovered_from": "enriched_alert",
+            "source_path": "mitre_technique_id",
+            "confidence": "High",
+            "evidence_id": "EV-016",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "severity",
+            "value": "Critical",
+            "recovered_from": "investigation_result",
+            "source_path": "severity",
+            "confidence": "High",
+            "evidence_id": "EV-001",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "confidence",
+            "value": "High",
+            "recovered_from": "investigation_result",
+            "source_path": "confidence",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "classification",
+            "value": "Likely True Positive",
+            "recovered_from": "investigation_result",
+            "source_path": "classification",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "approval_status",
+            "value": "approved",
+            "recovered_from": "approval_result",
+            "source_path": "approval_status",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "analyst_decision",
+            "value": "approved",
+            "recovered_from": "approval_result",
+            "source_path": "decision",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "approved_by",
+            "value": "Soong Yang",
+            "recovered_from": "approval_result",
+            "source_path": "analyst",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "asset_ip",
+            "value": "10.20.14.117",
+            "recovered_from": "enriched_alert",
+            "source_path": "source_ip",
+            "confidence": "High",
+            "evidence_id": "EV-004",
+            "reason": "Recovered from deterministic merged report context."
+        }
+    ],
+    "report_completeness_score": null,
+    "report_completeness_status": "not_recorded",
+    "report_completeness": {},
+    "quality_checks": {
+        "conflicting_severity_values_detected": "Not Detected",
+        "conflicting_confidence_values_detected": "Not Detected",
+        "stale_context_detected": "Not Detected",
+        "triage_result_available": "Yes",
+        "investigation_result_available": "Yes",
+        "threat_intelligence_result_available": "Yes",
+        "fallback_logic_used": "Yes",
+        "fields_recovered_from_fallback_sources": 2,
+        "iocs_deduplicated": 41,
+        "evidence_links_recovered": 11,
+        "placeholders_reduced": 84,
+        "fields_still_unavailable_from_source_telemetry": 51,
+        "final_placeholder_count": 51,
+        "evidence_register_placeholders": 0.42857142857142855,
+        "approval_section_placeholders": 0.1,
+        "containment_section_placeholders": 0.2857142857142857,
+        "data_impact_placeholders": 1.0,
+        "chain_of_custody_placeholders": 1.0,
+        "columns_hidden_due_to_low_information_value": 13,
+        "rows_hidden_due_to_no_useful_values": 0,
+        "missing_fields_summarised_into_evidence_gaps": 1,
+        "ai_narrative_sections_used_to_reduce_placeholder_repetition": 0
+    },
+    "field_provenance": {
+        "host": {
+            "value": "FINANCE-WKS-017",
+            "source": "enriched_alert",
+            "source_path": "host",
+            "confidence": "High",
+            "evidence_id": "EV-003"
+        },
+        "source_ip": {
+            "value": "10.20.14.117",
+            "source": "enriched_alert",
+            "source_path": "source_ip",
+            "confidence": "High",
+            "evidence_id": "EV-004"
+        },
+        "destination_ip": {
+            "value": "104.17.244.81",
+            "source": "enriched_alert",
+            "source_path": "destination_ip",
+            "confidence": "High",
+            "evidence_id": "EV-010"
+        },
+        "domain": {
+            "value": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "source": "enriched_alert",
+            "source_path": "domain",
+            "confidence": "High",
+            "evidence_id": "EV-013"
+        },
+        "url": {
+            "value": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "source": "enriched_alert",
+            "source_path": "url",
+            "confidence": "High",
+            "evidence_id": "EV-014"
+        },
+        "sha256": {
+            "value": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "source": "enriched_alert",
+            "source_path": "sha256",
+            "confidence": "High",
+            "evidence_id": "EV-015"
+        },
+        "process_name": {
+            "value": "mssecsvc.exe",
+            "source": "enriched_alert",
+            "source_path": "process_name",
+            "confidence": "High",
+            "evidence_id": "EV-006"
+        },
+        "process_path": {
+            "value": "C:\\Windows\\mssecsvc.exe",
+            "source": "enriched_alert",
+            "source_path": "process_path",
+            "confidence": "High",
+            "evidence_id": "EV-007"
+        },
+        "mitre_technique_id": {
+            "value": "T1486",
+            "source": "enriched_alert",
+            "source_path": "mitre_technique_id",
+            "confidence": "High",
+            "evidence_id": "EV-016"
+        },
+        "severity": {
+            "value": "Critical",
+            "source": "investigation_result",
+            "source_path": "severity",
+            "confidence": "High",
+            "evidence_id": "EV-001"
+        },
+        "confidence": {
+            "value": "High",
+            "source": "investigation_result",
+            "source_path": "confidence",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "classification": {
+            "value": "Likely True Positive",
+            "source": "investigation_result",
+            "source_path": "classification",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "approval_status": {
+            "value": "approved",
+            "source": "approval_result",
+            "source_path": "approval_status",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "analyst_decision": {
+            "value": "approved",
+            "source": "approval_result",
+            "source_path": "decision",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "approved_by": {
+            "value": "Soong Yang",
+            "source": "approval_result",
+            "source_path": "analyst",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "asset_ip": {
+            "value": "10.20.14.117",
+            "source": "enriched_alert",
+            "source_path": "source_ip",
+            "confidence": "High",
+            "evidence_id": "EV-004"
+        }
+    },
+    "evidence_index": {
+        "severity: critical": [
+            "EV-001"
+        ],
+        "critical": [
+            "EV-001"
+        ],
+        "risk_score: 98.0": [
+            "EV-002"
+        ],
+        "98.0": [
+            "EV-002"
+        ],
+        "host: finance-wks-017": [
+            "EV-003"
+        ],
+        "finance-wks-017": [
+            "EV-003"
+        ],
+        "ip: 10.20.14.117": [
+            "EV-004"
+        ],
+        "10.20.14.117": [
+            "EV-004"
+        ],
+        "username: acme\\lim.huiwen": [
+            "EV-005"
+        ],
+        "acme\\lim.huiwen": [
+            "EV-005"
+        ],
+        "file_name: mssecsvc.exe": [
+            "EV-006"
+        ],
+        "mssecsvc.exe": [
+            "EV-006"
+        ],
+        "process_path: c:\\windows\\mssecsvc.exe": [
+            "EV-007"
+        ],
+        "c:\\windows\\mssecsvc.exe": [
+            "EV-007"
+        ],
+        "parent_process_name: lsass.exe": [
+            "EV-008"
+        ],
+        "lsass.exe": [
+            "EV-008"
+        ],
+        "command_line: c:\\windows\\mssecsvc.exe -m security": [
+            "EV-009"
+        ],
+        "c:\\windows\\mssecsvc.exe -m security": [
+            "EV-009"
+        ],
+        "destination_ip: 104.17.244.81": [
+            "EV-010"
+        ],
+        "104.17.244.81": [
+            "EV-010"
+        ],
+        "destination_port: 80": [
+            "EV-011"
+        ],
+        "80": [
+            "EV-011"
+        ],
+        "protocol: http": [
+            "EV-012"
+        ],
+        "http": [
+            "EV-012"
+        ],
+        "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com": [
+            "EV-013"
+        ],
+        "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com": [
+            "EV-013"
+        ],
+        "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/": [
+            "EV-014"
+        ],
+        "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/": [
+            "EV-014"
+        ],
+        "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa": [
+            "EV-015"
+        ],
+        "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa": [
+            "EV-015"
+        ],
+        "mitre_technique_id: t1486": [
+            "EV-016"
+        ],
+        "t1486": [
+            "EV-016"
+        ]
+    },
+    "report_quality_score": null,
+    "report_quality_status": "not_recorded",
+    "report_quality": {},
+    "generated_reports": {
+        "executive_summary": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\executive_summary.txt",
+        "executive_summary_structured": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\executive_summary.json",
+        "technical_findings": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\technical_findings.txt",
+        "technical_findings_structured": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\technical_findings.json",
+        "soc_analyst_review": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\soc_analyst_review.txt",
+        "soc_analyst_review_structured": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\soc_analyst_review.json",
+        "soc_triage_review": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\soc_triage_review.txt",
+        "soc_triage_review_structured": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\soc_triage_review.json",
+        "final_incident_report": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\final_incident_report.txt",
+        "final_incident_report_structured": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\editable\\final_incident_report.json",
+        "final_report_text": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\final_report.txt",
+        "report_manifest": "D:\\agentic_soc_aegis_editable_report_match_export_update\\agentic_soc_integrated_structured_report_tables\\testdata\\merged_report_context\\outputs\\INC-WANNACRY-TEST\\reports\\report_manifest.json"
+    },
+    "warnings": [],
+    "data_consistency_status": "passed",
+    "data_consistency": {},
+    "input_context_hash": null,
+    "rag_used": true,
+    "rag_status": "Local template export context built",
+    "llm_used": false,
+    "llm_provider": "not_used",
+    "llm_model": "not_used",
+    "llm_status": "llm_disabled_deterministic_generation",
+    "llm_quality_status": "not_used",
+    "llm_quality_issues": [],
+    "llm_section_results": {
+        "executive_summary": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "technical_analysis": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "business_impact_explanation": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "attack_narrative": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "conclusion": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "analyst_friendly_explanation": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "soc_analyst_review_checklist": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        }
+    },
+    "llm_enhancement_score": 0,
+    "llm_enhancement_score_detail": {
+        "score": 0,
+        "max_score": 100,
+        "status": "not_used",
+        "accepted_sections": 0,
+        "fallback_sections": 0,
+        "warning_sections": 0,
+        "total_sections": 0
+    },
+    "llm_attempt_count": 0,
+    "llm_cache_status": "not_used",
+    "created_at": "2026-07-03T09:22:16.235255+00:00",
+    "report_status_display": "Generated For Analyst Review",
+    "report_status_explanation": "No detailed explanation is configured for technical status 'Generated for analyst review'.",
+    "report_status_workflow_impact": "Review the technical status if this affects the workflow.",
+    "validation_status_display": "Requires Analyst Validation",
+    "validation_status_explanation": "No detailed explanation is configured for technical status 'Requires analyst validation'.",
+    "validation_status_workflow_impact": "Review the technical status if this affects the workflow.",
+    "rag_status_display": "Local Template Export Context Built",
+    "rag_status_explanation": "No detailed explanation is configured for technical status 'Local template export context built'.",
+    "rag_status_workflow_impact": "Review the technical status if this affects the workflow.",
+    "llm_status_display": "LLM disabled, deterministic report generated",
+    "llm_status_explanation": "LLM usage is turned off in configuration. The report was generated without LLM enhancement.",
+    "llm_status_workflow_impact": "Workflow can continue with deterministic reporting only.",
+    "llm_cache_status_display": "Cache not used",
+    "llm_cache_status_explanation": "Report cache was not used for this run.",
+    "llm_cache_status_workflow_impact": "No impact on current report generation.",
+    "report_completeness_status_display": "Not Recorded",
+    "report_completeness_status_explanation": "No detailed explanation is configured for technical status 'not_recorded'.",
+    "report_completeness_status_workflow_impact": "Review the technical status if this affects the workflow.",
+    "data_consistency_status_display": "Data consistency passed",
+    "data_consistency_status_explanation": "Incident identifiers and key assessment fields are consistent across loaded inputs.",
+    "data_consistency_status_workflow_impact": "Workflow can continue to analyst review."
+}

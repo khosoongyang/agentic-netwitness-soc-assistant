@@ -1,0 +1,65 @@
+{
+    "parsing_succeeded": true,
+    "parser_status": "completed",
+    "detected_input_format": "generic_dictionary",
+    "normalised_alert_count": 1,
+    "selected_alert_id": "INC-TEST-002",
+    "parser_confidence": "Medium",
+    "parser_confidence_score": 60,
+    "important_extracted_fields": {
+        "alert_id": "INC-TEST-002",
+        "incident_id": null,
+        "alert_name": "Test Alert 2",
+        "alert_time": null,
+        "severity": null,
+        "risk_score": null,
+        "source_ips": [],
+        "destination_ips": [],
+        "internal_ips": [],
+        "external_ips": [],
+        "source_ports": [],
+        "destination_ports": [],
+        "services": [],
+        "users": [],
+        "emails": [],
+        "reply_to_emails": [],
+        "hosts": [],
+        "file_names": [],
+        "file_hashes": [],
+        "file_hashes_by_type": {},
+        "process_names": [],
+        "parent_processes": [],
+        "child_processes": [],
+        "process_relationships": [],
+        "command_lines": [],
+        "powershell_analysis": {
+            "encoded_command_present": false,
+            "powershell_indicator_present": false,
+            "decode_status": "not_found",
+            "encoded_command_count": 0,
+            "decoded_command_count": 0,
+            "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+            "risk_assessment": {
+                "risk_level": "Low",
+                "risk_score": 0
+            }
+        },
+        "mitre_technique_ids": []
+    },
+    "missing_important_fields": [
+        "alert_time",
+        "severity"
+    ],
+    "warnings": [
+        "Missing context-relevant parsing fields: alert_time, severity"
+    ],
+    "output_files": {
+        "normalised_alert": "outputs\\INC-TEST-002\\parsing\\soc_context_normalised_alert.json",
+        "processed_alert": "outputs\\INC-TEST-002\\parsing\\soc_context_processed_alert.json",
+        "processed_alert_csv": "outputs\\INC-TEST-002\\parsing\\soc_context_processed_alert.csv",
+        "all_normalised_alerts": "outputs\\INC-TEST-002\\parsing\\soc_context_netwitness_normalised_alerts.json",
+        "parser_summary": "outputs\\INC-TEST-002\\parsing\\soc_context_parser_summary.json",
+        "raw_debug": "outputs\\INC-TEST-002\\parsing\\soc_context_raw_alert_debug.json"
+    },
+    "generated_at": "2026-07-26T11:41:30.182696+00:00"
+}

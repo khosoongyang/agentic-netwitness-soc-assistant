@@ -1,0 +1,1942 @@
+{
+    "generated_at": "2026-07-03T09:22:16.235238+00:00",
+    "created_at": "2026-07-03T09:22:16.235255+00:00",
+    "incident_id": "INC-WANNACRY-TEST",
+    "alert_id": "NW-WCRY-445-0001",
+    "case_title": "WannaCry Ransomware Activity - mssecsvc.exe",
+    "ticket_id": "INC-WANNACRY-TEST",
+    "severity": {
+        "label": "Critical",
+        "value": "Critical",
+        "reason": "No explicit severity rationale was supplied; validate against triage and investigation evidence."
+    },
+    "confidence": {
+        "label": "High",
+        "value": "High",
+        "reason": "No explicit confidence rationale was supplied; validate against evidence completeness and source telemetry."
+    },
+    "classification": "Likely True Positive",
+    "likely_scenario": "WannaCry ransomware activity",
+    "scenario_type": "Requires analyst validation",
+    "report_status": "Generated for analyst review",
+    "report_status_display": "Generated for analyst review",
+    "validation_status": "Requires analyst validation",
+    "validation_status_display": "Requires analyst validation",
+    "current_stage": "Not Provided",
+    "current_lifecycle_stage": "Reporting and analyst review",
+    "containment_status": "not_contained",
+    "approval_status": "approved",
+    "analyst_decision": "approved",
+    "approval": {
+        "approval_required": "Yes",
+        "approval_status": "approved",
+        "analyst_decision": "approved",
+        "analyst_comments": "No approval comments supplied.",
+        "approved_by": "Soong Yang",
+        "approved_action": "",
+        "approval_type": "investigation_evidence_gap_decision",
+        "report_generation_approval_status": "approved",
+        "report_generation_approved_by": "Soong Yang",
+        "final_analyst_review_status": "Requires final analyst review"
+    },
+    "report_generation_approval": {
+        "status": "approved",
+        "approved_by": "Soong Yang",
+        "approval_gate": "investigation_evidence_gap_decision",
+        "comments": "No approval comments supplied."
+    },
+    "final_analyst_review_status": "Requires final analyst review",
+    "containment": {
+        "status": "not_contained",
+        "recommended": "Not Provided",
+        "recommended_action": "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+        "execution_status": "not_contained",
+        "blocking_reason": "Not Provided",
+        "decision_source": "SOC analyst approval context",
+        "approval_status": "Pending analyst approval"
+    },
+    "alert": {
+        "source": "NetWitness SIEM",
+        "name": "WannaCry Ransomware Activity - mssecsvc.exe",
+        "timestamp": ""
+    },
+    "correlated_alerts": [],
+    "confirmed_alert_count": 0,
+    "pending_correlation_recommendations": [],
+    "analyst_grouping_history": [],
+    "archive_recommendations": [],
+    "archived_duplicate_tickets": [],
+    "triage": {
+        "incident_id": "INC-WANNACRY-TEST",
+        "alert_id": "NW-WCRY-445-0001",
+        "severity": "Critical",
+        "confidence": "High",
+        "classification": "Ransomware",
+        "likely_scenario": "WannaCry ransomware activity",
+        "matched_iocs": [
+            "104.17.244.81",
+            "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"
+        ],
+        "evidence": [
+            "severity: Critical",
+            "risk_score: 98.0",
+            "host: FINANCE-WKS-017",
+            "ip: 10.20.14.117",
+            "username: ACME\\\\lim.huiwen",
+            "file_name: mssecsvc.exe",
+            "process_path: C:\\Windows\\mssecsvc.exe",
+            "parent_process_name: lsass.exe",
+            "command_line: C:\\Windows\\mssecsvc.exe -m security",
+            "destination_ip: 104.17.244.81",
+            "destination_port: 80",
+            "protocol: HTTP",
+            "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "mitre_technique_id: T1486"
+        ],
+        "metakeys_payload": {
+            "host": "FINANCE-WKS-017",
+            "source_ip": "10.20.14.117",
+            "destination_ip": "104.17.244.81",
+            "domain": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "url": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "sha256": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "file_name": "mssecsvc.exe",
+            "mitre_technique_id": "T1486",
+            "mitre_technique": "Data Encrypted for Impact"
+        },
+        "recommended_actions": [
+            "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+            "Validate whether mssecsvc.exe is present and running on the host."
+        ]
+    },
+    "investigation": {
+        "status": "completed_with_evidence_gaps",
+        "incident_id": "INC-WANNACRY-TEST",
+        "severity": "Critical",
+        "confidence": "High",
+        "classification": "Likely True Positive",
+        "likely_scenario": "WannaCry ransomware activity",
+        "affected_assets": [
+            "FINANCE-WKS-017"
+        ],
+        "affected_users": [
+            "ACME\\lim.huiwen"
+        ],
+        "iocs": [
+            "104.17.244.81",
+            "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "mssecsvc.exe"
+        ],
+        "evidence": [
+            "severity: Critical",
+            "risk_score: 98.0",
+            "host: FINANCE-WKS-017",
+            "ip: 10.20.14.117",
+            "username: ACME\\\\lim.huiwen",
+            "file_name: mssecsvc.exe",
+            "process_path: C:\\Windows\\mssecsvc.exe",
+            "parent_process_name: lsass.exe",
+            "command_line: C:\\Windows\\mssecsvc.exe -m security",
+            "destination_ip: 104.17.244.81",
+            "destination_port: 80",
+            "protocol: HTTP",
+            "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "mitre_technique_id: T1486"
+        ],
+        "recommended_actions": [
+            "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+            "Validate whether mssecsvc.exe is present and running on the host."
+        ],
+        "missing_evidence": [
+            "No additional host telemetry was supplied."
+        ],
+        "reporting_mode": "with_limitations"
+    },
+    "investigation_status": "completed_with_evidence_gaps",
+    "investigation_completeness_status": "Completed with evidence gaps",
+    "investigation_completeness_note": "Investigation completed with evidence gaps. The selected playbook could not be fully answered because required telemetry was missing. Reporting proceeds with limitations documented for SOC analyst validation.",
+    "investigation_limitations": [
+        {
+            "priority": "Medium",
+            "gap": "No additional host telemetry was supplied.",
+            "missing_field": "No additional host telemetry was supplied.",
+            "required_data": null,
+            "reason": null
+        }
+    ],
+    "reporting_mode": "with_limitations",
+    "reporting_allowed_with_limitations": true,
+    "approval_result": {
+        "approval_status": "approved",
+        "decision": "approved",
+        "analyst": "Soong Yang",
+        "approval_gate": "investigation_evidence_gap_decision"
+    },
+    "reporting": {},
+    "affected_assets": [
+        {
+            "hostname": "FINANCE-WKS-017",
+            "asset": "FINANCE-WKS-017",
+            "host": "FINANCE-WKS-017",
+            "name": "FINANCE-WKS-017",
+            "ip_address": "10.20.14.117",
+            "ip": "10.20.14.117",
+            "asset_type": "Endpoint",
+            "criticality": "Pending analyst validation",
+            "role": "Pending analyst validation",
+            "owner": "To be assigned",
+            "business_function": "Pending analyst validation",
+            "isolation_status": "Pending analyst validation",
+            "status": "Pending analyst validation"
+        }
+    ],
+    "affected_users": [
+        {
+            "username": "ACME\\lim.huiwen",
+            "user": "ACME\\lim.huiwen",
+            "email": "Unavailable from source telemetry",
+            "role": "Pending analyst validation",
+            "privilege_level": "Pending analyst validation",
+            "groups": [],
+            "mfa_status": "Pending analyst validation",
+            "account_status": "Pending analyst validation"
+        }
+    ],
+    "iocs": [
+        {
+            "type": "ip",
+            "value": "104.17.244.81",
+            "ioc": "104.17.244.81",
+            "source": "VirusTotal",
+            "confidence": "High",
+            "reputation": -113,
+            "evidence": "EV-010",
+            "evidence_refs": [
+                "EV-010"
+            ],
+            "source_path": "threat_intelligence.virustotal.ip_results[0]"
+        },
+        {
+            "type": "sha256",
+            "value": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "ioc": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "source": "VirusTotal",
+            "confidence": "High",
+            "reputation": -2986,
+            "evidence": "EV-015",
+            "evidence_refs": [
+                "EV-015"
+            ],
+            "source_path": "threat_intelligence.virustotal.file_hash"
+        },
+        {
+            "type": "domain",
+            "value": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "ioc": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "source": "VirusTotal",
+            "confidence": "High",
+            "reputation": -165,
+            "evidence": "EV-013",
+            "evidence_refs": [
+                "EV-013"
+            ],
+            "source_path": "threat_intelligence.virustotal.domain_results[0]"
+        },
+        {
+            "type": "url",
+            "value": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "ioc": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "source": "Reporting Context",
+            "confidence": "Observed",
+            "reputation": "No external reputation supplied",
+            "evidence": "EV-014",
+            "evidence_refs": [
+                "EV-014"
+            ],
+            "source_path": "iocs[3]"
+        },
+        {
+            "type": "file_name",
+            "value": "mssecsvc.exe",
+            "ioc": "mssecsvc.exe",
+            "source": "Reporting Context",
+            "confidence": "Observed",
+            "reputation": "No external reputation supplied",
+            "evidence": "EV-006",
+            "evidence_refs": [
+                "EV-006"
+            ],
+            "source_path": "iocs[4]"
+        },
+        {
+            "type": "ip",
+            "value": "10.20.14.117",
+            "ioc": "10.20.14.117",
+            "source": "NetWitness Alert",
+            "confidence": "Observed",
+            "reputation": "No external reputation supplied",
+            "evidence": "EV-004",
+            "evidence_refs": [
+                "EV-004"
+            ],
+            "source_path": "source_ip"
+        },
+        {
+            "type": "process_path",
+            "value": "C:\\Windows\\mssecsvc.exe",
+            "ioc": "C:\\Windows\\mssecsvc.exe",
+            "source": "enriched_alert",
+            "confidence": "Observed",
+            "reputation": "No external reputation supplied",
+            "evidence": "EV-007",
+            "evidence_refs": [
+                "EV-007"
+            ],
+            "source_path": "process_path"
+        },
+        {
+            "type": "file_name",
+            "value": "lsass.exe",
+            "ioc": "lsass.exe",
+            "source": "Reporting Context",
+            "confidence": "Observed",
+            "reputation": "No external reputation supplied",
+            "evidence": "EV-008",
+            "evidence_refs": [
+                "EV-008"
+            ],
+            "source_path": "evidence.EV-008"
+        },
+        {
+            "type": "command_line",
+            "value": "C:\\Windows\\mssecsvc.exe -m security",
+            "ioc": "C:\\Windows\\mssecsvc.exe -m security",
+            "source": "Reporting Context",
+            "confidence": "Observed",
+            "reputation": "No external reputation supplied",
+            "evidence": "EV-009",
+            "evidence_refs": [
+                "EV-009"
+            ],
+            "source_path": "evidence.EV-009"
+        }
+    ],
+    "evidence": [
+        {
+            "id": "EV-001",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "severity: Critical",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-002",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "risk_score: 98.0",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-003",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "host: FINANCE-WKS-017",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-004",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "ip: 10.20.14.117",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-005",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "username: ACME\\\\lim.huiwen",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-006",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "file_name: mssecsvc.exe",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-007",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "process_path: C:\\Windows\\mssecsvc.exe",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-008",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "parent_process_name: lsass.exe",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-009",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "command_line: C:\\Windows\\mssecsvc.exe -m security",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-010",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "destination_ip: 104.17.244.81",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-011",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "destination_port: 80",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-012",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "protocol: HTTP",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-013",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-014",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-015",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        },
+        {
+            "id": "EV-016",
+            "source": "Reporting Context",
+            "type": "Evidence",
+            "description": "mitre_technique_id: T1486",
+            "timestamp": "",
+            "confidence": "",
+            "raw_reference": ""
+        }
+    ],
+    "timeline": [
+        {
+            "time": "",
+            "timestamp": "",
+            "event": "Alert first observed by monitoring source",
+            "description": "Alert first observed by monitoring source",
+            "source": "NetWitness SIEM",
+            "evidence_refs": [
+                "enriched_alert"
+            ],
+            "significance": "Supports analyst timeline reconstruction."
+        },
+        {
+            "time": "",
+            "timestamp": "",
+            "event": "Triage completed and severity/confidence assigned",
+            "description": "Triage completed and severity/confidence assigned",
+            "source": "Triage Agent",
+            "evidence_refs": [
+                "triage_result.json"
+            ],
+            "significance": "Supports analyst timeline reconstruction."
+        },
+        {
+            "time": "",
+            "timestamp": "",
+            "event": "Investigation completed or completed with limitations",
+            "description": "Investigation completed or completed with limitations",
+            "source": "Investigation Agent",
+            "evidence_refs": [
+                "investigation_result.json"
+            ],
+            "significance": "Supports analyst timeline reconstruction."
+        },
+        {
+            "time": "",
+            "timestamp": "",
+            "event": "SOC analyst approval decision recorded",
+            "description": "SOC analyst approval decision recorded",
+            "source": "SOC Analyst",
+            "evidence_refs": [
+                "approval_result.json"
+            ],
+            "significance": "Supports analyst timeline reconstruction."
+        },
+        {
+            "time": "2026-07-03T09:22:16.235255+00:00",
+            "timestamp": "2026-07-03T09:22:16.235255+00:00",
+            "event": "Report generated for SOC analyst review",
+            "description": "Report generated for SOC analyst review",
+            "source": "Reporting Agent",
+            "evidence_refs": [
+                "final_report"
+            ],
+            "significance": "Supports analyst timeline reconstruction."
+        }
+    ],
+    "mitre_mapping": [
+        {
+            "tactic": "Impact",
+            "technique_id": "T1486",
+            "technique_name": "Data Encrypted for Impact",
+            "reason": "Recovered from deterministic report context.",
+            "confidence": "High",
+            "evidence_refs": [
+                "EV-016"
+            ],
+            "source": "context",
+            "source_path": "context.triage.evidence[15]"
+        }
+    ],
+    "mitre_attack_mapping": [
+        {
+            "tactic": "Impact",
+            "technique_id": "T1486",
+            "technique_name": "Data Encrypted for Impact",
+            "reason": "Recovered from deterministic report context.",
+            "confidence": "High",
+            "evidence_refs": [
+                "EV-016"
+            ],
+            "source": "context",
+            "source_path": "context.triage.evidence[15]"
+        }
+    ],
+    "powershell_analysis": {},
+    "powershell_command_analysis": {},
+    "missing_evidence": [
+        {
+            "priority": "Medium",
+            "gap": "No additional host telemetry was supplied.",
+            "missing_field": "No additional host telemetry was supplied.",
+            "required_data": null,
+            "reason": null
+        }
+    ],
+    "evidence_gaps": [
+        {
+            "priority": "Medium",
+            "gap": "No additional host telemetry was supplied.",
+            "missing_field": "No additional host telemetry was supplied.",
+            "required_data": null,
+            "reason": null
+        }
+    ],
+    "missing_fields": [
+        "No additional host telemetry was supplied."
+    ],
+    "missing_required_fields": [
+        "No additional host telemetry was supplied."
+    ],
+    "recommendations": [
+        {
+            "priority": "P1",
+            "recommendation": "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+            "action": "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+            "owner": "Endpoint Response Team",
+            "status": "Open for analyst review",
+            "rationale": "Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-003).",
+            "approval_required": "Yes",
+            "risk_addressed": "Endpoint compromise or malware execution",
+            "target_date": "",
+            "evidence_refs": [
+                "EV-003"
+            ]
+        },
+        {
+            "priority": "P2",
+            "recommendation": "Validate whether mssecsvc.exe is present and running on the host.",
+            "action": "Validate whether mssecsvc.exe is present and running on the host.",
+            "owner": "Endpoint Response Team",
+            "status": "Open for analyst review",
+            "rationale": "Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-006).",
+            "approval_required": "No",
+            "risk_addressed": "Endpoint compromise or malware execution",
+            "target_date": "",
+            "evidence_refs": [
+                "EV-006"
+            ]
+        }
+    ],
+    "recommended_actions": [
+        {
+            "priority": "P1",
+            "recommendation": "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+            "action": "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+            "owner": "Endpoint Response Team",
+            "status": "Open for analyst review",
+            "rationale": "Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-003).",
+            "approval_required": "Yes",
+            "risk_addressed": "Endpoint compromise or malware execution",
+            "target_date": "",
+            "evidence_refs": [
+                "EV-003"
+            ]
+        },
+        {
+            "priority": "P2",
+            "recommendation": "Validate whether mssecsvc.exe is present and running on the host.",
+            "action": "Validate whether mssecsvc.exe is present and running on the host.",
+            "owner": "Endpoint Response Team",
+            "status": "Open for analyst review",
+            "rationale": "Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-006).",
+            "approval_required": "No",
+            "risk_addressed": "Endpoint compromise or malware execution",
+            "target_date": "",
+            "evidence_refs": [
+                "EV-006"
+            ]
+        }
+    ],
+    "management_action_plan": [
+        {
+            "priority": "P1",
+            "recommendation": "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+            "action": "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+            "owner": "Endpoint Response Team",
+            "status": "Open for analyst review",
+            "rationale": "Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-003).",
+            "approval_required": "Yes",
+            "risk_addressed": "Endpoint compromise or malware execution",
+            "target_date": "",
+            "evidence_refs": [
+                "EV-003"
+            ]
+        },
+        {
+            "priority": "P2",
+            "recommendation": "Validate whether mssecsvc.exe is present and running on the host.",
+            "action": "Validate whether mssecsvc.exe is present and running on the host.",
+            "owner": "Endpoint Response Team",
+            "status": "Open for analyst review",
+            "rationale": "Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-006).",
+            "approval_required": "No",
+            "risk_addressed": "Endpoint compromise or malware execution",
+            "target_date": "",
+            "evidence_refs": [
+                "EV-006"
+            ]
+        }
+    ],
+    "key_findings": [
+        {
+            "finding_id": "KF-001",
+            "statement": "The incident classification is Likely True Positive.",
+            "finding": "The incident classification is Likely True Positive.",
+            "status": "Fact",
+            "confidence": "High",
+            "evidence_refs": [
+                "investigation_result.json"
+            ],
+            "evidence": "investigation_result.json",
+            "interpretation": "Classification is taken from investigation output first, with triage as fallback."
+        },
+        {
+            "finding_id": "KF-002",
+            "statement": "Affected scope has available context.",
+            "finding": "Affected scope has available context.",
+            "status": "Fact",
+            "confidence": "High",
+            "evidence_refs": [
+                "EV-003",
+                "EV-004"
+            ],
+            "evidence": "EV-003, EV-004",
+            "interpretation": "Assets and users are derived only from supplied ticket, alert, triage, and investigation context."
+        },
+        {
+            "finding_id": "KF-003",
+            "statement": "Approval status is approved.",
+            "finding": "Approval status is approved.",
+            "status": "Fact",
+            "confidence": "High",
+            "evidence_refs": [
+                "approval_result.json"
+            ],
+            "evidence": "approval_result.json",
+            "interpretation": "Approval data is recorded only from analyst approval context."
+        }
+    ],
+    "evidence_backed_findings": [
+        {
+            "finding_id": "KF-001",
+            "statement": "The incident classification is Likely True Positive.",
+            "finding": "The incident classification is Likely True Positive.",
+            "status": "Fact",
+            "confidence": "High",
+            "evidence_refs": [
+                "investigation_result.json"
+            ],
+            "evidence": "investigation_result.json",
+            "interpretation": "Classification is taken from investigation output first, with triage as fallback."
+        },
+        {
+            "finding_id": "KF-002",
+            "statement": "Affected scope has available context.",
+            "finding": "Affected scope has available context.",
+            "status": "Fact",
+            "confidence": "High",
+            "evidence_refs": [
+                "EV-003",
+                "EV-004"
+            ],
+            "evidence": "EV-003, EV-004",
+            "interpretation": "Assets and users are derived only from supplied ticket, alert, triage, and investigation context."
+        },
+        {
+            "finding_id": "KF-003",
+            "statement": "Approval status is approved.",
+            "finding": "Approval status is approved.",
+            "status": "Fact",
+            "confidence": "High",
+            "evidence_refs": [
+                "approval_result.json"
+            ],
+            "evidence": "approval_result.json",
+            "interpretation": "Approval data is recorded only from analyst approval context."
+        }
+    ],
+    "active_narrative": {
+        "executive_summary": "This incident is assessed as a Critical-severity, High-confidence Likely True Positive involving WannaCry ransomware activity. The known affected scope is FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint) and ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation). The case is supported by EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. Malicious or suspicious indicators include No malicious or suspicious IOCs provided. Containment is currently not_contained. Report generation approval status: Approved by Soong Yang.\nContainment approval status: Pending Analyst Approval.\nRecommended containment action: Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval..\nContainment execution status: Not Contained.\nFinal analyst review status: Requires Final Analyst Review. Data impact assessment:\nNo evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.\n\n- Data access: No evidence provided, requires validation\n- Data exfiltration: No evidence provided, requires validation\n- Encryption / modification / deletion: Not confirmed by supplied host telemetry\n- Personal data involvement: Cannot determine from current evidence\n- Notification requirement: Legal / Compliance decision only if data impact is confirmed\n- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.\n- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps. The report is not finalised because these validation items remain open: Medium: No additional host telemetry was supplied.",
+        "technical_analysis": "From a SOC investigation perspective, the available evidence shows alert first observed by monitoring source, followed by triage completed and severity/confidence assigned, followed by investigation completed or completed with limitations. This activity is consistent with WannaCry ransomware activity, supported by EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. MITRE ATT&CK context includes Impact: T1486 Data Encrypted for Impact.\n\nThe current evidence supports a Critical-severity, High-confidence Likely True Positive, but it does not fully confirm whether payload execution completed, whether credentials or sessions were exposed, or whether follow-on access occurred. The analyst should validate script block logs, process completion status, identity logs, mailbox audit logs, and outbound network telemetry before closure.\n\nFormal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.",
+        "business_impact_explanation": "Current business impact depends on validated affected assets, users, data access, and service disruption evidence. Security risk: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps. Not yet confirmed: Further compromise, spread, persistence, and data exposure remain subject to analyst validation.",
+        "attack_narrative": "The likely attack sequence began with alert first observed by monitoring source, followed by triage completed and severity/confidence assigned, followed by investigation completed or completed with limitations. This sequence is consistent with WannaCry ransomware activity, with observed evidence including EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. The activity has been mapped to Impact: T1486 Data Encrypted for Impact.\n\nHowever, the current evidence does not fully confirm payload completion, persistence, credential or session exposure, lateral movement, data access, or exfiltration. These items should remain open until the SOC analyst validates the relevant endpoint, identity, network, and application logs. Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.",
+        "analyst_friendly_explanation": "The SOC analyst should review this case by validating the evidence that supports the Critical severity, High confidence, and Likely True Positive classification. The most important review areas are the affected scope (FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint)), the affected user context (ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation)), suspicious indicators (No malicious or suspicious IOCs provided), and the timeline sequence (Alert first observed by monitoring source. Triage completed and severity/confidence assigned. Investigation completed or completed with limitations. SOC analyst approval decision recorded. Report generated for SOC analyst review.). The analyst should confirm whether the evidence supports containment, escalation, closure, or further investigation, especially because these validation items remain open: Medium: No additional host telemetry was supplied. If containment is disruptive, the analyst should confirm the approval status (approved) and containment status (not_contained) before action is taken. Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use. Any finding that cannot be verified from the provided evidence should remain marked as not confirmed rather than being treated as a confirmed compromise.",
+        "soc_analyst_review_checklist": "1. Confirm that the incident ID, alert ID, severity (Critical), confidence (High), and classification (Likely True Positive) match the latest triage and investigation records.\n2. Validate the affected scope by checking whether FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint) and ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation) are present in the original alert, endpoint telemetry, identity logs, or NetWitness evidence.\n3. Review the listed IOCs and supporting evidence references, especially No malicious or suspicious IOCs provided, before blocking, isolating, or escalating based on indicator reputation.\n4. Reconstruct the timeline using the available events (Alert first observed by monitoring source. Triage completed and severity/confidence assigned. Investigation completed or completed with limitations. SOC analyst approval decision recorded. Report generated for SOC analyst review.) and confirm whether payload execution, persistence, credential exposure, lateral movement, data access, or exfiltration is not confirmed in the provided evidence.\n5. Compare the technical evidence against the mapped MITRE ATT&CK context (Impact: T1486 Data Encrypted for Impact) and record whether each mapped behaviour is observed, suggested, or still pending validation.\n6. Review unresolved evidence gaps (Medium: No additional host telemetry was supplied.) and collect the required endpoint, identity, network, email, or application logs before closure.\n7. Decide whether containment or approval should proceed by checking the current approval status (approved) and containment status (not_contained).\n8. Record the final analyst decision, including whether the case should be escalated, contained, closed as false positive, or kept open for further investigation.",
+        "conclusion": "The report is suitable for SOC analyst review with status Generated for analyst review. Before closure, the analyst should validate unresolved evidence gaps, confirm containment or approval decisions, and determine whether any business, data, regulatory, or recovery impact exists. Any disruptive action, such as endpoint isolation or credential revocation, should follow the recorded approval workflow. Data impact assessment:\nNo evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.\n\n- Data access: No evidence provided, requires validation\n- Data exfiltration: No evidence provided, requires validation\n- Encryption / modification / deletion: Not confirmed by supplied host telemetry\n- Personal data involvement: Cannot determine from current evidence\n- Notification requirement: Legal / Compliance decision only if data impact is confirmed\n- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.\n- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps."
+    },
+    "impact_assessment": {
+        "business": "Current business impact depends on validated affected assets, users, data access, and service disruption evidence.",
+        "security": "Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps.",
+        "unconfirmed": "Further compromise, spread, persistence, and data exposure remain subject to analyst validation."
+    },
+    "executive_overview": "This incident is assessed as Critical severity with High confidence. The current classification is Likely True Positive, and the likely scenario is WannaCry ransomware activity. Any missing assets, users, IOCs, or timestamps should remain marked as not confirmed until validated by a SOC analyst. Investigation completed with evidence gaps, so this report proceeds with limitations and requires SOC analyst validation of missing telemetry.",
+    "executive_summary": "This incident is assessed as a Critical-severity, High-confidence Likely True Positive involving WannaCry ransomware activity. The known affected scope is FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint) and ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation). The case is supported by EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. Malicious or suspicious indicators include No malicious or suspicious IOCs provided. Containment is currently not_contained. Report generation approval status: Approved by Soong Yang.\nContainment approval status: Pending Analyst Approval.\nRecommended containment action: Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval..\nContainment execution status: Not Contained.\nFinal analyst review status: Requires Final Analyst Review. Data impact assessment:\nNo evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.\n\n- Data access: No evidence provided, requires validation\n- Data exfiltration: No evidence provided, requires validation\n- Encryption / modification / deletion: Not confirmed by supplied host telemetry\n- Personal data involvement: Cannot determine from current evidence\n- Notification requirement: Legal / Compliance decision only if data impact is confirmed\n- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.\n- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps. The report is not finalised because these validation items remain open: Medium: No additional host telemetry was supplied.",
+    "technical_analysis": "From a SOC investigation perspective, the available evidence shows alert first observed by monitoring source, followed by triage completed and severity/confidence assigned, followed by investigation completed or completed with limitations. This activity is consistent with WannaCry ransomware activity, supported by EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. MITRE ATT&CK context includes Impact: T1486 Data Encrypted for Impact.\n\nThe current evidence supports a Critical-severity, High-confidence Likely True Positive, but it does not fully confirm whether payload execution completed, whether credentials or sessions were exposed, or whether follow-on access occurred. The analyst should validate script block logs, process completion status, identity logs, mailbox audit logs, and outbound network telemetry before closure.\n\nFormal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.",
+    "business_impact_explanation": "Current business impact depends on validated affected assets, users, data access, and service disruption evidence. Security risk: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps. Not yet confirmed: Further compromise, spread, persistence, and data exposure remain subject to analyst validation.",
+    "attack_narrative": "The likely attack sequence began with alert first observed by monitoring source, followed by triage completed and severity/confidence assigned, followed by investigation completed or completed with limitations. This sequence is consistent with WannaCry ransomware activity, with observed evidence including EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. The activity has been mapped to Impact: T1486 Data Encrypted for Impact.\n\nHowever, the current evidence does not fully confirm payload completion, persistence, credential or session exposure, lateral movement, data access, or exfiltration. These items should remain open until the SOC analyst validates the relevant endpoint, identity, network, and application logs. Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.",
+    "analyst_review_guidance": "Validate the evidence supporting Critical severity, High confidence, and Likely True Positive classification. Review affected scope, suspicious indicators, timeline sequence, approval status, and unresolved evidence gaps before closure.",
+    "final_assessment": "The case should remain under SOC analyst review until missing evidence gaps are validated. Current assessment: Critical severity, High confidence.",
+    "triage_summary": "No standalone triage summary was supplied.",
+    "investigation_summary": "No standalone investigation summary was supplied.",
+    "raw_inputs": {
+        "processed_alert": {
+            "incident_id": "INC-WANNACRY-TEST",
+            "alert_id": "NW-WCRY-445-0001",
+            "alert_title": "WannaCry Ransomware Activity - mssecsvc.exe",
+            "hostname": "FINANCE-WKS-017",
+            "source_ip": "10.20.14.117",
+            "destination_ip": "104.17.244.81",
+            "file_hash": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "url": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "event_domain": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"
+        },
+        "enriched_alert": {
+            "incident_id": "INC-WANNACRY-TEST",
+            "alert_id": "NW-WCRY-445-0001",
+            "host": "FINANCE-WKS-017",
+            "hostname": "FINANCE-WKS-017",
+            "source_ip": "10.20.14.117",
+            "destination_ip": "104.17.244.81",
+            "domain": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "url": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "sha256": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "file_name": "mssecsvc.exe",
+            "process_name": "mssecsvc.exe",
+            "process_path": "C:\\Windows\\mssecsvc.exe",
+            "mitre_technique_id": "T1486",
+            "severity": "Critical",
+            "confidence": "High",
+            "iocs": [
+                {
+                    "type": "ip",
+                    "value": "104.17.244.81"
+                },
+                {
+                    "type": "file_name",
+                    "value": "WannaCry Ransomware Activity - mssecsvc.exe"
+                },
+                {
+                    "type": "file_name",
+                    "value": "mssecsvc.exe"
+                },
+                {
+                    "type": "file_hash",
+                    "value": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa"
+                }
+            ],
+            "threat_intelligence": {
+                "virustotal": {
+                    "file_hash": {
+                        "indicator": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+                        "malicious": 63,
+                        "reputation": -2986
+                    },
+                    "ip_results": [
+                        {
+                            "indicator": "104.17.244.81",
+                            "malicious": 1,
+                            "reputation": -113
+                        }
+                    ],
+                    "domain_results": [
+                        {
+                            "indicator": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+                            "malicious": 10,
+                            "reputation": -165
+                        }
+                    ]
+                }
+            }
+        },
+        "triage_result": {
+            "incident_id": "INC-WANNACRY-TEST",
+            "alert_id": "NW-WCRY-445-0001",
+            "severity": "Critical",
+            "confidence": "High",
+            "classification": "Ransomware",
+            "likely_scenario": "WannaCry ransomware activity",
+            "matched_iocs": [
+                "104.17.244.81",
+                "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+                "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"
+            ],
+            "evidence": [
+                "severity: Critical",
+                "risk_score: 98.0",
+                "host: FINANCE-WKS-017",
+                "ip: 10.20.14.117",
+                "username: ACME\\\\lim.huiwen",
+                "file_name: mssecsvc.exe",
+                "process_path: C:\\Windows\\mssecsvc.exe",
+                "parent_process_name: lsass.exe",
+                "command_line: C:\\Windows\\mssecsvc.exe -m security",
+                "destination_ip: 104.17.244.81",
+                "destination_port: 80",
+                "protocol: HTTP",
+                "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+                "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+                "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+                "mitre_technique_id: T1486"
+            ],
+            "metakeys_payload": {
+                "host": "FINANCE-WKS-017",
+                "source_ip": "10.20.14.117",
+                "destination_ip": "104.17.244.81",
+                "domain": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+                "url": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+                "sha256": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+                "file_name": "mssecsvc.exe",
+                "mitre_technique_id": "T1486",
+                "mitre_technique": "Data Encrypted for Impact"
+            },
+            "recommended_actions": [
+                "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+                "Validate whether mssecsvc.exe is present and running on the host."
+            ]
+        },
+        "investigation_result": {
+            "status": "completed_with_evidence_gaps",
+            "incident_id": "INC-WANNACRY-TEST",
+            "severity": "Critical",
+            "confidence": "High",
+            "classification": "Likely True Positive",
+            "likely_scenario": "WannaCry ransomware activity",
+            "affected_assets": [
+                "FINANCE-WKS-017"
+            ],
+            "affected_users": [
+                "ACME\\lim.huiwen"
+            ],
+            "iocs": [
+                "104.17.244.81",
+                "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+                "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+                "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+                "mssecsvc.exe"
+            ],
+            "evidence": [
+                "severity: Critical",
+                "risk_score: 98.0",
+                "host: FINANCE-WKS-017",
+                "ip: 10.20.14.117",
+                "username: ACME\\\\lim.huiwen",
+                "file_name: mssecsvc.exe",
+                "process_path: C:\\Windows\\mssecsvc.exe",
+                "parent_process_name: lsass.exe",
+                "command_line: C:\\Windows\\mssecsvc.exe -m security",
+                "destination_ip: 104.17.244.81",
+                "destination_port: 80",
+                "protocol: HTTP",
+                "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+                "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+                "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+                "mitre_technique_id: T1486"
+            ],
+            "recommended_actions": [
+                "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+                "Validate whether mssecsvc.exe is present and running on the host."
+            ],
+            "missing_evidence": [
+                "No additional host telemetry was supplied."
+            ],
+            "reporting_mode": "with_limitations"
+        },
+        "approval_result": {
+            "approval_status": "approved",
+            "decision": "approved",
+            "analyst": "Soong Yang",
+            "approval_gate": "investigation_evidence_gap_decision"
+        },
+        "ticket_context": {},
+        "grouped_incident_context": {},
+        "correlation_recommendations": {}
+    },
+    "appendix_summaries": {
+        "raw_alert": {
+            "Alert ID": "NW-WCRY-445-0001",
+            "Source": "NetWitness SIEM",
+            "Alert Name": "WannaCry Ransomware Activity - mssecsvc.exe",
+            "First Seen": "",
+            "Host": "FINANCE-WKS-017",
+            "Severity": "Critical",
+            "Confidence": "High",
+            "Original Alert Risk Score": "98.0",
+            "Enriched Risk Score": "",
+            "Final Risk Rating": "Critical",
+            "Primary IOC": "104.17.244.81"
+        },
+        "triage": {
+            "Classification": "Ransomware",
+            "Severity": "Critical",
+            "Confidence": "High",
+            "Next Action": "No standalone next action supplied.",
+            "Containment Status": "not_contained",
+            "Recommended Action Count": 2
+        },
+        "investigation": {
+            "Classification": "Likely True Positive",
+            "Likely Scenario": "WannaCry ransomware activity",
+            "Status": "completed_with_evidence_gaps",
+            "Finding Count": 0,
+            "Missing Evidence": "No additional host telemetry was supplied.",
+            "Recommended Next Action": "No standalone investigation next action supplied."
+        },
+        "approval": {
+            "Report Generation Approval Status": "approved",
+            "Report Generation Approved By": "Soong Yang",
+            "Containment Approval Status": "Pending analyst approval",
+            "Containment Execution Status": "not_contained",
+            "Final Analyst Review Status": "Requires final analyst review",
+            "Comments": "No approval comments supplied."
+        }
+    },
+    "warnings": [],
+    "rag_used": true,
+    "rag_status": "Local template export context built",
+    "rag_status_display": "Local template export context built",
+    "llm_used": false,
+    "llm_status": "llm_disabled_deterministic_generation",
+    "llm_status_display": "llm_disabled_deterministic_generation",
+    "llm_quality_status": "not_used",
+    "llm_quality_issues": [],
+    "llm_attempt_count": 0,
+    "llm_cache_status": "not_used",
+    "llm_cache_status_display": "not_used",
+    "llm_status_explanation": "LLM disabled or unavailable; deterministic fallback narrative was used.",
+    "llm_section_results": {
+        "executive_summary": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "technical_analysis": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "business_impact_explanation": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "attack_narrative": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "conclusion": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "analyst_friendly_explanation": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        },
+        "soc_analyst_review_checklist": {
+            "status": "not_used",
+            "hard_fail_issues": [],
+            "soft_warnings": [],
+            "repair_actions": [],
+            "retry_attempted": false,
+            "issues": []
+        }
+    },
+    "report_generation_mode": "deterministic_facts_plus_template_export",
+    "report_completeness_score": 65,
+    "report_completeness_status": "Completeness needs review",
+    "report_completeness_status_display": "Completeness needs review",
+    "report_classification": "Internal / Restricted",
+    "prepared_by": "Reporting Agent",
+    "review_limitations": {
+        "log_availability": "Dependent on submitted input files and available SOC telemetry.",
+        "endpoint_visibility": "Dependent on endpoint evidence included in investigation_result.json.",
+        "network_visibility": "Dependent on available SIEM, NetWitness, proxy, DNS, and firewall logs.",
+        "threat_intelligence": "Threat intelligence reputation may be incomplete and must be interpreted with local telemetry.",
+        "timestamp_accuracy": "Timeline accuracy depends on source clock synchronisation.",
+        "evidence_completeness": "Missing evidence is documented as evidence gaps for analyst follow-up."
+    },
+    "overall_report_confidence": "High",
+    "environment_type": "SOC-monitored environment",
+    "asset_criticality": "See affected assets table",
+    "business_owner": "",
+    "technical_owner": "",
+    "rule_id": "",
+    "original_alert_risk_score": "98.0",
+    "initial_risk_score": "98.0",
+    "enriched_risk_score": "Not Provided",
+    "enrichment_risk_score": "",
+    "final_risk_rating": "Critical",
+    "malware_family": "",
+    "threat_actor": "",
+    "escalation_level": "SOC analyst review",
+    "root_cause": {
+        "likely_root_cause": "Pending further analyst validation",
+        "category": "Requires analyst validation",
+        "confidence": "High",
+        "evidence_basis": "Based on classification, likely scenario, timeline, IOCs, and available investigation evidence."
+    },
+    "contributing_factors": [
+        {
+            "factor": "Evidence completeness gap",
+            "description": "One or more required reporting or investigation fields are missing or require validation.",
+            "impact": "Limits confidence in scope, root cause, and final disposition."
+        }
+    ],
+    "framework_mappings": [],
+    "policy_application_summary": [
+        {
+            "source": "incident_severity_policy.md",
+            "relevant_guidance": "Severity should reflect evidence, impact, and confidence.",
+            "application": "Current severity is Critical and should be analyst validated."
+        },
+        {
+            "source": "report_writing_sop.md",
+            "relevant_guidance": "Reports must separate evidence-backed facts from gaps.",
+            "application": "The export keeps missing facts as evidence gaps rather than inventing details."
+        }
+    ],
+    "loaded_knowledge_files": [
+        "policies/incident_severity_policy.md",
+        "procedures/report_writing_sop.md",
+        "procedures/investigation_sop.md",
+        "playbooks/ransomware_response_playbook.md"
+    ],
+    "excluded_playbooks": [
+        "malware_response_playbook.md"
+    ],
+    "relevant_playbook": "ransomware_response_playbook.md",
+    "playbook_selection_note": "Ransomware reporting context selected because the supplied case context references WannaCry/ransomware activity.",
+    "quality_checks": {
+        "conflicting_severity_values_detected": "Not Detected",
+        "conflicting_confidence_values_detected": "Not Detected",
+        "stale_context_detected": "Not Detected",
+        "triage_result_available": "Yes",
+        "investigation_result_available": "Yes",
+        "threat_intelligence_result_available": "Yes",
+        "fallback_logic_used": "Yes",
+        "fields_recovered_from_fallback_sources": 2,
+        "iocs_deduplicated": 41,
+        "evidence_links_recovered": 11,
+        "placeholders_reduced": 84,
+        "fields_still_unavailable_from_source_telemetry": 51,
+        "final_placeholder_count": 51,
+        "evidence_register_placeholders": 0.42857142857142855,
+        "approval_section_placeholders": 0.1,
+        "containment_section_placeholders": 0.2857142857142857,
+        "data_impact_placeholders": 1.0,
+        "chain_of_custody_placeholders": 1.0,
+        "columns_hidden_due_to_low_information_value": 13,
+        "rows_hidden_due_to_no_useful_values": 0,
+        "missing_fields_summarised_into_evidence_gaps": 1,
+        "ai_narrative_sections_used_to_reduce_placeholder_repetition": 0
+    },
+    "report_validation_checks": [
+        {
+            "check": "Incident ID present",
+            "status": "Pass"
+        },
+        {
+            "check": "Alert ID present",
+            "status": "Pass"
+        },
+        {
+            "check": "Severity present",
+            "status": "Pass"
+        },
+        {
+            "check": "Confidence present",
+            "status": "Pass"
+        },
+        {
+            "check": "Affected asset context present",
+            "status": "Pass"
+        },
+        {
+            "check": "Timeline reconstructed",
+            "status": "Pass"
+        },
+        {
+            "check": "Evidence present",
+            "status": "Pass"
+        },
+        {
+            "check": "IOC evidence links recovered",
+            "status": "Pass"
+        },
+        {
+            "check": "MITRE mapping present",
+            "status": "Pass"
+        }
+    ],
+    "recovered_fields": [
+        {
+            "field": "host",
+            "value": "FINANCE-WKS-017",
+            "recovered_from": "enriched_alert",
+            "source_path": "host",
+            "confidence": "High",
+            "evidence_id": "EV-003",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "source_ip",
+            "value": "10.20.14.117",
+            "recovered_from": "enriched_alert",
+            "source_path": "source_ip",
+            "confidence": "High",
+            "evidence_id": "EV-004",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "destination_ip",
+            "value": "104.17.244.81",
+            "recovered_from": "enriched_alert",
+            "source_path": "destination_ip",
+            "confidence": "High",
+            "evidence_id": "EV-010",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "domain",
+            "value": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "recovered_from": "enriched_alert",
+            "source_path": "domain",
+            "confidence": "High",
+            "evidence_id": "EV-013",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "url",
+            "value": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "recovered_from": "enriched_alert",
+            "source_path": "url",
+            "confidence": "High",
+            "evidence_id": "EV-014",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "sha256",
+            "value": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "recovered_from": "enriched_alert",
+            "source_path": "sha256",
+            "confidence": "High",
+            "evidence_id": "EV-015",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "process_name",
+            "value": "mssecsvc.exe",
+            "recovered_from": "enriched_alert",
+            "source_path": "process_name",
+            "confidence": "High",
+            "evidence_id": "EV-006",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "process_path",
+            "value": "C:\\Windows\\mssecsvc.exe",
+            "recovered_from": "enriched_alert",
+            "source_path": "process_path",
+            "confidence": "High",
+            "evidence_id": "EV-007",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "mitre_technique_id",
+            "value": "T1486",
+            "recovered_from": "enriched_alert",
+            "source_path": "mitre_technique_id",
+            "confidence": "High",
+            "evidence_id": "EV-016",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "severity",
+            "value": "Critical",
+            "recovered_from": "investigation_result",
+            "source_path": "severity",
+            "confidence": "High",
+            "evidence_id": "EV-001",
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "confidence",
+            "value": "High",
+            "recovered_from": "investigation_result",
+            "source_path": "confidence",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "classification",
+            "value": "Likely True Positive",
+            "recovered_from": "investigation_result",
+            "source_path": "classification",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "approval_status",
+            "value": "approved",
+            "recovered_from": "approval_result",
+            "source_path": "approval_status",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "analyst_decision",
+            "value": "approved",
+            "recovered_from": "approval_result",
+            "source_path": "decision",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "approved_by",
+            "value": "Soong Yang",
+            "recovered_from": "approval_result",
+            "source_path": "analyst",
+            "confidence": "High",
+            "evidence_id": null,
+            "reason": "Recovered from deterministic merged report context."
+        },
+        {
+            "field": "asset_ip",
+            "value": "10.20.14.117",
+            "recovered_from": "enriched_alert",
+            "source_path": "source_ip",
+            "confidence": "High",
+            "evidence_id": "EV-004",
+            "reason": "Recovered from deterministic merged report context."
+        }
+    ],
+    "data_impact_assessment": {
+        "data_access": null,
+        "data_exfiltration": null,
+        "encryption_modification_deletion": null,
+        "personal_data_involvement": null,
+        "notification_requirement": null,
+        "evidence_supporting_assessment": "See evidence register and evidence gaps."
+    },
+    "evidence_index": {
+        "severity: critical": [
+            "EV-001"
+        ],
+        "critical": [
+            "EV-001"
+        ],
+        "risk_score: 98.0": [
+            "EV-002"
+        ],
+        "98.0": [
+            "EV-002"
+        ],
+        "host: finance-wks-017": [
+            "EV-003"
+        ],
+        "finance-wks-017": [
+            "EV-003"
+        ],
+        "ip: 10.20.14.117": [
+            "EV-004"
+        ],
+        "10.20.14.117": [
+            "EV-004"
+        ],
+        "username: acme\\lim.huiwen": [
+            "EV-005"
+        ],
+        "acme\\lim.huiwen": [
+            "EV-005"
+        ],
+        "file_name: mssecsvc.exe": [
+            "EV-006"
+        ],
+        "mssecsvc.exe": [
+            "EV-006"
+        ],
+        "process_path: c:\\windows\\mssecsvc.exe": [
+            "EV-007"
+        ],
+        "c:\\windows\\mssecsvc.exe": [
+            "EV-007"
+        ],
+        "parent_process_name: lsass.exe": [
+            "EV-008"
+        ],
+        "lsass.exe": [
+            "EV-008"
+        ],
+        "command_line: c:\\windows\\mssecsvc.exe -m security": [
+            "EV-009"
+        ],
+        "c:\\windows\\mssecsvc.exe -m security": [
+            "EV-009"
+        ],
+        "destination_ip: 104.17.244.81": [
+            "EV-010"
+        ],
+        "104.17.244.81": [
+            "EV-010"
+        ],
+        "destination_port: 80": [
+            "EV-011"
+        ],
+        "80": [
+            "EV-011"
+        ],
+        "protocol: http": [
+            "EV-012"
+        ],
+        "http": [
+            "EV-012"
+        ],
+        "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com": [
+            "EV-013"
+        ],
+        "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com": [
+            "EV-013"
+        ],
+        "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/": [
+            "EV-014"
+        ],
+        "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/": [
+            "EV-014"
+        ],
+        "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa": [
+            "EV-015"
+        ],
+        "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa": [
+            "EV-015"
+        ],
+        "mitre_technique_id: t1486": [
+            "EV-016"
+        ],
+        "t1486": [
+            "EV-016"
+        ]
+    },
+    "field_provenance": {
+        "host": {
+            "value": "FINANCE-WKS-017",
+            "source": "enriched_alert",
+            "source_path": "host",
+            "confidence": "High",
+            "evidence_id": "EV-003"
+        },
+        "source_ip": {
+            "value": "10.20.14.117",
+            "source": "enriched_alert",
+            "source_path": "source_ip",
+            "confidence": "High",
+            "evidence_id": "EV-004"
+        },
+        "destination_ip": {
+            "value": "104.17.244.81",
+            "source": "enriched_alert",
+            "source_path": "destination_ip",
+            "confidence": "High",
+            "evidence_id": "EV-010"
+        },
+        "domain": {
+            "value": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+            "source": "enriched_alert",
+            "source_path": "domain",
+            "confidence": "High",
+            "evidence_id": "EV-013"
+        },
+        "url": {
+            "value": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+            "source": "enriched_alert",
+            "source_path": "url",
+            "confidence": "High",
+            "evidence_id": "EV-014"
+        },
+        "sha256": {
+            "value": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+            "source": "enriched_alert",
+            "source_path": "sha256",
+            "confidence": "High",
+            "evidence_id": "EV-015"
+        },
+        "process_name": {
+            "value": "mssecsvc.exe",
+            "source": "enriched_alert",
+            "source_path": "process_name",
+            "confidence": "High",
+            "evidence_id": "EV-006"
+        },
+        "process_path": {
+            "value": "C:\\Windows\\mssecsvc.exe",
+            "source": "enriched_alert",
+            "source_path": "process_path",
+            "confidence": "High",
+            "evidence_id": "EV-007"
+        },
+        "mitre_technique_id": {
+            "value": "T1486",
+            "source": "enriched_alert",
+            "source_path": "mitre_technique_id",
+            "confidence": "High",
+            "evidence_id": "EV-016"
+        },
+        "severity": {
+            "value": "Critical",
+            "source": "investigation_result",
+            "source_path": "severity",
+            "confidence": "High",
+            "evidence_id": "EV-001"
+        },
+        "confidence": {
+            "value": "High",
+            "source": "investigation_result",
+            "source_path": "confidence",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "classification": {
+            "value": "Likely True Positive",
+            "source": "investigation_result",
+            "source_path": "classification",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "approval_status": {
+            "value": "approved",
+            "source": "approval_result",
+            "source_path": "approval_status",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "analyst_decision": {
+            "value": "approved",
+            "source": "approval_result",
+            "source_path": "decision",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "approved_by": {
+            "value": "Soong Yang",
+            "source": "approval_result",
+            "source_path": "analyst",
+            "confidence": "High",
+            "evidence_id": null
+        },
+        "asset_ip": {
+            "value": "10.20.14.117",
+            "source": "enriched_alert",
+            "source_path": "source_ip",
+            "confidence": "High",
+            "evidence_id": "EV-004"
+        }
+    },
+    "containment_approval_status": "Pending analyst approval",
+    "containment_execution_status": "not_contained",
+    "approval_type_validation_note": "",
+    "report_title": "Draft Incident Report for SOC Analyst Review",
+    "compact_evidence_register": {
+        "columns": [
+            "Evidence ID",
+            "Source",
+            "Type",
+            "Description"
+        ],
+        "rows": [
+            [
+                "EV-001",
+                "Reporting Context",
+                "Evidence",
+                "severity: Critical"
+            ],
+            [
+                "EV-002",
+                "Reporting Context",
+                "Evidence",
+                "risk_score: 98.0"
+            ],
+            [
+                "EV-003",
+                "Reporting Context",
+                "Evidence",
+                "host: FINANCE-WKS-017"
+            ],
+            [
+                "EV-004",
+                "Reporting Context",
+                "Evidence",
+                "ip: 10.20.14.117"
+            ],
+            [
+                "EV-005",
+                "Reporting Context",
+                "Evidence",
+                "username: ACME\\\\lim.huiwen"
+            ],
+            [
+                "EV-006",
+                "Reporting Context",
+                "Evidence",
+                "file_name: mssecsvc.exe"
+            ],
+            [
+                "EV-007",
+                "Reporting Context",
+                "Evidence",
+                "process_path: C:\\Windows\\mssecsvc.exe"
+            ],
+            [
+                "EV-008",
+                "Reporting Context",
+                "Evidence",
+                "parent_process_name: lsass.exe"
+            ],
+            [
+                "EV-009",
+                "Reporting Context",
+                "Evidence",
+                "command_line: C:\\Windows\\mssecsvc.exe -m security"
+            ],
+            [
+                "EV-010",
+                "Reporting Context",
+                "Evidence",
+                "destination_ip: 104.17.244.81"
+            ],
+            [
+                "EV-011",
+                "Reporting Context",
+                "Evidence",
+                "destination_port: 80"
+            ],
+            [
+                "EV-012",
+                "Reporting Context",
+                "Evidence",
+                "protocol: HTTP"
+            ],
+            [
+                "EV-013",
+                "Reporting Context",
+                "Evidence",
+                "domain: www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"
+            ],
+            [
+                "EV-014",
+                "Reporting Context",
+                "Evidence",
+                "url: http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/"
+            ],
+            [
+                "EV-015",
+                "Reporting Context",
+                "Evidence",
+                "sha256: ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa"
+            ],
+            [
+                "EV-016",
+                "Reporting Context",
+                "Evidence",
+                "mitre_technique_id: T1486"
+            ]
+        ],
+        "hidden_columns": [
+            4,
+            5,
+            6
+        ],
+        "hidden_rows": 0,
+        "summary": "Evidence register summary:\n- EV-001: Reporting Context, Evidence, severity: Critical\n- EV-002: Reporting Context, Evidence, risk_score: 98.0\n- EV-003: Reporting Context, Evidence, host: FINANCE-WKS-017\n- EV-004: Reporting Context, Evidence, ip: 10.20.14.117\n- EV-005: Reporting Context, Evidence, username: ACME\\\\lim.huiwen\n- EV-006: Reporting Context, Evidence, file_name: mssecsvc.exe\n- EV-007: Reporting Context, Evidence, process_path: C:\\Windows\\mssecsvc.exe\n- EV-008: Reporting Context, Evidence, parent_process_name: lsass.exe\n- Evidence gap: No additional host telemetry was supplied.",
+        "notes": [
+            "Timestamps were not supplied with the current export. Evidence IDs are generated from available reporting context for analyst traceability.",
+            "Confidence values were not supplied with the current export and remain pending analyst validation.",
+            "Raw event references were not supplied with the current export. Evidence IDs are generated from available reporting context for analyst traceability."
+        ],
+        "placeholder_ratio": 0.42857142857142855,
+        "compact": true
+    },
+    "compact_tables": {
+        "assets": {
+            "columns": [
+                "Hostname",
+                "IP Address",
+                "Type"
+            ],
+            "rows": [
+                [
+                    "FINANCE-WKS-017",
+                    "10.20.14.117",
+                    "Endpoint"
+                ]
+            ],
+            "hidden_columns": [
+                3,
+                4,
+                5,
+                6
+            ],
+            "hidden_rows": 0,
+            "placeholder_ratio": 0.5714285714285714,
+            "summary": "Affected assets summary:\n- FINANCE-WKS-017: 10.20.14.117, Endpoint\n- Evidence gap: No additional host telemetry was supplied.",
+            "compact": true
+        },
+        "users": {
+            "columns": [
+                "Username"
+            ],
+            "rows": [
+                [
+                    "ACME\\lim.huiwen"
+                ]
+            ],
+            "hidden_columns": [
+                1,
+                2,
+                3,
+                4,
+                5,
+                6
+            ],
+            "hidden_rows": 0,
+            "placeholder_ratio": 0.8571428571428571,
+            "summary": "Affected users summary:\n- ACME\\lim.huiwen (values unavailable)\n- Evidence gap: No additional host telemetry was supplied.",
+            "compact": true
+        },
+        "iocs": {
+            "columns": [
+                "IOC",
+                "Type",
+                "Reputation",
+                "Confidence",
+                "Source",
+                "Evidence"
+            ],
+            "rows": [
+                [
+                    "`104.17.244.81`",
+                    "ip",
+                    -113,
+                    "High",
+                    "VirusTotal",
+                    "EV-010"
+                ],
+                [
+                    "`ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa`",
+                    "sha256",
+                    -2986,
+                    "High",
+                    "VirusTotal",
+                    "EV-015"
+                ],
+                [
+                    "`www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com`",
+                    "domain",
+                    -165,
+                    "High",
+                    "VirusTotal",
+                    "EV-013"
+                ],
+                [
+                    "`http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/`",
+                    "url",
+                    "No external reputation supplied",
+                    "Observed",
+                    "Reporting Context",
+                    "EV-014"
+                ],
+                [
+                    "`mssecsvc.exe`",
+                    "file_name",
+                    "No external reputation supplied",
+                    "Observed",
+                    "Reporting Context",
+                    "EV-006"
+                ],
+                [
+                    "`10.20.14.117`",
+                    "ip",
+                    "No external reputation supplied",
+                    "Observed",
+                    "NetWitness Alert",
+                    "EV-004"
+                ],
+                [
+                    "`C:\\Windows\\mssecsvc.exe`",
+                    "process_path",
+                    "No external reputation supplied",
+                    "Observed",
+                    "enriched_alert",
+                    "EV-007"
+                ],
+                [
+                    "`lsass.exe`",
+                    "file_name",
+                    "No external reputation supplied",
+                    "Observed",
+                    "Reporting Context",
+                    "EV-008"
+                ],
+                [
+                    "`C:\\Windows\\mssecsvc.exe -m security`",
+                    "command_line",
+                    "No external reputation supplied",
+                    "Observed",
+                    "Reporting Context",
+                    "EV-009"
+                ]
+            ],
+            "hidden_columns": [],
+            "hidden_rows": 0,
+            "placeholder_ratio": 0.0,
+            "summary": null,
+            "compact": false
+        },
+        "timeline": {
+            "columns": [
+                "Time",
+                "Event",
+                "Source",
+                "Evidence",
+                "Significance"
+            ],
+            "rows": [
+                [
+                    "",
+                    "Alert first observed by monitoring source",
+                    "NetWitness SIEM",
+                    "enriched_alert",
+                    "Supports analyst timeline reconstruction."
+                ],
+                [
+                    "",
+                    "Triage completed and severity/confidence assigned",
+                    "Triage Agent",
+                    "triage_result.json",
+                    "Supports analyst timeline reconstruction."
+                ],
+                [
+                    "",
+                    "Investigation completed or completed with limitations",
+                    "Investigation Agent",
+                    "investigation_result.json",
+                    "Supports analyst timeline reconstruction."
+                ],
+                [
+                    "",
+                    "SOC analyst approval decision recorded",
+                    "SOC Analyst",
+                    "approval_result.json",
+                    "Supports analyst timeline reconstruction."
+                ],
+                [
+                    "2026-07-03T09:22:16.235255+00:00",
+                    "Report generated for SOC analyst review",
+                    "Reporting Agent",
+                    "final_report",
+                    "Supports analyst timeline reconstruction."
+                ]
+            ],
+            "hidden_columns": [],
+            "hidden_rows": 0,
+            "placeholder_ratio": 0.16,
+            "summary": null,
+            "compact": false
+        },
+        "mitre": {
+            "columns": [
+                "Tactic",
+                "Technique",
+                "Reason / Evidence",
+                "Confidence"
+            ],
+            "rows": [
+                [
+                    "Impact",
+                    "T1486 Data Encrypted for Impact",
+                    "Recovered from deterministic report context.",
+                    "High"
+                ]
+            ],
+            "hidden_columns": [],
+            "hidden_rows": 0,
+            "placeholder_ratio": 0.0,
+            "summary": null,
+            "compact": false
+        },
+        "recommendations": {
+            "columns": [
+                "Priority",
+                "Action",
+                "Owner",
+                "Approval Required",
+                "Rationale"
+            ],
+            "rows": [
+                [
+                    "P1",
+                    "Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval.",
+                    "Endpoint Response Team",
+                    "Yes",
+                    "Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-003)."
+                ],
+                [
+                    "P2",
+                    "Validate whether mssecsvc.exe is present and running on the host.",
+                    "Endpoint Response Team",
+                    "No",
+                    "Based on Critical severity, Likely True Positive classification, FINANCE-WKS-017 scope, and 9 technical indicator(s) linked to evidence (EV-006)."
+                ]
+            ],
+            "hidden_columns": [],
+            "hidden_rows": 0,
+            "placeholder_ratio": 0.0,
+            "summary": null,
+            "compact": false
+        }
+    },
+    "data_impact_summary": "Data impact assessment:\nNo evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.\n\n- Data access: No evidence provided, requires validation\n- Data exfiltration: No evidence provided, requires validation\n- Encryption / modification / deletion: Not confirmed by supplied host telemetry\n- Personal data involvement: Cannot determine from current evidence\n- Notification requirement: Legal / Compliance decision only if data impact is confirmed\n- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.\n- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps.",
+    "chain_of_custody_note": "Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.",
+    "chain_of_custody_compact": true,
+    "approval_summary": {
+        "report": "Report generation approval status: Approved by Soong Yang.",
+        "containment": "Containment approval status: Pending Analyst Approval.",
+        "recommended": "Recommended containment action: Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval..",
+        "execution": "Containment execution status: Not Contained.",
+        "final_review": "Final analyst review status: Requires Final Analyst Review."
+    },
+    "conclusion": "The report is suitable for SOC analyst review with status Generated for analyst review. Before closure, the analyst should validate unresolved evidence gaps, confirm containment or approval decisions, and determine whether any business, data, regulatory, or recovery impact exists. Any disruptive action, such as endpoint isolation or credential revocation, should follow the recorded approval workflow. Data impact assessment:\nNo evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.\n\n- Data access: No evidence provided, requires validation\n- Data exfiltration: No evidence provided, requires validation\n- Encryption / modification / deletion: Not confirmed by supplied host telemetry\n- Personal data involvement: Cannot determine from current evidence\n- Notification requirement: Legal / Compliance decision only if data impact is confirmed\n- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.\n- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps.",
+    "analyst_friendly_explanation": "The SOC analyst should review this case by validating the evidence that supports the Critical severity, High confidence, and Likely True Positive classification. The most important review areas are the affected scope (FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint)), the affected user context (ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation)), suspicious indicators (No malicious or suspicious IOCs provided), and the timeline sequence (Alert first observed by monitoring source. Triage completed and severity/confidence assigned. Investigation completed or completed with limitations. SOC analyst approval decision recorded. Report generated for SOC analyst review.). The analyst should confirm whether the evidence supports containment, escalation, closure, or further investigation, especially because these validation items remain open: Medium: No additional host telemetry was supplied. If containment is disruptive, the analyst should confirm the approval status (approved) and containment status (not_contained) before action is taken. Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use. Any finding that cannot be verified from the provided evidence should remain marked as not confirmed rather than being treated as a confirmed compromise.",
+    "soc_analyst_review_checklist": "1. Confirm that the incident ID, alert ID, severity (Critical), confidence (High), and classification (Likely True Positive) match the latest triage and investigation records.\n2. Validate the affected scope by checking whether FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint) and ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation) are present in the original alert, endpoint telemetry, identity logs, or NetWitness evidence.\n3. Review the listed IOCs and supporting evidence references, especially No malicious or suspicious IOCs provided, before blocking, isolating, or escalating based on indicator reputation.\n4. Reconstruct the timeline using the available events (Alert first observed by monitoring source. Triage completed and severity/confidence assigned. Investigation completed or completed with limitations. SOC analyst approval decision recorded. Report generated for SOC analyst review.) and confirm whether payload execution, persistence, credential exposure, lateral movement, data access, or exfiltration is not confirmed in the provided evidence.\n5. Compare the technical evidence against the mapped MITRE ATT&CK context (Impact: T1486 Data Encrypted for Impact) and record whether each mapped behaviour is observed, suggested, or still pending validation.\n6. Review unresolved evidence gaps (Medium: No additional host telemetry was supplied.) and collect the required endpoint, identity, network, email, or application logs before closure.\n7. Decide whether containment or approval should proceed by checking the current approval status (approved) and containment status (not_contained).\n8. Record the final analyst decision, including whether the case should be escalated, contained, closed as false positive, or kept open for further investigation.",
+    "llm": {
+        "executive_summary": "This incident is assessed as a Critical-severity, High-confidence Likely True Positive involving WannaCry ransomware activity. The known affected scope is FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint) and ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation). The case is supported by EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. Malicious or suspicious indicators include No malicious or suspicious IOCs provided. Containment is currently not_contained. Report generation approval status: Approved by Soong Yang.\nContainment approval status: Pending Analyst Approval.\nRecommended containment action: Isolate FINANCE-WKS-017 from the network pending SOC Analyst Approval..\nContainment execution status: Not Contained.\nFinal analyst review status: Requires Final Analyst Review. Data impact assessment:\nNo evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.\n\n- Data access: No evidence provided, requires validation\n- Data exfiltration: No evidence provided, requires validation\n- Encryption / modification / deletion: Not confirmed by supplied host telemetry\n- Personal data involvement: Cannot determine from current evidence\n- Notification requirement: Legal / Compliance decision only if data impact is confirmed\n- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.\n- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps. The report is not finalised because these validation items remain open: Medium: No additional host telemetry was supplied.",
+        "technical_analysis": "From a SOC investigation perspective, the available evidence shows alert first observed by monitoring source, followed by triage completed and severity/confidence assigned, followed by investigation completed or completed with limitations. This activity is consistent with WannaCry ransomware activity, supported by EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. MITRE ATT&CK context includes Impact: T1486 Data Encrypted for Impact.\n\nThe current evidence supports a Critical-severity, High-confidence Likely True Positive, but it does not fully confirm whether payload execution completed, whether credentials or sessions were exposed, or whether follow-on access occurred. The analyst should validate script block logs, process completion status, identity logs, mailbox audit logs, and outbound network telemetry before closure.\n\nFormal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.",
+        "business_impact_explanation": "Current business impact depends on validated affected assets, users, data access, and service disruption evidence. Security risk: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps. Not yet confirmed: Further compromise, spread, persistence, and data exposure remain subject to analyst validation.",
+        "attack_narrative": "The likely attack sequence began with alert first observed by monitoring source, followed by triage completed and severity/confidence assigned, followed by investigation completed or completed with limitations. This sequence is consistent with WannaCry ransomware activity, with observed evidence including EV-001: severity: Critical. EV-002: risk_score: 98.0. EV-003: host: FINANCE-WKS-017. EV-004: ip: 10.20.14.117. EV-005: username: ACME\\\\lim.huiwen. The activity has been mapped to Impact: T1486 Data Encrypted for Impact.\n\nHowever, the current evidence does not fully confirm payload completion, persistence, credential or session exposure, lateral movement, data access, or exfiltration. These items should remain open until the SOC analyst validates the relevant endpoint, identity, network, and application logs. Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use.",
+        "conclusion": "The report is suitable for SOC analyst review with status Generated for analyst review. Before closure, the analyst should validate unresolved evidence gaps, confirm containment or approval decisions, and determine whether any business, data, regulatory, or recovery impact exists. Any disruptive action, such as endpoint isolation or credential revocation, should follow the recorded approval workflow. Data impact assessment:\nNo evidence of data access, data exfiltration, encryption impact, or personal data exposure was provided in the current telemetry. These items remain unresolved and require analyst validation before closure or notification decisions.\n\n- Data access: No evidence provided, requires validation\n- Data exfiltration: No evidence provided, requires validation\n- Encryption / modification / deletion: Not confirmed by supplied host telemetry\n- Personal data involvement: Cannot determine from current evidence\n- Notification requirement: Legal / Compliance decision only if data impact is confirmed\n- Business impact context: Current business impact depends on validated affected assets, users, data access, and service disruption evidence.\n- Security risk context: Security risk is tied to the WannaCry ransomware activity scenario and should be validated using the listed evidence and gaps.",
+        "analyst_friendly_explanation": "The SOC analyst should review this case by validating the evidence that supports the Critical severity, High confidence, and Likely True Positive classification. The most important review areas are the affected scope (FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint)), the affected user context (ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation)), suspicious indicators (No malicious or suspicious IOCs provided), and the timeline sequence (Alert first observed by monitoring source. Triage completed and severity/confidence assigned. Investigation completed or completed with limitations. SOC analyst approval decision recorded. Report generated for SOC analyst review.). The analyst should confirm whether the evidence supports containment, escalation, closure, or further investigation, especially because these validation items remain open: Medium: No additional host telemetry was supplied. If containment is disruptive, the analyst should confirm the approval status (approved) and containment status (not_contained) before action is taken. Formal chain-of-custody metadata was not supplied in the current source context. Evidence IDs in this report are reporting references only and should be validated against the source case folder or SIEM export before legal or forensic use. Any finding that cannot be verified from the provided evidence should remain marked as not confirmed rather than being treated as a confirmed compromise.",
+        "soc_analyst_review_checklist": "1. Confirm that the incident ID, alert ID, severity (Critical), confidence (High), and classification (Likely True Positive) match the latest triage and investigation records.\n2. Validate the affected scope by checking whether FINANCE-WKS-017 (Pending analyst validation, Pending analyst validation criticality, Endpoint) and ACME\\lim.huiwen (Pending analyst validation, Pending analyst validation, MFA: Pending analyst validation) are present in the original alert, endpoint telemetry, identity logs, or NetWitness evidence.\n3. Review the listed IOCs and supporting evidence references, especially No malicious or suspicious IOCs provided, before blocking, isolating, or escalating based on indicator reputation.\n4. Reconstruct the timeline using the available events (Alert first observed by monitoring source. Triage completed and severity/confidence assigned. Investigation completed or completed with limitations. SOC analyst approval decision recorded. Report generated for SOC analyst review.) and confirm whether payload execution, persistence, credential exposure, lateral movement, data access, or exfiltration is not confirmed in the provided evidence.\n5. Compare the technical evidence against the mapped MITRE ATT&CK context (Impact: T1486 Data Encrypted for Impact) and record whether each mapped behaviour is observed, suggested, or still pending validation.\n6. Review unresolved evidence gaps (Medium: No additional host telemetry was supplied.) and collect the required endpoint, identity, network, email, or application logs before closure.\n7. Decide whether containment or approval should proceed by checking the current approval status (approved) and containment status (not_contained).\n8. Record the final analyst decision, including whether the case should be escalated, contained, closed as false positive, or kept open for further investigation."
+    },
+    "llm_provider": "not_used",
+    "llm_model": "not_used"
+}

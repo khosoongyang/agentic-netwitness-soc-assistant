@@ -1,0 +1,10 @@
+{
+  "passed": 1,
+  "failed": 0,
+  "results": [
+    {
+      "test": "test_merged_context",
+      "status": "passed"
+    }
+  ]
+}

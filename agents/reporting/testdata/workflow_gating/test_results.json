@@ -1,0 +1,76 @@
+{
+  "passed": 5,
+  "failed": 0,
+  "cases": [
+    {
+      "name": "completed investigation unlocks reporting",
+      "passed": true,
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "reason": "Reporting can run.",
+      "next_step": {
+        "agent": "reporting",
+        "label": "Generate Report",
+        "allowed": true,
+        "reason": "Investigation approval is complete and reporting can run."
+      },
+      "usable_for_reporting": true
+    },
+    {
+      "name": "completed_limited unlocks reporting with limitations",
+      "passed": true,
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "reason": "Reporting can run with documented investigation limitations.",
+      "next_step": {
+        "agent": "reporting",
+        "label": "Run Reporting with Limitations",
+        "allowed": true,
+        "reason": "Investigation approval is complete. Reporting can run with documented evidence limitations."
+      },
+      "usable_for_reporting": true
+    },
+    {
+      "name": "completed_with_evidence_gaps unlocks reporting with limitations",
+      "passed": true,
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "reason": "Reporting can run with documented investigation limitations.",
+      "next_step": {
+        "agent": "reporting",
+        "label": "Run Reporting with Limitations",
+        "allowed": true,
+        "reason": "Investigation approval is complete. Reporting can run with documented evidence limitations."
+      },
+      "usable_for_reporting": true
+    },
+    {
+      "name": "needs_more_data with findings unlocks reporting with limitations",
+      "passed": true,
+      "expected_allowed": true,
+      "actual_allowed": true,
+      "reason": "Reporting can run with documented investigation limitations.",
+      "next_step": {
+        "agent": "reporting",
+        "label": "Run Reporting with Limitations",
+        "allowed": true,
+        "reason": "Investigation approval is complete. Reporting can run with documented evidence limitations."
+      },
+      "usable_for_reporting": true
+    },
+    {
+      "name": "failed investigation still blocks reporting",
+      "passed": true,
+      "expected_allowed": false,
+      "actual_allowed": false,
+      "reason": "Investigation did not produce usable findings. Re-run Investigation or return to Triage for more context.",
+      "next_step": {
+        "agent": null,
+        "label": "Investigation Blocked",
+        "allowed": false,
+        "reason": "Investigation did not produce usable findings. Re-run Investigation or return to Triage for more context."
+      },
+      "usable_for_reporting": false
+    }
+  ]
+}

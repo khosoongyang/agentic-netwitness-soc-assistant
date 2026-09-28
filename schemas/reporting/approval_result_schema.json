@@ -1,0 +1,18 @@
+{
+  "title": "approval_result_schema.json",
+  "type": "object",
+  "properties": {
+    "approval_type": {"type": ["string", "null"]},
+    "approval_gate": {"type": ["string", "null"]},
+    "approved_action": {"type": ["string", "null"]},
+    "approved_containment_action": {"type": ["string", "null"]},
+    "approved_by": {"type": ["string", "null"]},
+    "reviewed_by": {"type": ["string", "null"]},
+    "analyst": {"type": ["string", "null"]},
+    "containment_approval_status": {"type": ["string", "null"]},
+    "containment_execution_status": {"type": ["string", "null"]},
+    "reporting_mode": {"type": ["string", "null"]},
+    "evidence_gaps": {"type": "array"},
+    "missing_evidence": {"type": "array"}
+  }
+}

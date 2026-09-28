@@ -1,0 +1,11 @@
+{
+  "incident_id": "INC-WANNACRY-TEST",
+  "alert_id": "NW-WCRY-445-0001",
+  "alert_title": "WannaCry Ransomware Activity - mssecsvc.exe",
+  "hostname": "FINANCE-WKS-017",
+  "source_ip": "10.20.14.117",
+  "destination_ip": "104.17.244.81",
+  "file_hash": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+  "url": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+  "event_domain": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"
+}

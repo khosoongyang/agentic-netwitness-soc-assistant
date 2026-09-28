@@ -1,0 +1,113 @@
+{# [FYP-FILE] FILE OVERVIEW
+   File: soc_reporting_agent/report_templates/soc_triage_review_template.md.j2
+   Purpose: Renders the analyst-facing review of triage conclusions and confidence.
+   Main functionality: Presents classification, severity, evidence, and triage limitations.
+   Inputs: The context dict built by reporting/context_builder.py and report_renderer.py.
+   Outputs: soc_triage_review text later included in TXT, DOCX, and PDF artifacts.
+   Workflow position: Reporting review, after Triage and before final report approval.
+   Important dependencies: Jinja2, report_renderer.py, editable_reports.REPORT_SECTION_CONFIG.
+   Key evaluator search terms: soc_triage_review, SOC Triage Review, [FYP-APPROVAL]. #}
+# SOC Triage Review
+
+| Field | Value |
+|---|---|
+| Incident ID | {{ incident_id }} |
+| Alert ID | {{ alert_id }} |
+| Report Status | {{ report_status_display | default(report_status) }} |
+| Data Consistency | {{ data_consistency_status_display | default(data_consistency_status) }} |
+| Severity | {{ severity.label }} |
+| Confidence | {{ confidence.label }} |
+| Classification | {{ classification }} |
+| Likely Scenario | {{ likely_scenario }} |
+
+## 1. Case Summary
+
+{{ active_narrative.executive_summary }}
+
+## 2. Evidence Summary
+
+{% if evidence_backed_findings %}
+| Finding | Evidence Summary | Evidence Strength | Limitation |
+|---|---|---|---|
+{% for finding in evidence_backed_findings %}
+| {{ finding.finding }} | {{ finding.evidence_summary }} | {{ finding.evidence_strength }} | {{ finding.limitation }} |
+{% endfor %}
+{% else %}
+No evidence-backed findings were available.
+{% endif %}
+
+## 3. Affected Scope
+
+{% if affected_assets %}
+| Asset | IP | Criticality | Function |
+|---|---|---|---|
+{% for asset in affected_assets %}
+| {{ asset.hostname }} | {{ asset.ip_address }} | {{ asset.criticality }} | {{ asset.business_function }} |
+{% endfor %}
+{% else %}
+No affected assets were confirmed.
+{% endif %}
+
+{% if affected_users %}
+| User | Role | Privilege | MFA |
+|---|---|---|---|
+{% for user in affected_users %}
+| {{ user.username }} | {{ user.role }} | {{ user.privilege_level }} | {{ user.mfa_status }} |
+{% endfor %}
+{% else %}
+No affected users were confirmed.
+{% endif %}
+
+## 4. IOCs and Threat Intelligence
+
+{% if iocs %}
+| IOC | Type | Reputation | Source |
+|---|---|---|---|
+{% for ioc in iocs %}
+| {{ ioc.value }} | {{ ioc.type }} | {{ ioc.reputation }} | {{ ioc.source }} |
+{% endfor %}
+{% else %}
+No IOCs were available.
+{% endif %}
+
+## 5. Analyst Review Checklist
+
+| Step | Analyst Action |
+|---|---|
+{% for item in soc_analyst_review_checklist_items %}
+| {{ loop.index }} | {{ item }} |
+{% endfor %}
+
+## 6. Evidence Gaps
+
+{% if evidence_gaps %}
+| Priority | Gap |
+|---|---|
+{% for gap in evidence_gaps %}
+| {{ gap.priority | default("Medium") }} | {{ gap.gap | default(gap) }} |
+{% endfor %}
+{% else %}
+No evidence gaps were recorded.
+{% endif %}
+
+## 7. Recommended Actions
+
+{% if recommended_actions %}
+| Priority | Action | Owner | Approval Required |
+|---|---|---|---|
+{% for action in recommended_actions %}
+| {{ action.priority }} | {{ action.action }} | {{ action.owner }} | {{ action.approval_required }} |
+{% endfor %}
+{% else %}
+No recommended actions were provided by upstream agents.
+{% endif %}
+
+## 8. Decision Required
+
+| Field | Value |
+|---|---|
+| Approval Status | {{ approval.approval_status }} |
+| Containment Recommended | {{ containment.recommended }} |
+| Containment Action | {{ containment.recommended_action }} |
+| Containment Execution Status | {{ containment.execution_status }} |
+| Blocking Reason | {{ containment.blocking_reason }} |

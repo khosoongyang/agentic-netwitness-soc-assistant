@@ -1,0 +1,8 @@
+{
+  "passed": true,
+  "results": {
+    "decision_branching": "passed",
+    "reporting_wrapper": "passed",
+    "wrapper_path": "/mnt/data/work_structured_ui_fix/agentic_soc_integrated_structured_report_tables/outputs/TKT-EG-WRAPPER/reporting/reporting_result.json"
+  }
+}

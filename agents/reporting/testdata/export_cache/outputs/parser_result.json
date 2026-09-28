@@ -1,0 +1,36 @@
+{
+  "parser_status": "completed",
+  "input_shape": "incident_with_alerts",
+  "normalised_alert_count": 1,
+  "selected_alert_id": "ALERT-CACHE-V2",
+  "parser_confidence": "High",
+  "parser_confidence_score": 95,
+  "important_extracted_fields": {
+    "alert_id": "ALERT-CACHE-V2",
+    "incident_id": "TKT-CACHE-0001",
+    "alert_name": "Export Cache Parser Test",
+    "severity": "High",
+    "risk_score": 82,
+    "alert_time": "2026-06-18T10:00:00Z",
+    "source_ips": [
+      "10.0.0.5"
+    ],
+    "destination_ips": [
+      "8.8.8.8"
+    ],
+    "hosts": [
+      "wkstn-cache-001"
+    ],
+    "users": [
+      "alice"
+    ],
+    "file_hashes": [
+      "44d88612fea8a8f36de82e1278abb02f"
+    ],
+    "process_names": [
+      "powershell.exe"
+    ]
+  },
+  "missing_important_fields": [],
+  "warnings": []
+}

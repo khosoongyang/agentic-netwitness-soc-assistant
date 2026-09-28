@@ -1,0 +1,68 @@
+{
+  "incident_id": "INC-53020",
+  "classification": {
+    "alert_type": "Unknown Source IP",
+    "severity": "MEDIUM",
+    "triage_risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is medium because a high-severity NetWitness network alert with a 70 risk score indicates suspicious activity, but only internal IP-to-IP traffic is evidenced and no payload or PowerShell indicators are present; occurrence is medium due to a single detected event with no volume history; adverse impact is low because there is no protocol/port, no exfiltration, no external destination, and no endpoint/process/file evidence to support material harm."
+    },
+    "source_risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "timestamp": "2025-12-01T07:11:11+00:00",
+    "description": "This alert reflects internal network communication between two private IPs, but the available telemetry lacks protocol and destination port details, limiting confidence in determining malicious behavior. No PowerShell indicators, endpoint process data, or exfiltration evidence were found, so this is best treated as suspicious network activity requiring validation rather than a confirmed compromise.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.204",
+      "hostname": "KELLYWANG"
+    },
+    "destination": {
+      "ip_address": "192.168.10.202"
+    }
+  },
+  "endpoint_indicators": {
+    "hostname": "KELLYWANG"
+  },
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      }
+    },
+    "notes": [
+      "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

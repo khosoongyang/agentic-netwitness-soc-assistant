@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reporting Result",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "incident_id",
+    "alert_id",
+    "report_status",
+    "generated_reports"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "reporting-result-v1"
+    },
+    "incident_id": {
+      "type": "string"
+    },
+    "alert_id": {
+      "type": "string"
+    },
+    "report_status": {
+      "type": "string"
+    },
+    "generated_reports": {
+      "type": "object"
+    }
+  }
+}

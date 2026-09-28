@@ -1,0 +1,68 @@
+# =============================================================================
+# [FYP-FILE] FILE OVERVIEW
+# [FYP-SECTION] EXECUTABLE / BEHAVIOURAL CONFIGURATION
+# =============================================================================
+# File: .gitleaks.toml
+# Purpose: This file configures repository secret-detection rules and allowlists.
+# Main functionality: Supplies runtime, dependency, security, workflow, or
+#   playbook values consumed by the application/framework named below.
+# Inputs: Maintainer-controlled configuration values; no live secret values
+#   are documented or introduced by this overview.
+# Outputs: Configuration read by the framework, installer, CI job, or Aegis
+#   component; it does not independently execute a workflow stage.
+# Workflow position: Supporting configuration for SOC analysis support.
+# Important dependencies: The consuming application/framework and the exact
+#   keys or steps declared in this file.
+# Error and fallback behaviour: Invalid values fail in the consuming parser,
+#   installer, workflow, or framework; fallback behaviour belongs to that caller.
+# Key evaluator search terms: .gitleaks.toml, [FYP-CONFIG], [FYP-FILE].
+# =============================================================================
+# [FYP-CONFIG] Purpose: Gitleaks ruleset + allowlist controlling the secrets scan.
+# Verified via Grep: consumed by .github/workflows/secrets-scan.yml, which sets
+# GITLEAKS_CONFIG: .gitleaks.toml for the gitleaks/gitleaks-action@v2 step.
+# ─────────────────────────────────────────────────────────────────────────────
+# Gitleaks config for the SOC platform repo (used by .github/workflows/secrets-scan.yml)
+#
+# Extends Gitleaks' built-in ruleset (AWS/GCP keys, GitHub/Slack tokens, private
+# keys, generic high-entropy API keys, …) and adds an allowlist so the scan flags
+# only REAL leaked secrets — not template placeholders, generated demo data, or the
+# committed binary DBs. Tune false positives here (add a path/regex) rather than
+# disabling the gate.
+# ─────────────────────────────────────────────────────────────────────────────
+title = "netwitness-soc-assistant secrets scan"
+
+[extend]
+useDefault = true   # keep all of Gitleaks' default detection rules
+
+[allowlist]
+description = "Template placeholders, generated demo data, and binary payloads (not secrets)"
+
+# File paths (regex, matched against the repo-relative path) to skip.
+paths = [
+  # Secret TEMPLATES — intentionally contain fake 'sk-xxxx' style placeholders
+  '''\.env\.example''',
+  # On-prem/VPN TLS material — gitignored, but belt-and-suspenders if ever committed
+  '''\.pem$''',
+  '''\.cer$''',
+  '''certs/''',
+  # Binary demo payload (SQLite + Chroma) — high-entropy blobs, not credentials
+  '''\.db$''',
+  '''\.sqlite3$''',
+  '''soc_db/''',
+  '''chroma_db/''',
+  # Generated agent/report artifacts (synthetic incident data)
+  '''incident_reports/''',
+  '''triaged_alerts/''',
+  '''agents/reporting/outputs/''',
+  '''agents/reporting/testdata/''',
+  '''tests/golden_incidents\.json''',
+]
+
+# Finding values (regex) to treat as non-secrets — the doc/template placeholders.
+regexes = [
+  '''(?i)sk-x{4,}''',          # secrets.toml.example: sk-xxxxxxxxxxxxxxxxxxxx
+  '''(?i)your-llm-endpoint''',
+  '''(?i)your-?(token|key|secret)''',
+  '''(?i)<(you|your-[a-z-]+)>''',
+  '''(?i)example\.com''',
+]

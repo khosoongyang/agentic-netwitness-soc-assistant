@@ -1,0 +1,72 @@
+{
+  "incident_id": "INC-6125",
+  "classification": {
+    "alert_type": "Spearphishing Attachment",
+    "severity": "High",
+    "risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: Event Stream Analysis for Email with Suspicious Attachment Detected",
+    "timestamp": "2026-01-17T17:20:19Z",
+    "direction": "lateral",
+    "mitre_att&ck": {
+      "tactic": "initial-access",
+      "technique": "spearphishing attachment",
+      "id": "T1566.001"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "10.100.20.16",
+      "port": 49861,
+      "mac_address": "00:50:56:bf:6e:f4",
+      "hostname": "RPSOCWSWin2"
+    },
+    "destination": {
+      "ip_address": "10.100.10.7",
+      "port": 110,
+      "mac_address": "7c:c0:25:3e:6c:11",
+      "service": "POP3"
+    }
+  },
+  "email_artifacts": {
+    "sender": "itadmin@rp-soc.com",
+    "recipient": "jolin_j@rp-soc.com",
+    "subject": "URGENT: Windows Update Patching Required!",
+    "client": "Microsoft Outlook Express 6.00.2900.5512",
+    "attachment": {
+      "filename": "winupdate.exe",
+      "filetype": "windows executable",
+      "extension": "exe",
+      "size_bytes": 56240
+    }
+  },
+  "threat_intelligence_enrichment": {
+    "source_ip_10.100.20.16": {
+      "abuseipdb": {
+        "status": "skipped",
+        "reason": "RFC 1918 Private IP address"
+      },
+      "alienvault_otx": {
+        "status": "skipped",
+        "reason": "RFC 1918 Private IP address"
+      }
+    },
+    "destination_ip_10.100.10.7": {
+      "abuseipdb": {
+        "status": "skipped",
+        "reason": "RFC 1918 Private IP address"
+      },
+      "alienvault_otx": {
+        "status": "skipped",
+        "reason": "RFC 1918 Private IP address"
+      }
+    },
+    "attachment_winupdate.exe": {
+      "virustotal": {
+        "status": "partial_search",
+        "reason": "No cryptographic hash (MD5/SHA1/SHA256) present in raw log payload; file type matching rules identify application/x-msdownload threat category as 'malware' and 'suspicious'."
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "_about": "Golden-set fixtures for eval_harness.py. Each case is a synthetic incident with the DETERMINISTIC outcome the skill suite must produce. Band-level assertions (not exact wording) so they stay stable but still catch real regressions (e.g. the phishing-vs-endpoint playbook mis-route). Offline: no LLM, no network.",
+  "cases": [
+    {
+      "name": "endpoint_hta_c2",
+      "incident": {
+        "id": "GOLD-C2", "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+        "severity": "High", "status": "New", "created": "2025-11-18T03:18:37+00:00",
+        "alertCount": 240,
+        "alertMeta": {
+          "Hostname": ["KELLYWANG"], "User": ["Kelly Wang"],
+          "SourceIp": ["192.168.10.204"], "DestinationIp": ["192.168.10.202"],
+          "AlertTitles": ["Malicious HTA file detected", "Potential C2 Connection"]
+        }
+      },
+      "triage": {"classification": "High", "mitre_tactic": "Execution", "incident_category": "Compromised asset (non-critical)"},
+      "expect": {
+        "tactic_inference": {"available": true, "tactic_contains": "execution", "confidence": "medium"},
+        "verdict": {"level_in": ["HIGH", "CRITICAL"]},
+        "diamond": {"available": true, "completeness_min": 50},
+        "sop": {"valid": true, "approval_required": true, "scenario_contains": "c2"},
+        "sidecar": {"available": true, "skills_include": ["diamond_model", "triage_verdict", "reporting_sop"]},
+        "playbook": "privilegeEscalation.yaml"
+      }
+    },
+    {
+      "name": "endpoint_lateral_movement",
+      "incident": {
+        "id": "GOLD-LM", "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+        "severity": "Critical", "status": "New", "created": "2025-07-14T11:21:34+00:00",
+        "alertCount": 1558,
+        "alertMeta": {
+          "Hostname": ["BETHANYCHUCHU"], "User": ["SYSTEM"],
+          "SourceIp": ["192.168.10.204"], "DestinationIp": ["192.168.20.201"],
+          "AlertTitles": ["Lateral Move Detected", "Disables UAC", "High CPU usage"]
+        }
+      },
+      "triage": {"classification": "Critical", "mitre_tactic": "Lateral Movement", "incident_category": "Internal Hacking (active)"},
+      "expect": {
+        "tactic_inference": {"available": true, "tactic_contains": "lateral"},
+        "verdict": {"level_in": ["HIGH", "CRITICAL"]},
+        "sop": {"valid": true, "approval_required": true, "scenario_contains": "lateral"},
+        "sidecar": {"available": true, "skills_include": ["diamond_model", "triage_verdict"]},
+        "playbook": "privilegeEscalation.yaml"
+      }
+    },
+    {
+      "name": "phishing_email",
+      "incident": {
+        "id": "GOLD-PH", "title": "Phishing Email Campaign against Finance",
+        "severity": "High", "status": "New",
+        "alertMeta": {"AlertTitles": ["Malicious attachment detected", "Suspicious link clicked"]}
+      },
+      "triage": {"classification": "High", "mitre_tactic": "Initial Access", "incident_category": "Phishing"},
+      "expect": {
+        "tactic_inference": {"available": true, "tactic_contains": "initial access"},
+        "sop": {"valid": true, "scenario_contains": "phishing"},
+        "playbook": "phishing.yaml"
+      }
+    },
+    {
+      "name": "ransomware_impact",
+      "incident": {
+        "id": "GOLD-RW", "title": "Ransomware outbreak on file server",
+        "severity": "Critical", "status": "New",
+        "alertMeta": {"Hostname": ["FILESRV01"], "AlertTitles": ["Ransomware encryption detected", "Files encrypted"]}
+      },
+      "triage": {"classification": "Critical", "mitre_tactic": "Impact", "incident_category": "Malware/Ransomware"},
+      "expect": {
+        "tactic_inference": {"available": true, "tactic_contains": "impact"},
+        "verdict": {"level_in": ["HIGH", "CRITICAL"]},
+        "sop": {"valid": true, "approval_required": true, "scenario_contains": "ransomware"},
+        "playbook": "privilegeEscalation.yaml"
+      }
+    },
+    {
+      "name": "benign_generic_low",
+      "incident": {
+        "id": "GOLD-LOW", "title": "High Risk Alerts: ESA", "severity": "Low", "status": "New",
+        "alertMeta": {}
+      },
+      "expect": {
+        "tactic_inference": {"available": false},
+        "verdict": {"level_in": ["LOW"]},
+        "sop": {"valid": true, "approval_required": false, "scenario_contains": "generic"}
+      }
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "incident_id": "TKT-CACHE-0001",
+  "alert_id": "ALERT-CACHE-V1",
+  "alert_name": "Export Cache Parser Test",
+  "severity": "High",
+  "confidence": "High",
+  "hostname": "wkstn-cache-001",
+  "destination_ip": "8.8.8.8",
+  "file_hash": "44d88612fea8a8f36de82e1278abb02f",
+  "iocs": [
+    {
+      "type": "file_hash",
+      "value": "44d88612fea8a8f36de82e1278abb02f"
+    }
+  ],
+  "threat_intelligence": {
+    "notes": []
+  },
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_score": 0
+}

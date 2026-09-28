@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Correlation Recommendation",
+  "type": "object",
+  "required": ["recommendation_id", "recommendation_type", "source_alert_id", "target_ticket_id", "confidence", "score", "reason", "status"],
+  "properties": {
+    "recommendation_id": {"type": "string"},
+    "recommendation_type": {"type": "string", "enum": ["add_alert_to_existing_ticket", "move_alert_to_ticket", "merge_tickets", "split_alert_to_new_ticket"]},
+    "source_alert_id": {"type": "string"},
+    "source_ticket_id": {"type": ["string", "null"]},
+    "target_ticket_id": {"type": "string"},
+    "target_incident_id": {"type": ["string", "null"]},
+    "confidence": {"type": "string"},
+    "score": {"type": "integer", "minimum": 0, "maximum": 100},
+    "matched_fields": {"type": "array"},
+    "reason": {"type": "string"},
+    "status": {"type": "string", "enum": ["pending", "confirmed", "edited", "rejected", "expired"]},
+    "created_by": {"type": "string"},
+    "created_at": {"type": "string"},
+    "reviewed_by": {"type": ["string", "null"]},
+    "reviewed_at": {"type": ["string", "null"]},
+    "analyst_comments": {"type": ["string", "null"]}
+  }
+}

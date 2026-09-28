@@ -1,0 +1,58 @@
+{
+  "incident_id": "INC-WANNACRY-TEST",
+  "alert_id": "NW-WCRY-445-0001",
+  "host": "FINANCE-WKS-017",
+  "hostname": "FINANCE-WKS-017",
+  "source_ip": "10.20.14.117",
+  "destination_ip": "104.17.244.81",
+  "domain": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+  "url": "http://www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com/",
+  "sha256": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+  "file_name": "mssecsvc.exe",
+  "process_name": "mssecsvc.exe",
+  "process_path": "C:\\Windows\\mssecsvc.exe",
+  "mitre_technique_id": "T1486",
+  "severity": "Critical",
+  "confidence": "High",
+  "iocs": [
+    {
+      "type": "ip",
+      "value": "104.17.244.81"
+    },
+    {
+      "type": "file_name",
+      "value": "WannaCry Ransomware Activity - mssecsvc.exe"
+    },
+    {
+      "type": "file_name",
+      "value": "mssecsvc.exe"
+    },
+    {
+      "type": "file_hash",
+      "value": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa"
+    }
+  ],
+  "threat_intelligence": {
+    "virustotal": {
+      "file_hash": {
+        "indicator": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+        "malicious": 63,
+        "reputation": -2986
+      },
+      "ip_results": [
+        {
+          "indicator": "104.17.244.81",
+          "malicious": 1,
+          "reputation": -113
+        }
+      ],
+      "domain_results": [
+        {
+          "indicator": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+          "malicious": 10,
+          "reputation": -165
+        }
+      ]
+    }
+  }
+}
