@@ -1651,8 +1651,31 @@ function investigationOutputTab(workspace) {
 function investigationTimelineTab(workspace) {
   const items = workspace?.timeline || [];
   if (!items.length) return emptyState("No timeline events have been recorded for this case yet.");
-  const typeTone = { security: "state-in_progress", warning: "state-failed", workflow: "state-completed", info: "state-locked" };
-  const rows = items.map((it) => `<tr><td class="mono">${escapeHTML(it.timestamp || "—")}</td><td>${escapeHTML(it.event)}</td><td>${badge(it.event_type, typeTone[it.event_type] || "")}</td><td class="mono">${escapeHTML(it.source_stage || "")}</td></tr>`).join("");
+  const typeTone = {
+    security: "state-in_progress",
+    telemetry: "state-in_progress",
+    attack_chain: "state-in_progress",
+    Execution: "state-in_progress",
+    Persistence: "state-in_progress",
+    "Privilege Escalation": "state-failed",
+    "Defense Evasion": "state-failed",
+    "Credential Access": "state-failed",
+    Discovery: "state-locked",
+    "Lateral Movement": "state-failed",
+    "Command and Control": "state-failed",
+    Exfiltration: "state-failed",
+    Impact: "state-failed",
+    warning: "state-failed",
+    workflow: "state-completed",
+    info: "state-locked",
+  };
+  const rows = items.map((it) => {
+    const time = it.timestamp || "—";
+    const eventText = it.description || it.observed_evidence || it.event || "";
+    const typeLabel = it.tactic || it.event_type || "security";
+    const sourceLabel = it.technique_id ? `${it.technique_id}${it.technique_name ? ` (${it.technique_name})` : ""}` : (it.source_stage || "investigation");
+    return `<tr><td class="mono">${escapeHTML(time)}</td><td>${escapeHTML(eventText)}</td><td>${badge(typeLabel, typeTone[typeLabel] || "state-in_progress")}</td><td class="mono">${escapeHTML(sourceLabel)}</td></tr>`;
+  }).join("");
   return `<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Timestamp</th><th>Event</th><th>Type</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
@@ -2020,8 +2043,6 @@ const _INVESTIGATION_SUBTABS = [
   ["timeline", "Timeline", investigationTimelineTab],
   ["mitre", "MITRE ATT&CK", investigationMitreTab],
   ["entity_graph", "Entity Graph", investigationEntityGraphTab, mountEntityGraph],
-  ["evidence", "Evidence", investigationEvidenceTab],
-  ["activity", "Activity", investigationActivityTab],
 ];
 
 // Approve Investigation only unlocks Reporting (it stays "Pending"); "Continue

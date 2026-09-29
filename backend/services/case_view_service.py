@@ -1616,90 +1616,267 @@ def _format_timestamp(ts: Any) -> str | None:
             return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
     except (ValueError, OverflowError):
         pass
+    try:
+        iso_str = s.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(iso_str)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    except Exception:
+        pass
     return s
+
+
+_INCIDENT_TIMESTAMP_RE = re.compile(
+    r"(?:\bat\s+)?(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)(?:\s*:)?"
+)
+
+_TIMELINE_LIMITATION_MARKERS = (
+    "no confirmed", "not confirmed", "did not confirm", "no evidence",
+    "cannot be", "could not", "not proven", "unable to", "not present",
+    "no hash", "no decodable", "not available", "no usable", "lack of",
+    "no process", "no endpoint", "no hostname", "without process",
+    "without host", "remained unresolved", "did not prove", "no host telemetry",
+    "not directly available", "is not confirmed", "not confirmed as",
+)
+_TIMELINE_SUSPECTED_MARKERS = (
+    "suspicious", "potential", "possible", "suggest", "appears",
+    "unconfirmed", "may indicate", "likely", "consistent with",
+)
+
+
+def _classify_timeline_significance(text: str) -> str:
+    lowered = text.lower()
+    if any(marker in lowered for marker in _TIMELINE_LIMITATION_MARKERS):
+        return "Investigation limitation"
+    if any(marker in lowered for marker in _TIMELINE_SUSPECTED_MARKERS):
+        return "Suspected or unconfirmed activity"
+    return "Confirmed activity"
+
+
+_EVIDENCE_TOKEN_RE = re.compile(
+    r"\b(?:"
+    r"(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?"
+    r"|[a-fA-F0-9]{32,64}"
+    r"|[a-zA-Z0-9_\-\.]+\.(?:exe|bat|ps1|dll|vbs|sh|cab|zip|bin)"
+    r"|HKLM\\[a-zA-Z0-9_\\]+"
+    r"|T\d{4}(?:\.\d{3})?"
+    r")\b",
+    re.IGNORECASE
+)
+
+
+def _extract_evidence_tokens(text: str) -> list[str]:
+    if not text:
+        return []
+    tokens = []
+    seen = set()
+    for m in _EVIDENCE_TOKEN_RE.finditer(text):
+        tok = m.group(0).strip(".,;:\"'")
+        if tok and tok.lower() not in seen:
+            seen.add(tok.lower())
+            tokens.append(tok)
+    return tokens
 
 
 def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                    data_availability: dict) -> list[dict]:
     """
-    [FYP-FUNCTION] Timeline tab data — merges three independently-sourced
-    event streams into one chronologically sorted, deduped list, each item
-    tagged with event_type in {security, workflow, info, warning}.
+    [FYP-FUNCTION] Timeline tab data — reconstructs the security attack chain
+    and chronological sequence of events (e.g. initial access, process execution,
+    privilege escalation, command & control, lateral movement) from the
+    Investigation Agent's findings (incident_summary, MITRE TTP mappings,
+    execution trace) and raw alert telemetry.
 
-    [FYP-USED-BY]: internal only — build_case_view() (Timeline tab). Not
-    called by build_aegis_context() (Ask Aegis has no timeline section;
-    see the module's [FYP-CALLS] note on why it reuses only build_overview/
-    build_mitre/build_evidence) and not called directly by app.py.
-
-    [FYP-CALLS] incident_map.build_incident_map() for the security-event
-    stream (imap["timeline"]). Adds: (1) an explicit "no events" info item
-    when the alert fetch itself succeeded but genuinely found nothing, vs.
-    (2) an availability warning item when the fetch didn't succeed/wasn't
-    attempted — these two states must never be conflated (see
-    _availability_warning() and the module's "never silently claim
-    completeness" rule); (3) workflow stage-completion timestamps read
-    straight off `state`'s *_updated_at columns; (4) analyst approval
-    decisions via workflow_state_store.get_approval_history(). Final
-    sort/dedupe key is (timestamp, event) — None timestamps sort first,
-    which is fine since they're only info/warning banners.
+    Internal workflow transitions and analyst approvals are deliberately
+    excluded here (they are tracked in build_activity() for the Activity tab).
     """
-    imap = build_incident_map(incident)
     items: list[dict] = []
+
+    # 1. Primary: Reconstruct from Investigation Agent findings (if investigation completed/persisted)
+    inv_result = _json_or_empty(state.get("investigation_result_json")) or state.get("investigation_result") or {}
+    if isinstance(inv_result, dict) and inv_result:
+        # Check for structured mitre_mappings
+        mappings = inv_result.get("mitre_mappings")
+        if not (isinstance(mappings, list) and mappings):
+            # Fallback to narrative_report Markdown table
+            narrative = inv_result.get("narrative_report") or ""
+            parsed_mappings, _ = _parse_mitre_markdown_table(narrative)
+            mappings = parsed_mappings
+
+        summary = (
+            inv_result.get("incident_summary")
+            or inv_result.get("summary")
+            or (inv_result.get("investigation_analysis", {}).get("incident_summary") if isinstance(inv_result.get("investigation_analysis"), dict) else "")
+            or ""
+        )
+
+        base_ts = _format_timestamp(incident.get("firstAlertTime") or incident.get("created"))
+        current_ts = base_ts
+
+        if isinstance(mappings, list) and mappings:
+            for idx, m in enumerate(mappings, 1):
+                if not isinstance(m, dict):
+                    continue
+                phase = str(m.get("timeline_phase") or f"Phase {idx}").strip()
+                evidence_raw = m.get("observed_evidence") or (m.get("evidence")[0] if isinstance(m.get("evidence"), list) and m.get("evidence") else "")
+                evidence_str = str(evidence_raw).strip()
+                tactic = str(m.get("tactic") or "").strip()
+                tech_name = str(m.get("technique_name") or "").strip()
+                tech_id = str(m.get("technique_id") or "").strip()
+
+                ts_match = _INCIDENT_TIMESTAMP_RE.search(evidence_str)
+                if ts_match:
+                    current_ts = _format_timestamp(ts_match.group(1))
+
+                tokens = _extract_evidence_tokens(evidence_str)
+                significance = _classify_timeline_significance(evidence_str or phase)
+
+                items.append({
+                    "timestamp": current_ts,
+                    "phase": phase,
+                    "event": phase,
+                    "description": evidence_str or phase,
+                    "observed_evidence": evidence_str,
+                    "evidence": tokens or ([evidence_str] if evidence_str else []),
+                    "tactic": tactic if tactic and tactic.lower() != "unclassified" else None,
+                    "technique_name": tech_name or None,
+                    "technique_id": tech_id or None,
+                    "significance": significance,
+                    "event_type": "attack_chain",
+                    "source_stage": "investigation",
+                    "incident_id": str(incident_id),
+                    "run_id": run_id,
+                })
+
+        elif summary:
+            sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", summary) if s.strip()]
+            current_ts = base_ts
+            for idx, sent in enumerate(sentences, 1):
+                ts_match = _INCIDENT_TIMESTAMP_RE.search(sent)
+                if ts_match:
+                    current_ts = _format_timestamp(ts_match.group(1))
+                    cleaned_event = sent[:ts_match.start()] + sent[ts_match.end():]
+                else:
+                    cleaned_event = sent
+                cleaned_event = re.sub(r"\s{2,}", " ", cleaned_event).strip(" .,:;-")
+                if not cleaned_event:
+                    continue
+                tokens = _extract_evidence_tokens(sent)
+                items.append({
+                    "timestamp": current_ts,
+                    "phase": f"Attack Sequence #{idx}",
+                    "event": cleaned_event + ".",
+                    "description": sent,
+                    "observed_evidence": ", ".join(tokens) if tokens else "",
+                    "evidence": tokens,
+                    "tactic": None,
+                    "technique_name": None,
+                    "technique_id": None,
+                    "significance": _classify_timeline_significance(sent),
+                    "event_type": "attack_chain",
+                    "source_stage": "investigation",
+                    "incident_id": str(incident_id),
+                    "run_id": run_id,
+                })
+
+    # 2. Alert Telemetry Events (from incident.alerts / raw_alerts)
+    if not items:
+        alerts = incident.get("alerts") or incident.get("raw_alerts") or []
+        if isinstance(alerts, list) and alerts:
+            for alert in alerts[:50]:
+                if not isinstance(alert, dict):
+                    continue
+                when = alert.get("created") or alert.get("receivedTime") or alert.get("timestamp") or alert.get("time")
+                title = (
+                    alert.get("title") or alert.get("name") or alert.get("signature_id")
+                    or alert.get("type") or alert.get("detail")
+                )
+                if not title and isinstance(alert.get("alertMeta"), dict):
+                    titles = alert["alertMeta"].get("AlertTitles") or []
+                    if titles:
+                        title = titles[0]
+                if not title:
+                    title = "Security Alert Triggered"
+
+                ev_tokens = []
+                for k in ("sourceIp", "destinationIp", "userName", "processName", "fileName", "fileHash"):
+                    v = alert.get(k)
+                    if v and isinstance(v, str):
+                        ev_tokens.append(v)
+
+                items.append({
+                    "timestamp": _format_timestamp(when),
+                    "phase": "Alert Telemetry",
+                    "event": str(title),
+                    "description": f"Observed alert: {title}",
+                    "observed_evidence": ", ".join(ev_tokens),
+                    "evidence": ev_tokens,
+                    "tactic": None,
+                    "technique_name": None,
+                    "technique_id": None,
+                    "significance": "Confirmed activity",
+                    "event_type": "telemetry",
+                    "source_stage": "raw_incident",
+                    "incident_id": str(incident_id),
+                    "run_id": run_id,
+                })
+        elif incident.get("firstAlertTime"):
+            title = str(incident.get("title") or incident.get("name") or "Security Incident Detected")
+            items.append({
+                "timestamp": _format_timestamp(incident.get("firstAlertTime")),
+                "phase": "Initial Detection",
+                "event": title,
+                "description": f"Initial detection recorded: {title}",
+                "observed_evidence": "",
+                "evidence": [],
+                "tactic": None,
+                "technique_name": None,
+                "technique_id": None,
+                "significance": "Confirmed activity",
+                "event_type": "security",
+                "source_stage": "raw_incident",
+                "incident_id": str(incident_id),
+                "run_id": run_id,
+            })
+
+    # Availability warning if empty
     availability_note = _availability_warning(data_availability)
+    if not items:
+        if data_availability.get("alerts_fetch_succeeded"):
+            items.append({
+                "timestamp": None,
+                "phase": "Information",
+                "event": "No security events were returned for this incident.",
+                "description": "No security events were returned for this incident.",
+                "observed_evidence": "",
+                "evidence": [],
+                "tactic": None,
+                "technique_name": None,
+                "technique_id": None,
+                "significance": "Investigation limitation",
+                "event_type": "info",
+                "source_stage": "raw_incident",
+                "incident_id": str(incident_id),
+                "run_id": run_id,
+            })
+        elif availability_note:
+            items.append({
+                "timestamp": None,
+                "phase": "Availability Warning",
+                "event": availability_note,
+                "description": availability_note,
+                "observed_evidence": "",
+                "evidence": [],
+                "tactic": None,
+                "technique_name": None,
+                "technique_id": None,
+                "significance": "Investigation limitation",
+                "event_type": "warning",
+                "source_stage": "raw_incident",
+                "incident_id": str(incident_id),
+                "run_id": run_id,
+            })
 
-    for ev in imap.get("timeline", []):
-        # Genuinely-empty (a successful fetch that found nothing) reads
-        # differently from "we don't know" — see data_availability.
-        items.append({
-            "timestamp": _format_timestamp(ev.get("time")), "event": ev.get("event"),
-            "event_type": "security", "source_stage": "raw_incident",
-            "evidence_reference": "incident_map", "incident_id": str(incident_id),
-            "run_id": run_id,
-        })
-    if not imap.get("timeline") and data_availability.get("alerts_fetch_succeeded"):
-        items.append({"timestamp": None, "event": "No events were returned for this incident.",
-                     "event_type": "info", "source_stage": "raw_incident",
-                     "evidence_reference": "incident_map", "incident_id": str(incident_id),
-                     "run_id": run_id})
-    elif availability_note:
-        items.append({"timestamp": None, "event": availability_note, "event_type": "warning",
-                     "source_stage": "raw_incident", "evidence_reference": "data_availability",
-                     "incident_id": str(incident_id), "run_id": run_id})
-
-    # Workflow stage-completion timestamps.
-    for stage, col in (("parsing", None), ("threat_intel", "threat_intel_updated_at"),
-                      ("investigation", "investigation_updated_at"),
-                      ("reporting", "reporting_updated_at")):
-        if col and state.get(col):
-            items.append({"timestamp": _format_timestamp(state[col]),
-                          "event": f"{stage.replace('_', ' ').title()} completed",
-                          "event_type": "workflow", "source_stage": stage,
-                          "evidence_reference": col, "incident_id": str(incident_id),
-                          "run_id": run_id})
-
-    # Analyst approval decisions.
-    for row in wss.get_approval_history(incident_id, run_id):
-        items.append({
-            "timestamp": _format_timestamp(row.get("decided_at")),
-            "event": f"{row.get('approval_stage', '').title()} {row.get('decision')} "
-                    f"by {row.get('analyst') or 'unknown'} "
-                    f"(attempt {row.get('stage_attempt', 1)}/{row.get('approval_attempt', 1)})",
-            "event_type": "workflow", "source_stage": row.get("approval_stage"),
-            "evidence_reference": "workflow_approvals", "incident_id": str(incident_id),
-            "run_id": run_id,
-        })
-
-    # Sort chronologically (None timestamps first is fine — they're
-    # info/warning banners, not real events) and dedupe by (time, event).
-    seen = set()
-    deduped = []
-    for it in sorted(items, key=lambda i: (i["timestamp"] or "")):
-        key = (it["timestamp"], it["event"])
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(it)
-    return deduped
+    return items
 
 
 def build_entity_graph(incident: dict, data_availability: dict) -> dict:
