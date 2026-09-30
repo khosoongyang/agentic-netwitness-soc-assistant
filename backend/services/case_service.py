@@ -18,8 +18,10 @@ from ..errors import (
     CaseNotFoundError,
     DataStoreUnavailableError,
     InvalidQueryError,
+    QueryIndexUnavailableError,
     StageResultNotAvailableError,
 )
+from . import case_query as cq
 
 
 _CASE_COLUMNS = (
@@ -55,17 +57,10 @@ _SORT_COLUMNS = {
 _TIME_SORTS = {"updated", "created", "last_seen"}
 # Operations Overview "Workflow Status" filter: analyst-facing key ->
 # incidents.workflow_status as written by the workflow engine. None means
-# the case has never entered the workflow (NULL/empty column).
-_WORKFLOW_STATUS_FILTERS = {
-    "not_started": None,
-    "in_progress": "Processing",
-    "awaiting_action": "Awaiting Action",
-    "awaiting_approval": "Awaiting Approval",
-    "rejected": "Rejected",
-    "failed": "Failed",
-    "complete": "Complete",
-}
-_VERDICT_FILTERS = ("critical", "high", "medium", "low", "unrated")
+# the case has never entered the workflow (NULL/empty column). Defined once
+# in the query-language registry (case_query.py).
+_WORKFLOW_STATUS_FILTERS = cq.stored_values("workflow_status")
+_VERDICT_FILTERS = cq.value_keys("verdict")
 # Time Range filters on the NetWitness `updated` timestamp (the incident's
 # own lastUpdated, stored as UTC without the trailing "Z") -- deliberately
 # NOT last_seen, which is only when Aegis last synced the case.
@@ -198,86 +193,216 @@ _CURRENT_STAGE_SQL = _current_stage_sql()
 _STAGE_KEYS = tuple(str(definition["key"]) for definition in _STAGE_DEFINITIONS)
 
 
-def _in_clause(expression: str, values: list[str]) -> str:
-    return f"{expression} IN ({', '.join('?' for _ in values)})"
+# ── Query tree -> parameterised SQL ──────────────────────────────────────
+#
+# The Overview search box (query language) and every GUI filter parameter
+# become one case_query tree; this is the only place a tree becomes SQL.
+# SQL text comes solely from the constants below -- field names are looked
+# up, never interpolated -- and every value travels as a ? parameter.
+# Each fragment is NULL-safe (never evaluates to NULL), so NOT is an exact
+# complement: `NOT updated:>=X` includes cases with no timestamp.
+
+_LIKE = "LIKE ? ESCAPE '\\'"
+_TEXT_SQL = (f"(COALESCE(title, '') {_LIKE} OR COALESCE(assignee, '') {_LIKE} "
+             f"OR COALESCE(id, '') {_LIKE})")
+_SEVERITY_RANK_SQL = _SORT_COLUMNS["severity"]
+_RANK_OPERATORS = {"gt": ">", "ge": ">=", "lt": "<", "le": "<="}
+_SOURCE_SQL = (f"id IN (SELECT id FROM incidents INDEXED BY {wss.PRIMARY_SOURCE_INDEX} "
+               f"WHERE {wss.PRIMARY_SOURCE_SQL} = ?)")
+_VERDICT_IDS_SQL = "id IN (SELECT value FROM json_each(?))"
+_HAS_RUN_SQL = "COALESCE(run_id, '') != ''"
+
+_Compiler = Callable[["cq.Term", "dict[str, str] | None"], "tuple[str, list[Any]]"]
 
 
-def _filter_clauses(
+def _like_pattern(text: str) -> str:
+    """Literal contains-pattern: % and _ typed by the analyst match themselves."""
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
+def _require_operator(term: cq.Term, allowed: set[str]) -> None:
+    if term.op not in allowed:
+        raise InvalidQueryError(f"Unsupported operator for {term.field}.")
+
+
+def _equality_sql(expression: str, transform: Callable[[Any], Any] = lambda value: value) -> _Compiler:
+    def compile_term(term: cq.Term, _: dict[str, str] | None) -> tuple[str, list[Any]]:
+        _require_operator(term, {"eq"})
+        return f"{expression} = ?", [transform(term.value)]
+    return compile_term
+
+
+def _title_sql(term: cq.Term, _: dict[str, str] | None) -> tuple[str, list[Any]]:
+    _require_operator(term, {"eq"})
+    return f"COALESCE(title, '') {_LIKE}", [_like_pattern(term.value)]
+
+
+def _severity_sql(term: cq.Term, _: dict[str, str] | None) -> tuple[str, list[Any]]:
+    if term.op == "eq":
+        return "UPPER(COALESCE(severity, '')) = ?", [str(term.value).upper()]
+    _require_operator(term, set(_RANK_OPERATORS))
+    rank = cq.FIELDS["severity"].value_for(term.value).rank
+    # Unknown/missing severity (rank 0) never satisfies a comparison.
+    return (f"(({_SEVERITY_RANK_SQL}) >= 1 AND ({_SEVERITY_RANK_SQL}) "
+            f"{_RANK_OPERATORS[term.op]} ?)"), [rank]
+
+
+def _workflow_status_sql(term: cq.Term, _: dict[str, str] | None) -> tuple[str, list[Any]]:
+    _require_operator(term, {"eq"})
+    stored = _WORKFLOW_STATUS_FILTERS[term.value]
+    if stored is None:
+        return "TRIM(COALESCE(workflow_status, '')) = ''", []
+    return "COALESCE(workflow_status, '') = ?", [stored]
+
+
+def _source_sql(term: cq.Term, _: dict[str, str] | None) -> tuple[str, list[Any]]:
+    # Always answered from the primary-source expression index: INDEXED BY
+    # makes SQLite fail ("no such index") rather than silently scan raw_json.
+    _require_operator(term, {"eq"})
+    return _SOURCE_SQL, [cq.FIELDS["source"].value_for(term.value).stored]
+
+
+def _verdict_sql(term: cq.Term, levels: dict[str, str] | None) -> tuple[str, list[Any]]:
+    _require_operator(term, {"eq"})
+    if levels is None:
+        raise InvalidQueryError("Unified Verdict was not resolved for this query.")
+    matched = [case_id for case_id, level in levels.items() if level == term.value]
+    clause = _VERDICT_IDS_SQL
+    if term.value == "unrated":
+        # Every case without a workflow run is Unrated by definition.
+        clause = f"(COALESCE(run_id, '') = '' OR {clause})"
+    return clause, [json.dumps(matched)]
+
+
+def _date_sql(column: str) -> _Compiler:
+    """created/updated: NetWitness times stored as naive UTC
+    "YYYY-MM-DDTHH:MM:SS" (fixed width, so text order is time order).
+    A DateValue spans its typed precision [start, end); missing timestamps
+    never match."""
+    present = f"COALESCE({column}, '') != ''"
+    stamp = f"SUBSTR({column}, 1, 19)"
+    bounds = {"ge": (">=", "start"), "gt": (">=", "end"), "lt": ("<", "start"), "le": ("<", "end")}
+
+    def compile_term(term: cq.Term, _: dict[str, str] | None) -> tuple[str, list[Any]]:
+        value: cq.DateValue = term.value
+        if term.op == "eq":
+            return f"({present} AND {stamp} >= ? AND {stamp} < ?)", [value.start, value.end]
+        _require_operator(term, set(bounds))
+        operator, bound = bounds[term.op]
+        return f"({present} AND {stamp} {operator} ?)", [getattr(value, bound)]
+    return compile_term
+
+
+# Canonical field -> compiler. This is the allowlist: a field missing here
+# can never reach SQL. "nw_status" is the legacy NetWitness status GUI
+# parameter; it is deliberately not in the query language (see
+# case_query.FIELD_HINTS).
+_TERM_COMPILERS: dict[str, _Compiler] = {
+    "case": _equality_sql("UPPER(COALESCE(id, ''))", lambda value: str(value).upper()),
+    "title": _title_sql,
+    "severity": _severity_sql,
+    "workflow_status": _workflow_status_sql,
+    "stage": _equality_sql(f"({_CURRENT_STAGE_SQL})"),
+    "verdict": _verdict_sql,
+    "approval_stage": _equality_sql("LOWER(TRIM(COALESCE(approval_stage, '')))"),
+    "source": _source_sql,
+    "created": _date_sql("created"),
+    "updated": _date_sql("updated"),
+    "nw_status": _equality_sql("UPPER(COALESCE(status, ''))", lambda value: str(value).upper()),
+}
+
+
+def _compile(node: cq.Node, levels: dict[str, str] | None = None) -> tuple[str, list[Any]]:
+    if isinstance(node, cq.Text):
+        return _TEXT_SQL, [_like_pattern(node.text)] * 3
+    if isinstance(node, cq.Term):
+        compiler = _TERM_COMPILERS.get(node.field)
+        if compiler is None:
+            raise InvalidQueryError(f"Unsupported query field: {node.field}.")
+        return compiler(node, levels)
+    if isinstance(node, cq.Not):
+        sql, params = _compile(node.item, levels)
+        return f"NOT ({sql})", params
+    if isinstance(node, (cq.And, cq.Or)):
+        parts = [_compile(item, levels) for item in node.items]
+        joiner = " AND " if isinstance(node, cq.And) else " OR "
+        return "(" + joiner.join(sql for sql, _ in parts) + ")", [p for _, params in parts for p in params]
+    raise InvalidQueryError("Unsupported query expression.")
+
+
+def _where(nodes: list[cq.Node], levels: dict[str, str] | None = None) -> tuple[str, list[Any]]:
+    if not nodes:
+        return "", []
+    sql, params = _compile(cq.And(tuple(nodes)), levels)
+    return f" WHERE {sql}", params
+
+
+def _any_of(field: str, values: list[Any]) -> cq.Node:
+    terms = tuple(cq.Term(field, "eq", value) for value in values)
+    return terms[0] if len(terms) == 1 else cq.Or(terms)
+
+
+def _uses_verdict(node: cq.Node) -> bool:
+    return any(isinstance(term, cq.Term) and term.field == "verdict" for term in cq.iter_terms(node))
+
+
+def _resolve_verdicts(
+    connection: sqlite3.Connection,
+    conditions: list[cq.Node],
+    resolver: Callable[[dict[str, Any]], str],
+) -> dict[str, str]:
+    """Unified Verdict is not a stored column: it is aggregate_verdict()'s
+    output, which only exists for cases with a workflow run. Resolve it at
+    query time for just the run cases that pass every top-level AND
+    condition not involving the verdict -- every result row must pass those
+    anyway, so verdict terms stay exact even inside OR / NOT."""
+    where, params = _where([node for node in conditions if not _uses_verdict(node)])
+    where = f"{where} AND {_HAS_RUN_SQL}" if where else f" WHERE {_HAS_RUN_SQL}"
+    rows = connection.execute(f"SELECT * FROM incidents{where}", params).fetchall()
+    return {row["id"]: str(resolver(dict(row)) or "UNRATED").lower() for row in rows}
+
+
+def _parse_search_query(query: str) -> cq.ParsedQuery:
+    try:
+        return cq.parse_query(query)
+    except cq.QueryError as exc:
+        raise InvalidQueryError(exc.message, details=exc.details()) from exc
+
+
+def _filter_conditions(
     *,
+    parsed: cq.ParsedQuery,
     search: str,
     severities: list[str],
     statuses: list[str],
-    workflow_statuses: list[str] = (),
-    stages: list[str] = (),
-    updated_from: str | None = None,
-    updated_to: str | None = None,
-) -> tuple[list[str], list[Any]]:
-    clauses: list[str] = []
-    params: list[Any] = []
-    if severities:
-        clauses.append(_in_clause("UPPER(COALESCE(severity, ''))", severities))
-        params.extend(value.upper() for value in severities)
-    if statuses:
-        clauses.append(_in_clause("UPPER(COALESCE(status, ''))", statuses))
-        params.extend(value.upper() for value in statuses)
-    if workflow_statuses:
-        options: list[str] = []
-        stored = [_WORKFLOW_STATUS_FILTERS[key] for key in workflow_statuses]
-        if None in stored:
-            options.append("TRIM(COALESCE(workflow_status, '')) = ''")
-        stored = [value for value in stored if value is not None]
-        if stored:
-            options.append(_in_clause("workflow_status", stored))
-            params.extend(stored)
-        clauses.append("(" + " OR ".join(options) + ")")
-    if stages:
-        clauses.append(_in_clause(f"({_CURRENT_STAGE_SQL})", stages))
-        params.extend(stages)
-    if updated_from or updated_to:
-        clauses.append("COALESCE(updated, '') != ''")
-    if updated_from:
-        clauses.append("SUBSTR(updated, 1, 19) >= ?")
-        params.append(updated_from)
-    if updated_to:
-        clauses.append("SUBSTR(updated, 1, 19) <= ?")
-        params.append(updated_to)
-    if search:
-        clauses.append(
-            "(title LIKE ? COLLATE NOCASE OR assignee LIKE ? COLLATE NOCASE "
-            "OR id LIKE ? COLLATE NOCASE)"
-        )
-        pattern = f"%{search}%"
-        params.extend((pattern, pattern, pattern))
-    return clauses, params
-
-
-def _where(clauses: list[str]) -> str:
-    return " WHERE " + " AND ".join(clauses) if clauses else ""
-
-
-def _verdict_clause(
-    connection: sqlite3.Connection,
-    clauses: list[str],
-    params: list[Any],
+    workflow_statuses: list[str],
+    stages: list[str],
     verdicts: list[str],
-    resolver: Callable[[dict[str, Any]], str],
-) -> tuple[str, list[Any]]:
-    """Unified Verdict is not a stored column: it is aggregate_verdict()'s
-    output, which only exists for cases with a workflow run. Resolve it at
-    query time for just the run cases that already pass every other
-    filter; every case without a run is Unrated by definition."""
-    has_run = "COALESCE(run_id, '') != ''"
-    rows = connection.execute(
-        f"SELECT * FROM incidents{_where([*clauses, has_run])}", params
-    ).fetchall()
-    matched = [
-        row["id"] for row in rows
-        if str(resolver(dict(row)) or "UNRATED").lower() in verdicts
-    ]
-    clause = "id IN (SELECT value FROM json_each(?))"
-    if "unrated" in verdicts:
-        clause = f"({clause} OR COALESCE(run_id, '') = '')"
-    return clause, [json.dumps(matched)]
+    updated_from: str | None,
+    updated_to: str | None,
+) -> list[cq.Node]:
+    """The search query AND every GUI filter, as top-level AND conditions.
+    A GUI filter never overrides the query: `severity:HIGH` plus a Severity
+    = Medium filter is severity HIGH AND MEDIUM, i.e. no matches."""
+    conditions = cq.conjuncts(parsed.root)
+    if search:
+        conditions.append(cq.Text(search))
+    if severities:
+        conditions.append(_any_of("severity", [value.upper() for value in severities]))
+    if statuses:
+        conditions.append(_any_of("nw_status", statuses))
+    if workflow_statuses:
+        conditions.append(_any_of("workflow_status", workflow_statuses))
+    if stages:
+        conditions.append(_any_of("stage", stages))
+    if verdicts:
+        conditions.append(_any_of("verdict", verdicts))
+    if updated_from:
+        conditions.append(cq.Term("updated", "ge", cq.DateValue.at_second(updated_from)))
+    if updated_to:
+        conditions.append(cq.Term("updated", "le", cq.DateValue.at_second(updated_to)))
+    return conditions
 
 
 def _order_clause(sort: str, direction: str) -> str:
@@ -323,6 +448,7 @@ def _case_list_item(row: dict[str, Any]) -> dict[str, Any]:
 def list_cases(
     *,
     search: str = "",
+    query: str = "",
     severity: str = "",
     status: str = "",
     page: int = 1,
@@ -344,6 +470,12 @@ def list_cases(
     Every filter is optional and they combine with AND; multi-value filters
     take comma-separated values combined with OR (severity=HIGH,CRITICAL).
     The legacy single-value severity/status/"ALL" parameters are unchanged.
+
+    `query` is the Overview search box: plain text or the Aegis query
+    language (case_query.py). It is parsed and validated before the
+    database is opened, then ANDed with the GUI filters into one tree that
+    is compiled to parameterised SQL; filtering happens before sort and
+    pagination.
     """
     if page < 1:
         raise InvalidQueryError("page must be at least 1.")
@@ -355,6 +487,7 @@ def list_cases(
     if direction not in {"asc", "desc"}:
         raise InvalidQueryError("direction must be asc or desc.")
 
+    parsed = _parse_search_query(query)
     search = str(search or "").strip()
     severities = _split_values(severity)
     statuses = _split_values(status)
@@ -377,31 +510,35 @@ def list_cases(
     if lower_bound and upper_bound and lower_bound > upper_bound:
         raise InvalidQueryError("updated_from must not be later than updated_to.")
 
-    clauses, params = _filter_clauses(
-        search=search, severities=severities, statuses=statuses,
-        workflow_statuses=workflow_statuses, stages=stages,
+    conditions = _filter_conditions(
+        parsed=parsed, search=search, severities=severities, statuses=statuses,
+        workflow_statuses=workflow_statuses, stages=stages, verdicts=verdicts,
         updated_from=lower_bound, updated_to=upper_bound,
     )
     offset = (page - 1) * limit
 
     with closing(open_readonly_connection(database_path)) as connection:
-        if verdicts:
+        levels = None
+        if any(_uses_verdict(node) for node in conditions):
             if verdict_resolver is None:
                 from .case_view_service import unified_verdict_level
                 verdict_resolver = unified_verdict_level
-            clause, clause_params = _verdict_clause(
-                connection, clauses, params, verdicts, verdict_resolver)
-            clauses, params = [*clauses, clause], [*params, *clause_params]
-        where = _where(clauses)
-        total = int(connection.execute(
-            f"SELECT COUNT(*) FROM incidents{where}", params
-        ).fetchone()[0])
-        rows = connection.execute(
-            f"SELECT {', '.join(_LIST_COLUMNS)} FROM incidents{where} "
-            f"ORDER BY {_order_clause(sort, direction)} "
-            "LIMIT ? OFFSET ?",
-            [*params, limit, offset],
-        ).fetchall()
+            levels = _resolve_verdicts(connection, conditions, verdict_resolver)
+        where, params = _where(conditions, levels)
+        try:
+            total = int(connection.execute(
+                f"SELECT COUNT(*) FROM incidents{where}", params
+            ).fetchone()[0])
+            rows = connection.execute(
+                f"SELECT {', '.join(_LIST_COLUMNS)} FROM incidents{where} "
+                f"ORDER BY {_order_clause(sort, direction)} "
+                "LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+        except sqlite3.OperationalError as exc:
+            if "no such index" in str(exc):
+                raise QueryIndexUnavailableError() from exc
+            raise
         severity_facets = [row[0] for row in connection.execute(
             "SELECT DISTINCT severity FROM incidents "
             "WHERE severity IS NOT NULL AND severity != '' ORDER BY severity"
@@ -431,6 +568,12 @@ def list_cases(
             "time_range": time_range or "all",
             "updated_from": lower_bound,
             "updated_to": upper_bound,
+        },
+        "query": {
+            "text": parsed.text,
+            "mode": parsed.mode,
+            "normalised": cq.to_query(parsed.root) if parsed.mode == "structured" else parsed.text,
+            "fields": cq.fields_used(parsed.root),
         },
         "facets": {"severities": severity_facets, "statuses": status_facets},
     }

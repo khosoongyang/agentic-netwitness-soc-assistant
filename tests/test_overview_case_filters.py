@@ -350,7 +350,7 @@ def test_ctrl_k_is_removed_everywhere() -> None:
 
 def test_topbar_search_placeholder_is_accurate() -> None:
     html = (FRONTEND / "index.html").read_text(encoding="utf-8")
-    assert 'placeholder="Search cases by ID or title..."' in html
+    assert 'placeholder="Search cases, e.g. severity:HIGH AND stage:investigation"' in html
     assert "ask Aegis" not in html.split('id="topbar-search-input"')[1].split(">")[0]
     assert 'id="topbar-tools"' in html
     assert "/frontend/css/case-filters.css" in html
@@ -387,7 +387,8 @@ assert.match(f.chipsRowHTML(filters), /aria-label="Remove Severity filter: High"
 
 // Sort state -> API parameters; search + filters + sort travel together.
 const api = f.apiParams({ q: "ssh", filters: { ...filters, verdict: ["unrated"] }, sort: "severity-desc" });
-assert.equal(api.get("search"), "ssh");
+assert.equal(api.get("query"), "ssh");
+assert.equal(api.get("search"), null);
 assert.equal(api.get("severity"), "HIGH,CRITICAL");
 assert.equal(api.get("stage"), "investigation");
 assert.equal(api.get("verdict"), "unrated");
@@ -407,7 +408,8 @@ assert.equal(f.sortLabel("newest"), "Newest");
 assert.equal(f.sortLabel("severity-desc"), "Severity: High → Low");
 const custom = f.apiParams({ q: "", filters: { ...f.emptyFilters(), time: "custom", from: "2026-07-01T09:00" }, sort: "newest" });
 assert.equal(custom.get("time_range"), "custom");
-assert.equal(custom.get("updated_from"), new Date("2026-07-01T09:00").toISOString());
+// Custom bounds are UTC wall-clock time, like dates in the query language.
+assert.equal(custom.get("updated_from"), "2026-07-01T09:00:00Z");
 assert.equal(custom.get("updated_to"), null);
 
 // URL state round-trips and stays readable.

@@ -1,9 +1,10 @@
 export class APIRequestError extends Error {
-  constructor(message, status, code) {
+  constructor(message, status, code, details = null) {
     super(message);
     this.name = "APIRequestError";
     this.status = status;
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -34,6 +35,7 @@ export async function fetchJSON(path, options = {}) {
       apiError.message || "The request could not be completed.",
       response.status,
       apiError.code || "REQUEST_FAILED",
+      apiError.details || null,
     );
   }
   return body;

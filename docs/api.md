@@ -22,11 +22,62 @@ ever included). All routes are under `/api`.
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/cases` | Filterable/sortable case list |
+| GET | `/api/cases` | Filterable/sortable case list (`query`, `search`, `severity`, `status`, `workflow_status`, `stage`, `verdict`, `time_range`, `updated_from`, `updated_to`, `sort`, `direction`, `page`, `limit`) |
+| GET | `/api/cases/query-schema` | Fields, values, operators and examples of the case query language (drives autocomplete and syntax help) |
 | GET | `/api/cases/export` | CSV export of the case list |
 | GET | `/api/cases/<case_id>` | Full case detail (all stage results, MITRE view, entity graph, evidence) |
 | GET | `/api/cases/<case_id>/workflow` | Workflow/stage status for one case |
 | GET | `/api/cases/<case_id>/raw` | Raw stored incident record |
+
+### Case query language (`/api/cases?query=...`)
+
+The Operations Overview search box sends its text as `query`. Parsing lives
+in `backend/services/case_query.py`; the SQL compiler is in
+`backend/services/case_service.py`.
+
+- **Free text**: if the text contains no field expression it is one legacy
+  contains-phrase over title, assignee and ID - `command and control` is a
+  phrase, not Boolean logic. `%` and `_` match themselves.
+- **Structured**: any `field:value` switches to the query language.
+  `AND` / `OR` / `NOT` (any case), parentheses and `field:(A OR B)` value
+  lists are supported; precedence is NOT > AND > OR and terms side by side
+  are ANDed. A run of bare words is one phrase:
+  `PowerShell severity:HIGH` = phrase "PowerShell" AND severity HIGH.
+
+| Field | Meaning | Operators | Values |
+|---|---|---|---|
+| `case` (alias `id`) | Exact incident ID | `:` `:=` | e.g. `INC-53027` |
+| `title` | Title contains (case-insensitive) | `:` | any text |
+| `severity` | NetWitness severity, ordered CRITICAL > HIGH > MEDIUM > LOW | `:` `:=` `:>` `:>=` `:<` `:<=` | `CRITICAL` `HIGH` `MEDIUM` `LOW` |
+| `workflow_status` | Aegis workflow state (not the NetWitness `status`) | `:` | `"Not Started"` `"In Progress"` `"Awaiting Action"` `"Awaiting Approval"` `Rejected` `Failed` `Complete` |
+| `stage` | Derived current workflow stage | `:` | `parsing` `triage` `threat_intel` `investigation` `reporting` (readable names such as `"Threat Intelligence"` accepted) |
+| `verdict` | Unified Verdict (same resolver as the case workspace) | `:` | `CRITICAL` `HIGH` `MEDIUM` `LOW` `UNRATED` |
+| `approval_stage` | Stage waiting for analyst approval | `:` | `triage` `investigation` `reporting` |
+| `source` | NetWitness incident source (primary), via the `ix_incidents_primary_source` expression index | `:` | `ESA` (Event Stream Analysis), `ECAT`, `"Risk Scoring"` |
+| `created`, `updated` | NetWitness created / last-updated time | `:` `:=` `:>` `:>=` `:<` `:<=` | `YYYY-MM-DD`, `YYYY-MM-DDTHH:MM[:SS]`, optional `Z` / `±HH:MM` |
+
+Dates without a timezone are UTC, and a date covers its typed precision:
+`updated:2026-09-30` is that whole UTC day, `updated:>2026-09-30` starts at
+2026-10-01T00:00:00. The Filters panel's Custom range is UTC too, so the
+same wall-clock time means the same instant in both.
+
+The query is ANDed with every Filters-panel parameter (the same field in
+both is ANDed, never overridden) before sorting and pagination. The
+response includes `query: {text, mode, normalised, fields}`.
+
+Invalid queries fail before the database is opened, with a positioned
+error for the search box:
+
+```json
+{"error": {"code": "INVALID_QUERY", "message": "Unknown severity \"VERYHIGH\".",
+           "details": {"param": "query", "start": 9, "end": 17,
+                       "hint": "Expected: CRITICAL, HIGH, MEDIUM, LOW."}}}
+```
+
+`status:` is deliberately not a field (`Did you mean workflow_status:?`).
+Limits: 1,000 characters, 64 terms, 16 nesting levels. If the `source:`
+index is missing the request fails with `503 QUERY_INDEX_UNAVAILABLE`
+instead of scanning raw JSON; `db_init()` recreates it.
 
 ## Workflow: stage runs, reruns, approvals
 

@@ -5,7 +5,7 @@ import io
 from flask import Blueprint, current_app, jsonify, request, send_file
 
 from ..errors import InvalidQueryError
-from ..services import case_service
+from ..services import case_query, case_service
 
 
 cases_blueprint = Blueprint("cases", __name__, url_prefix="/api/cases")
@@ -25,6 +25,7 @@ def _integer_query(name: str, default: int) -> int:
 def cases():
     return jsonify(case_service.list_cases(
         search=request.args.get("search", ""),
+        query=request.args.get("query", ""),
         severity=request.args.get("severity", ""),
         status=request.args.get("status", ""),
         page=_integer_query("page", 1),
@@ -40,6 +41,12 @@ def cases():
         database_path=current_app.config.get("AEGIS_CASE_DB_PATH"),
         verdict_resolver=current_app.config.get("AEGIS_VERDICT_RESOLVER"),
     ))
+
+
+@cases_blueprint.get("/query-schema")
+def query_schema():
+    """Fields, values, operators and examples of the Overview query language."""
+    return jsonify(case_query.schema())
 
 
 @cases_blueprint.get("/export")

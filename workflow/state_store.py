@@ -121,6 +121,16 @@ SOC_DB_DIR = ROOT / "soc_db"
 SOC_DB_DIR.mkdir(exist_ok=True)
 DB_FILE = SOC_DB_DIR / "soc_incidents.db"
 
+# [FYP-DATABASE] Expression index behind the Operations Overview `source:`
+# query (backend/services/case_query.py). Indexes the NetWitness incident's
+# primary source straight out of raw_json so a source lookup never scans the
+# JSON of every case. json_valid() guards the expression: a malformed
+# raw_json row indexes as NULL instead of failing the INSERT/UPDATE that
+# maintains the index. case_service must use this exact expression.
+PRIMARY_SOURCE_INDEX = "ix_incidents_primary_source"
+PRIMARY_SOURCE_SQL = ("(CASE WHEN json_valid(raw_json) "
+                      "THEN json_extract(raw_json, '$.sources[0]') END)")
+
 # [FYP-STATE] The two workflow_status values that mean "a run is currently
 # in flight" — used by start_run() to decide whether a fresh run may replace
 # the row. Not currently read anywhere else in this module (informational /
@@ -438,6 +448,21 @@ def db_init() -> None:
         con.commit()
     _ensure_workflow_columns()
     _ensure_workflow_approvals_attempt_columns()
+    _ensure_case_query_indexes()
+
+
+def _ensure_case_query_indexes() -> None:
+    """[FYP-DATABASE] Additive index for the Overview `source:` query (see
+    PRIMARY_SOURCE_SQL). Optional: if SQLite cannot build it, schema init
+    still succeeds and `source:` queries report the index as unavailable
+    rather than falling back to a full raw_json scan."""
+    try:
+        with db_connect() as con:
+            con.execute(f"CREATE INDEX IF NOT EXISTS {PRIMARY_SOURCE_INDEX} "
+                        f"ON incidents({PRIMARY_SOURCE_SQL})")
+            con.commit()
+    except sqlite3.Error:
+        pass
 
 
 def _ensure_workflow_columns() -> None:

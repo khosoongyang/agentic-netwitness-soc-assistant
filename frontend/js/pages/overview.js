@@ -1,8 +1,8 @@
 import { fetchJSON } from "../api.js";
 import { emptyState, errorState, escapeHTML, formatCount, formatDate, loadingState, severityBadge } from "../ui.js";
 import {
-  activeFilterCount, apiParams, chipsRowHTML, clearFilters, headerSortDirection, mountOverviewControls,
-  nextHeaderSort, overviewURL, removeChip, stateFromParams,
+  activeFilterCount, apiParams, chipsRowHTML, clearFilters, filterQueryFields, headerSortDirection,
+  mountOverviewControls, nextHeaderSort, overviewURL, removeChip, stateFromParams,
 } from "../components/caseFilters.js";
 
 // Recent Cases shows at most this many rows; the count line says when more match.
@@ -32,9 +32,18 @@ function sortableHeader(column, label, sort) {
   return `<th${ariaSort}><button type="button" class="th-sort${direction === "none" ? "" : " is-active"}" data-sort-column="${column}">${escapeHTML(label)}<span class="th-sort-indicator" aria-hidden="true">${SORT_INDICATORS[direction]}</span></button></th>`;
 }
 
-function recentCases(items, sort, filtered) {
+// The search query and the Filters panel are ANDed; when both constrain
+// the same field and nothing matches, say so rather than look broken.
+function noMatchMessage(queryFields, filters) {
+  const shared = filterQueryFields(filters).filter((field) => queryFields.includes(field));
+  if (!shared.length) return "No cases match the current search and filters.";
+  const names = shared.join(", ");
+  return `No cases match. ${names} ${shared.length === 1 ? "is" : "are"} constrained by both the search query and the Filters panel.`;
+}
+
+function recentCases(items, sort, filtered, emptyMessage = "No cases match the current search and filters.") {
   if (!items.length) {
-    return emptyState(filtered ? "No cases match the current search and filters." : "No cases have been recorded yet.");
+    return emptyState(filtered ? emptyMessage : "No cases have been recorded yet.");
   }
   return `<div class="table-wrap recent-cases-wrap"><table class="recent-cases-table"><thead><tr>${sortableHeader("case", "Case", sort)}${sortableHeader("severity", "Severity", sort)}<th>Status</th><th>Stage</th>${sortableHeader("last_seen", "Last seen", sort)}</tr></thead><tbody>${items.map((item) => `
     <tr class="case-row" data-case-id="${escapeHTML(item.id)}" tabindex="0" role="button" aria-label="Open incident ${escapeHTML(item.id)}: ${escapeHTML(item.title)}">
@@ -94,14 +103,22 @@ export async function renderOverview(root, { navigate, route }) {
     try {
       const data = await fetchJSON(`/api/cases?${apiParams(state, { limit: RECENT_LIMIT }).toString()}`);
       if (!active || current !== requestId) return;
-      body.innerHTML = recentCases(data.items, state.sort, isFiltered());
+      controls?.clearQueryError();
+      body.innerHTML = recentCases(data.items, state.sort, isFiltered(), noMatchMessage(data.query?.fields || [], state.filters));
       count.textContent = resultCountText(data.items.length, data.pagination.total, isFiltered());
       if (focusHeader) body.querySelector(`[data-sort-column="${focusHeader}"]`)?.focus();
       focusHeader = null;
     } catch (error) {
       if (!active || current !== requestId) return;
-      body.innerHTML = errorState(error);
       count.textContent = "";
+      // A parser/validation error belongs next to the search box, not in
+      // the table; nothing reached the database.
+      if (error.code === "INVALID_QUERY" && error.details?.param === "query") {
+        controls?.showQueryError(error, state.q);
+        body.innerHTML = emptyState("Fix the search query above to see results.");
+        return;
+      }
+      body.innerHTML = errorState(error);
     } finally {
       if (active && current === requestId) {
         body.removeAttribute("aria-busy");

@@ -7,9 +7,14 @@
 // search, the Filters panel, the active-filter chips, the Sort menu and the
 // sortable table headers -- reads and writes that same object.
 //
+// `q` is plain text or an Aegis query (severity:HIGH AND stage:investigation);
+// the backend parses it and ANDs it with the filters (see queryAssist.js).
+// All times are UTC, in the query language and the Custom range alike.
+//
 // The pure helpers below touch no DOM so they can be unit-tested in Node.
 
 import { escapeHTML } from "../ui.js";
+import { createQueryAssist } from "./queryAssist.js";
 
 export const SEVERITY_OPTIONS = [
   { value: "critical", label: "Critical" },
@@ -47,7 +52,8 @@ export const VERDICT_OPTIONS = [
 ];
 
 // Time Range = the NetWitness incident's `updated` (last update) time,
-// not Aegis's last_seen sync time.
+// not Aegis's last_seen sync time. Custom bounds are entered and sent as UTC,
+// the same instant `updated:>=2026-09-01T10:00` means in the query language.
 export const TIME_RANGE_OPTIONS = [
   { value: "", label: "Any time" },
   { value: "1h", label: "Last hour" },
@@ -166,15 +172,16 @@ export function overviewURL(state) {
 
 // ── API query ──────────────────────────────────────────────────────────────
 
-function localToUTC(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+// Custom range inputs hold UTC wall-clock time ("2026-07-01T09:00").
+function utcBound(value) {
+  if (!CUSTOM_TIME_PATTERN.test(value)) return "";
+  return `${value.length === 16 ? `${value}:00` : value}Z`;
 }
 
 export function apiParams(state, { limit = 200, page = 1 } = {}) {
   const option = sortOption(state.sort);
   const params = new URLSearchParams({ page: String(page), limit: String(limit), sort: option.sort, direction: option.direction });
-  if (state.q) params.set("search", state.q);
+  if (state.q) params.set("query", state.q);
   const { filters } = state;
   if (filters.severity.length) params.set("severity", filters.severity.map((value) => value.toUpperCase()).join(","));
   if (filters.workflow_status.length) params.set("workflow_status", filters.workflow_status.join(","));
@@ -184,8 +191,8 @@ export function apiParams(state, { limit = 200, page = 1 } = {}) {
     params.set("time_range", filters.time);
   } else if (customTimeActive(filters)) {
     params.set("time_range", "custom");
-    if (filters.from) params.set("updated_from", localToUTC(filters.from));
-    if (filters.to) params.set("updated_to", localToUTC(filters.to));
+    if (filters.from) params.set("updated_from", utcBound(filters.from));
+    if (filters.to) params.set("updated_to", utcBound(filters.to));
   }
   return params;
 }
@@ -199,16 +206,15 @@ export function activeFilterCount(filters) {
   return groups + time;
 }
 
-function formatLocal(value) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+function formatUTC(value) {
+  return `${value.replace("T", " ")} UTC`;
 }
 
 function timeLabel(filters) {
   if (filters.time !== "custom") return optionLabel(TIME_RANGE_OPTIONS, filters.time);
-  if (filters.from && filters.to) return `Updated ${formatLocal(filters.from)} – ${formatLocal(filters.to)}`;
-  if (filters.from) return `Updated after ${formatLocal(filters.from)}`;
-  return `Updated before ${formatLocal(filters.to)}`;
+  if (filters.from && filters.to) return `Updated ${formatUTC(filters.from)} – ${formatUTC(filters.to)}`;
+  if (filters.from) return `Updated after ${formatUTC(filters.from)}`;
+  return `Updated before ${formatUTC(filters.to)}`;
 }
 
 // One chip per selected value. Verdict chips say "Verdict:" so they are not
@@ -239,6 +245,14 @@ export function removeChip(filters, group, value) {
   return next;
 }
 
+// Query-language fields the Filters panel is constraining, to explain an
+// empty result when the query constrains the same field (they are ANDed).
+export function filterQueryFields(filters) {
+  const fields = LIST_GROUPS.filter(({ key }) => filters[key].length).map(({ key }) => key);
+  if (filters.time && (filters.time !== "custom" || customTimeActive(filters))) fields.push("updated");
+  return fields;
+}
+
 // Clears filters only: the search text and sort order are left untouched.
 export function clearFilters(state) {
   return { ...state, filters: emptyFilters() };
@@ -265,7 +279,7 @@ export function headerSortDirection(column, current) {
 export function validateCustomRange(filters) {
   if (filters.time !== "custom") return "";
   if (!filters.from && !filters.to) return "Choose a start and/or end time for the custom range.";
-  if (filters.from && filters.to && new Date(filters.from) > new Date(filters.to)) {
+  if (filters.from && filters.to && filters.from > filters.to) {
     return "The start time must be before the end time.";
   }
   return "";
@@ -318,10 +332,10 @@ function filterPanelBodyHTML(filters) {
         <select id="case-filter-time" aria-describedby="case-filter-time-hint">${TIME_RANGE_OPTIONS.map((option) => `<option value="${option.value}" ${option.value === filters.time ? "selected" : ""}>${escapeHTML(option.label)}</option>`).join("")}</select>
         ${ICONS.chevronDown}
       </div>
-      <p class="case-filter-hint" id="case-filter-time-hint">Based on the NetWitness incident's last update time.</p>
+      <p class="case-filter-hint" id="case-filter-time-hint">Based on the NetWitness incident's last update time. Times are UTC.</p>
       <div class="case-filter-custom" ${filters.time === "custom" ? "" : "hidden"}>
-        <label>From<input type="datetime-local" data-time-bound="from" value="${escapeHTML(filters.from)}"></label>
-        <label>To<input type="datetime-local" data-time-bound="to" value="${escapeHTML(filters.to)}"></label>
+        <label>From (UTC)<input type="datetime-local" data-time-bound="from" value="${escapeHTML(filters.from)}"></label>
+        <label>To (UTC)<input type="datetime-local" data-time-bound="to" value="${escapeHTML(filters.to)}"></label>
       </div>
       <p class="case-filter-error" role="alert" hidden></p>
     </div>
@@ -553,24 +567,37 @@ export function mountOverviewControls({ getState, onChange }) {
     if (!sortMenu.hidden) clampPopover(sortMenu);
   }
 
-  // Topbar search: server-side case search, debounced while typing.
+  // Topbar search: free text runs server-side after a short debounce; a
+  // structured query (any field:value) runs on Enter, so a half-typed
+  // `severity:` never produces an error while the analyst is typing.
+  const assist = createQueryAssist({ input: searchInput, onRun: () => applySearch() });
+
   function applySearch() {
     clearTimeout(searchTimer);
+    assist?.setPending(false);
     const q = searchInput.value.trim();
     if (q !== getState().q) onChange({ ...getState(), q });
   }
 
   function onSearchInput() {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(applySearch, 300);
+    assist?.onInput();
+    if (assist?.isStructured(searchInput.value)) {
+      assist.setPending(searchInput.value.trim() !== getState().q);
+    } else {
+      assist?.setPending(false);
+      searchTimer = setTimeout(applySearch, 300);
+    }
   }
 
   function onSearchKeydown(event) {
+    if (assist?.handleKeydown(event)) return;
     if (event.key === "Enter") {
       event.preventDefault();
       applySearch();
     } else if (event.key === "Escape" && searchInput.value) {
       searchInput.value = "";
+      assist?.onInput();
       applySearch();
     }
   }
@@ -585,8 +612,15 @@ export function mountOverviewControls({ getState, onChange }) {
 
   activeControls = {
     sync,
+    showQueryError(error, query) {
+      assist?.showError(error, query);
+    },
+    clearQueryError() {
+      assist?.clearError();
+    },
     destroy() {
       clearTimeout(searchTimer);
+      assist?.destroy();
       document.removeEventListener("keydown", onDocumentKeydown);
       document.removeEventListener("pointerdown", onDocumentPointerDown);
       window.removeEventListener("resize", onResize);

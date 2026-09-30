@@ -13,6 +13,7 @@ class APIError(Exception):
     code: str
     message: str
     status_code: int = 400
+    details: dict | None = None
 
 
 class CaseNotFoundError(APIError):
@@ -21,8 +22,19 @@ class CaseNotFoundError(APIError):
 
 
 class InvalidQueryError(APIError):
-    def __init__(self, message: str) -> None:
-        super().__init__("INVALID_QUERY", message, 400)
+    def __init__(self, message: str, details: dict | None = None) -> None:
+        super().__init__("INVALID_QUERY", message, 400, details)
+
+
+class QueryIndexUnavailableError(APIError):
+    def __init__(self) -> None:
+        super().__init__(
+            "QUERY_INDEX_UNAVAILABLE",
+            "The source: search index has not been built yet. It is created "
+            "automatically the next time Aegis initialises the case database "
+            "(for example on the next NetWitness sync).",
+            503,
+        )
 
 
 class DataStoreUnavailableError(APIError):
@@ -48,7 +60,10 @@ def install_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(APIError)
     def handle_api_error(error: APIError):
-        return jsonify({"error": {"code": error.code, "message": error.message}}), error.status_code
+        payload = {"code": error.code, "message": error.message}
+        if error.details:
+            payload["details"] = error.details
+        return jsonify({"error": payload}), error.status_code
 
     @app.errorhandler(Exception)
     def handle_unexpected_error(error: Exception):

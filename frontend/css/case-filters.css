@@ -504,3 +504,250 @@
     gap: 0.4rem;
   }
 }
+
+/* ── Search query assistance (frontend/js/components/queryAssist.js) ──── */
+
+.topbar-search:has(.topbar-search-input[aria-invalid="true"]) {
+  border-color: var(--danger);
+}
+
+.query-help-toggle {
+  flex-shrink: 0;
+  width: 1.35rem;
+  height: 1.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  background: var(--surface-raised);
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.query-help-toggle:hover,
+.query-help-toggle[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Suggestions, the Enter hint and query errors share one surface directly
+   under the search box; absolutely positioned so the page never shifts. */
+.query-assist {
+  position: absolute;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  z-index: 2;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: var(--surface);
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 50%);
+}
+
+.query-assist[hidden],
+.query-assist [hidden] {
+  display: none;
+}
+
+.query-suggestions {
+  max-height: 17rem;
+  margin: 0;
+  padding: 0.3rem;
+  overflow-y: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.query-suggestion {
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  border-radius: 0.4rem;
+  cursor: pointer;
+}
+
+.query-suggestion:hover {
+  background: var(--surface-raised);
+}
+
+.query-suggestion.is-active {
+  background: rgb(118 183 255 / 16%);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.query-suggestion-label {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.query-suggestion-label.tone-critical { color: #ffc0c7; }
+.query-suggestion-label.tone-high { color: #ffd89a; }
+.query-suggestion-label.tone-medium { color: #ffe08a; }
+.query-suggestion-label.tone-low { color: #9ff0ca; }
+
+.query-suggestion-detail {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.74rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.query-assist-hint {
+  margin: 0;
+  padding: 0.45rem 0.8rem;
+  border-top: 1px solid var(--border-soft);
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.query-assist-hint:first-child {
+  border-top: 0;
+}
+
+.query-assist kbd {
+  padding: 0 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  color: var(--text);
+  background: var(--surface-raised);
+  font-size: 0.7rem;
+}
+
+.query-assist-error {
+  padding: 0.6rem 0.8rem;
+  display: grid;
+  gap: 0.3rem;
+  border-left: 3px solid var(--danger);
+  background: rgb(255 115 130 / 8%);
+  font-size: 0.8rem;
+}
+
+.query-error-message {
+  color: #ffc0c7;
+  font-weight: 600;
+}
+
+.query-error-hint {
+  color: #cdd7e5;
+}
+
+.query-error-snippet {
+  overflow-x: auto;
+  color: var(--muted);
+  font-size: 0.78rem;
+  white-space: pre;
+}
+
+.query-error-snippet mark {
+  border-bottom: 2px solid var(--danger);
+  color: var(--text);
+  background: rgb(255 115 130 / 20%);
+}
+
+.query-help {
+  top: calc(100% + 0.35rem);
+  width: min(34rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - var(--header-height) - 1rem);
+  padding: 0.9rem 1.1rem 1rem;
+  overflow-y: auto;
+  z-index: 3;
+  color: #cdd7e5;
+  font-size: 0.8rem;
+  scrollbar-width: thin;
+}
+
+.query-help h2 {
+  margin: 0 0 0.35rem;
+  color: var(--text);
+  font-size: 0.92rem;
+}
+
+.query-help h3 {
+  margin: 0.9rem 0 0.4rem;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.query-help p {
+  margin: 0.3rem 0;
+}
+
+.query-help code {
+  padding: 0 0.25rem;
+  border-radius: 0.25rem;
+  color: var(--accent);
+  background: var(--surface-raised);
+  font-size: 0.76rem;
+}
+
+.query-help-fields {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.query-help-fields th,
+.query-help-fields td {
+  padding: 0.25rem 0.4rem 0.25rem 0;
+  border-bottom: 1px solid var(--border-soft);
+  text-align: left;
+  vertical-align: top;
+}
+
+.query-help-fields th {
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.query-help-notes {
+  margin: 0.5rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+}
+
+.query-help-examples {
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+  list-style: none;
+}
+
+.query-help-example {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 1rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.4rem;
+  color: #cdd7e5;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.query-help-example:hover {
+  border-color: var(--accent);
+}
+
+.query-help-toggle:focus-visible,
+.query-help-example:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
