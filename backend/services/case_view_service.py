@@ -1151,6 +1151,46 @@ def _unified_verdict_signals(verdict: dict) -> list[dict]:
     return out
 
 
+def _verdict_stage_inputs(state: dict) -> dict:
+    """The persisted stage results aggregate_verdict() is given, each gated
+    on its own stage status (see build_overview's docstring). Shared by
+    build_overview() and unified_verdict_level() so the workspace card and
+    the Overview filter always feed the verdict identical inputs."""
+    ti_status = state.get("threat_intel_status")
+    inv_status = state.get("investigation_status")
+    return {
+        "triage_result": _json_or_empty(state.get("triage_result_json")),
+        "ti_result": (_json_or_empty(state.get("threat_intel_result_json"))
+                      if ti_status in ("Complete", "Complete with Warnings") else None),
+        "investigation_result": (_json_or_empty(state.get("investigation_result_json"))
+                                 if inv_status in ("Awaiting Approval", "Approved") else None),
+        "ioc_correlation_result": (_json_or_empty(state.get("ioc_correlation_result_json"))
+                                   if state.get("ioc_correlation_status") else None),
+    }
+
+
+def unified_verdict_level(state: dict) -> str:
+    """Read-only Unified Verdict band for one incidents row, for the
+    Operations Overview verdict filter.
+
+    Mirrors exactly what the case workspace shows: only cases with a
+    workflow run get a workspace (case_service.get_case_detail), the
+    incident is loaded the same way build_case_view() loads it, and the
+    verdict is the same aggregate_verdict() call build_overview() makes.
+    Nothing is re-scored here. Anything without a banded verdict (no run,
+    verdict unavailable, or an unreadable record) is "UNRATED"."""
+    run_id = state.get("run_id")
+    if not run_id:
+        return "UNRATED"
+    try:
+        incident, _, _ = load_incident_for_case_view(str(state.get("id")), run_id)
+        verdict = aggregate_verdict(incident, **_verdict_stage_inputs(state))
+    except Exception:
+        return "UNRATED"
+    level = str(verdict.get("level") or "").upper() if verdict.get("available") else ""
+    return level if level in _VERDICT_BANDS else "UNRATED"
+
+
 def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -> dict:
     """
     [FYP-FUNCTION] Case Overview tab data — key findings + provenance-
@@ -1189,19 +1229,12 @@ def build_overview(state: dict, incident: dict, incident_id: str, run_id: str) -
     scoring is not the same claim as the Triage Agent's classification.
     """
     am = incident.get("alertMeta") or {}
-    triage_result = _json_or_empty(state.get("triage_result_json"))
-    ti_status = state.get("threat_intel_status")
-    ti_result = (_json_or_empty(state.get("threat_intel_result_json"))
-                if ti_status in ("Complete", "Complete with Warnings") else None)
-    inv_status = state.get("investigation_status")
-    inv_result = (_json_or_empty(state.get("investigation_result_json"))
-                 if inv_status in ("Awaiting Approval", "Approved") else None)
-    ioc_corr = (_json_or_empty(state.get("ioc_correlation_result_json"))
-               if state.get("ioc_correlation_status") else None)
+    verdict_inputs = _verdict_stage_inputs(state)
+    triage_result = verdict_inputs["triage_result"]
+    ti_result = verdict_inputs["ti_result"]
+    inv_result = verdict_inputs["investigation_result"]
 
-    verdict = aggregate_verdict(incident, triage_result=triage_result, ti_result=ti_result,
-                               investigation_result=inv_result,
-                               ioc_correlation_result=ioc_corr)
+    verdict = aggregate_verdict(incident, **verdict_inputs)
 
     key_findings: list[dict] = []
     _kw = [("hta", ""), ("c2", ""), ("command", ""), ("exfil", ""),

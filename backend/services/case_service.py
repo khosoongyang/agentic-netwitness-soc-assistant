@@ -8,6 +8,7 @@ import io
 import math
 import sqlite3
 from contextlib import closing
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -36,16 +37,50 @@ _CASE_COLUMNS = (
     "threat_intel_attempt", "reporting_attempt", "raw_json",
 )
 _LIST_COLUMNS = tuple(column for column in _CASE_COLUMNS if not column.endswith("_json"))
+# Numeric part of an incident ID ("INC-9999" -> 9999) so INC-9999 sorts
+# before INC-53027 instead of after it as plain text would.
+_NUMERIC_ID = "CAST(SUBSTR(id, INSTR(id, '-') + 1) AS INTEGER)"
 _SORT_COLUMNS = {
     "updated": "COALESCE(updated, last_seen, created, '')",
     "created": "COALESCE(created, first_seen, '')",
+    # Aegis sync time, not incident activity: many cases share one value.
+    "last_seen": "COALESCE(last_seen, '')",
     "severity": "CASE UPPER(COALESCE(severity, '')) "
                 "WHEN 'CRITICAL' THEN 4 WHEN 'HIGH' THEN 3 "
                 "WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END",
     "status": "UPPER(COALESCE(status, ''))",
     "title": "LOWER(COALESCE(title, ''))",
-    "id": "LOWER(id)",
+    "id": _NUMERIC_ID,
 }
+_TIME_SORTS = {"updated", "created", "last_seen"}
+# Operations Overview "Workflow Status" filter: analyst-facing key ->
+# incidents.workflow_status as written by the workflow engine. None means
+# the case has never entered the workflow (NULL/empty column).
+_WORKFLOW_STATUS_FILTERS = {
+    "not_started": None,
+    "in_progress": "Processing",
+    "awaiting_action": "Awaiting Action",
+    "awaiting_approval": "Awaiting Approval",
+    "rejected": "Rejected",
+    "failed": "Failed",
+    "complete": "Complete",
+}
+_VERDICT_FILTERS = ("critical", "high", "medium", "low", "unrated")
+# Time Range filters on the NetWitness `updated` timestamp (the incident's
+# own lastUpdated, stored as UTC without the trailing "Z") -- deliberately
+# NOT last_seen, which is only when Aegis last synced the case.
+_TIME_RANGES = {
+    "1h": timedelta(hours=1),
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+}
+# Stage-status spellings _semantic_stage_state() recognises besides each
+# stage's own "complete" set; shared with the SQL mirror in _current_stage_sql().
+_AWAITING_APPROVAL_STATES = ("awaiting approval", "pending approval")
+_IN_PROGRESS_STATES = ("processing", "running")
+_OTHER_KNOWN_STATES = (*_AWAITING_APPROVAL_STATES, *_IN_PROGRESS_STATES,
+                       "failed", "rejected", "blocked")
 _STAGE_DEFINITIONS = (
     {
         "key": "parsing", "name": "Parsing & Normalisation",
@@ -98,20 +133,114 @@ def _json_object(raw: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _normalise_filter(value: str | None) -> str:
+def _split_values(value: Any) -> list[str]:
+    """Comma-separated (or list) query value -> distinct non-empty values.
+    "ALL" is the legacy single-select "no filter" sentinel and is dropped."""
+    raw = value if isinstance(value, (list, tuple)) else str(value or "").split(",")
+    values: list[str] = []
+    for item in raw:
+        item = str(item or "").strip()
+        if item and item.upper() != "ALL" and item not in values:
+            values.append(item)
+    return values
+
+
+def _allowed_values(value: Any, allowed: Any, name: str) -> list[str]:
+    values = [item.lower() for item in _split_values(value)]
+    unknown = [item for item in values if item not in allowed]
+    if unknown:
+        raise InvalidQueryError(f"Unsupported {name} value: {unknown[0]}.")
+    return values
+
+
+def _utc_bound(value: Any, name: str) -> str | None:
+    """ISO 8601 bound -> naive UTC "YYYY-MM-DDTHH:MM:SS", matching how the
+    NetWitness `updated` timestamp is stored. Naive input is taken as UTC."""
     value = str(value or "").strip()
-    return "" if value.upper() == "ALL" else value
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise InvalidQueryError(f"{name} must be an ISO 8601 date/time.") from exc
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed.strftime("%Y-%m-%dT%H:%M:%S")
 
 
-def _where_clause(*, search: str, severity: str, status: str) -> tuple[str, list[Any]]:
+def _sql_text_list(values: Any) -> str:
+    return ", ".join("'" + str(value).replace("'", "''") + "'" for value in values)
+
+
+def _current_stage_sql() -> str:
+    """SQL mirror of _current_stage_from_row(), yielding the stage *key*.
+
+    Generated from _STAGE_DEFINITIONS and the same state spellings
+    _semantic_stage_state() uses, so filtering 50k+ rows by current stage
+    stays in SQLite. tests/test_overview_case_filters.py proves it agrees
+    with the Python implementation across every status combination."""
+    whens: list[str] = []
+    prior_complete: list[str] = []
+    for definition in _STAGE_DEFINITIONS:
+        key = str(definition["key"])
+        status = f"LOWER(REPLACE(TRIM(COALESCE({key}_status, '')), '_', ' '))"
+        complete = f"{status} IN ({_sql_text_list(sorted(definition['complete']))})"
+        known = sorted(set(definition["complete"]) | set(_OTHER_KNOWN_STATES))
+        not_started = f"{status} NOT IN ({_sql_text_list(known)})"
+        prior = " AND ".join(prior_complete) or "1"
+        locked = f"({status} = 'blocked' OR (NOT ({prior}) AND {not_started}))"
+        whens.append(f"WHEN NOT ({complete}) AND NOT {locked} THEN '{key}'")
+        prior_complete.append(f"({complete})")
+    return f"CASE {' '.join(whens)} ELSE '{_STAGE_DEFINITIONS[-1]['key']}' END"
+
+
+_CURRENT_STAGE_SQL = _current_stage_sql()
+_STAGE_KEYS = tuple(str(definition["key"]) for definition in _STAGE_DEFINITIONS)
+
+
+def _in_clause(expression: str, values: list[str]) -> str:
+    return f"{expression} IN ({', '.join('?' for _ in values)})"
+
+
+def _filter_clauses(
+    *,
+    search: str,
+    severities: list[str],
+    statuses: list[str],
+    workflow_statuses: list[str] = (),
+    stages: list[str] = (),
+    updated_from: str | None = None,
+    updated_to: str | None = None,
+) -> tuple[list[str], list[Any]]:
     clauses: list[str] = []
     params: list[Any] = []
-    if severity:
-        clauses.append("UPPER(COALESCE(severity, '')) = UPPER(?)")
-        params.append(severity)
-    if status:
-        clauses.append("UPPER(COALESCE(status, '')) = UPPER(?)")
-        params.append(status)
+    if severities:
+        clauses.append(_in_clause("UPPER(COALESCE(severity, ''))", severities))
+        params.extend(value.upper() for value in severities)
+    if statuses:
+        clauses.append(_in_clause("UPPER(COALESCE(status, ''))", statuses))
+        params.extend(value.upper() for value in statuses)
+    if workflow_statuses:
+        options: list[str] = []
+        stored = [_WORKFLOW_STATUS_FILTERS[key] for key in workflow_statuses]
+        if None in stored:
+            options.append("TRIM(COALESCE(workflow_status, '')) = ''")
+        stored = [value for value in stored if value is not None]
+        if stored:
+            options.append(_in_clause("workflow_status", stored))
+            params.extend(stored)
+        clauses.append("(" + " OR ".join(options) + ")")
+    if stages:
+        clauses.append(_in_clause(f"({_CURRENT_STAGE_SQL})", stages))
+        params.extend(stages)
+    if updated_from or updated_to:
+        clauses.append("COALESCE(updated, '') != ''")
+    if updated_from:
+        clauses.append("SUBSTR(updated, 1, 19) >= ?")
+        params.append(updated_from)
+    if updated_to:
+        clauses.append("SUBSTR(updated, 1, 19) <= ?")
+        params.append(updated_to)
     if search:
         clauses.append(
             "(title LIKE ? COLLATE NOCASE OR assignee LIKE ? COLLATE NOCASE "
@@ -119,7 +248,48 @@ def _where_clause(*, search: str, severity: str, status: str) -> tuple[str, list
         )
         pattern = f"%{search}%"
         params.extend((pattern, pattern, pattern))
-    return (" WHERE " + " AND ".join(clauses) if clauses else ""), params
+    return clauses, params
+
+
+def _where(clauses: list[str]) -> str:
+    return " WHERE " + " AND ".join(clauses) if clauses else ""
+
+
+def _verdict_clause(
+    connection: sqlite3.Connection,
+    clauses: list[str],
+    params: list[Any],
+    verdicts: list[str],
+    resolver: Callable[[dict[str, Any]], str],
+) -> tuple[str, list[Any]]:
+    """Unified Verdict is not a stored column: it is aggregate_verdict()'s
+    output, which only exists for cases with a workflow run. Resolve it at
+    query time for just the run cases that already pass every other
+    filter; every case without a run is Unrated by definition."""
+    has_run = "COALESCE(run_id, '') != ''"
+    rows = connection.execute(
+        f"SELECT * FROM incidents{_where([*clauses, has_run])}", params
+    ).fetchall()
+    matched = [
+        row["id"] for row in rows
+        if str(resolver(dict(row)) or "UNRATED").lower() in verdicts
+    ]
+    clause = "id IN (SELECT value FROM json_each(?))"
+    if "unrated" in verdicts:
+        clause = f"({clause} OR COALESCE(run_id, '') = '')"
+    return clause, [json.dumps(matched)]
+
+
+def _order_clause(sort: str, direction: str) -> str:
+    expression, direction = _SORT_COLUMNS[sort], direction.upper()
+    if sort == "id":
+        return f"{expression} {direction}, id {direction}"
+    if sort in _TIME_SORTS:
+        # Missing timestamps last either way; ties (e.g. the thousands of
+        # cases sharing one last_seen sync time) fall back to incident number.
+        return (f"({expression} = '') ASC, {expression} {direction}, "
+                f"{_NUMERIC_ID} {direction}, id ASC")
+    return f"{expression} {direction}, COALESCE(created, '') DESC, {_NUMERIC_ID} DESC, id ASC"
 
 
 def _current_stage_from_row(row: dict[str, Any]) -> str:
@@ -159,9 +329,22 @@ def list_cases(
     limit: int = 50,
     sort: str = "updated",
     direction: str = "desc",
+    workflow_status: str = "",
+    stage: str = "",
+    verdict: str = "",
+    time_range: str = "",
+    updated_from: str = "",
+    updated_to: str = "",
     database_path: str | Path | None = None,
+    verdict_resolver: Callable[[dict[str, Any]], str] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Return a filtered, sorted page matching the legacy case archive."""
+    """Return a filtered, sorted page matching the legacy case archive.
+
+    Every filter is optional and they combine with AND; multi-value filters
+    take comma-separated values combined with OR (severity=HIGH,CRITICAL).
+    The legacy single-value severity/status/"ALL" parameters are unchanged.
+    """
     if page < 1:
         raise InvalidQueryError("page must be at least 1.")
     if limit < 1 or limit > 200:
@@ -173,26 +356,57 @@ def list_cases(
         raise InvalidQueryError("direction must be asc or desc.")
 
     search = str(search or "").strip()
-    severity = _normalise_filter(severity)
-    status = _normalise_filter(status)
-    where, params = _where_clause(search=search, severity=severity, status=status)
+    severities = _split_values(severity)
+    statuses = _split_values(status)
+    workflow_statuses = _allowed_values(workflow_status, _WORKFLOW_STATUS_FILTERS, "workflow_status")
+    stages = _allowed_values(stage, _STAGE_KEYS, "stage")
+    verdicts = _allowed_values(verdict, _VERDICT_FILTERS, "verdict")
+    time_range = str(time_range or "").strip().lower()
+    if time_range in {"", "all"}:
+        time_range = ""
+    elif time_range != "custom" and time_range not in _TIME_RANGES:
+        raise InvalidQueryError(f"Unsupported time_range value: {time_range}.")
+    lower_bound = _utc_bound(updated_from, "updated_from")
+    upper_bound = _utc_bound(updated_to, "updated_to")
+    if time_range in _TIME_RANGES:
+        current = now or datetime.now(timezone.utc)
+        if current.tzinfo is not None:
+            current = current.astimezone(timezone.utc).replace(tzinfo=None)
+        relative = (current - _TIME_RANGES[time_range]).strftime("%Y-%m-%dT%H:%M:%S")
+        lower_bound = max(lower_bound or relative, relative)
+    if lower_bound and upper_bound and lower_bound > upper_bound:
+        raise InvalidQueryError("updated_from must not be later than updated_to.")
+
+    clauses, params = _filter_clauses(
+        search=search, severities=severities, statuses=statuses,
+        workflow_statuses=workflow_statuses, stages=stages,
+        updated_from=lower_bound, updated_to=upper_bound,
+    )
     offset = (page - 1) * limit
 
     with closing(open_readonly_connection(database_path)) as connection:
+        if verdicts:
+            if verdict_resolver is None:
+                from .case_view_service import unified_verdict_level
+                verdict_resolver = unified_verdict_level
+            clause, clause_params = _verdict_clause(
+                connection, clauses, params, verdicts, verdict_resolver)
+            clauses, params = [*clauses, clause], [*params, *clause_params]
+        where = _where(clauses)
         total = int(connection.execute(
             f"SELECT COUNT(*) FROM incidents{where}", params
         ).fetchone()[0])
         rows = connection.execute(
             f"SELECT {', '.join(_LIST_COLUMNS)} FROM incidents{where} "
-            f"ORDER BY {_SORT_COLUMNS[sort]} {direction.upper()}, id ASC "
+            f"ORDER BY {_order_clause(sort, direction)} "
             "LIMIT ? OFFSET ?",
             [*params, limit, offset],
         ).fetchall()
-        severities = [row[0] for row in connection.execute(
+        severity_facets = [row[0] for row in connection.execute(
             "SELECT DISTINCT severity FROM incidents "
             "WHERE severity IS NOT NULL AND severity != '' ORDER BY severity"
         ).fetchall()]
-        statuses = [row[0] for row in connection.execute(
+        status_facets = [row[0] for row in connection.execute(
             "SELECT DISTINCT status FROM incidents "
             "WHERE status IS NOT NULL AND status != '' ORDER BY status"
         ).fetchall()]
@@ -207,12 +421,18 @@ def list_cases(
         },
         "filters": {
             "search": search,
-            "severity": severity or "ALL",
-            "status": status or "ALL",
+            "severity": ",".join(severities) or "ALL",
+            "status": ",".join(statuses) or "ALL",
             "sort": sort,
             "direction": direction,
+            "workflow_status": workflow_statuses,
+            "stage": stages,
+            "verdict": verdicts,
+            "time_range": time_range or "all",
+            "updated_from": lower_bound,
+            "updated_to": upper_bound,
         },
-        "facets": {"severities": severities, "statuses": statuses},
+        "facets": {"severities": severity_facets, "statuses": status_facets},
     }
 
 
@@ -325,9 +545,9 @@ def _semantic_stage_state(stage: dict[str, Any], raw_status: str) -> str:
     normalised = raw_status.strip().lower().replace("_", " ")
     if normalised in stage["complete"]:
         return "completed"
-    if normalised in {"awaiting approval", "pending approval"}:
+    if normalised in _AWAITING_APPROVAL_STATES:
         return "awaiting_approval"
-    if normalised in {"processing", "running"}:
+    if normalised in _IN_PROGRESS_STATES:
         return "in_progress"
     if normalised == "failed":
         return "failed"

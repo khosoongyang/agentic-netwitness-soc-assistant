@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="/frontend/css/reports.css">
   <link rel="stylesheet" href="/frontend/css/tools.css">
   <link rel="stylesheet" href="/frontend/css/ask-aegis.css">
+  <link rel="stylesheet" href="/frontend/css/case-filters.css">
   <script src="/frontend/js/vendor/marked.min.js"></script>
   <script src="/frontend/js/vendor/purify.min.js"></script>
   <script src="/frontend/js/app.js" type="module"></script>
@@ -44,13 +45,15 @@
     </aside>
     <div class="app-body">
       <header class="topbar">
-        <div class="topbar-search">
-          <svg class="topbar-search-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <circle cx="9" cy="9" r="6"></circle>
-            <line x1="17" y1="17" x2="13.4" y2="13.4"></line>
-          </svg>
-          <input type="text" class="topbar-search-input" id="topbar-search-input" placeholder="Search incidents, assets, indicators, or ask Aegis..." aria-label="Search incidents, assets, indicators, or ask Aegis">
-          <span class="topbar-search-shortcut" aria-hidden="true">Ctrl K</span>
+        <div class="topbar-primary">
+          <div class="topbar-search" role="search">
+            <svg class="topbar-search-icon" width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="9" cy="9" r="6"></circle>
+              <line x1="17" y1="17" x2="13.4" y2="13.4"></line>
+            </svg>
+            <input type="search" class="topbar-search-input" id="topbar-search-input" autocomplete="off" placeholder="Search cases by ID or title..." aria-label="Search cases by ID or title">
+          </div>
+          <div class="topbar-tools" id="topbar-tools"></div>
         </div>
         <div class="topbar-actions">
           <button class="topbar-icon-button" type="button" aria-label="Help">

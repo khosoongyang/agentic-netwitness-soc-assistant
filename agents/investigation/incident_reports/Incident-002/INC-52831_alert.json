@@ -1,0 +1,114 @@
+{
+  "incident_id": "INC-52831",
+  "classification": {
+    "alert_type": "Unknown Source IP",
+    "severity": "MEDIUM",
+    "triage_risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is Medium because the alert shows suspicious external network activity from an internal host with multiple public IPs but no confirmed malware or PowerShell execution; occurrence is Medium because there is a single high-severity NetWitness alert with risk score 70 and no evidence of repeated events or volume, and adverse impact is Medium because the observed IOC set indicates potentially risky outbound communication yet lacks endpoint, process, file, or exfiltration evidence to support a higher impact rating."
+    },
+    "source_risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: ESA for 192.168.10.201",
+    "timestamp": "2025-07-14T11:33:59+00:00",
+    "description": "Network activity was observed from internal host 192.168.10.201 to multiple external IPs, including 8.8.8.8, but no endpoint, process, file, or PowerShell evidence was available to confirm malicious execution. The alert has moderate risk and incomplete network context, so it should be investigated as suspicious activity rather than confirmed compromise.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.201"
+    },
+    "destination": {
+      "ip_address": "8.8.8.8"
+    }
+  },
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "ip_indicators": [
+        "8.8.8.8"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 53,
+          "undetected": 38,
+          "reputation": 561,
+          "country": "US",
+          "as_owner": "Google LLC"
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "abuse_confidence_score": 0,
+          "total_reports": 217,
+          "country_code": "US",
+          "isp": "Google LLC",
+          "domain": "google.com",
+          "usage_type": "Content Delivery Network",
+          "last_reported_at": "2026-09-28T07:41:01+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

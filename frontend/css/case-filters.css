@@ -1,0 +1,506 @@
+/* Operations Overview search / filter / sort controls
+   (frontend/js/components/caseFilters.js). Reuses the Aegis tokens from
+   app.css and the severity badge palette from components.css. */
+
+.case-tool {
+  position: relative;
+}
+
+.case-tool-button {
+  height: 2.25rem;
+  padding: 0 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 0.82rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.case-tool-button:hover {
+  background: var(--surface-raised);
+}
+
+.case-tool-button svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.case-tool-button[aria-expanded="true"],
+.case-tool-button.has-active {
+  border-color: var(--accent);
+}
+
+.case-tool-button[aria-expanded="true"] svg,
+.case-tool-button.has-active svg {
+  color: var(--accent);
+}
+
+.case-tool-count {
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #04101f;
+  background: var(--accent);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.case-tool-count[hidden] {
+  display: none;
+}
+
+.case-sort-current {
+  color: var(--text);
+}
+
+/* Shared popover surface (filter panel + sort menu). Anchored under its
+   button; caseFilters.js nudges it horizontally to stay in the viewport. */
+.case-popover {
+  position: absolute;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  z-index: 1;
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  background: var(--surface);
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 50%);
+}
+
+.case-popover[hidden] {
+  display: none;
+}
+
+.case-filters-panel {
+  width: min(32rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - var(--header-height) - 1rem);
+  display: flex;
+  flex-direction: column;
+}
+
+.case-filters-header {
+  padding: 0.95rem 1.1rem 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.case-filters-header h2,
+.case-sort-title {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  color: var(--text);
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+.case-filters-body {
+  min-height: 0;
+  padding: 0.25rem 1.1rem 0.9rem;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #35485f var(--surface-raised);
+}
+
+.case-filter-group {
+  margin: 1rem 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.case-filter-group:first-child {
+  margin-top: 0.4rem;
+}
+
+.case-filter-group legend,
+.case-filter-legend {
+  display: block;
+  margin-bottom: 0.5rem;
+  padding: 0;
+  color: #cdd7e5;
+  font-size: 0.8rem;
+}
+
+.case-filter-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.filter-pill {
+  padding: 0.38rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: #aebbd0;
+  background: #0c1726;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.filter-pill:hover {
+  border-color: #35506f;
+  color: var(--text);
+}
+
+/* Severity / verdict tones mirror .badge.severity-* in components.css. */
+.filter-pill.tone-critical { color: #ffc0c7; border-color: #6e3540; }
+.filter-pill.tone-high { color: #ffd89a; border-color: #6d5531; }
+.filter-pill.tone-medium { color: #ffe08a; border-color: #6d6231; }
+.filter-pill.tone-low { color: #9ff0ca; border-color: #28604c; }
+
+.filter-pill[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: rgb(118 183 255 / 14%);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgb(118 183 255 / 25%);
+}
+
+.filter-pill:not([class*="tone-"])[aria-pressed="true"] {
+  color: #d8e9ff;
+}
+
+.case-filter-select {
+  position: relative;
+  width: min(100%, 17rem);
+  display: flex;
+  align-items: center;
+}
+
+.case-filter-select select {
+  width: 100%;
+  height: 2.35rem;
+  padding: 0 2.2rem 0 2.35rem;
+  appearance: none;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: var(--surface-raised);
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.case-filter-select svg {
+  position: absolute;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.case-filter-select svg:first-child {
+  left: 0.7rem;
+}
+
+.case-filter-select svg:last-child {
+  right: 0.7rem;
+}
+
+.case-filter-hint {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.case-filter-custom {
+  margin-top: 0.6rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.6rem;
+}
+
+.case-filter-custom[hidden] {
+  display: none;
+}
+
+.case-filter-custom label {
+  display: grid;
+  gap: 0.3rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+}
+
+.case-filter-custom input {
+  height: 2.2rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: var(--surface-raised);
+  font-size: 0.8rem;
+}
+
+.case-filter-error {
+  margin-top: 0.45rem;
+  color: var(--danger);
+  font-size: 0.75rem;
+}
+
+.case-filter-error[hidden] {
+  display: none;
+}
+
+.case-filters-more {
+  width: 100%;
+  margin-top: 0.7rem;
+  padding: 0.75rem 0 0.1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 0;
+  border-top: 1px solid var(--border-soft);
+  color: var(--muted);
+  background: none;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: not-allowed;
+}
+
+.case-filters-soon {
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 999px;
+  font-size: 0.66rem;
+}
+
+.case-filters-footer {
+  padding: 0.75rem 1.1rem 0.95rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  border-top: 1px solid var(--border-soft);
+}
+
+.case-button-secondary,
+.case-button-primary {
+  height: 2.3rem;
+  padding: 0 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.case-button-secondary {
+  color: var(--text);
+  background: var(--surface);
+}
+
+.case-button-secondary:hover {
+  background: var(--surface-raised);
+}
+
+.case-button-primary {
+  border-color: #3c8fe8;
+  color: #fff;
+  background: #2f86e6;
+  font-weight: 600;
+}
+
+.case-button-primary:hover {
+  background: #3b92f0;
+}
+
+.link-button {
+  padding: 0.2rem 0.1rem;
+  border: 0;
+  color: var(--accent);
+  background: none;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+/* Sort menu */
+.case-sort-menu {
+  width: min(16.5rem, calc(100vw - 1.5rem));
+  max-height: calc(100vh - var(--header-height) - 1rem);
+  padding: 0.35rem;
+  overflow-y: auto;
+}
+
+.case-sort-title {
+  padding: 0.55rem 0.6rem 0.5rem;
+}
+
+.case-sort-items {
+  display: grid;
+}
+
+.case-sort-item {
+  padding: 0.5rem 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 0;
+  border-radius: 0.4rem;
+  color: #cdd7e5;
+  background: none;
+  font-size: 0.82rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.case-sort-item:hover,
+.case-sort-item:focus-visible {
+  background: var(--surface-raised);
+}
+
+.case-sort-item[aria-checked="true"] {
+  color: var(--accent);
+  background: rgb(118 183 255 / 12%);
+}
+
+.case-sort-separator {
+  height: 1px;
+  margin: 0.3rem 0.5rem;
+  background: var(--border-soft);
+}
+
+/* Active filter chips (top of the Overview page) */
+.active-filter-row {
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.active-filter-chip {
+  max-width: 100%;
+  padding: 0.35rem 0.55rem 0.35rem 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  color: var(--text);
+  background: var(--surface-raised);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.active-filter-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-filter-chip svg {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.active-filter-chip:hover {
+  border-color: #35506f;
+}
+
+.active-filter-chip:hover svg {
+  color: var(--text);
+}
+
+/* Recent cases header row + sortable columns */
+.recent-cases-header {
+  margin-bottom: 0.9rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+}
+
+.recent-cases-header h2 {
+  margin-bottom: 0;
+}
+
+.recent-cases-count {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+#recent-cases-body.is-loading {
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+
+.th-sort {
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.th-sort-indicator {
+  color: #50657f;
+  font-size: 0.8rem;
+  letter-spacing: 0;
+}
+
+.th-sort:hover .th-sort-indicator {
+  color: var(--muted);
+}
+
+.th-sort.is-active {
+  color: #a9cdf5;
+}
+
+.th-sort.is-active .th-sort-indicator {
+  color: var(--accent);
+}
+
+/* Visible keyboard focus on every new control. */
+.case-tool-button:focus-visible,
+.filter-pill:focus-visible,
+.case-filter-select select:focus-visible,
+.case-filter-custom input:focus-visible,
+.case-button-secondary:focus-visible,
+.case-button-primary:focus-visible,
+.link-button:focus-visible,
+.case-sort-item:focus-visible,
+.active-filter-chip:focus-visible,
+.th-sort:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Narrower widths: keep the topbar height fixed (the Ask Aegis panel is
+   pinned just below it) by collapsing the controls to icons. */
+@media (max-width: 1180px) {
+  #case-sort-toggle .case-tool-label {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  #case-filters-toggle .case-tool-label {
+    display: none;
+  }
+
+  .case-tool-button {
+    padding: 0 0.6rem;
+  }
+
+  .topbar-primary,
+  .topbar-tools {
+    gap: 0.4rem;
+  }
+}

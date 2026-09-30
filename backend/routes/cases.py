@@ -31,7 +31,14 @@ def cases():
         limit=_integer_query("limit", 50),
         sort=request.args.get("sort", "updated"),
         direction=request.args.get("direction", "desc"),
+        workflow_status=request.args.get("workflow_status", ""),
+        stage=request.args.get("stage", ""),
+        verdict=request.args.get("verdict", ""),
+        time_range=request.args.get("time_range", ""),
+        updated_from=request.args.get("updated_from", ""),
+        updated_to=request.args.get("updated_to", ""),
         database_path=current_app.config.get("AEGIS_CASE_DB_PATH"),
+        verdict_resolver=current_app.config.get("AEGIS_VERDICT_RESOLVER"),
     ))
 
 

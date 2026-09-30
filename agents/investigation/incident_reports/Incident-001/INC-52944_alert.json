@@ -1,0 +1,109 @@
+{
+  "incident_id": "INC-52944",
+  "classification": {
+    "alert_type": "Unknown Source IP",
+    "severity": "LOW",
+    "triage_risk_rating": {
+      "likelihood_initiation": "Low",
+      "likelihood_occurrence": "Low",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Low",
+      "rationale": "Initiation is Low because the alert shows only anomalous network traffic to multicast/broadcast addresses with no PowerShell, process, file, or web evidence; occurrence is Low because there is a single alert (risk score 70) and no demonstrated repeated activity; adverse impact is Low because there is no direct exfiltration, endpoint compromise, or payload evidence beyond a traffic IOC match."
+    },
+    "source_risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: ESA for 192.168.10.14",
+    "timestamp": "2025-07-15T08:18:40+00:00",
+    "description": "This alert shows network traffic from an internal host (192.168.10.14) to multicast/broadcast-style addresses (239.255.255.250 and 255.255.255.255) with no evidence of PowerShell, endpoint activity, file transfer, or exfiltration. Based on the available telemetry and low IOC confidence, this appears to be a network anomaly rather than confirmed malicious activity.",
+    "mitre_att&ck": {
+      "tactic": "Discovery"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.14"
+    },
+    "destination": {
+      "ip_address": "239.255.255.250"
+    }
+  },
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 25\nRisk Reasons:\n- VirusTotal reported 1 malicious detection(s) for IP 239.255.255.250.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "ip_indicators": [
+        "239.255.255.250"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "malicious": 1,
+          "suspicious": 0,
+          "harmless": 54,
+          "undetected": 36,
+          "reputation": -152
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "usage_type": "Reserved",
+          "last_reported_at": "2026-05-28T01:50:05+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "239.255.255.250",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 25,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "VirusTotal reported 1 malicious detection(s) for IP 239.255.255.250."
+  ]
+}

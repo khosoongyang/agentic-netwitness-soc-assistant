@@ -7,114 +7,114 @@
       "step_id": "step_1",
       "instruction": "Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System",
       "status": "MET",
-      "findings": "Primary observed context is NT AUTHORITY\\SYSTEM on host BETHANYCHUCHU. Source IP observed in the incident is fe80:0:0:0:9706:3f55:e752:75ca, with the alert also showing prior internal host activity and an external destination target. Related telemetry references user Bethany Chu as the interactive account context in the same host scope. Operating system is Windows / Microsoft Windows 10 Pro."
+      "findings": "User: NT AUTHORITY\\SYSTEM. Source IP: fe80:0:0:0:9706:3f55:e752:75ca. Login details: SYSTEM-context execution on BETHANYCHUCHU, with no explicit interactive logon type provided in the timeline. Computer name: BETHANYCHUCHU. Operating system: Windows."
     },
     {
       "step_id": "step_2",
       "instruction": "Was it horizontal or vertical",
       "status": "MET",
-      "findings": "Horizontal movement. The incident repeatedly references internal RFC1918-to-RFC1918 activity and explicitly labels the behavior as lateral movement in related alerts. There is no direct evidence of privilege escalation to a higher user tier that would support vertical movement."
+      "findings": "Horizontal movement. The timeline explicitly labels the alert as 'Lateral Movement' and shows host-to-host activity between internal RFC1918 addresses (notably 192.168.10.204 and 192.168.10.202), which supports lateral movement rather than privilege gain on the same host."
     },
     {
       "step_id": "step_3",
       "instruction": "Was any malicious process spawned on the victim's machine?",
       "status": "MET",
-      "findings": "Yes. The telemetry shows vmtoolsd.exe executing in NT AUTHORITY\\SYSTEM context with outbound HTTPS activity, alongside suspicious companion artifacts including NWEAgent.exe, upfc.exe, mousocoreworker.exe, cmd.exe, sc.exe, reg.exe, powershell.exe, and the batch artifact resume-vm-default.bat. The incident also includes a malicious reputation-linked IP indicator and multiple internal alert correlations consistent with active adversary-driven process activity."
+      "findings": "Yes. Suspicious/malicious process activity is present on the victim machine, including vmtoolsd.exe running as NT AUTHORITY\\SYSTEM, cmd.exe, sc.exe, reg.exe, wevtutil.exe, powershell.exe, and a suspicious file/IOC set including resume-vm-default.bat and upfc.exe. The timeline also indicates a SYSTEM-run process making outbound HTTPS connections."
     },
     {
       "step_id": "step_4",
       "instruction": "Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
       "status": "NOT_MET",
-      "findings": "The available evidence supports suspicion of malicious endpoint activity, but it does not provide a full parent-child process tree, process IDs, or execution lineage sufficient to prove how the suspicious processes were spawned. Privilege escalation is suggested by SYSTEM-context execution and registry/UAC-related behavior in the wider incident scope, but it cannot be confirmed from the provided telemetry. Data exfiltration is also not proven; only outbound HTTPS and internal host-to-host behavior are observed."
+      "findings": "The timeline does not contain a full process tree with parent-child lineage, so malicious activity can be suspected but not conclusively mapped through privilege escalation, lateral movement steps, or data exfiltration from execution telemetry alone. The needed process hierarchy, exact parent process for each suspicious binary, and corroborating logon/service-creation context are missing."
     },
     {
       "step_id": "step_5",
       "instruction": "Based on the analysis, determine if further investigation is necessary and the containment steps",
       "status": "MET",
-      "findings": "Further investigation is necessary. The endpoint should be treated as potentially compromised and contained immediately while telemetry gaps are closed. Full EDR triage, process lineage reconstruction, service-installation review, and network connection validation are required before any relaxation of containment."
+      "findings": "Further investigation is necessary. Containment should include isolating host BETHANYCHUCHU, preserving volatile evidence, collecting full process-tree telemetry and Windows/Sysmon logs, and reviewing suspicious artifacts such as vmtoolsd.exe, upfc.exe, resume-vm-default.bat, sc.exe, reg.exe, and any process invoking PowerShell or wevtutil. Because the incident is high risk and lateral movement is indicated, host containment is warranted pending confirmation."
     }
   ],
-  "incident_summary": "On 2025-07-14T11:21:34+00:00, NetWitness generated a high-risk alert on host BETHANYCHUCHU for vmtoolsd.exe executing as NT AUTHORITY\\SYSTEM and making outbound HTTPS connections to a listed external IP. The incident centered on a file hash of 8f490791f7164633e2bc3bfe129c829986a45b918566c2fe1d63f3c77b0eb28c, with the file name vmtoolsd.exe and related process artifacts including NWEAgent.exe, upfc.exe, mousocoreworker.exe, cmd.exe, sc.exe, reg.exe, powershell.exe, and resume-vm-default.bat. The alert context also included a VMware-related cmd execution chain, Windows service and update utilities, and registry modification behavior referencing HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\EnableLUA being set to 0, which is consistent with UAC weakening. The same host had prior high-risk activity in the incident history, including repeated internal host-to-host communications involving 192.168.10.x and 192.168.20.x systems, and separate alerts in the broader case set flagged lateral-movement and suspicious endpoint behavior. Threat intelligence on the external IP 4.145.79.81 returned low-confidence reputation results, while the endpoint telemetry itself remained the strongest signal: SYSTEM-context execution, suspicious administrative tooling, and outbound HTTPS from the affected workstation without enough process-tree detail to prove the exact spawning chain or confirm exfiltration.",
+  "incident_summary": "On 2025-07-14T11:21:34+00:00, host BETHANYCHUCHU generated a high-risk NetWitness endpoint alert while running as NT AUTHORITY\\SYSTEM. The primary observed activity was vmtoolsd.exe executing in SYSTEM context and generating outbound HTTPS traffic to the external IP 4.145.79.81, which the timeline associates with the destination 124.155.222.24 in the alert record. The same incident scope also included the executable and artifact set vmtoolsd.exe, NWEAgent.exe, upfc.exe, mousocoreworker.exe, and resume-vm-default.bat, alongside command-line activity such as vmtoolsd.exe -n vmusr, cmd.exe /c \"C:\\Program Files\\VMware\\VMware Tools\\suspend-vm-default.bat\", cmd.exe /c \"C:\\Program Files\\VMware\\VMware Tools\\resume-vm-default.bat\", sc.exe start wuauserv, reg.exe ADD \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v EnableLUA /t REG_DWORD /d 0 /f, and wevtutil.exe install-manifest / uninstall-manifest operations against Windows Defender manifests. The telemetry shows repeated internal host-to-host alerting within the same incident context and also includes vmtoolsd.exe, search/webview, update, and service-control artifacts executing under privileged context. The event bundle repeatedly labels the activity as lateral movement / compromised asset behavior and links it to internal network activity and Windows administration changes, but the provided data does not include a full parent-child process tree or direct network session detail that would conclusively prove the exact execution chain, privilege escalation sequence, or any data exfiltration.",
   "actions_taken": [
-    "Reviewed the full incident timeline and correlated prior alerts for the same host and user context.",
-    "Validated the playbook steps against the available telemetry and marked process-tree analysis as not fully satisfied due to missing lineage data.",
-    "Assessed the host as a likely compromised non-critical asset based on SYSTEM-context execution, suspicious administrative command usage, and repeated correlated alerts.",
-    "Mapped the observed behavior to lateral movement, command-and-control, and system administration abuse patterns at the incident level.",
-    "Prepared containment guidance focused on host isolation, evidence preservation, and EDR reconstruction of the execution chain."
+    "Reviewed incident timeline and correlated alert entries for INC-52825 and related historical alert context on BETHANYCHUCHU.",
+    "Reconciled the playbook trace against the updated timeline and confirmed horizontal movement, suspicious privileged execution, and the need for continued investigation.",
+    "Identified the key suspicious artifacts and commands: vmtoolsd.exe, NWEAgent.exe, upfc.exe, resume-vm-default.bat, sc.exe, reg.exe, wevtutil.exe, and SYSTEM-context HTTPS traffic to 4.145.79.81 / 124.155.222.24.",
+    "Determined that the available telemetry is insufficient to prove full process lineage, privilege escalation, or exfiltration from execution telemetry alone.",
+    "Prepared containment guidance to isolate the host and preserve volatile evidence pending SOC analyst review."
   ],
   "recommended_containment": [
-    "Immediately isolate host BETHANYCHUCHU at the EDR/network layer while preserving the current session state and volatile memory.",
-    "Collect a live triage package from BETHANYCHUCHU: running processes, full command lines, network sockets, autoruns, scheduled tasks, loaded services, and recent file writes.",
-    "Export Windows Security and Sysmon telemetry for the window around 2025-07-14T11:21:34+00:00, especially Event IDs 4688, 4697, 7045, 4624, 4672, 5156, 1, 3, 11, 12, and 13.",
-    "Quarantine or hash-validate vmtoolsd.exe, resume-vm-default.bat, Sandy.exe references, and any associated binaries matching hashes from the incident before allowing further execution.",
-    "Disable or reset any local administrative credentials used on the host, including accounts appearing in the incident scope, and review for unauthorized group membership changes.",
-    "Block outbound connections to 4.145.79.81 and any other destinations observed in the host telemetry until the execution chain and purpose are confirmed.",
-    "Investigate registry modifications to HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\EnableLUA and restore UAC settings if unauthorized changes are confirmed.",
-    "Search adjacent hosts in the 192.168.10.0/24 and 192.168.20.0/24 ranges for the same hashes, process names, and service-installation patterns to determine spread."
+    "Immediately isolate BETHANYCHUCHU from the network using EDR containment while preserving console access for live response.",
+    "Capture a volatile triage package from BETHANYCHUCHU before reboot: running processes, active network connections, logged-on users, services, scheduled tasks, autoruns, and loaded modules.",
+    "Collect full process creation telemetry for the incident window, including Windows Security 4688, 4624/4672, 4697/7045, and Sysmon Event IDs 1, 3, 7, 10, 11, and 13 to reconstruct the vmtoolsd.exe / cmd.exe / sc.exe / reg.exe / wevtutil.exe chain.",
+    "Quarantine and retrieve the exact binaries and scripts referenced in the timeline for offline analysis: vmtoolsd.exe, NWEAgent.exe, upfc.exe, resume-vm-default.bat, suspend-vm-default.bat, and any Defender-manifest modification artifacts.",
+    "Block the observed external destination 4.145.79.81 and the associated session target 124.155.222.24 at the gateway and EDR network control layer until the host is cleared.",
+    "Review and, if unauthorized, revert the EnableLUA registry modification under HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System and validate other service/manifests modified by wevtutil.exe.",
+    "Search the environment for the same hashes and command patterns on other endpoints, especially internal hosts 192.168.10.204 and 192.168.10.202, to identify any spread or follow-on activity.",
+    "If evidence confirms compromise, reset credentials for the affected user context and any privileged accounts associated with the host, then perform a full forensic image acquisition of BETHANYCHUCHU."
   ],
   "business_impact_checklist": {
-    "critical_system": "no",
+    "critical_system": "unknown",
     "essential_service": "unknown",
     "data_sensitivity": "unknown",
     "operational_impact": "unknown"
   },
-  "severity_justification": "High severity is justified because the incident shows a likely compromised asset with SYSTEM-context execution, suspicious administrative tooling, outbound HTTPS to a listed external IP, repeated correlated alerts, and prior lateral-movement indicators. The evidence does not confirm ransomware, widespread outage, or proven data exfiltration, so Critical is not supported by the provided telemetry.",
-  "confidence_justification": "Confidence is Medium because multiple reliable signals align on suspicious host activity, but the dataset lacks full parent-child process lineage, detailed network payload context, and direct proof of the exact malicious action chain. The conclusion is well supported, but key investigative gaps remain.",
+  "severity_justification": "High is appropriate because the incident shows a strong suspected compromise on a non-critical asset with SYSTEM-context execution, lateral-movement labeling, privileged command activity, service/registry manipulation, and outbound HTTPS to an external IP. The activity matches multiple High severity escalation factors, but there is no confirmed widespread outage, ransomware, or verified data exfiltration to justify Critical.",
+  "confidence_justification": "Medium confidence is appropriate because multiple independent timeline elements align on suspicious behavior, including privileged process execution, internal lateral-movement context, and malicious-looking administrative commands. However, the evidence is still incomplete: the timeline lacks a full parent-child process tree, exact logon context, and direct proof of payload execution or exfiltration, so the conclusion remains strongly supported but not definitive.",
   "mitre_mappings": [
     {
-      "timeline_phase": "Initial suspicious execution on compromised host",
-      "observed_evidence": "Host BETHANYCHUCHU executed vmtoolsd.exe as NT AUTHORITY\\SYSTEM, with related artifacts NWEAgent.exe, upfc.exe, mousocoreworker.exe, resume-vm-default.bat, and cmd.exe /c \"\"C:\\Program Files\\VMware\\VMware Tools\\suspend-vm-default.bat\"\" / resume-vm-default.bat in the incident scope.",
+      "timeline_phase": "Initial privileged execution and suspicious host activity",
+      "observed_evidence": "On BETHANYCHUCHU, vmtoolsd.exe executed as NT AUTHORITY\\SYSTEM and the incident bundle included vmtoolsd.exe -n vmusr, NWEAgent.exe /runasservice, and repeated SYSTEM-context process activity on 2025-07-14T11:21:34+00:00.",
       "tactic": "Execution",
-      "technique_name": "System Services: Service Execution",
+      "technique_name": "System Services",
       "technique_id": "T1569.002"
     },
     {
-      "timeline_phase": "Service and administrative tooling abuse",
-      "observed_evidence": "Command-line telemetry includes sc.exe start wuauserv and multiple service-related Windows components under SYSTEM context on BETHANYCHUCHU, indicating service control activity.",
-      "tactic": "Execution",
-      "technique_name": "System Services",
-      "technique_id": "T1569"
-    },
-    {
-      "timeline_phase": "Privileged command and script activity",
-      "observed_evidence": "The incident includes powershell.exe -ExecutionPolicy Bypass, cmd.exe, reg.exe, and other administrative utilities executed from the host telemetry.",
+      "timeline_phase": "Administrative command execution and script/control activity",
+      "observed_evidence": "The timeline shows cmd.exe /c \"C:\\Program Files\\VMware\\VMware Tools\\suspend-vm-default.bat\", cmd.exe /c \"C:\\Program Files\\VMware\\VMware Tools\\resume-vm-default.bat\", sc.exe start wuauserv, powershell.exe -ExecutionPolicy Bypass, reg.exe ADD \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v EnableLUA /t REG_DWORD /d 0 /f, and wevtutil.exe manifest install/uninstall operations on BETHANYCHUCHU.",
       "tactic": "Execution",
       "technique_name": "Command and Scripting Interpreter",
       "technique_id": "T1059"
     },
     {
-      "timeline_phase": "UAC weakening / privilege elevation preparation",
-      "observed_evidence": "The command line cmd.exe reg.exe ADD \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v EnableLUA /t REG_DWORD /d 0 /f appears in the incident, indicating modification of UAC-related policy settings.",
-      "tactic": "Privilege Escalation",
-      "technique_name": "Abuse Elevation Control Mechanism: Bypass User Account Control",
+      "timeline_phase": "Privilege weakening via registry modification",
+      "observed_evidence": "The incident includes command-line registry editing to set EnableLUA to 0 using reg.exe under HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System, which is a UAC-disabling modification on the host.",
+      "tactic": "Defense Evasion",
+      "technique_name": "User Account Control Bypass / Disabling",
       "technique_id": "T1548.002"
     },
     {
-      "timeline_phase": "Potential remote service or host-to-host movement",
-      "observed_evidence": "The broader incident set contains explicit lateral-movement labels, internal host-to-host IP activity across 192.168.10.x and 192.168.20.x, and service-control behavior consistent with remote execution patterns.",
-      "tactic": "Lateral Movement",
-      "technique_name": "Remote Services",
-      "technique_id": "T1021"
+      "timeline_phase": "Service manipulation and potential persistence/support for elevated execution",
+      "observed_evidence": "sc.exe start wuauserv and NWEAgent.exe /runasservice appeared in the same alert set, along with other service-oriented Windows processes such as svchost.exe and service-hosted components on BETHANYCHUCHU.",
+      "tactic": "Persistence",
+      "technique_name": "Create or Modify System Process",
+      "technique_id": "T1543.003"
     },
     {
-      "timeline_phase": "Outbound command-and-control over web protocols",
-      "observed_evidence": "vmtoolsd.exe on BETHANYCHUCHU generated outbound HTTPS traffic to 4.145.79.81, which is a Microsoft-hosted IP with external reputation correlation and was flagged by the alert as suspicious web protocol traffic.",
+      "timeline_phase": "Outbound communication to external network destination",
+      "observed_evidence": "The host generated outbound HTTPS traffic from fe80:0:0:0:9706:3f55:e752:75ca to 4.145.79.81 / 124.155.222.24 while running as SYSTEM, and the incident detail explicitly flagged application-layer web traffic over HTTPS.",
       "tactic": "Command and Control",
       "technique_name": "Application Layer Protocol: Web Protocols",
       "technique_id": "T1071.001"
     },
     {
-      "timeline_phase": "Possible masquerading / trusted process abuse",
-      "observed_evidence": "A legitimate-looking VMware process name (vmtoolsd.exe) was associated with anomalous SYSTEM-context HTTPS activity and additional suspicious artifacts within the same incident, suggesting abuse of a trusted process path or masquerading behavior.",
-      "tactic": "Defense Evasion",
-      "technique_name": "Masquerading",
-      "technique_id": "T1036"
+      "timeline_phase": "Internal host-to-host activity consistent with lateral movement",
+      "observed_evidence": "The incident context repeatedly references internal RFC1918 source and destination addresses, including 192.168.10.204 to 192.168.10.202, and labels the activity as Lateral Movement on the BETHANYCHUCHU host.",
+      "tactic": "Lateral Movement",
+      "technique_name": "Remote Services",
+      "technique_id": "T1021"
+    },
+    {
+      "timeline_phase": "Potential remote execution / lateral movement via Windows administration tooling",
+      "observed_evidence": "The alert set includes WmiPrvSE.exe, sc.exe, cmd.exe, and privileged SYSTEM-context activity across internal hosts, indicating a probable Windows remote-administration or service-based movement path even though full lineage is missing.",
+      "tactic": "Lateral Movement",
+      "technique_name": "Windows Management Instrumentation",
+      "technique_id": "T1047"
     }
   ],
-  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial suspicious execution on compromised host | Host BETHANYCHUCHU executed vmtoolsd.exe as NT AUTHORITY\\SYSTEM, with related artifacts NWEAgent.exe, upfc.exe, mousocoreworker.exe, resume-vm-default.bat, and cmd.exe /c \"\"C:\\Program Files\\VMware\\VMware Tools\\suspend-vm-default.bat\"\" / resume-vm-default.bat in the incident scope. | Execution | System Services: Service Execution | T1569.002 |\n| Service and administrative tooling abuse | Command-line telemetry includes sc.exe start wuauserv and multiple service-related Windows components under SYSTEM context on BETHANYCHUCHU, indicating service control activity. | Execution | System Services | T1569 |\n| Privileged command and script activity | The incident includes powershell.exe -ExecutionPolicy Bypass, cmd.exe, reg.exe, and other administrative utilities executed from the host telemetry. | Execution | Command and Scripting Interpreter | T1059 |\n| UAC weakening / privilege elevation preparation | The command line cmd.exe reg.exe ADD \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v EnableLUA /t REG_DWORD /d 0 /f appears in the incident, indicating modification of UAC-related policy settings. | Privilege Escalation | Abuse Elevation Control Mechanism: Bypass User Account Control | T1548.002 |\n| Potential remote service or host-to-host movement | The broader incident set contains explicit lateral-movement labels, internal host-to-host IP activity across 192.168.10.x and 192.168.20.x, and service-control behavior consistent with remote execution patterns. | Lateral Movement | Remote Services | T1021 |\n| Outbound command-and-control over web protocols | vmtoolsd.exe on BETHANYCHUCHU generated outbound HTTPS traffic to 4.145.79.81, which is a Microsoft-hosted IP with external reputation correlation and was flagged by the alert as suspicious web protocol traffic. | Command and Control | Application Layer Protocol: Web Protocols | T1071.001 |\n| Possible masquerading / trusted process abuse | A legitimate-looking VMware process name (vmtoolsd.exe) was associated with anomalous SYSTEM-context HTTPS activity and additional suspicious artifacts within the same incident, suggesting abuse of a trusted process path or masquerading behavior. | Defense Evasion | Masquerading | T1036 |",
+  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial privileged execution and suspicious host activity | On BETHANYCHUCHU, vmtoolsd.exe executed as NT AUTHORITY\\SYSTEM and the incident bundle included vmtoolsd.exe -n vmusr, NWEAgent.exe /runasservice, and repeated SYSTEM-context process activity on 2025-07-14T11:21:34+00:00. | Execution | System Services | T1569.002 |\n| Administrative command execution and script/control activity | The timeline shows cmd.exe /c \"C:\\Program Files\\VMware\\VMware Tools\\suspend-vm-default.bat\", cmd.exe /c \"C:\\Program Files\\VMware\\VMware Tools\\resume-vm-default.bat\", sc.exe start wuauserv, powershell.exe -ExecutionPolicy Bypass, reg.exe ADD \"HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\" /v EnableLUA /t REG_DWORD /d 0 /f, and wevtutil.exe manifest install/uninstall operations on BETHANYCHUCHU. | Execution | Command and Scripting Interpreter | T1059 |\n| Privilege weakening via registry modification | The incident includes command-line registry editing to set EnableLUA to 0 using reg.exe under HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System, which is a UAC-disabling modification on the host. | Defense Evasion | User Account Control Bypass / Disabling | T1548.002 |\n| Service manipulation and potential persistence/support for elevated execution | sc.exe start wuauserv and NWEAgent.exe /runasservice appeared in the same alert set, along with other service-oriented Windows processes such as svchost.exe and service-hosted components on BETHANYCHUCHU. | Persistence | Create or Modify System Process | T1543.003 |\n| Outbound communication to external network destination | The host generated outbound HTTPS traffic from fe80:0:0:0:9706:3f55:e752:75ca to 4.145.79.81 / 124.155.222.24 while running as SYSTEM, and the incident detail explicitly flagged application-layer web traffic over HTTPS. | Command and Control | Application Layer Protocol: Web Protocols | T1071.001 |\n| Internal host-to-host activity consistent with lateral movement | The incident context repeatedly references internal RFC1918 source and destination addresses, including 192.168.10.204 to 192.168.10.202, and labels the activity as Lateral Movement on the BETHANYCHUCHU host. | Lateral Movement | Remote Services | T1021 |\n| Potential remote execution / lateral movement via Windows administration tooling | The alert set includes WmiPrvSE.exe, sc.exe, cmd.exe, and privileged SYSTEM-context activity across internal hosts, indicating a probable Windows remote-administration or service-based movement path even though full lineage is missing. | Lateral Movement | Windows Management Instrumentation | T1047 |",
   "policy_audit_logs": [
     {
-      "audit_id": "AUD-DP07-1790488870-1",
+      "audit_id": "AUD-DP07-1790780117-1",
       "incident_id": "INC-52825",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix C",
@@ -122,13 +122,13 @@
       "input_summary": "Critical System: False, Sensitive Data: False",
       "result": "Pass",
       "decision_made": "Investigate",
-      "timestamp": 1790488870.448875,
+      "timestamp": 1790780117.0927384,
       "evidence_reference": "business_impact_checklist",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP08-1790488870-2",
+      "audit_id": "AUD-DP08-1790780117-2",
       "incident_id": "INC-52825",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix A",
@@ -136,13 +136,13 @@
       "input_summary": "Severity classification: High",
       "result": "Warning",
       "decision_made": "Escalate",
-      "timestamp": 1790488870.448875,
+      "timestamp": 1790780117.0927384,
       "evidence_reference": "incident_summary",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP09-1790488870-3",
+      "audit_id": "AUD-DP09-1790780117-3",
       "incident_id": "INC-52825",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix F",
@@ -150,13 +150,13 @@
       "input_summary": "Confidence level: Medium",
       "result": "Warning",
       "decision_made": "Escalate",
-      "timestamp": 1790488870.448875,
+      "timestamp": 1790780117.0927384,
       "evidence_reference": "execution_trace",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP10-1790488870-4",
+      "audit_id": "AUD-DP10-1790780117-4",
       "incident_id": "INC-52825",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix G",
@@ -164,7 +164,7 @@
       "input_summary": "Severity: High, Confidence: Medium, Ransomware: False, Guest OS: False",
       "result": "Fail",
       "decision_made": "Escalate",
-      "timestamp": 1790488870.448875,
+      "timestamp": 1790780117.0927384,
       "evidence_reference": "recommended_containment",
       "human_review_required": true,
       "final_reviewer": null

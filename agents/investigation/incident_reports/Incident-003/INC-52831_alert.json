@@ -1,0 +1,156 @@
+{
+  "incident_id": "INC-52831",
+  "classification": {
+    "alert_type": "Suspicious Outbound Network Activity",
+    "severity": "MEDIUM",
+    "triage_risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is Medium because the alert shows suspicious external network activity from an internal host with multiple public IPs but no confirmed malware or PowerShell execution; occurrence is Medium because there is a single high-severity NetWitness alert with risk score 70 and no evidence of repeated events or volume, and adverse impact is Medium because the observed IOC set indicates potentially risky outbound communication yet lacks endpoint, process, file, or exfiltration evidence to support a higher impact rating."
+    },
+    "source_risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: ESA for 192.168.10.201",
+    "timestamp": "2025-07-14T11:33:59+00:00",
+    "description": "Network activity was observed from internal host 192.168.10.201 to multiple external IPs, including 8.8.8.8, but no endpoint, process, file, or PowerShell evidence was available to confirm malicious execution. The alert has moderate risk and incomplete network context, so it should be investigated as suspicious activity rather than confirmed compromise.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.201"
+    },
+    "destination": {
+      "ip_address": "8.8.8.8"
+    }
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_2: Was it horizontal or vertical",
+      "step_3: Was any malicious process spawned on the victim's machine?",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System"
+    ],
+    "gap_findings": {
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System": "IP address is directly present as SourceIp 192.168.10.201. No username, login details, computer name, or operating system are present in the incident record. However, the destination set suggests the host communicated externally to multiple public IPs and also to multicast/DNS-related addresses (224.0.0.251 and 224.0.0.252), which is consistent with a workstation on a local network rather than a server. The use of 192.168.10.201 indicates an RFC1918 private address, so the asset is likely internal. No direct authentication artifacts, account identifiers, hostnames, or OS indicators are included in the raw alert payload.",
+      "step_2: Was it horizontal or vertical": "The evidence does not show explicit lateral movement to another internal host. The only source IP is 192.168.10.201, and all listed destinations are external public IPs or local multicast/discovery addresses, not another 192.168.10.0/24 peer. Because there is no target internal host or privileged escalation target, this does not support vertical movement. If movement occurred at all, the dataset does not prove lateral movement either. Based on the available data, this is not enough to classify as horizontal or vertical movement; the observed behavior is more consistent with outbound communication/C2-like traffic from a single internal host.",
+      "step_3: Was any malicious process spawned on the victim's machine?": "No process names, parent-child relationships, command lines, or execution telemetry are present in the incident record. Therefore there is no direct evidence that a malicious process was spawned on the victim machine. The repeated alerting and multiple outbound destinations may indicate automated network activity from a process already running on the host, but without process telemetry this remains unconfirmed.",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "No process tree, execution chain, parent PID, child PID, or command-line artifacts are present, so a process-tree analysis cannot be performed from the provided incident data. There is no evidence of privilege escalation or a specific lateral movement chain. The multiple external destinations could be compatible with beaconing or exfiltration, but the dataset lacks any file, process, or network-session context needed to substantiate data theft. The strongest contextual clue is outbound traffic from 192.168.10.201 to multiple public IPs, which raises concern for command-and-control or suspicious internet activity, but not enough for confirmed malicious process behavior."
+    },
+    "confidence_per_gap": {
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System": "medium",
+      "step_2: Was it horizontal or vertical": "low",
+      "step_3: Was any malicious process spawned on the victim's machine?": "none",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "none"
+    },
+    "actionable_queries": {
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System": "Query Windows Security Logs on host 192.168.10.201 for Event ID 4624 (successful logon), 4625 (failed logon), and 4672 (special privileges assigned) to identify username, logon type, source IP, and privilege context; query host inventory/EDR telemetry for hostname and OS (e.g., EDR device details, WMI: wmic computersystem get name; wmic os get caption,version).",
+      "step_2: Was it horizontal or vertical": "Correlate Windows Event ID 4624/4648/4776 on 192.168.10.201 and adjacent internal hosts to identify remote logons; inspect Security Event ID 5140/5145 for SMB access and 7040/7045 for service creation suggesting lateral movement; if EDR is available, search for remote execution tooling (psexec, wmic, winrm, powershell remoting) and determine whether the target is another internal host (horizontal) or privileged resource/account (vertical).",
+      "step_3: Was any malicious process spawned on the victim's machine?": "Run EDR process search on host 192.168.10.201 for process creation events (Sysmon Event ID 1 or Security Event ID 4688) around 2025-07-14T10:44:23Z; collect parent/child process lineage and command lines. On-host triage commands: 'Get-Process | Sort-Object StartTime', 'wmic process get parentprocessid,processid,name,commandline', and 'tasklist /v'.",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.": "Collect full process ancestry via EDR or Sysmon Event ID 1, plus Windows Security Event IDs 4688, 4697, 7045, 4672, 4720, 4728, 4732, and 5140/5145. For network-linked exfiltration review, also query Sysmon Event ID 3 and firewall/proxy logs for outbound connections from 192.168.10.201 to the listed external IPs; if available, run 'netstat -ano' and map suspicious PIDs to processes with 'tasklist /fi \"PID eq <pid>\"'."
+    },
+    "extracted_values": {
+      "ip.src": "192.168.10.201",
+      "ip.dst": "8.8.8.8, 20.189.173.28, 23.45.207.168, 4.145.79.80, 224.0.0.252, 224.0.0.251, 124.155.222.178, 52.168.117.170, 149.154.167.99, 52.123.128.14",
+      "incident.id": "INC-52831",
+      "incident.title": "High Risk Alerts: ESA for 192.168.10.201",
+      "severity": "HIGH",
+      "riskScore": 70,
+      "alertCount": 38,
+      "firstAlertTime": "2025-07-14T10:44:23.678Z",
+      "source": "Event Stream Analysis"
+    },
+    "mitre_tactic": "Command and Control",
+    "incident_category": "Suspicious Outbound Network Activity",
+    "classification": "HIGH",
+    "deep_dive_summary": "The incident is centered on an internal host, 192.168.10.201, generating repeated high-risk alerts and communicating with multiple external IPs plus local multicast addresses. The provided data does not include usernames, hostnames, OS details, logon telemetry, or process trees, so malicious process execution, privilege escalation, and lateral movement cannot be confirmed from this record alone.",
+    "feedback_pass": 1
+  },
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "ip_indicators": [
+        "8.8.8.8"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 53,
+          "undetected": 38,
+          "reputation": 561,
+          "country": "US",
+          "as_owner": "Google LLC"
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "abuse_confidence_score": 0,
+          "total_reports": 217,
+          "country_code": "US",
+          "isp": "Google LLC",
+          "domain": "google.com",
+          "usage_type": "Content Delivery Network",
+          "last_reported_at": "2026-09-28T07:41:01+00:00"
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

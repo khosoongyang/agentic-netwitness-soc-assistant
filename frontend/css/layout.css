@@ -151,7 +151,10 @@
   grid-area: header;
   position: sticky;
   top: 0;
-  z-index: 5;
+  /* Above the Ask Aegis panel (z-index 8, pinned just below the header) so
+     the Overview Filters/Sort popovers never render behind it; still below
+     the sidebar (10) and modals (50). */
+  z-index: 9;
   height: var(--header-height);
   padding: 0 1.25rem;
   display: flex;
@@ -163,9 +166,30 @@
   backdrop-filter: blur(12px);
 }
 
+.topbar-primary {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.topbar-tools {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.topbar-tools:empty {
+  display: none;
+}
+
 .topbar-search {
   position: relative;
-  width: min(26rem, 100%);
+  flex: 1 1 auto;
+  min-width: 7rem;
+  max-width: 44rem;
   height: 2.25rem;
   padding: 0 0.6rem;
   display: flex;
@@ -201,18 +225,6 @@
 
 .topbar-search-input::placeholder {
   color: var(--muted);
-}
-
-.topbar-search-shortcut {
-  flex-shrink: 0;
-  padding: 0.1rem 0.4rem;
-  border: 1px solid var(--border);
-  border-radius: 0.3rem;
-  color: var(--muted);
-  background: var(--surface-raised);
-  font-size: 0.68rem;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
 }
 
 .topbar-actions {
@@ -306,10 +318,6 @@
   }
 
   .topbar-profile-text {
-    display: none;
-  }
-
-  .topbar-search-shortcut {
     display: none;
   }
 }
