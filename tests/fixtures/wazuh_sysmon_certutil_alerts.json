@@ -1,0 +1,70 @@
+[
+  {
+    "_comment": "HAND-WRITTEN test fixture (not exported from a real system). Shape follows Wazuh 4.x alerts for the Windows eventchannel decoder: data.win.system.* and data.win.eventdata.* (Sysmon Event ID 1, process creation). Mirrors Atomic Red Team T1105 'certutil download (urlcache)'.",
+    "timestamp": "2026-09-30T02:20:11.512+0000",
+    "rule": {
+      "level": 12,
+      "description": "Certutil used to download a file (possible ingress tool transfer)",
+      "id": "92213",
+      "mitre": {"id": ["T1105"], "tactic": ["Command and Control"], "technique": ["Ingress Tool Transfer"]},
+      "firedtimes": 1,
+      "groups": ["windows", "sysmon", "sysmon_eid1_detections"]
+    },
+    "agent": {"id": "003", "name": "LAB-WIN10", "ip": "192.168.56.20"},
+    "manager": {"name": "wazuh-manager"},
+    "id": "1759198811.4412345",
+    "decoder": {"name": "windows_eventchannel"},
+    "data": {
+      "win": {
+        "system": {
+          "providerName": "Microsoft-Windows-Sysmon",
+          "eventID": "1",
+          "computer": "LAB-WIN10",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "systemTime": "2026-09-30T02:20:11.4981230Z",
+          "severityValue": "INFORMATION"
+        },
+        "eventdata": {
+          "ruleName": "technique_id=T1105,technique_name=Ingress Tool Transfer",
+          "utcTime": "2026-09-30 02:20:11.496",
+          "processGuid": "{3f2d1a7c-1b2b-66fa-5c03-000000002a00}",
+          "processId": "6412",
+          "image": "C:\\Windows\\System32\\certutil.exe",
+          "fileVersion": "10.0.19041.3636 (WinBuild.160101.0800)",
+          "description": "CertUtil.exe",
+          "product": "Microsoft® Windows® Operating System",
+          "company": "Microsoft Corporation",
+          "originalFileName": "CertUtil.exe",
+          "commandLine": "certutil  -urlcache -split -f https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/LICENSE.txt Atomic-license.txt",
+          "currentDirectory": "C:\\Users\\labuser\\AppData\\Local\\Temp\\",
+          "user": "LAB-WIN10\\labuser",
+          "logonId": "0x3e7a1",
+          "integrityLevel": "High",
+          "hashes": "SHA1=4C2D4F2B3F8A1B9E0D7C6B5A4E3D2C1B0A9F8E7D,MD5=0F1E2D3C4B5A69788796A5B4C3D2E1F0,SHA256=8E3C1F0B2A4D6E8F0A1B2C3D4E5F6A7B8C9D0E1F2A3B4C5D6E7F8A9B0C1D2E3F,IMPHASH=1A2B3C4D5E6F708192A3B4C5D6E7F809",
+          "parentProcessGuid": "{3f2d1a7c-1b2a-66fa-5b03-000000002a00}",
+          "parentProcessId": "5120",
+          "parentImage": "C:\\Windows\\System32\\cmd.exe",
+          "parentCommandLine": "cmd /c certutil -urlcache -split -f https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/LICENSE.txt Atomic-license.txt",
+          "parentUser": "LAB-WIN10\\labuser"
+        }
+      }
+    },
+    "location": "EventChannel"
+  },
+  {
+    "_comment": "HAND-WRITTEN: a second, unrelated Sysmon EID 3 network connection from the same host (tests destination IP mapping).",
+    "timestamp": "2026-09-30T02:20:12.020+0000",
+    "rule": {"level": 3, "description": "Sysmon - Event 3: Network connection by certutil.exe", "id": "61605",
+             "groups": ["windows", "sysmon", "sysmon_event3"]},
+    "agent": {"id": "003", "name": "LAB-WIN10", "ip": "192.168.56.20"},
+    "id": "1759198812.4412999",
+    "data": {"win": {
+      "system": {"providerName": "Microsoft-Windows-Sysmon", "eventID": "3", "computer": "LAB-WIN10",
+                 "systemTime": "2026-09-30T02:20:12.0011000Z"},
+      "eventdata": {"image": "C:\\Windows\\System32\\certutil.exe", "user": "LAB-WIN10\\labuser",
+                    "protocol": "tcp", "sourceIp": "192.168.56.20", "sourcePort": "50122",
+                    "destinationIp": "185.199.108.133", "destinationPort": "443",
+                    "destinationHostname": "raw.githubusercontent.com"}
+    }}
+  }
+]
