@@ -325,7 +325,7 @@ class LolbasDataset:
         retrieved = self.meta.get("retrieved_at") or "unknown date"
         sha = (self.meta.get("sha256") or "")[:12] or "unknown"
         return (f"LOLBAS {self.meta.get('source_url') or LOLBAS_SOURCE_URL} "
-                f"(cache {self.path or '?'}, retrieved {retrieved}, sha256 {sha}…, "
+                f"(cache {self.path or '?'}, retrieved {retrieved}, sha256 {sha}..., "
                 f"{len(self.entries)} entries)")
 
 

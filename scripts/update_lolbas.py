@@ -69,7 +69,8 @@ def main(argv: list[str] | None = None) -> int:
         "license": "GPL-3.0 (LOLBAS project) -- runtime cache only, not committed",
     }
     args.out.with_suffix(".meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    print(f"[update_lolbas] wrote {args.out} ({meta['entries']} entries, sha256 {meta['sha256'][:16]}…)")
+    # ASCII-only console output: a cp1252 Windows console cannot encode "…".
+    print(f"[update_lolbas] wrote {args.out} ({meta['entries']} entries, sha256 {meta['sha256'][:16]}...)")
     print(f"[update_lolbas] wrote {args.out.with_suffix('.meta.json')}")
     return 0
 
