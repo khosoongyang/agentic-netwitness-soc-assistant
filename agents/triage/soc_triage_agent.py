@@ -378,8 +378,16 @@ def _normalize_mitre_technique(value) -> str:
 # This module now lives in the soc_triage_agent/ subfolder, and all SQLite
 # databases were consolidated into <project root>/soc_db/ — hence parent.parent.
 _SOC_DB_DIR = Path(__file__).resolve().parents[2] / "soc_db"
-_SOC_DB_DIR.mkdir(parents=True, exist_ok=True)
-_TICKET_DB   = _SOC_DB_DIR / "soc_tickets.db"
+# [FYP-TRIAGE-STEP2] AEGIS_TICKET_DB overrides the ticket/cache DB path
+# (read at import time) so offline/live evaluation (scripts/eval_triage.py)
+# can point it at a temp copy and NEVER write to soc_db/. Unset = unchanged.
+_TICKET_DB_OVERRIDE = os.environ.get("AEGIS_TICKET_DB", "").strip()
+if _TICKET_DB_OVERRIDE:
+    _TICKET_DB = Path(_TICKET_DB_OVERRIDE)
+    _TICKET_DB.parent.mkdir(parents=True, exist_ok=True)
+else:
+    _SOC_DB_DIR.mkdir(parents=True, exist_ok=True)
+    _TICKET_DB = _SOC_DB_DIR / "soc_tickets.db"
 _TICKET_LOCK = threading.Lock()
 
 

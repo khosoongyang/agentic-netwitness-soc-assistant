@@ -618,6 +618,12 @@ def build_masquerade_signal(incident: dict, dataset_path: str | Path | None = No
     return _leaf(value, "measured", src)
 
 
+# Floor label used when the abused-tool check could NOT run (cache missing or
+# corrupt) although the raw events contain command lines to check.
+UNCHECKED_FLOOR_LABEL = "abused_tool_check_unavailable"
+_CACHE_PROBLEM_PREFIX = "LOLBAS cache"
+
+
 def floor_label(hit: dict) -> str:
     if hit.get("path_mismatch"):
         return f"masquerade:{hit['binary']}"
@@ -626,7 +632,13 @@ def floor_label(hit: dict) -> str:
 
 def floor_labels(packet: dict) -> list[str]:
     """[FYP-FUNCTION] Abused-tool labels that join the guard floor
-    (agents/triage/guards.strong_rule_signals)."""
+    (agents/triage/guards.strong_rule_signals).
+
+    "Missing evidence = unknown, not safe": when the LOLBAS cache is missing
+    or unreadable but the raw events DO contain command lines, the abused-tool
+    check is unknown rather than clean, so UNCHECKED_FLOOR_LABEL is returned
+    and a benign close stays blocked (canaries must hold even on a machine
+    where scripts/update_lolbas.py was never run)."""
     signals = (packet or {}).get("rule_signals") or {}
     labels: set[str] = set()
     for key in ("lolbas", "masquerade"):
@@ -634,6 +646,13 @@ def floor_labels(packet: dict) -> list[str]:
         if isinstance(leaf, dict) and leaf.get("status") != "missing" \
                 and isinstance(leaf.get("value"), dict):
             labels.update(leaf["value"].get("floor_labels") or [])
+    lol = signals.get("lolbas")
+    if isinstance(lol, dict) and lol.get("status") == "missing" \
+            and str(lol.get("source") or "").startswith(_CACHE_PROBLEM_PREFIX):
+        cmd_leaf = ((packet or {}).get("raw_alerts") or {}).get("command_lines") or {}
+        if cmd_leaf.get("status") != "missing" and \
+                ((cmd_leaf.get("value") or {}).get("total_unique") or 0) > 0:
+            labels.add(UNCHECKED_FLOOR_LABEL)
     return sorted(labels)
 
 
@@ -666,5 +685,5 @@ __all__ = [
     "WELL_KNOWN_BINARIES", "SIGNED_NOTE", "LolbasDataset", "derive_patterns",
     "resolve_lolbas_path", "load_lolbas_dataset", "expected_directories", "match_lolbas",
     "incident_observables", "build_lolbas_signal", "build_masquerade_signal",
-    "floor_label", "floor_labels", "signature_abused_tool_hits",
+    "floor_label", "floor_labels", "signature_abused_tool_hits", "UNCHECKED_FLOOR_LABEL",
 ]
