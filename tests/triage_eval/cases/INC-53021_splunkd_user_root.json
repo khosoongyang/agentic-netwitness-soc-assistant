@@ -1,0 +1,31 @@
+{
+  "name": "INC-53021_splunkd_user_root",
+  "description": "Real NetWitness Endpoint incident (Respond-API export): 'splunkd.exe' running from C:\\Users\\Public\\ with threat_desc Win64.Trojan.Goldera, plus a hidden PowerShell sandcat (Caldera) downloader, off-hour, C2 to 192.168.10.202:8888.",
+  "incident_file": "demo/incident_INC-53021_respond_api_export.json",
+  "data_availability": {
+    "incident_source": "netwitness_live",
+    "alerts_fetch_attempted": true,
+    "alerts_fetch_succeeded": true,
+    "alerts_complete": true,
+    "alerts_count": 6,
+    "journal_fetch_succeeded": null,
+    "warnings": []
+  },
+  "expected": {
+    "disposition_acceptable": [
+      "true_positive",
+      "needs_info"
+    ],
+    "must_not": [
+      "false_positive",
+      "benign_expected"
+    ]
+  },
+  "label": {
+    "value": "true_positive",
+    "source": "analyst",
+    "labeller": "Aegis Triage Step 2 implementer, from the raw events (PENDING mentor confirmation)",
+    "date": "2026-10-01",
+    "rationale": "Raw events show splunkd.exe running from C:\\Users\\Public\\ (not a Splunk install path), unsigned, endpoint AV verdict Win64.Trojan.Goldera, plus hidden PowerShell downloading 'sandcat.go' (MITRE Caldera agent) from 192.168.10.202:8888 off-hours. Likely a Caldera lab run; if the intern confirms that, change source to lab_ground_truth. CIRCULARITY WARNING: this label was read from the same raw fields Triage now uses, so it checks consistency, not independent accuracy."
+  }
+}

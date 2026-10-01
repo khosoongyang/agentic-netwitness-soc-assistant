@@ -1,0 +1,22 @@
+{
+  "name": "INC-52825_lateral_move_noise",
+  "description": "Real NetWitness Endpoint incident: 1,000 of 1,558 alerts fetched; 998 'Chu Wen - Lateral Move Detected' (mostly signed Windows processes) + 2 'Disables UAC' (reg.exe EnableLUA=0). UNLABELLED: needs mentor review.",
+  "incident_file": "demo/incident_INC-52825_respond_api_export.json",
+  "data_availability": {
+    "incident_source": "netwitness_live",
+    "alerts_fetch_attempted": true,
+    "alerts_fetch_succeeded": true,
+    "alerts_complete": true,
+    "alerts_count": 1000,
+    "journal_fetch_succeeded": null,
+    "warnings": []
+  },
+  "expected": null,
+  "label": {
+    "value": null,
+    "source": null,
+    "labeller": null,
+    "date": null,
+    "rationale": "Unlabelled -- reported but excluded from accuracy. Candidate for the mentor labelling sheet (scripts/export_labelling_sheet.py)."
+  }
+}

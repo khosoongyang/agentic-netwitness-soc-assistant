@@ -1,0 +1,44 @@
+{
+  "name": "golden_phishing_email",
+  "description": "Seeded from tests/golden_incidents.json (synthetic, alertMeta only, no raw alerts). Because no raw alerts exist, raw_alerts_available is missing by design.",
+  "incident": {
+    "id": "GOLD-PH",
+    "title": "Phishing Email Campaign against Finance",
+    "severity": "High",
+    "status": "New",
+    "alertMeta": {
+      "AlertTitles": [
+        "Malicious attachment detected",
+        "Suspicious link clicked"
+      ]
+    }
+  },
+  "data_availability": {
+    "incident_source": "other",
+    "alerts_fetch_attempted": false,
+    "alerts_fetch_succeeded": false,
+    "alerts_complete": false,
+    "alerts_count": 0,
+    "journal_fetch_succeeded": null,
+    "warnings": [
+      "synthetic golden incident: no raw alerts exist"
+    ]
+  },
+  "expected": {
+    "disposition_acceptable": [
+      "true_positive",
+      "needs_info"
+    ],
+    "must_not": [
+      "false_positive",
+      "benign_expected"
+    ]
+  },
+  "label": {
+    "value": "true_positive",
+    "source": "synthetic",
+    "labeller": "tests/golden_incidents.json authors (Aegis eval_harness goldens)",
+    "date": "2026-10-01",
+    "rationale": "Golden scenario 'phishing_email' constructed as a malicious incident. CIRCULAR: written by the same team that wrote the rules; measures consistency with the design, not real-world accuracy."
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "name": "golden_endpoint_hta_c2",
+  "description": "Seeded from tests/golden_incidents.json (synthetic, alertMeta only, no raw alerts). Because no raw alerts exist, raw_alerts_available is missing by design.",
+  "incident": {
+    "id": "GOLD-C2",
+    "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "severity": "High",
+    "status": "New",
+    "created": "2025-11-18T03:18:37+00:00",
+    "alertCount": 240,
+    "alertMeta": {
+      "Hostname": [
+        "KELLYWANG"
+      ],
+      "User": [
+        "Kelly Wang"
+      ],
+      "SourceIp": [
+        "192.168.10.204"
+      ],
+      "DestinationIp": [
+        "192.168.10.202"
+      ],
+      "AlertTitles": [
+        "Malicious HTA file detected",
+        "Potential C2 Connection"
+      ]
+    }
+  },
+  "data_availability": {
+    "incident_source": "other",
+    "alerts_fetch_attempted": false,
+    "alerts_fetch_succeeded": false,
+    "alerts_complete": false,
+    "alerts_count": 0,
+    "journal_fetch_succeeded": null,
+    "warnings": [
+      "synthetic golden incident: no raw alerts exist"
+    ]
+  },
+  "expected": {
+    "disposition_acceptable": [
+      "true_positive",
+      "needs_info"
+    ],
+    "must_not": [
+      "false_positive",
+      "benign_expected"
+    ]
+  },
+  "label": {
+    "value": "true_positive",
+    "source": "synthetic",
+    "labeller": "tests/golden_incidents.json authors (Aegis eval_harness goldens)",
+    "date": "2026-10-01",
+    "rationale": "Golden scenario 'endpoint_hta_c2' constructed as a malicious incident. CIRCULAR: written by the same team that wrote the rules; measures consistency with the design, not real-world accuracy."
+  }
+}

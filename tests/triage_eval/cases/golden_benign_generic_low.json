@@ -1,0 +1,36 @@
+{
+  "name": "golden_benign_generic_low",
+  "description": "Seeded from tests/golden_incidents.json (synthetic, alertMeta only, no raw alerts). Because no raw alerts exist, raw_alerts_available is missing by design.",
+  "incident": {
+    "id": "GOLD-LOW",
+    "title": "High Risk Alerts: ESA",
+    "severity": "Low",
+    "status": "New",
+    "alertMeta": {}
+  },
+  "data_availability": {
+    "incident_source": "other",
+    "alerts_fetch_attempted": false,
+    "alerts_fetch_succeeded": false,
+    "alerts_complete": false,
+    "alerts_count": 0,
+    "journal_fetch_succeeded": null,
+    "warnings": [
+      "synthetic golden incident: no raw alerts exist"
+    ]
+  },
+  "expected": {
+    "disposition_acceptable": [
+      "needs_info",
+      "benign_expected"
+    ],
+    "must_not": []
+  },
+  "label": {
+    "value": "benign_expected",
+    "source": "synthetic",
+    "labeller": "tests/golden_incidents.json authors (Aegis eval_harness goldens)",
+    "date": "2026-10-01",
+    "rationale": "Generic low-severity ESA incident with no indicators. CIRCULAR: written by the same team that wrote the rules; measures consistency with the design, not real-world accuracy."
+  }
+}
