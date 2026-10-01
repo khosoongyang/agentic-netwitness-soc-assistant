@@ -100,6 +100,11 @@ def pytest_configure(config: pytest.Config) -> None:
 
     previous_environment = {key: os.environ.get(key) for key in _ENV_KEYS}
     os.environ.update({key: str(value) for key, value in paths.items()})
+    # [FYP-TRIAGE-STEP2] Pin the abused-tool (LOLBAS) enrichment to the small
+    # self-authored fixture so test results never depend on whether the
+    # git-ignored runtime cache (scripts/update_lolbas.py) was downloaded.
+    previous_environment["AEGIS_LOLBAS_PATH"] = os.environ.get("AEGIS_LOLBAS_PATH")
+    os.environ["AEGIS_LOLBAS_PATH"] = str(PROJECT_ROOT / "tests" / "fixtures" / "lolbas_fixture.json")
 
     config._aegis_test_isolation = SimpleNamespace(  # type: ignore[attr-defined]
         temporary_directory=temporary_directory,

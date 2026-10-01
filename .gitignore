@@ -63,6 +63,12 @@ runtime/uploads/*
 runtime/chroma/
 runtime/workflow_last_run.json
 
+# ── Triage Step 2 runtime data (regenerated; never committed) ──────────────
+# LOLBAS dataset cache (GPL-3.0: downloaded by scripts/update_lolbas.py, not
+# redistributed here) and real/offline eval reports (scripts/eval_triage.py).
+runtime/threat_data/
+runtime/eval_reports/
+
 # NOTE: soc_db/, chroma_db/, *.db, incident_reports/, triaged_alerts/ are
 # intentionally TRACKED — they are the offline demo payload the cloud app
 # reads. Do not add them here.

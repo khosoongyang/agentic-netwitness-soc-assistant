@@ -62,6 +62,8 @@ import copy
 from typing import Any, Callable
 
 from .evidence_packet import STRONG_SIGNAL_LABELS, get_leaf
+# [FYP-TRIAGE-STEP2] abused-tool (LOLBAS) + masquerade floor labels.
+from .lolbas import floor_labels as abused_tool_floor_labels
 from .triage_result import DISPOSITIONS, TriageAssessment
 
 NEEDS_INFO = "needs_info"
@@ -305,11 +307,18 @@ def missing_mandatory_evidence(packet: dict) -> list[str]:
 
 def strong_rule_signals(packet: dict) -> list[str]:
     """Strong deterministic indicator labels present in the packet
-    (suspicious_ip, weight 1, is excluded by STRONG_SIGNAL_LABELS)."""
+    (suspicious_ip, weight 1, is excluded by STRONG_SIGNAL_LABELS).
+
+    [FYP-TRIAGE-STEP2] Plus abused-tool floor labels from
+    rule_signals.lolbas / rule_signals.masquerade: STRONG LOLBAS hits in
+    categories Download / Execute / AWL Bypass / UAC Bypass / Credentials and
+    every path_mismatch (masquerade). Weak (name-only) hits never count, and
+    a valid signature never removes a hit (adversarial mimicry)."""
     signals = (packet or {}).get("rule_signals") or {}
-    return sorted(label for label, leaf in signals.items()
-                  if label in STRONG_SIGNAL_LABELS and isinstance(leaf, dict)
-                  and leaf.get("status") != "missing")
+    labels = [label for label, leaf in signals.items()
+              if label in STRONG_SIGNAL_LABELS and isinstance(leaf, dict)
+              and leaf.get("status") != "missing"]
+    return sorted(set(labels) | set(abused_tool_floor_labels(packet)))
 
 
 def _valid_cites(packet: dict, claims: list[dict]) -> list[str]:

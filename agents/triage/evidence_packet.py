@@ -55,6 +55,9 @@ from .baseline import BASELINE_WINDOWS_DAYS, extract_entity
 # [FYP-TRIAGE-STEP2] raw-alert digest ("pull the raw log, never trust the
 # alert summary alone").
 from .raw_alerts import build_raw_alerts_section
+# [FYP-TRIAGE-STEP2] abused-tool (LOLBAS) enrichment + masquerade check
+# (adversarial mimicry: attackers use signed built-in Windows tools).
+from .lolbas import build_lolbas_signal, build_masquerade_signal, signature_abused_tool_hits
 # The Pydantic models live in the dependency-light contract module so the
 # persisted result and the packet builder can never drift apart.
 from .triage_result import EvidenceLeaf, EvidencePacket, EvidenceStatus
@@ -306,6 +309,10 @@ def _rule_signals(incident: dict, parsed_context: dict | None) -> dict:
     }
     for h in ordered:
         out[h["label"]] = _leaf(h, "measured", src)
+    # [FYP-TRIAGE-STEP2] Abused-tool enrichment over the RAW alert events.
+    # Missing LOLBAS cache -> status "missing" with the reason (never a crash).
+    out["lolbas"] = build_lolbas_signal(incident)
+    out["masquerade"] = build_masquerade_signal(incident)
     return out
 
 
@@ -339,7 +346,8 @@ def build_evidence_packet(incident: dict, parsed_context: dict | None,
         "data_quality": _data_quality(parsed_context),
         "baseline": _baseline(baseline),
         "raw_alerts": build_raw_alerts_section(incident, data_availability,
-                                               strong_labels=STRONG_SIGNAL_LABELS),
+                                               strong_labels=STRONG_SIGNAL_LABELS,
+                                               abused_tool_hits_fn=signature_abused_tool_hits),
         "rule_signals": _rule_signals(incident, parsed_context),
         "context": _context(),
     }
@@ -393,9 +401,31 @@ def _render_value(path: str, value: Any) -> str:
                           _RAW_ALERTS_RENDER_CHARS)
         return _short({"note": value.get("note"), "items": value.get("items")},
                       _RAW_ALERTS_RENDER_CHARS)
-    if path.startswith(("raw_alerts.", "rule_signals.lolbas")):
+    if path in ("rule_signals.lolbas", "rule_signals.masquerade"):
+        return _short(_compact_abused_tool(value), 900)
+    if path.startswith("raw_alerts."):
         return _short(value, _RAW_ALERTS_RENDER_CHARS)
     return _short(value)
+
+
+def _compact_abused_tool(value: Any) -> Any:
+    """Prompt view of rule_signals.lolbas / .masquerade: floor labels and a
+    one-line summary per strong hit (weak hits are counted only)."""
+    if not isinstance(value, dict):
+        return value
+    hits = []
+    for h in (value.get("strong_hits") or value.get("path_mismatches") or [])[:8]:
+        ev = h.get("evidence") or {}
+        hits.append({k: v for k, v in {
+            "binary": h.get("binary"), "pattern": h.get("matched_command_pattern"),
+            "category": h.get("category"), "mitre": h.get("mitre_id"),
+            "path_mismatch": h.get("path_mismatch") or None,
+            "observed_directory": h.get("observed_directory"),
+            "signed": h.get("signed"),
+            "cmd": (ev.get("command_line") or "")[:120] or None,
+        }.items() if v not in (None, "")})
+    return {"floor_labels": value.get("floor_labels"), "strong": hits,
+            "weak_hit_count": value.get("weak_hit_count"), "note": value.get("note")}
 
 
 def render_packet_for_prompt(packet: dict) -> str:
