@@ -178,6 +178,8 @@ def test_success_and_error_are_the_only_modelled_shapes():
         "EvidencePacket", "TriageClaim", "TriageHypothesis",
         "TriageHypotheses", "TriageLookalike", "TriageCitationError",
         "TriageGuardAction", "TriageAssessment",
+        # [FYP-TRIAGE-STEP2] contract change: required raw_alerts section.
+        "EvidenceRawAlerts",
     }
 
 

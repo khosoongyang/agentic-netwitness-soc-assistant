@@ -943,7 +943,8 @@ class LeaseRenewer:
 
 def run_triage(incident: dict, progress_fn=None,
                parsed_context: dict | None = None,
-               force: bool = False) -> dict:
+               force: bool = False,
+               data_availability: dict | None = None) -> dict:
     """
     [FYP-FUNCTION] Triage Stage Runner (in-process, LLM-backed)
 
@@ -980,11 +981,18 @@ def run_triage(incident: dict, progress_fn=None,
     conftest.py's per-test monkeypatch of that path is honoured and agents/
     never has to import workflow/. run_triage_stage() reaches this function
     too, so both durable and combined paths use the same DB.
+
+    [FYP-TRIAGE-STEP2] data_availability: the fetch-outcome metadata
+    ingestion already recorded for this incident (_data_availability() /
+    load_data_availability_for_run()). Forwarded unchanged; None = unknown
+    (Triage then refuses a benign close: "missing evidence = unknown, not
+    safe"). No new network call is made.
     """
     from agents.triage import OpenAILLMConfig, TriageAgent
     agent = TriageAgent(cfg=OpenAILLMConfig(), progress_fn=progress_fn,
                         baseline_db_path=wss.DB_FILE)
-    return agent.triage(incident, force=force, parsed_context=parsed_context)
+    return agent.triage(incident, force=force, parsed_context=parsed_context,
+                        data_availability=data_availability)
 
 
 def run_parsing(incident: dict, run_id: str) -> dict:
@@ -1062,7 +1070,7 @@ from workflow.stage_summaries import (
 
 
 
-def mock_triage_result(incident: dict) -> dict:
+def mock_triage_result(incident: dict, data_availability: dict | None = None) -> dict:
     """
     [FYP-FUNCTION] [FYP-FALLBACK] Canned Triage Result (offline/LLM-less testing)
 
@@ -1106,7 +1114,7 @@ def mock_triage_result(incident: dict) -> dict:
     now_iso = datetime.utcnow().isoformat()
     metakeys = ["ip.src", "ip.dst", "user.name", "host.name"]
     evidence_packet = build_evidence_packet(
-        incident, None, compute_baseline(incident, wss.DB_FILE))
+        incident, None, compute_baseline(incident, wss.DB_FILE), data_availability)
     assessment = build_assessment({
         "proposed_disposition": "true_positive",
         "hypotheses": {
@@ -3060,10 +3068,13 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     # alert list is genuinely different from a fetch that failed or was
     # never attempted, and case_view.py must be able to tell them apart
     # (see _data_availability()).
+    # [FYP-TRIAGE-STEP2] Computed once and reused for Triage below, so the
+    # combined path triages on exactly the fetch outcome it persisted.
+    data_availability = _data_availability(incident)
     try:
         raw_incident_path = _save_run_artifact(
             inc_id, run_id, "raw_incident.json", "raw_incident",
-            {"incident": incident, "data_availability": _data_availability(incident)})
+            {"incident": incident, "data_availability": data_availability})
         wss.save_raw_incident_path(inc_id, run_id, str(raw_incident_path))
     except Exception as exc:
         _log("WORKFLOW", f"raw incident persist failed (non-fatal for this "
@@ -3219,10 +3230,12 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     # ── Stage 1: Triage ───────────────────────────────────────────────────────
     _log("TRIAGE", f"running triage for incident {inc_id}")
     try:
-        triage_result = (mock_triage_result(incident) if use_mock_triage
+        triage_result = (mock_triage_result(incident, data_availability=data_availability)
+                         if use_mock_triage
                          else run_triage(incident, progress_fn=progress_fn,
                                          parsed_context=parsed_context,
-                                         force=force_triage))
+                                         force=force_triage,
+                                         data_availability=data_availability))
     except Exception as exc:
         ctx["stages"]["triage"] = "failed"
         ctx["errors"]["triage"] = str(exc)
@@ -3380,10 +3393,14 @@ def run_triage_stage(incident_id: str, run_id: str) -> dict:
         inc_id = str(incident.get("id") or incident.get("incidentId") or incident_id)
         title = incident.get("title") or incident.get("name") or "Untitled"
         parsed_context = parsing_result.get("processed_alert") or None
+        # [FYP-TRIAGE-STEP2] The fetch-outcome metadata persisted alongside
+        # the raw incident for THIS run. None (legacy artifact) = unknown.
+        data_availability = load_data_availability_for_run(incident_id, run_id)
 
         _log("TRIAGE", f"running triage for incident {inc_id}")
         try:
-            triage_result = run_triage(incident, parsed_context=parsed_context, force=True)
+            triage_result = run_triage(incident, parsed_context=parsed_context, force=True,
+                                       data_availability=data_availability)
         except Exception as exc:
             triage_result = {"error": str(exc)[:500]}
 

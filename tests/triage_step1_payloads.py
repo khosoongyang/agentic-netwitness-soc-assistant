@@ -6,11 +6,31 @@ Not a test module (no ``test_`` prefix, so pytest does not collect it).
 Everything here runs the REAL deterministic builders
 (agents/triage/evidence_packet.py, agents/triage/guards.py) on synthetic
 input -- no database, no LLM, no network.
+
+[FYP-TRIAGE-STEP2] update: Step 2 made `raw_alerts_available` mandatory
+evidence (a benign close needs the raw alerts to have been fetched). The
+default sample incident therefore now carries 3 raw alerts and the helper
+passes a successful `data_availability`, so every Step-1 test keeps
+exercising the rule it was written for (with all mandatory evidence
+present) instead of silently tripping the new raw-alert rule. Pass
+``data_availability=None`` explicitly to get the "unknown" case.
 """
 from __future__ import annotations
 
 from agents.triage.evidence_packet import build_evidence_packet
 from agents.triage.guards import build_assessment
+
+
+def _sample_alert(i: int) -> dict:
+    """A NetWitness-shaped ESA alert (meta only, no process) for 10.0.0.5."""
+    return {
+        "_id": f"alert-{i}",
+        "originalHeaders": {"name": "High Risk Alerts: ESA", "severity": 7},
+        "alert": {"name": "High Risk Alerts: ESA", "risk_score": 70.0},
+        "originalAlert": {"events": [{"ip_src": "10.0.0.5", "ip_dst": "10.0.0.20",
+                                      "alias_host": ["HOST-A"]}]},
+    }
+
 
 SAMPLE_INCIDENT = {
     "id": "INC-1001",
@@ -23,7 +43,21 @@ SAMPLE_INCIDENT = {
     "alertCount": 3,
     "eventCount": 3,
     "sources": ["Event Stream Analysis"],
+    "alerts": [_sample_alert(i) for i in range(3)],
 }
+
+# What workflow/engine.py::_data_availability records for a live fetch.
+SAMPLE_DATA_AVAILABILITY = {
+    "incident_source": "netwitness_live",
+    "alerts_fetch_attempted": True,
+    "alerts_fetch_succeeded": True,
+    "alerts_complete": True,
+    "alerts_count": 3,
+    "journal_fetch_succeeded": None,
+    "warnings": [],
+}
+
+_DEFAULT = object()
 
 SAMPLE_PARSED_CONTEXT = {
     "parser_status": "completed",
@@ -57,11 +91,17 @@ def unknown_baseline(reason: str = "baseline database not found (x.db)") -> dict
 
 
 def evidence_packet(incident: dict | None = None, parsed_context: dict | None = None,
-                    baseline: dict | None = None) -> dict:
+                    baseline: dict | None = None,
+                    data_availability: dict | None | object = _DEFAULT) -> dict:
+    inc = incident if incident is not None else SAMPLE_INCIDENT
+    if data_availability is _DEFAULT:
+        data_availability = dict(SAMPLE_DATA_AVAILABILITY,
+                                 alerts_count=len(inc.get("alerts") or []))
     return build_evidence_packet(
-        incident if incident is not None else SAMPLE_INCIDENT,
+        inc,
         parsed_context if parsed_context is not None else SAMPLE_PARSED_CONTEXT,
         baseline if baseline is not None else measured_baseline(),
+        data_availability,
     )
 
 

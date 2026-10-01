@@ -30,6 +30,7 @@ from agents.triage.guards import (
 )
 from agents.triage.triage_result import EvidencePacket, TriageAssessment
 from triage_step1_payloads import (
+    SAMPLE_DATA_AVAILABILITY,
     SAMPLE_INCIDENT,
     SAMPLE_PARSED_CONTEXT,
     evidence_packet,
@@ -64,7 +65,10 @@ def _claim(text: str, *cites: str) -> dict:
 def test_packet_validates_and_has_all_sections():
     p = evidence_packet()
     EvidencePacket.model_validate(p)
-    assert set(p) == {"detection", "entity", "data_quality", "baseline", "rule_signals", "context"}
+    # [FYP-TRIAGE-STEP2] updated: Step 2 deliberately added the `raw_alerts`
+    # section (raw-alert evidence, "never trust the alert summary alone").
+    assert set(p) == {"detection", "entity", "data_quality", "baseline", "raw_alerts",
+                      "rule_signals", "context"}
     assert set(p["detection"]) == {"createdBy", "ruleId", "created", "sources", "riskScore",
                                    "priority", "alertCount", "eventCount", "tactics", "techniques"}
 
@@ -271,6 +275,7 @@ def test_guard_a_each_mandatory_item(name):
     inc = dict(SAMPLE_INCIDENT)
     parsed = copy.deepcopy(SAMPLE_PARSED_CONTEXT)
     baseline = measured_baseline()
+    data_availability = dict(SAMPLE_DATA_AVAILABILITY)
     if name == "detection_source":
         inc.pop("createdBy")
     elif name == "resolved_entity":
@@ -281,8 +286,14 @@ def test_guard_a_each_mandatory_item(name):
         baseline = unknown_baseline()
     elif name == "parser_completed":
         parsed["parser_status"] = "failed"
-    packet = build_evidence_packet(inc, parsed, baseline)
-    assert name in missing_mandatory_evidence(packet)
+    elif name == "raw_alerts_available":
+        # [FYP-TRIAGE-STEP2] new mandatory item: the slim SQLite copy.
+        data_availability = {"incident_source": "sqlite_slim",
+                             "alerts_fetch_succeeded": False, "alerts_count": 0}
+    # [FYP-TRIAGE-STEP2] updated: pass a successful data_availability so each
+    # parametrised case removes exactly ONE mandatory item.
+    packet = build_evidence_packet(inc, parsed, baseline, data_availability)
+    assert missing_mandatory_evidence(packet) == [name]
     a = _run(_benign_raw("false_positive", "detection.riskScore"), packet)
     assert a["disposition"] == "needs_info"
     assert "a_missing_mandatory_evidence" in _rules(a)

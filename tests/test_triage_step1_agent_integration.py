@@ -22,7 +22,12 @@ from agents.triage.triage_result import (
     TriageAgentSuccessOutput,
     validate_triage_agent_output,
 )
-from triage_step1_payloads import SAMPLE_PARSED_CONTEXT, true_positive_model_output
+from triage_step1_payloads import (
+    SAMPLE_DATA_AVAILABILITY,
+    SAMPLE_INCIDENT,
+    SAMPLE_PARSED_CONTEXT,
+    true_positive_model_output,
+)
 
 ESA = ("High Risk Alerts: ESA", "6618e5a2dddef60d6853bec1")
 
@@ -102,7 +107,13 @@ def agent(tmp_path, isolated_ticket_db, monkeypatch):
 # =============================================================================
 
 def test_triage_returns_valid_step1_success_shape(agent):
-    result = agent.triage(_incident(), parsed_context=SAMPLE_PARSED_CONTEXT)
+    # [FYP-TRIAGE-STEP2] updated: raw_alerts_available is now mandatory
+    # evidence, so the "complete evidence -> medium uncertainty" case must
+    # supply raw alerts plus the recorded fetch outcome. Without them the
+    # result is "high" (asserted in test_missing_raw_alerts_raises_uncertainty).
+    result = agent.triage(_incident(alerts=SAMPLE_INCIDENT["alerts"]),
+                          parsed_context=SAMPLE_PARSED_CONTEXT,
+                          data_availability=SAMPLE_DATA_AVAILABILITY)
     out = validate_triage_agent_output(result)
     assert isinstance(out, TriageAgentSuccessOutput)
     assert result["assessment"]["disposition"] == "true_positive"
@@ -113,6 +124,16 @@ def test_triage_returns_valid_step1_success_shape(agent):
     assert bl["status"]["value"] == "measured"
     assert bl["same_source_entity_all_time"]["value"] == 3          # INC-FUT not leaked
     assert bl["same_source_entity_7d"]["value"] == 1
+
+
+def test_missing_raw_alerts_raises_uncertainty(agent):
+    """[FYP-TRIAGE-STEP2] Same incident, no raw alerts / unknown fetch: the
+    true_positive stands (guards only block benign closes) but uncertainty
+    is high because mandatory evidence is missing."""
+    result = agent.triage(_incident(), parsed_context=SAMPLE_PARSED_CONTEXT)
+    assert result["evidence_packet"]["raw_alerts"]["available"]["status"] == "missing"
+    assert result["assessment"]["disposition"] == "true_positive"
+    assert result["assessment"]["uncertainty"] == "high"
 
 
 def test_severity_is_unchanged_and_orthogonal(agent):
@@ -300,7 +321,8 @@ def test_run_triage_passes_state_store_db_file(monkeypatch):
         def __init__(self, cfg=None, progress_fn=None, baseline_db_path=None):
             captured["baseline_db_path"] = baseline_db_path
 
-        def triage(self, incident, force=False, parsed_context=None):
+        def triage(self, incident, force=False, parsed_context=None, data_availability=None):
+            captured["data_availability"] = data_availability
             return {"ok": True}
 
     monkeypatch.setattr(triage_pkg, "TriageAgent", StubAgent)

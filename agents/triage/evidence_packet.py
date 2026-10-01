@@ -13,7 +13,8 @@
 #   render_packet_for_prompt(). (The Pydantic models -- EvidencePacket,
 #   EvidenceLeaf, ... -- live in agents/triage/triage_result.py.)
 # Inputs: incident dict, optional parsed_context (Parsing stage's
-#   processed_alert), baseline dict from agents/triage/baseline.py.
+#   processed_alert), baseline dict from agents/triage/baseline.py, and
+#   [FYP-TRIAGE-STEP2] the optional data_availability recorded by ingestion.
 # Outputs: a plain dict validated by EvidencePacket. Every leaf has the shape
 #   {value, status: "measured"|"inferred"|"missing", source} and is
 #   addressable by a dot-path such as "baseline.same_source_entity_30d".
@@ -51,6 +52,9 @@ from typing import Any, Iterator
 
 from .alert_triage import _INDICATORS, _scan_text
 from .baseline import BASELINE_WINDOWS_DAYS, extract_entity
+# [FYP-TRIAGE-STEP2] raw-alert digest ("pull the raw log, never trust the
+# alert summary alone").
+from .raw_alerts import build_raw_alerts_section
 # The Pydantic models live in the dependency-light contract module so the
 # persisted result and the packet builder can never drift apart.
 from .triage_result import EvidenceLeaf, EvidencePacket, EvidenceStatus
@@ -318,8 +322,14 @@ def _context() -> dict:
 # =============================================================================
 
 def build_evidence_packet(incident: dict, parsed_context: dict | None,
-                          baseline: dict | None) -> dict:
+                          baseline: dict | None,
+                          data_availability: dict | None = None) -> dict:
     """[FYP-FUNCTION] [FYP-EVALUATOR] Assemble and validate the evidence packet.
+
+    ``data_availability`` ([FYP-TRIAGE-STEP2]) is the fetch-outcome record
+    ingestion stamped next to the raw incident (workflow/engine.py::
+    _data_availability). ``None`` means UNKNOWN: the raw_alerts.available
+    leaf is then "missing", so the alert cannot be closed as benign.
 
     Returns a JSON-safe dict (``EvidencePacket.model_dump(mode="json")``)."""
     incident = incident if isinstance(incident, dict) else {}
@@ -328,6 +338,8 @@ def build_evidence_packet(incident: dict, parsed_context: dict | None,
         "entity": _entity(incident, baseline or {}),
         "data_quality": _data_quality(parsed_context),
         "baseline": _baseline(baseline),
+        "raw_alerts": build_raw_alerts_section(incident, data_availability,
+                                               strong_labels=STRONG_SIGNAL_LABELS),
         "rule_signals": _rule_signals(incident, parsed_context),
         "context": _context(),
     }
@@ -366,13 +378,33 @@ def _short(value: Any, limit: int = 220) -> str:
     return text if len(text) <= limit else text[:limit] + "…"
 
 
+# [FYP-TRIAGE-STEP2] raw_alerts leaves are capped lists ({note, items, ...});
+# they get a larger render budget, and the ranked signatures themselves are
+# shown in the INCIDENT block (_compact_incident), so only their truncation
+# note is repeated here.
+_RAW_ALERTS_RENDER_CHARS = 600
+
+
+def _render_value(path: str, value: Any) -> str:
+    if path.startswith("raw_alerts.") and isinstance(value, dict) and "items" in value:
+        if path == "raw_alerts.signatures":
+            return _short({"note": value.get("note"),
+                           "alerts_covered_by_shown": value.get("alerts_covered_by_shown")},
+                          _RAW_ALERTS_RENDER_CHARS)
+        return _short({"note": value.get("note"), "items": value.get("items")},
+                      _RAW_ALERTS_RENDER_CHARS)
+    if path.startswith(("raw_alerts.", "rule_signals.lolbas")):
+        return _short(value, _RAW_ALERTS_RENDER_CHARS)
+    return _short(value)
+
+
 def render_packet_for_prompt(packet: dict) -> str:
     """[FYP-FUNCTION] One line per leaf -- ``path [status] = value`` -- so the
     model can cite exact dot-paths. Values quoted from the incident are
     escaped JSON strings, i.e. data, never instructions."""
     lines = []
     for path, leaf in iter_leaves(packet):
-        value = "—" if leaf["status"] == "missing" else _short(leaf["value"])
+        value = "—" if leaf["status"] == "missing" else _render_value(path, leaf["value"])
         lines.append(f"{path} [{leaf['status']}] = {value}")
     return "\n".join(lines)
 

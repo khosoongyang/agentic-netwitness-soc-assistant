@@ -64,11 +64,15 @@ from .triage_result import dump_triage_agent_output, validate_triage_agent_outpu
 from .baseline import compute_baseline
 from .evidence_packet import build_evidence_packet, render_packet_for_prompt
 from .guards import build_assessment
+# [FYP-TRIAGE-STEP2] duplicate-grouped, ranked alert signatures for prompts.
+from .raw_alerts import alert_name, group_signatures, rank_signatures
 
 # [FYP-TRIAGE-STEP1] Bump whenever a triage prompt or the result contract
 # changes. Folded into _incident_fingerprint() (with the model name) so a
 # cached result produced by an older prompt/model is never served.
-TRIAGE_PROMPT_VERSION = "2026-09-step1-evidence-disposition"
+# [FYP-TRIAGE-STEP2] bumped: raw_alerts packet section, LOLBAS rule signal,
+# ranked signature compaction replacing first-12-alerts truncation.
+TRIAGE_PROMPT_VERSION = "2026-10-step2-raw-alerts-lolbas"
 
 # Keys the SOC Classification call returns for the disposition assessment.
 # They are split off cls_data (so the trace keeps its historical shape) and
@@ -490,7 +494,8 @@ def _store_ticket(unc: str, incident_id: str, severity: str, payload: dict) -> N
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _incident_fingerprint(incident: dict, parsed_context: dict | None = None,
-                          model: str | None = None) -> str:
+                          model: str | None = None,
+                          data_availability: dict | None = None) -> str:
     """
     Stable content hash of an incident (+ any parsed_context actually
     supplied), used as the triage-cache key.
@@ -527,6 +532,10 @@ def _incident_fingerprint(incident: dict, parsed_context: dict | None = None,
     The measured baseline is NOT hashed: it only counts incidents created
     before this incident, so newly synced incidents never change it.
     Every durable Run/Re-run uses force=True anyway.
+
+    [FYP-TRIAGE-STEP2] data_availability (the recorded fetch outcome) feeds
+    the raw_alerts.available mandatory-evidence leaf, so it is folded in
+    when supplied (same rule as parsed_context: omitted when None).
     """
     alerts = incident.get("alerts") or []
     stable = {
@@ -544,6 +553,8 @@ def _incident_fingerprint(incident: dict, parsed_context: dict | None = None,
     }
     if parsed_context:
         stable["parsed_context"] = json.dumps(parsed_context, sort_keys=True, default=str)
+    if data_availability:
+        stable["data_availability"] = json.dumps(data_availability, sort_keys=True, default=str)
     blob = json.dumps(stable, sort_keys=True, default=str).encode()
     return hashlib.sha256(blob).hexdigest()
 
@@ -747,8 +758,19 @@ def _stream_or_invoke(text_chain, thinking_container=None) -> str:
 # 6b.  INCIDENT COMPACTION FOR PROMPTS
 # ══════════════════════════════════════════════════════════════════════════════
 
-_MAX_ALERTS_IN_PROMPT = 12
+# [FYP-TRIAGE-STEP2] Positional truncation ("first 12 alerts") replaced by
+# ranked, duplicate-grouped signatures: up to _MAX_SIGNATURES_IN_PROMPT
+# signatures, further limited by a character budget so the prompt stays
+# bounded. _MAX_ALERTS_IN_PROMPT is kept (same value) only as the old name.
+_MAX_SIGNATURES_IN_PROMPT = 12
+_MAX_ALERTS_IN_PROMPT = _MAX_SIGNATURES_IN_PROMPT
+_SIGNATURE_PROMPT_BUDGET_CHARS = 5200
 _MAX_PROMPT_CHARS     = 9000
+# Top-level list fields (e.g. groupByDestinationIp with 126 IPs) are capped
+# so they cannot crowd the ranked signatures out of the prompt budget; the
+# full lists stay in the evidence packet's raw_alerts digest.
+_MAX_TOPLEVEL_LIST_ITEMS = 10
+_MIN_SIGNATURE_BUDGET_CHARS = 1500
 
 _ALERT_KEEP_KEYS = (
     "id", "title", "name", "type", "source", "severity", "risk_score",
@@ -756,6 +778,44 @@ _ALERT_KEEP_KEYS = (
     "hostSummary", "sourceIp", "destinationIp", "domain", "userName",
     "fileName", "fileHash", "processName", "incident_id",
 )
+
+# Keys of a ranked signature that are rendered into the prompt.
+_SIGNATURE_PROMPT_KEYS = (
+    "rank", "count", "alert_name", "process", "directory", "command_line",
+    "child_processes", "child_command_lines", "threat_desc", "max_risk_score",
+    "tactics", "techniques", "context_tags", "signed_events", "unsigned_events",
+    "example_alert_ids", "rank_reasons",
+)
+
+
+def _prompt_signatures(alerts: list,
+                       budget: int = _SIGNATURE_PROMPT_BUDGET_CHARS) -> tuple[list[dict], int, int]:
+    """[FYP-TRIAGE-STEP2] Group ALL alerts into signatures, rank them (see
+    agents/triage/raw_alerts.rank_signatures) and keep the top-K that fit
+    the budget. Returns (shown signatures, total signatures, total alerts).
+    Abused-tool (LOLBAS) hits feed the ranking when the enrichment module
+    and its cache are available; otherwise ranking uses the other keys."""
+    from .evidence_packet import STRONG_SIGNAL_LABELS
+    sigs = group_signatures(alerts)
+    tool_hits: dict = {}
+    try:
+        from .lolbas import signature_abused_tool_hits
+        tool_hits = signature_abused_tool_hits(sigs)
+    except Exception:  # pragma: no cover - enrichment is optional for ranking
+        tool_hits = {}
+    ranked = rank_signatures(sigs, STRONG_SIGNAL_LABELS, tool_hits)
+    shown: list[dict] = []
+    used = 0
+    for sig in ranked[:_MAX_SIGNATURES_IN_PROMPT]:
+        slim = {k: sig[k] for k in _SIGNATURE_PROMPT_KEYS if sig.get(k) not in (None, "", [], 0)
+                or k in ("rank", "count")}
+        size = len(json.dumps(slim, default=str))
+        if shown and used + size > budget:
+            break
+        shown.append(slim)
+        used += size
+    total_alerts = sum(1 for a in alerts if isinstance(a, dict))
+    return shown, len(ranked), total_alerts
 
 
 # [FYP-FUNCTION] `_compact_incident` — implements the compact incident operation used by the surrounding triage workflow.
@@ -790,6 +850,10 @@ def _compact_incident(incident: dict, parsed_context: dict | None = None) -> str
             continue
         if isinstance(v, str) and len(v) > 400:
             slim[k] = v[:400] + "…"
+        elif isinstance(v, list) and len(v) > _MAX_TOPLEVEL_LIST_ITEMS:
+            # [FYP-TRIAGE-STEP2] cap + state the truncation explicitly.
+            slim[k] = v[:_MAX_TOPLEVEL_LIST_ITEMS] + [
+                f"... {len(v) - _MAX_TOPLEVEL_LIST_ITEMS} more (of {len(v)}) not shown"]
         else:
             slim[k] = v
 
@@ -806,28 +870,42 @@ def _compact_incident(incident: dict, parsed_context: dict | None = None) -> str
     alerts = incident.get("alerts") or []
     if alerts:
         slim["alert_total"] = len(alerts)
-        slim_alerts = []
-        for a in alerts[:_MAX_ALERTS_IN_PROMPT]:
-            if not isinstance(a, dict):
-                continue
-            sa = {k: a[k] for k in _ALERT_KEEP_KEYS if a.get(k) not in (None, "", [], {})}
-            # keep a tiny slice of the first event's source/dest for context
-            events = a.get("events")
-            if isinstance(events, list) and events and isinstance(events[0], dict):
-                ev = events[0]
-                for side in ("source", "destination"):
-                    node = ev.get(side)
-                    if isinstance(node, dict):
-                        dev = node.get("device") or {}
-                        ip  = dev.get("ipAddress") or node.get("ipAddress")
-                        if ip:
-                            sa[f"event_{side}_ip"] = ip
-            slim_alerts.append(sa)
-        slim["alerts_sample"] = slim_alerts
-        if len(alerts) > _MAX_ALERTS_IN_PROMPT:
-            slim["alerts_note"] = (
-                f"showing first {_MAX_ALERTS_IN_PROMPT} of {len(alerts)} alerts"
-            )
+        # [FYP-TRIAGE-STEP2] Ranked signatures instead of the first N alerts
+        # by position: in INC-52825 the first 12 of 1,000 alerts are all the
+        # same noisy "Lateral Move Detected" rule, and the 2 "Disables UAC"
+        # alerts never reached the model. Duplicates are grouped first, then
+        # ranked (abused-tool/strong hits > threat_desc > risk > rarity >
+        # off-hour) and the top-K shown with their counts.
+        # Budget = what is left of _MAX_PROMPT_CHARS after everything else
+        # (indent=1 rendering inflates compact JSON by roughly a third).
+        rest = len(json.dumps(slim, indent=1, default=str))
+        budget = max(_MIN_SIGNATURE_BUDGET_CHARS,
+                     min(_SIGNATURE_PROMPT_BUDGET_CHARS,
+                         int((_MAX_PROMPT_CHARS - rest - 1500) / 1.35)))
+        shown, n_sigs, n_alerts = _prompt_signatures(alerts, budget)
+        covered = sum(s.get("count", 0) for s in shown)
+        slim["alert_signatures"] = shown
+        slim["alerts_note"] = (
+            f"{len(shown)} of {n_sigs} signatures ({covered} of {n_alerts} alerts) shown; "
+            f"duplicates grouped by alert name + process + command line and ranked"
+        )
+        # Alerts that carry no process (meta-only ESA alerts) still keep their
+        # identifying scalar fields, for the top signatures' example alerts.
+        examples = {aid for s in shown for aid in (s.get("example_alert_ids") or [])[:1]}
+        if examples:
+            sample = []
+            for a in alerts:
+                if not isinstance(a, dict):
+                    continue
+                aid = str(a.get("_id") or a.get("id") or "")
+                if aid in examples:
+                    sa = {k: a[k] for k in _ALERT_KEEP_KEYS if a.get(k) not in (None, "", [], {})}
+                    sa.setdefault("name", alert_name(a))
+                    sample.append(sa)
+                    if len(sample) >= 3:
+                        break
+            if sample and len(json.dumps(sample, default=str)) < 1200:
+                slim["alerts_sample"] = sample
 
     text = json.dumps(slim, indent=1, default=str)
     if len(text) > _MAX_PROMPT_CHARS:
@@ -1514,7 +1592,14 @@ class TriageAgent:
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
     def triage(self, incident: dict, force: bool = False,
-               parsed_context: dict | None = None) -> dict:
+               parsed_context: dict | None = None,
+               data_availability: dict | None = None) -> dict:
+        # [FYP-TRIAGE-STEP2] data_availability: the fetch-outcome record
+        # ingestion stamped next to the raw incident (workflow/engine.py::
+        # load_data_availability_for_run). Optional: None = UNKNOWN, which
+        # makes raw_alerts.available "missing" -> the alert cannot be closed
+        # as benign. No network call is made here; triage only reuses what
+        # ingestion already fetched.
         inc_id    = str(incident.get("id") or incident.get("incidentId") or "unknown")
         inc_title = incident.get("title") or incident.get("name") or "Untitled"
         timestamp = datetime.utcnow().isoformat()
@@ -1524,7 +1609,8 @@ class TriageAgent:
         # ── Result cache: identical incident content → identical output ──────
         # Guarantees repeat triages of an unchanged incident return the exact
         # same findings (and instantly). force=True bypasses for a fresh run.
-        fingerprint = _incident_fingerprint(incident, parsed_context, model=self.cfg.model)
+        fingerprint = _incident_fingerprint(incident, parsed_context, model=self.cfg.model,
+                                            data_availability=data_availability)
         if not force:
             cached = _cache_get(fingerprint)
             # isinstance guard: a cache row can only be JSON-decodable garbage
@@ -1567,7 +1653,8 @@ class TriageAgent:
             # incident DB (read-only, only incidents created before this
             # one) and every fact the LLM may cite is put in one packet.
             baseline        = compute_baseline(incident, self.baseline_db_path)
-            evidence_packet = build_evidence_packet(incident, parsed_context, baseline)
+            evidence_packet = build_evidence_packet(incident, parsed_context, baseline,
+                                                    data_availability)
             # The phase methods read the packet from the instance so their
             # call signatures (and every existing stub of them) are unchanged.
             self._evidence_packet = evidence_packet

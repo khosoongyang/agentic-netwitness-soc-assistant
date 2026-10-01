@@ -86,6 +86,15 @@ MANDATORY_EVIDENCE: tuple[tuple[str, str, Callable[[dict], bool], str], ...] = (
     ("parser_completed", "data_quality.parser_status",
      lambda leaf: leaf["status"] != "missing" and str(leaf["value"]).lower() == "completed",
      "the Parsing stage completed"),
+    # [FYP-TRIAGE-STEP2] SOC triage Step 2: "pull the raw log, never trust
+    # the alert summary alone". The raw alerts must actually have been
+    # fetched (and be non-empty) before the alert can be closed as benign.
+    # Consequence (intended): an incident triaged from the slim SQLite copy
+    # (alerts stripped) or with an unknown fetch outcome can only end as
+    # needs_info or true_positive.
+    ("raw_alerts_available", "raw_alerts.available",
+     lambda leaf: leaf["status"] != "missing" and leaf["value"] is True,
+     "the raw alerts were fetched (alerts_fetch_succeeded) and alerts_count > 0"),
 )
 
 # Core (non-mandatory) evidence that completes the picture. Uncertainty is
@@ -102,10 +111,14 @@ CORE_EVIDENCE: tuple[str, ...] = (
     "context.confirmed_benign_history",
 )
 
-# Completeness bands. With context.* always missing in Step 1 the maximum
-# completeness is 11/14 = 0.79, so "low" uncertainty is not reachable until
-# business context is integrated -- deliberately.
-UNCERTAINTY_LOW_MIN_COMPLETENESS = 0.80
+# Completeness bands. With context.* always missing the maximum completeness
+# is 12/15 = 0.80 (Step 1: 11/14 = 0.79), so "low" uncertainty is not
+# reachable until business context is integrated -- deliberately.
+# [FYP-TRIAGE-STEP2] The low threshold moved 0.80 -> 0.85 ONLY to preserve
+# that Step-1 invariant after raw_alerts.available joined the mandatory list
+# (12/15 would otherwise have hit 0.80 exactly). This is not a calibration:
+# the bands still mean the same thing (calibration is out of scope).
+UNCERTAINTY_LOW_MIN_COMPLETENESS = 0.85
 UNCERTAINTY_MEDIUM_MIN_COMPLETENESS = 0.55
 
 _CLAIM_SLOTS: tuple[tuple[str, str], ...] = (

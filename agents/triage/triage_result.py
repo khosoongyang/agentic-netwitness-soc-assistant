@@ -46,6 +46,13 @@ Nothing existing was renamed or removed; `extra="forbid"` is kept on every
 model, including the new ones. `uncertainty` is computed deterministically
 from evidence completeness (agents/triage/guards.py), never a model-reported
 number -- so the long-standing "no invented confidence" rule still holds.
+
+[FYP-TRIAGE-STEP2] Additive extension (Triage upgrade Step 2):
+  - `evidence_packet.raw_alerts` (EvidenceRawAlerts): fetch status + a
+    deterministic digest of ALL raw alerts/events (agents/triage/raw_alerts.py).
+  - `evidence_packet.rule_signals.lolbas`: abused-tool (LOLBAS) enrichment
+    (agents/triage/lolbas.py) -- an ordinary EvidenceLeaf under the existing
+    keyed rule_signals map, so no new model was needed for it.
 """
 
 from __future__ import annotations
@@ -152,10 +159,44 @@ class EvidenceContext(BaseModel):
     confirmed_benign_history: EvidenceLeaf
 
 
+class EvidenceRawAlerts(BaseModel):
+    """[FYP-TRIAGE-STEP2] Raw-alert evidence (agents/triage/raw_alerts.py):
+    "pull the raw log, never trust the alert summary alone". Fetch status
+    (from ingestion's data_availability) plus a deterministic digest over
+    ALL alerts/events, every list capped with an explicit truncation note.
+    `available` is status "missing" unless the fetch succeeded with > 0
+    alerts -- missing raw evidence is unknown, not safe."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    incident_source: EvidenceLeaf
+    fetch_succeeded: EvidenceLeaf
+    alerts_count: EvidenceLeaf
+    declared_alert_count: EvidenceLeaf
+    coverage_ratio: EvidenceLeaf
+    available: EvidenceLeaf
+    events_digested: EvidenceLeaf
+    alert_names: EvidenceLeaf
+    signatures: EvidenceLeaf
+    processes: EvidenceLeaf
+    command_lines: EvidenceLeaf
+    hashes: EvidenceLeaf
+    signers: EvidenceLeaf
+    users: EvidenceLeaf
+    hosts: EvidenceLeaf
+    ips: EvidenceLeaf
+    mitre: EvidenceLeaf
+    threat_desc: EvidenceLeaf
+    context_tags: EvidenceLeaf
+    file_context_tags: EvidenceLeaf
+    behaviors: EvidenceLeaf
+
+
 class EvidencePacket(BaseModel):
     """[FYP-EVALUATOR] The whole evidence packet. `rule_signals` is keyed by
-    indicator label (plus `scan_summary`) because the set of deterministic
-    hits varies per incident; every other section has a fixed field set."""
+    indicator label (plus `scan_summary`, and from Step 2 `lolbas`) because
+    the set of deterministic hits varies per incident; every other section
+    has a fixed field set."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -163,6 +204,9 @@ class EvidencePacket(BaseModel):
     entity: EvidenceEntity
     data_quality: EvidenceDataQuality
     baseline: EvidenceBaseline
+    # [FYP-TRIAGE-STEP2] required: a packet without raw-alert status cannot
+    # be told apart from one whose alerts were simply never looked at.
+    raw_alerts: EvidenceRawAlerts
     rule_signals: dict[str, EvidenceLeaf] = Field(default_factory=dict)
     context: EvidenceContext
 
@@ -450,6 +494,7 @@ __all__ = [
     "EvidenceDataQuality",
     "EvidenceBaseline",
     "EvidenceContext",
+    "EvidenceRawAlerts",
     "EvidencePacket",
     "TriageClaim",
     "TriageHypothesis",
