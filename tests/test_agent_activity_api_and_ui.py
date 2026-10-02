@@ -138,10 +138,23 @@ def test_workspace_replaces_the_generic_triage_message_with_the_activity_panel()
                  'data-triage-view="ticket"'):
         assert kept in WORKSPACE
     # Stages without Agent Activity yet keep their existing messages.
-    for kept in ('loadingState("Querying VirusTotal · AbuseIPDB · AlienVault OTX…")',
-                 'loadingState("Running Investigation…")'):
-        assert kept in WORKSPACE
+    assert 'loadingState("Running Investigation…")' in WORKSPACE
     assert "destroyStageActivity();" in WORKSPACE
+
+
+def test_workspace_replaces_the_hardcoded_provider_message_for_threat_intel():
+    # The old message named all three providers regardless of what ran.
+    assert "Querying VirusTotal · AbuseIPDB · AlienVault OTX…" not in WORKSPACE
+    assert ('mountStageActivity(root.querySelector("#threat-intel-agent-activity"), caseId, stage, '
+            'workflow, { live: true })') in WORKSPACE
+    completed = WORKSPACE.index('<section id="threat-intel-agent-activity"></section>\n      <div class="stage-sections">')
+    assert completed < WORKSPACE.index("${tiAssessment(result, block)}")
+    for kept in ("tiSummaryCard(result, workflow)", "tiIOCsCard(iocs)", "tiProviderResults(block)",
+                 "tiNotesCard(result)"):
+        assert kept in WORKSPACE
+    # No provider names are scripted into the generic renderer.
+    for provider in ("VirusTotal", "AbuseIPDB", "OTX"):
+        assert provider not in COMPONENT
 
 
 def test_workspace_replaces_the_generic_parsing_message_and_keeps_parsing_results():

@@ -217,6 +217,42 @@
   color: #a9d2ff;
 }
 
+.activity-inflight-list {
+  margin: 0.3rem 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+}
+
+.activity-inflight-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  padding: 0.1rem 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.activity-inflight-icon {
+  flex: 0 0 1rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.activity-inflight-icon .spinner {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin: 0;
+}
+
+.activity-inflight-list .status-completed .activity-inflight-icon { color: #9ff0ca; }
+.activity-inflight-list .status-warning .activity-inflight-icon { color: #ffd89a; }
+.activity-inflight-list .status-failed .activity-inflight-icon { color: #ffc0c7; }
+
+.activity-inflight-detail {
+  color: var(--muted);
+}
+
 /* Keep rows compact; the full text is in the expandable details. */
 .activity-detail {
   display: -webkit-box;

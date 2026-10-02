@@ -204,6 +204,14 @@ def test_sanitizer_redacts_secret_keys_but_keeps_legitimate_fields():
     assert cleaned["matched_metakeys"] == ["ip.src"]
 
 
+def test_configured_secret_values_are_redacted_wherever_they_appear(monkeypatch):
+    monkeypatch.setenv("ABUSEIPDB_API_KEY", "abuse-key-ZXCV-9876")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-proj-not-a-real-key-123")
+    text = sanitize_text("rate limit exceeded for key abuse-key-ZXCV-9876; also abuse-key-ZXCV-9876")
+    assert "abuse-key-ZXCV-9876" not in text and text.count(REDACTED) == 2
+    assert "sk-proj-not-a-real-key-123" not in sanitize_value({"note": "used sk-proj-not-a-real-key-123"})["note"]
+
+
 def test_describe_exception_has_no_traceback():
     try:
         raise RuntimeError("failed calling https://x.example/api?key=K")
@@ -239,11 +247,22 @@ def _parsing_targets():
     return recorded
 
 
-def test_install_wraps_every_target_and_uninstall_restores_original_objects(tmp_path):
-    from observability.instrument import resolve_owner
+def _threat_intel_targets():
+    from observability.adapters import threat_intel_adapter
 
-    targets = _triage_targets() + _parsing_targets()
-    assert len({t.label for t in targets}) == len(targets) == 34  # no point wrapped twice
+    patcher = Patcher()
+    recorded: list[Target] = []
+    patcher.wrap = lambda target, hooks: recorded.append(target) or True  # type: ignore[assignment]
+    threat_intel_adapter.install(patcher)
+    return recorded
+
+
+def test_install_wraps_every_target_and_uninstall_restores_original_objects(tmp_path):
+    from observability.instrument import HOOKS_ATTR, resolve_owner
+
+    all_targets = _parsing_targets() + _triage_targets() + _threat_intel_targets()
+    targets = list({t.label: t for t in all_targets}.values())
+    assert len(targets) == 47  # shared points (claim/complete/loaders/requests/model call) once each
     originals = {t.label: getattr(resolve_owner(t), t.attr) for t in targets}
     try:
         state = observability.install(str(tmp_path / "activity.db"))
@@ -251,13 +270,41 @@ def test_install_wraps_every_target_and_uninstall_restores_original_objects(tmp_
         assert set(state["wrappers"]) == set(originals)
         assert all(value == "installed" for value in state["wrappers"].values())
         for target in targets:
-            assert getattr(getattr(resolve_owner(target), target.attr), ORIGINAL_ATTR) is originals[target.label]
+            wrapper = getattr(resolve_owner(target), target.attr)
+            assert getattr(wrapper, ORIGINAL_ATTR) is originals[target.label]
+            # One wrapper per function, one hook set per adapter that uses it.
+            expected = sum(1 for t in all_targets if t.label == target.label)
+            assert len(getattr(wrapper, HOOKS_ATTR)) == expected, target.label
         assert observability.install()["enabled"]  # idempotent: no double wrapping
     finally:
         assert observability.uninstall() == []
     for target in targets:
         assert getattr(resolve_owner(target), target.attr) is originals[target.label]
     assert not observability.is_enabled()
+
+
+def test_shared_wrapper_calls_the_original_exactly_once_for_all_hook_sets():
+    calls, seen = [], []
+    patcher = Patcher()
+
+    def original(incident_id, run_id):
+        calls.append((incident_id, run_id))
+        return "result"
+
+    import types
+    module = types.ModuleType("aegis_shared_wrap_test")
+    module.fn = original
+    import sys
+    sys.modules[module.__name__] = module
+    try:
+        target = Target(module.__name__, "fn", ("incident_id", "run_id"))
+        assert patcher.wrap(target, Hooks(after=lambda call, token, result: seen.append(("a", result))))
+        assert patcher.wrap(target, Hooks(after=lambda call, token, result: seen.append(("b", result))))
+        assert module.fn("INC", "run") == "result"
+        assert calls == [("INC", "run")] and seen == [("a", "result"), ("b", "result")]
+        assert patcher.restore() == [] and module.fn is original
+    finally:
+        sys.modules.pop(module.__name__, None)
 
 
 def test_signature_mismatch_skips_the_wrapper_instead_of_guessing():

@@ -93,7 +93,7 @@ def env(tmp_path, monkeypatch):
 def activity(tmp_path):
     state = observability.install(str(tmp_path / "agent_activity.db"))
     assert state["enabled"], state
-    assert set(state["coverage"]) == {"parsing", "triage"}
+    assert {"parsing", "triage"} <= set(state["coverage"])
     yield observability.get_store()
     observability.uninstall()
 

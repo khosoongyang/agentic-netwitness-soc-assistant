@@ -82,18 +82,30 @@ def _bind(signature: inspect.Signature | None, args: tuple, kwargs: dict) -> dic
         return {}
 
 
-def make_wrapper(original: Callable, hooks: Hooks) -> Callable:
+HOOKS_ATTR = "__aegis_observability_hooks__"
+
+
+def make_wrapper(original: Callable, hooks: Hooks | list[Hooks]) -> Callable:
+    """One pass-through wrapper per function. Several stage adapters may
+    attach hook sets to the same wrapper (e.g. claim_stage is shared by
+    every stage); each set runs in registration order with its own token,
+    and each adapter gates itself on the active stage scope. However many
+    hook sets there are, the original is called exactly once."""
     try:
         signature = inspect.signature(original)
     except (TypeError, ValueError):
         signature = None
+    hook_list: list[Hooks] = list(hooks) if isinstance(hooks, list) else [hooks]
 
     @functools.wraps(original)
     def wrapper(*args, **kwargs):
+        active = list(hook_list)  # snapshot: never affected by later registrations
         call = _bind(signature, args, kwargs)
         closers: list[Callable[[], None]] = []
-        if hooks.scope is not None:
-            scope = _guard(hooks.scope, call)
+        for hooks_ in active:
+            if hooks_.scope is None or closers:
+                continue
+            scope = _guard(hooks_.scope, call)
             if scope is not None:
                 scope_token = _guard(context.set_scope, scope)
                 if scope_token is not None:
@@ -102,26 +114,31 @@ def make_wrapper(original: Callable, hooks: Hooks) -> Callable:
                         closer = _guard(activator, scope)
                         if callable(closer):
                             closers.append(closer)
-        hook_token = None
+        tokens: list[Any] = [None] * len(active)
         try:
-            if hooks.before is not None:
-                hook_token = _guard(hooks.before, call)
+            for index, hooks_ in enumerate(active):
+                if hooks_.before is not None:
+                    tokens[index] = _guard(hooks_.before, call)
             try:
                 result = original(*args, **kwargs)
             except BaseException as exc:
-                if hooks.error is not None:
-                    _guard(hooks.error, call, hook_token, exc)
+                for hooks_, token in zip(active, tokens):
+                    if hooks_.error is not None:
+                        _guard(hooks_.error, call, token, exc)
                 raise
-            if hooks.after is not None:
-                _guard(hooks.after, call, hook_token, result)
+            for hooks_, token in zip(active, tokens):
+                if hooks_.after is not None:
+                    _guard(hooks_.after, call, token, result)
             return result
         finally:
-            if hooks.cleanup is not None:
-                _guard(hooks.cleanup, call, hook_token)
+            for hooks_, token in zip(active, tokens):
+                if hooks_.cleanup is not None:
+                    _guard(hooks_.cleanup, call, token)
             for closer in reversed(closers):
                 _guard(closer)
 
     setattr(wrapper, ORIGINAL_ATTR, original)
+    setattr(wrapper, HOOKS_ATTR, hook_list)
     return wrapper
 
 
@@ -163,18 +180,26 @@ def actual_params(target: Target) -> tuple[str, ...] | None:
 class Patcher:
     applied: list[tuple[Any, str, Any, Any, bool]] = field(default_factory=list)
     report: dict[str, str] = field(default_factory=dict)
+    hook_sets: dict[str, int] = field(default_factory=dict)
 
     def wrap(self, target: Target, hooks: Hooks) -> bool:
         try:
             owner = resolve_owner(target)
             current = getattr(owner, target.attr)
         except Exception as exc:  # module/attribute vanished: skip, never break
-            self.report[target.label] = f"skipped: {type(exc).__name__}"
-            return False
-        if hasattr(current, ORIGINAL_ATTR):
-            self.report[target.label] = "already instrumented"
+            self.report.setdefault(target.label, f"skipped: {type(exc).__name__}")
             return False
         params = actual_params(target)
+        if hasattr(current, ORIGINAL_ATTR):
+            mine = any(wrapper is current for _o, _a, _orig, wrapper, _own in self.applied)
+            if not mine:
+                self.report[target.label] = "already instrumented"
+                return False
+            if params != target.params:  # each hook set checks its own expectations
+                return False
+            getattr(current, HOOKS_ATTR).append(hooks)
+            self.hook_sets[target.label] = self.hook_sets.get(target.label, 1) + 1
+            return True
         if params != target.params:
             self.report[target.label] = f"skipped: signature mismatch {params!r}"
             return False
@@ -183,6 +208,7 @@ class Patcher:
         setattr(owner, target.attr, wrapper)
         self.applied.append((owner, target.attr, current, wrapper, own_attr))
         self.report[target.label] = "installed"
+        self.hook_sets[target.label] = 1
         return True
 
     def restore(self) -> list[str]:

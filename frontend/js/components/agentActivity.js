@@ -185,9 +185,17 @@ export function mountAgentActivity(container, {
 
       const spanChildren = (event.span_id ? (children.get(event.span_id) || []) : [])
         .filter((child) => !child.span_id || latestBySpan.get(child.span_id) === child);
-      // Live one-liner for an operation still in flight: the newest thing its
-      // children reported (e.g. "Model: gpt-5.4-mini" from the model call).
-      const inflight = pending && spanChildren.length ? spanChildren[spanChildren.length - 1] : null;
+      // While an operation is in flight: with one child operation, a one-liner
+      // of the newest thing it reported (e.g. "Model: gpt-5.4-mini"); with
+      // several (e.g. sequential provider lookups), each child's latest state
+      // in the order the backend recorded them.
+      const inflight = pending && spanChildren.length === 1 ? spanChildren[0] : null;
+      const inflightList = pending && spanChildren.length > 1
+        ? `<ul class="activity-inflight-list">${spanChildren.map((child) => {
+          const childIcon = child.status === "running" ? `<span class="spinner" aria-hidden="true"></span>` : escapeHTML(STATUS_ICONS[child.status] || "•");
+          return `<li class="status-${escapeHTML(child.status)}"><span class="activity-inflight-icon">${childIcon}</span>${escapeHTML(child.title)}${child.detail ? ` <span class="activity-inflight-detail">· ${escapeHTML(child.detail)}</span>` : ""}</li>`;
+        }).join("")}</ul>`
+        : "";
       // Full child detail is attached to the operation's final row.
       const childBlocks = !pending && event === latest
         ? spanChildren.map((child) => `<div class="activity-child status-${escapeHTML(child.status)}"><div class="activity-child-title">${escapeHTML(STATUS_ICONS[child.status] || "•")} ${escapeHTML(child.title)}</div>${child.metadata?.details ? renderBlocks(child.metadata.details) : (child.detail ? `<p>${escapeHTML(child.detail)}</p>` : "")}</div>`).join("")
@@ -209,6 +217,7 @@ export function mountAgentActivity(container, {
           </div>
           ${event.detail ? `<div class="activity-detail">${escapeHTML(event.detail)}</div>` : ""}
           ${inflight ? `<div class="activity-inflight">${escapeHTML(inflight.detail || inflight.title)}</div>` : ""}
+          ${inflightList}
           ${detailsHTML ? `<button type="button" class="activity-details-toggle" data-activity-toggle="${escapeHTML(event.event_id)}" aria-expanded="${isOpen}">${escapeHTML(toggleLabel)} ${isOpen ? "▴" : "▾"}</button>
           <div class="activity-details" ${isOpen ? "" : "hidden"}>${detailsHTML}</div>` : ""}
         </div>

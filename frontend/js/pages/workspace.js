@@ -1456,11 +1456,13 @@ function tiNotesCard(result) {
 function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavigate, workflow) {
   const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>VirusTotal, AbuseIPDB, and AlienVault OTX enrichment for the extracted IOCs, with the resulting case-level risk verdict.</p></div>${stateBadge(stage)}</div>`;
   if (stage.state === "in_progress") {
+    // Backend-driven: only the provider lookups that actually run appear.
     root.innerHTML = `
       ${header}
-      ${loadingState("Querying VirusTotal · AbuseIPDB · AlienVault OTX…")}
+      <section id="threat-intel-agent-activity"></section>
       <div id="action-status" aria-live="polite"></div>
     `;
+    mountStageActivity(root.querySelector("#threat-intel-agent-activity"), caseId, stage, workflow, { live: true });
     bindStageActions(root, stage, workflow, onAction, onNavigate);
     return;
   }
@@ -1472,17 +1474,22 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
   if (!hasResult) {
     root.innerHTML = `
       ${header}
+      ${stage.state === "failed" ? `<section id="threat-intel-agent-activity"></section>` : ""}
       ${stage.state === "failed"
         ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Threat Intelligence enrichment failed for this run.")}</div></div>`
         : emptyState("No persisted Threat Intelligence output is available for this run yet.")}
       ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
+    if (stage.state === "failed") {
+      mountStageActivity(root.querySelector("#threat-intel-agent-activity"), caseId, stage, workflow);
+    }
   } else {
     const iocs = block.iocs || {};
     // Assessment (concise conclusion) first, then the stage's own output.
     root.innerHTML = `
       ${header}
+      <section id="threat-intel-agent-activity"></section>
       <div class="stage-sections">
         ${tiAssessment(result, block)}
         <section class="panel"><h3>Summary</h3>${tiSummaryCard(result, workflow)}</section>
@@ -1494,6 +1501,8 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
       <div id="action-status" aria-live="polite"></div>
     `;
     bindInPageLinks(root);
+    // Full trace stays available above the unchanged Threat Intelligence result.
+    mountStageActivity(root.querySelector("#threat-intel-agent-activity"), caseId, stage, workflow, { collapsed: true });
   }
   bindStageActions(root, stage, workflow, onAction, onNavigate);
 }

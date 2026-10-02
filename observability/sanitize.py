@@ -10,6 +10,7 @@ exception messages - is scrubbed here as defence in depth.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import Any
 
@@ -37,6 +38,24 @@ _TEXT_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
 
 _TRACEBACK_RE = re.compile(r"Traceback \(most recent call last\):.*", re.DOTALL)
 
+# Credentials Aegis reads from its environment. Provider error bodies and
+# exception messages can echo a key in free text ("... for key <value>")
+# that no pattern recognises, so the configured VALUES themselves are
+# redacted wherever they appear. Read at call time (never cached, never
+# stored); very short values are ignored to avoid redacting ordinary words.
+_SECRET_ENV_NAMES = (
+    "OPENAI_API_KEY", "VT_API_KEY", "ABUSEIPDB_API_KEY", "OTX_API_KEY",
+    "NW_PASSWORD", "NW_TOKEN", "NETWITNESS_TOKEN", "POSTGRES_PASSWORD",
+)
+
+
+def _redact_configured_secrets(text: str) -> str:
+    for name in _SECRET_ENV_NAMES:
+        value = (os.environ.get(name) or "").strip()
+        if len(value) >= 8 and value in text:
+            text = text.replace(value, REDACTED)
+    return text
+
 _SECRET_KEY_RE = re.compile(
     r"(?i)^(api[_-]?key|apikey|x-apikey|key|token|access[_-]?token|refresh[_-]?token|auth|"
     r"authorization|password|passwd|secret|client[_-]?secret|credentials?|cookie|headers?)$")
@@ -44,6 +63,7 @@ _SECRET_KEY_RE = re.compile(
 
 def sanitize_text(value: Any, max_len: int = MAX_TEXT) -> str:
     text = "" if value is None else str(value)
+    text = _redact_configured_secrets(text)
     text = _TRACEBACK_RE.sub("«stack trace removed»", text)
     for pattern, replacement in _TEXT_RULES:
         text = pattern.sub(replacement, text)
