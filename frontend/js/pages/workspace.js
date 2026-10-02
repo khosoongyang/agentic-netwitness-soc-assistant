@@ -580,16 +580,19 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate
   if (stage.state === "in_progress") {
     root.innerHTML = `
       ${header}
-      ${loadingState("Parsing incident…")}
+      <section id="parsing-agent-activity"></section>
       <div id="action-status" aria-live="polite"></div>
     `;
+    mountStageActivity(root.querySelector("#parsing-agent-activity"), caseId, stage, workflow, { live: true });
   } else if (stage.state === "failed") {
     root.innerHTML = `
       ${header}
+      <section id="parsing-agent-activity"></section>
       <div class="state-panel error"><div>${escapeHTML(lastError || "Parsing failed for this run.")}</div></div>
       ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
+    mountStageActivity(root.querySelector("#parsing-agent-activity"), caseId, stage, workflow);
   } else if (stage.state === "completed") {
     const downloadButton = `<a class="action-button" href="/api/cases/${encodeURIComponent(caseId)}/stages/parsing/download">Download JSON</a>`;
     // Overview/JSON are two views of the same already-loaded stage.result:
@@ -603,6 +606,7 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate
     }
     root.innerHTML = `
       ${header}
+      <section id="parsing-agent-activity"></section>
       <div class="subtab-bar" role="tablist" aria-label="Parsing output view">
         <button type="button" class="subtab-button active" role="tab" id="parsing-tab-overview" data-parsing-view="overview" aria-selected="true" aria-controls="parsing-view-overview">Overview</button>
         <button type="button" class="subtab-button" role="tab" id="parsing-tab-json" data-parsing-view="json" aria-selected="false" aria-controls="parsing-view-json">JSON</button>
@@ -615,6 +619,8 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate
       ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
+    // Full trace stays available above the unchanged Parsing output.
+    mountStageActivity(root.querySelector("#parsing-agent-activity"), caseId, stage, workflow, { collapsed: true });
   } else {
     // not_started
     root.innerHTML = `
@@ -872,6 +878,10 @@ function mountTriageTicket(panel, caseId, key) {
 // workspace to refresh so the normal stage output appears.
 let _stageActivity = null;
 let _onStageActivitySettled = null;
+// A panel the analyst watched live stays expanded on every later render of
+// that same case/run/stage in this page session (several refreshes follow a
+// settled stage), instead of collapsing under them.
+const _watchedLive = new Set();
 
 function destroyStageActivity() {
   if (_stageActivity) _stageActivity.destroy();
@@ -881,12 +891,14 @@ function destroyStageActivity() {
 function mountStageActivity(container, caseId, stage, workflow, { live = false, collapsed = false } = {}) {
   destroyStageActivity();
   if (!container || !workflow?.run_id) return;
+  const watchKey = `${caseId}|${workflow.run_id}|${stage.key}`;
+  if (live) _watchedLive.add(watchKey);
   _stageActivity = mountAgentActivity(container, {
     caseId,
     runId: workflow.run_id,
     stage: stage.key,
     live,
-    collapsed,
+    collapsed: collapsed && !_watchedLive.has(watchKey),
     onSettled: live ? () => _onStageActivitySettled?.() : null,
   });
 }
@@ -2306,6 +2318,11 @@ export async function renderWorkspace(root, { navigate, route }) {
         // Presentation only: once the backend has accepted a stage's Run
         // (start) action, keep that stage focused so its progress is visible.
         if (action === "start") selectedStageKey = stage.key;
+        // The analyst launched this run here: keep its Agent Activity panel
+        // expanded even if the run finishes before it is first shown running.
+        if ((action === "start" || action === "rerun") && result.run_id) {
+          _watchedLive.add(`${caseId}|${result.run_id}|${stage.key}`);
+        }
         await refreshWorkflow();
         if (result.run_id) {
           await pollRun(result.run_id, (run) => {

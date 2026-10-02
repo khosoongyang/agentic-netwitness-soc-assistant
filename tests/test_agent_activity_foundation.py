@@ -229,10 +229,21 @@ def test_every_triage_wrap_point_exists_with_the_expected_signature():
         assert actual_params(target) == target.params, target.label
 
 
+def _parsing_targets():
+    from observability.adapters import parsing_adapter
+
+    patcher = Patcher()
+    recorded: list[Target] = []
+    patcher.wrap = lambda target, hooks: recorded.append(target) or True  # type: ignore[assignment]
+    parsing_adapter.install(patcher)
+    return recorded
+
+
 def test_install_wraps_every_target_and_uninstall_restores_original_objects(tmp_path):
     from observability.instrument import resolve_owner
 
-    targets = _triage_targets()
+    targets = _triage_targets() + _parsing_targets()
+    assert len({t.label for t in targets}) == len(targets) == 34  # no point wrapped twice
     originals = {t.label: getattr(resolve_owner(t), t.attr) for t in targets}
     try:
         state = observability.install(str(tmp_path / "activity.db"))

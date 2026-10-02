@@ -210,13 +210,19 @@ def _raw_loaded(call: dict, token: Any, result: Any) -> None:
 def _run_triage_scope(call: dict) -> context.RunScope | None:
     """Only used when run_triage is reached outside run_triage_stage (the
     combined Parsing->Triage entry point). The run id is read back from the
-    persisted state - never guessed."""
-    if context.current_scope() is not None:
+    persisted state - never guessed. Inside that entry point a Parsing scope
+    is already open; Triage gets its own scope so its events are never
+    attributed to Parsing."""
+    current = context.current_scope()
+    if current is not None and current.stage == STAGE:
         return None
     incident = call.get("incident") or {}
     case_id = _str(incident.get("id") or incident.get("incidentId"))
     if not case_id:
         return None
+    if current is not None and current.run_id:
+        return context.RunScope(case_id=case_id, run_id=current.run_id, stage=STAGE,
+                                stage_attempt=_state(case_id).get("triage_attempt"))
     state = _state(case_id)
     return context.RunScope(case_id=case_id, run_id=state.get("run_id"), stage=STAGE,
                             stage_attempt=state.get("triage_attempt"))

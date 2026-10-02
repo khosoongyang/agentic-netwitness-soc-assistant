@@ -137,9 +137,21 @@ def test_workspace_replaces_the_generic_triage_message_with_the_activity_panel()
     for kept in ("triageAssessment(ticket)", "triageSummarySection(ticket, result)",
                  'data-triage-view="ticket"'):
         assert kept in WORKSPACE
-    # Other stages are untouched in this proof of concept.
-    for kept in ('loadingState("Parsing incident…")',
-                 'loadingState("Querying VirusTotal · AbuseIPDB · AlienVault OTX…")',
+    # Stages without Agent Activity yet keep their existing messages.
+    for kept in ('loadingState("Querying VirusTotal · AbuseIPDB · AlienVault OTX…")',
                  'loadingState("Running Investigation…")'):
         assert kept in WORKSPACE
     assert "destroyStageActivity();" in WORKSPACE
+
+
+def test_workspace_replaces_the_generic_parsing_message_and_keeps_parsing_results():
+    assert 'loadingState("Parsing incident…")' not in WORKSPACE
+    assert 'mountStageActivity(root.querySelector("#parsing-agent-activity"), caseId, stage, workflow, { live: true })' in WORKSPACE
+    # Completed view: panel above the existing, unchanged Parsing output.
+    completed = WORKSPACE.index('<section id="parsing-agent-activity"></section>\n      <div class="subtab-bar"')
+    assert completed < WORKSPACE.index('id="parsing-view-overview"')
+    for kept in ("parsingOverview(stage.result)", 'data-parsing-view="json"', "Download JSON"):
+        assert kept in WORKSPACE
+    # Only one panel (one EventSource) exists at a time: every mount destroys the previous one.
+    body = WORKSPACE[WORKSPACE.index("function mountStageActivity"):]
+    assert body.index("destroyStageActivity();") < body.index("mountAgentActivity(")

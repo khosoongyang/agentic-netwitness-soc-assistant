@@ -16,7 +16,7 @@ content or reasoning summaries, so events are only ever labelled AI
 ASSESSMENT / AI EXPLANATION / AI SUMMARY. A reasoning *token count* may be
 shown as metadata when the API reports it; it reveals nothing of content.
 
-Coverage: Triage only (proof of concept). Other stages emit nothing yet.
+Coverage: Parsing & Normalisation and Triage. Other stages emit nothing yet.
 """
 
 from __future__ import annotations
@@ -48,12 +48,13 @@ def install(db_path: str | None = None) -> dict[str, Any]:
         patcher = Patcher()
         try:
             from .store import ActivityStore
-            from .adapters import langchain_adapter, triage_adapter
+            from .adapters import langchain_adapter, parsing_adapter, triage_adapter
 
             store = ActivityStore(db_path)
             emitter.attach_store(store)
             _STATE["store"] = store
             langchain_adapter.install()
+            parsing_adapter.install(patcher)
             triage_adapter.install(patcher)
             _STATE["patcher"] = patcher
             _STATE["error"] = None
@@ -109,7 +110,7 @@ def status() -> dict[str, Any]:
     return {
         "enabled": patcher is not None and store is not None,
         "error": _STATE["error"],
-        "coverage": ["triage"] if patcher is not None else [],
+        "coverage": ["parsing", "triage"] if patcher is not None else [],
         "wrappers": dict(patcher.report) if patcher is not None else {},
         "dropped_events": getattr(store, "dropped", 0) if store else 0,
         "write_errors": getattr(store, "write_errors", 0) if store else 0,
