@@ -369,3 +369,19 @@ def test_combined_workflow_passes_recorded_availability(monkeypatch):
     assert captured["da"]["alerts_fetch_succeeded"] is True
     assert captured["da"]["alerts_count"] == 3
     assert sw.load_data_availability_for_run is not None
+
+
+def test_large_parsed_context_cannot_crowd_out_raw_alert_signatures(inc_52825):
+    """Found on the real path (scripts/acceptance_triage_step2.py): Parsing's
+    processed_alert for INC-52825 embeds the whole normalised_alert (~1 MB);
+    when it was placed first, the hard prompt cap cut off every signature."""
+    big = {"parser_status": "completed", "alert_id": "INC-52825",
+           "normalised_alert": {"blob": "x" * 1_000_000}, "iocs": ["1.2.3.4"] * 2000}
+    text = soc_triage_agent._compact_incident(inc_52825, big)
+    assert not text.endswith("(truncated)")
+    data = json.loads(text)
+    assert data["alert_signatures"][0]["alert_name"] == "Disables UAC"
+    ctx = data["parsed_alert_context"]
+    assert ctx["parser_status"] == "completed"
+    assert "normalised_alert" not in ctx and "normalised_alert" in ctx["_omitted_for_prompt_budget"]
+    assert len(text) <= soc_triage_agent._MAX_PROMPT_CHARS

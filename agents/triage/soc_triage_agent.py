@@ -779,6 +779,40 @@ _MAX_PROMPT_CHARS     = 9000
 # full lists stay in the evidence packet's raw_alerts digest.
 _MAX_TOPLEVEL_LIST_ITEMS = 10
 _MIN_SIGNATURE_BUDGET_CHARS = 1500
+# [FYP-TRIAGE-STEP2] parsed_alert_context share of the prompt. On the real
+# path Parsing's processed_alert for INC-52825 is ~1.2 MB (it embeds the
+# whole normalised_alert); placed first and hard-truncated at
+# _MAX_PROMPT_CHARS it used to push EVERY raw-alert signature out of the
+# prompt. It is now rendered last, compacted, inside what is left.
+_PARSED_CONTEXT_DROP_KEYS = ("normalised_alert",)
+_PARSED_CONTEXT_MAX_VALUE_CHARS = 600
+
+
+def _compact_parsed_context(parsed_context: dict, budget: int) -> dict:
+    """Parsing's flat processed_alert, minus the embedded normalised_alert
+    (a second copy of the raw alerts, already digested into the evidence
+    packet), each value capped; keys dropped (and listed) once the budget is
+    used up. Small, scalar fields first."""
+    items = []
+    for k, v in parsed_context.items():
+        if k in _PARSED_CONTEXT_DROP_KEYS:
+            continue
+        text = json.dumps(v, default=str)
+        if len(text) > _PARSED_CONTEXT_MAX_VALUE_CHARS:
+            v = text[:_PARSED_CONTEXT_MAX_VALUE_CHARS] + "…(truncated)"
+            text = json.dumps(v)
+        items.append((len(text), str(k), v))
+    out, used, dropped = {}, 0, []
+    for size, k, v in sorted(items, key=lambda x: (x[0], x[1])):
+        if used + size + len(k) + 6 > budget:
+            dropped.append(k)
+            continue
+        out[k] = v
+        used += size + len(k) + 6
+    omitted = [k for k in _PARSED_CONTEXT_DROP_KEYS if k in parsed_context] + sorted(dropped)
+    if omitted:
+        out["_omitted_for_prompt_budget"] = omitted
+    return out
 
 _ALERT_KEEP_KEYS = (
     "id", "title", "name", "type", "source", "severity", "risk_score",
@@ -851,8 +885,6 @@ def _compact_incident(incident: dict, parsed_context: dict | None = None) -> str
     instead of re-deriving indicators from scratch every time.
     """
     slim: dict = {}
-    if parsed_context:
-        slim["parsed_alert_context"] = parsed_context
     for k, v in incident.items():
         if k in ("alerts", "journalEntries", "alertMeta"):
             continue
@@ -886,6 +918,8 @@ def _compact_incident(incident: dict, parsed_context: dict | None = None) -> str
         # off-hour) and the top-K shown with their counts.
         # Budget = what is left of _MAX_PROMPT_CHARS after everything else
         # (indent=1 rendering inflates compact JSON by roughly a third).
+        # parsed_alert_context is added AFTER the signatures (see below), so
+        # the raw-alert signatures always get their share first.
         rest = len(json.dumps(slim, indent=1, default=str))
         budget = max(_MIN_SIGNATURE_BUDGET_CHARS,
                      min(_SIGNATURE_PROMPT_BUDGET_CHARS,
@@ -914,6 +948,13 @@ def _compact_incident(incident: dict, parsed_context: dict | None = None) -> str
                         break
             if sample and len(json.dumps(sample, default=str)) < 1200:
                 slim["alerts_sample"] = sample
+
+    if parsed_context:
+        # [FYP-TRIAGE-STEP2] Parsing output gets what is left of the budget
+        # (it used to be first and could crowd out all raw evidence).
+        remaining = _MAX_PROMPT_CHARS - len(json.dumps(slim, indent=1, default=str)) - 200
+        ctx = _compact_parsed_context(parsed_context, max(0, int(remaining / 1.3)))
+        slim = {"parsed_alert_context": ctx, **slim}
 
     text = json.dumps(slim, indent=1, default=str)
     if len(text) > _MAX_PROMPT_CHARS:
