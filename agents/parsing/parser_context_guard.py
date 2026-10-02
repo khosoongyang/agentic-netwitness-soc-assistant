@@ -216,6 +216,17 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
     incident = _as_dict(data.get("incident"))
     incident_raw = _as_dict(data.get("incident_raw"))
     incident_details = _as_dict(data.get("incident_details"))
+    # [FYP-TRIAGE-STEP3] Every alert id present in the input. The parser
+    # selects the most severe alert (parser_normaliser.severity_sort_score),
+    # which for a multi-alert incident is often NOT the first one; the guard
+    # must accept any alert OF THIS INPUT but still reject ids from anywhere
+    # else (cross-incident / stale-output protection is unchanged).
+    input_alert_ids = []
+    for alert in alerts:
+        if isinstance(alert, dict):
+            aid = _clean(_first(alert.get("id"), alert.get("_id"), alert.get("alert_id"), alert.get("alertId")))
+            if aid and aid not in input_alert_ids:
+                input_alert_ids.append(aid)
 
     original_headers = _as_dict(primary_alert.get("originalHeaders"))
     original_alert = _as_dict(primary_alert.get("originalAlert"))
@@ -264,6 +275,7 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
         "username": _clean(_first(user_values, wrapper.get("username"), wrapper.get("user"))),
         "source_ip": _clean(_first(source_ip_values, wrapper.get("source_ip"), wrapper.get("ip_src"))),
         "destination_ip": _clean(_first(destination_ip_values, wrapper.get("destination_ip"), wrapper.get("ip_dst"))),
+        "input_alert_ids": input_alert_ids,
     }
 
 # [FYP-FUNCTION] `extract_parser_output_identity` — transforms extract parser output identity input into the stable representation required by downstream parsing and reporting service processing.
@@ -341,6 +353,14 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
             return
         matched = _normalise_for_compare(expected) == _normalise_for_compare(actual)
         record = {"field": field, "expected": expected, "actual": actual, "matched": matched}
+        if not matched and field == "alert_id":
+            # The parser picked a different alert OF THE SAME INPUT (most
+            # severe one). Accepted only if that id is literally one of the
+            # input's own alert ids -- never a fuzzy match.
+            own = {_normalise_for_compare(a) for a in (input_identity.get("input_alert_ids") or [])}
+            if _normalise_for_compare(actual) in own:
+                matched = True
+                record.update(matched=True, reason="parser_selected_another_alert_of_this_input")
         if not matched and not hard:
             record["severity"] = "warning"
             warnings.append(field)

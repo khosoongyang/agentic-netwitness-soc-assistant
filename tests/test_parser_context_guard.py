@@ -154,3 +154,58 @@ def test_clear_stale_parser_outputs_removes_known_targets(tmp_path: Path):
     assert not (outputs / "TICKET-1" / "parsing").exists()
     assert not (outputs / "parser_result.json").exists()
     assert len(removed) == 2
+
+
+# =============================================================================
+# [FYP-TRIAGE-STEP3] Respond-API enriched incidents (flat incident + alerts)
+# =============================================================================
+
+def _flat_export(name: str) -> dict:
+    import json
+    root = Path(__file__).resolve().parents[1]
+    data = json.loads((root / "demo" / name).read_text(encoding="utf-8"))
+    flat = dict(data["incident"])
+    flat["alerts"] = data["alerts"]
+    return flat
+
+
+def test_flat_enriched_incident_is_parsed_per_alert_not_as_one_alert(tmp_path):
+    """The workflow's enriched incident (incident fields + alerts) used to be
+    parsed as ONE generic alert (alert_id = incident id) and refused by the
+    guard; it is now recognised as an incident with alerts."""
+    from agents.parsing import parser_normaliser as pn
+    flat = _flat_export("incident_INC-53021_respond_api_export.json")
+    assert pn.detect_input_format(flat) == "flat_incident_with_alerts"
+    result = pn.run_parser_normalisation_for_dashboard(flat, output_dir=tmp_path)
+    assert result["status"] == "completed"
+    assert result["identity_validation"]["passed"] is True
+    assert result["selected_alert_id"] == "692d44cf6c4fbd7c5a167810"
+
+
+def test_multi_alert_incident_accepts_most_severe_alert_of_same_input(tmp_path):
+    from agents.parsing import parser_normaliser as pn
+    flat = _flat_export("incident_INC-52825_respond_api_export.json")
+    result = pn.run_parser_normalisation_for_dashboard(flat, output_dir=tmp_path)
+    assert result["status"] == "completed"
+    check = next(c for c in result["identity_validation"]["checks"] if c["field"] == "alert_id")
+    assert check["matched"] is True
+    assert check["reason"] == "parser_selected_another_alert_of_this_input"
+    assert result["selected_alert_id"] in result["input_identity"]["input_alert_ids"]
+
+
+def test_guard_still_rejects_parser_output_from_another_incident(tmp_path):
+    """Cross-incident protection is unchanged: an alert id that is not one of
+    THIS input's alerts is still a hard failure."""
+    from agents.parsing import parser_normaliser as pn
+    a = _flat_export("incident_INC-53021_respond_api_export.json")
+    b = _flat_export("incident_INC-52825_respond_api_export.json")
+    b["alerts"] = b["alerts"][:5]
+    other_output = pn.run_parser_normalisation_for_dashboard(b, output_dir=tmp_path)
+    verdict = validate_parser_identity(extract_alert_identity(a), other_output)
+    assert verdict["passed"] is False and "alert_id" in verdict["hard_failures"]
+
+
+def test_flat_detection_requires_real_netwitness_alert_records():
+    from agents.parsing import parser_normaliser as pn
+    assert pn.detect_input_format({"id": "X", "alerts": [{"title": "t"}]}) == "generic_dictionary"
+    assert pn.detect_input_format({"id": "X", "alerts": []}) == "generic_dictionary"

@@ -1610,6 +1610,19 @@ def detect_input_format(data: Any) -> str:
         return "incident_with_alerts"
     if {"incident_details", "alerts"}.issubset(keys):
         return "incident_details_with_alerts"
+    # [FYP-TRIAGE-STEP3] The flat incident the workflow builds after
+    # ingestion enrichment (workflow/engine.py::enrich_incident_with_
+    # apiretrieval_fetch: the incident's own fields + "alerts": the raw
+    # Respond-API alerts). Without this it fell through to
+    # "generic_dictionary", the WHOLE incident was parsed as one alert
+    # (alert_id = incident id), and parser_context_guard correctly refused
+    # it ("Parser input mismatch") -- so every enriched incident stopped at
+    # Parsing. Recognised only when the alerts are real NetWitness alert
+    # records (originalAlert/originalHeaders), so other dicts are unchanged.
+    alerts = data.get("alerts")
+    if isinstance(alerts, list) and alerts and all(
+            isinstance(a, dict) and ("originalAlert" in a or "originalHeaders" in a) for a in alerts):
+        return "flat_incident_with_alerts"
     if "originalAlert" in keys or "originalHeaders" in keys:
         return "single_full_alert"
     if "alerts_summary_raw" in keys:
@@ -1656,6 +1669,9 @@ def prepare_incident_and_alerts(data: Any) -> Tuple[Dict[str, Any], List[Dict[st
         alerts = data.get("alerts") if isinstance(data.get("alerts"), list) else []
     elif input_format == "incident_details_with_alerts":
         incident = data.get("incident_details") if isinstance(data.get("incident_details"), dict) else {}
+        alerts = data.get("alerts") if isinstance(data.get("alerts"), list) else []
+    elif input_format == "flat_incident_with_alerts":
+        incident = {k: v for k, v in data.items() if k != "alerts"}
         alerts = data.get("alerts") if isinstance(data.get("alerts"), list) else []
     elif input_format == "summary_export":
         summary = data.get("alerts_summary_raw", {})
