@@ -2,6 +2,7 @@ import { fetchJSON } from "../api.js";
 import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, openModal, provenanceValue, severityBadge, stateBadge } from "../ui.js";
 import { TICKET_REPORT_TYPE, mountReportsPanel, openReportInto } from "./reports.js";
 import { bindContinueButton, stageActionModel } from "../stageContinue.js";
+import { mountAgentActivity } from "../components/agentActivity.js";
 import {
   assessmentCard, assessmentHeadline, assessmentProse, assessmentRationale, assessmentSection,
   assessmentTable, bandValue, confidenceBadge, hasValue, pendingValue, unifiedVerdictCard,
@@ -863,15 +864,43 @@ function mountTriageTicket(panel, caseId, key) {
   if (view.parentElement !== panel) panel.replaceChildren(view);
 }
 
+// Agent Activity panel (frontend/js/components/agentActivity.js): renders the
+// backend-recorded events for this run/stage. Only one panel (and so at most
+// one SSE connection) exists at a time; renderSelectedStage() tears it down
+// before any stage re-render. While the stage is in progress the panel
+// streams live and, when the backend reports the stage settled, asks the
+// workspace to refresh so the normal stage output appears.
+let _stageActivity = null;
+let _onStageActivitySettled = null;
+
+function destroyStageActivity() {
+  if (_stageActivity) _stageActivity.destroy();
+  _stageActivity = null;
+}
+
+function mountStageActivity(container, caseId, stage, workflow, { live = false, collapsed = false } = {}) {
+  destroyStageActivity();
+  if (!container || !workflow?.run_id) return;
+  _stageActivity = mountAgentActivity(container, {
+    caseId,
+    runId: workflow.run_id,
+    stage: stage.key,
+    live,
+    collapsed,
+    onSettled: live ? () => _onStageActivitySettled?.() : null,
+  });
+}
+
 function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate, workflow) {
   const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>IOC assessment, risk evaluation and SOC classification.</p></div>${stateBadge(stage)}</div>`;
 
   if (stage.state === "in_progress") {
     root.innerHTML = `
       ${header}
-      ${loadingState("Analysing IOCs · assessing risk · classifying the incident…")}
+      <section id="triage-agent-activity"></section>
       <div id="action-status" aria-live="polite"></div>
     `;
+    mountStageActivity(root.querySelector("#triage-agent-activity"), caseId, stage, workflow, { live: true });
     bindStageActions(root, stage, workflow, onAction, onNavigate);
     return;
   }
@@ -891,12 +920,16 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
   if (!hasTicket) {
     root.innerHTML = `
       ${header}
+      ${stage.state === "failed" ? `<section id="triage-agent-activity"></section>` : ""}
       ${stage.state === "failed"
         ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Triage failed for this run.")}</div></div>`
         : emptyState("No persisted Triage output is available for this run yet.")}
       ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
+    if (stage.state === "failed") {
+      mountStageActivity(root.querySelector("#triage-agent-activity"), caseId, stage, workflow);
+    }
   } else {
     // Overview and Triage Ticket are two views of the same already-loaded
     // Triage run: Overview is built from stage.result, the Ticket tab is
@@ -918,6 +951,7 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
     }
     root.innerHTML = `
       ${header}
+      <section id="triage-agent-activity"></section>
       <div class="subtab-bar" role="tablist" aria-label="Triage output view">
         <button type="button" class="subtab-button active" role="tab" id="triage-tab-overview" data-triage-view="overview" aria-selected="true" aria-controls="triage-view-overview">Overview</button>
         <button type="button" class="subtab-button" role="tab" id="triage-tab-ticket" data-triage-view="ticket" aria-selected="false" aria-controls="triage-view-ticket">Triage Ticket</button>
@@ -927,6 +961,10 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
       ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
+    // Full trace stays available after completion; expanded while the
+    // result is awaiting the analyst's decision, collapsed afterwards.
+    mountStageActivity(root.querySelector("#triage-agent-activity"), caseId, stage, workflow,
+      { collapsed: stage.state !== "awaiting_approval" });
     const viewButtons = [...root.querySelectorAll("[data-triage-view]")];
     const selectView = (view) => {
       _triageSelectedView.set(ticketKey, view);
@@ -2090,6 +2128,7 @@ function renderInvestigationStage(root, stage, caseId, lastError, onAction, onNa
 }
 
 function renderSelectedStage(root, stage, caseId, lastError, onAction, onNavigate, workflow, workspace) {
+  destroyStageActivity();
   if (stage.key === "parsing") {
     renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate, workflow);
     return;
@@ -2252,6 +2291,9 @@ export async function renderWorkspace(root, { navigate, route }) {
       caseContextPanel.innerHTML = `<h2>Case context</h2>${caseContext(detail)}`;
       renderWorkflow();
     };
+    // The live Agent Activity stream reports when the running stage has
+    // settled; refresh once so the stage's normal output replaces it.
+    _onStageActivitySettled = () => { refreshWorkflow().catch(() => {}); };
 
     async function handleAction(action, stage) {
       if (!requiresConfirmation(action, stage)) return;
