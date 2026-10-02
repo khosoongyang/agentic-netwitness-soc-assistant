@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -40,8 +41,44 @@ def _copy_directory(source: Path, destination: Path) -> None:
         destination.mkdir(parents=True)
 
 
+# [FYP-TRIAGE-STEP3] Tracked-file mutation guard. A test once wrote a
+# garbage threat_intel_result.json into the TRACKED fixture directory
+# agents/reporting/inputs/ (through handoff_to_reporting()'s flat path).
+# The suite must leave `git status` for tracked files exactly as it found it.
+def _tracked_changes() -> dict[str, str] | None:
+    """{path: porcelain status} for tracked files that differ from HEAD, or
+    None when git is unavailable (the guard is then skipped, not faked)."""
+    git = shutil.which("git")
+    if not git:
+        return None
+    try:
+        out = subprocess.run(
+            [git, "status", "--porcelain=v1", "--untracked-files=no"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=60, check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    changes = {}
+    for line in out.splitlines():
+        if len(line) > 3:
+            changes[line[3:].strip().strip('"')] = line[:2]
+    return changes
+
+
+def _file_digest(rel: str) -> str | None:
+    import hashlib
+    path = PROJECT_ROOT / rel
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Create and configure the isolated runtime before test collection."""
+    before = _tracked_changes()
+    config._aegis_tracked_before = (  # type: ignore[attr-defined]
+        None if before is None else {p: (s, _file_digest(p)) for p, s in before.items()})
     temporary_directory = tempfile.TemporaryDirectory(prefix="aegis-pytest-")
     root = Path(temporary_directory.name)
 
@@ -162,6 +199,31 @@ def _isolate_mutable_test_state(
     if run_reporting is not None:
         monkeypatch.setattr(run_reporting, "INPUTS_DIR", isolation.reporting_inputs)
         monkeypatch.setattr(run_reporting, "OUTPUTS_DIR", isolation.reporting_outputs)
+
+
+def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    """Fail the session if any TRACKED file was modified by the tests.
+    Files already dirty before the run (a developer's work in progress) are
+    compared by content hash, so only changes made DURING the run count."""
+    before = getattr(session.config, "_aegis_tracked_before", None)
+    if before is None or os.environ.get("AEGIS_SKIP_TRACKED_GUARD"):
+        return
+    after = _tracked_changes()
+    if after is None:
+        return
+    mutated = sorted(
+        p for p, s in after.items()
+        if p not in before or before[p][1] != _file_digest(p)
+    )
+    if mutated:
+        reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+        msg = ("TRACKED FILES MODIFIED BY THE TEST SUITE (tests must write only to "
+               "temp dirs): " + ", ".join(mutated))
+        if reporter is not None:
+            reporter.write_line(msg, red=True, bold=True)
+        else:
+            print(msg, file=sys.stderr)
+        session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

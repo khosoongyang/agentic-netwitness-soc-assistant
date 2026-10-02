@@ -1589,6 +1589,9 @@ def test_result_reaches_reporting_handoff(monkeypatch, tmp_path):
     outputs_dir = tmp_path / "outputs"
     outputs_dir.mkdir()
     monkeypatch.setattr(sw, "REP_DIR", tmp_path)
+    # REP_DIR is the test's workspace: drop conftest's flat-path env override.
+    monkeypatch.delenv("REPORTING_INPUT_DIR", raising=False)
+    monkeypatch.delenv("REPORTING_OUTPUT_DIR", raising=False)
     sw.handoff_to_reporting({"ticket": {}}, _incident("INC-1"),
                             {"status": "completed"}, threat_intel_result=ti_result)
     written = next(v for k, v in captured.items() if k.endswith("threat_intel_result.json"))

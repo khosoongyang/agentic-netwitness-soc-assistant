@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -568,7 +569,8 @@ def test_reporting_receives_persisted_threat_intel_result():
         _triage_result("INC-1"), _incident("INC-1"),
         {"status": "completed", "severity": "High"},
         threat_intel_result=ti_payload)
-    written = json.loads((sw.REP_DIR / "outputs" / "threat_intel_result.json")
+    written = json.loads((Path(os.environ.get("REPORTING_OUTPUT_DIR") or (sw.REP_DIR / "outputs"))
+                          / "threat_intel_result.json")
                          .read_text(encoding="utf-8"))
     assert written == ti_payload
     assert ticket_id

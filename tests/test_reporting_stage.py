@@ -223,6 +223,9 @@ def test_run_scoped_handoff_includes_threat_intel_in_reporting_inputs(
     run_id = "run-handoff-1"
     attempt = 2
     monkeypatch.setattr(sw, "REP_DIR", tmp_path)
+    # REP_DIR is the test's workspace: drop conftest's flat-path env override.
+    monkeypatch.delenv("REPORTING_INPUT_DIR", raising=False)
+    monkeypatch.delenv("REPORTING_OUTPUT_DIR", raising=False)
 
     parsing_dir = tmp_path / "outputs" / incident_id / run_id / "parsing"
     parsing_dir.mkdir(parents=True)

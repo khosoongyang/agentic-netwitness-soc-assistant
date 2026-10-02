@@ -181,6 +181,29 @@ def _ticket_value(ticket: dict[str, Any] | None, key: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+
+def _io_dirs(project_root: Path) -> tuple[Path, Path]:
+    """(inputs, outputs) for project_root. When project_root is the reporting
+    package root and REPORTING_INPUT_DIR / REPORTING_OUTPUT_DIR are set (the
+    workflow's run-scoped workspace, or the test suite's temp tree), use them
+    -- the same rule adapters/common.py applies -- so this bridge never reads
+    or rewrites the TRACKED fixtures under <package>/inputs while a run is
+    pointed elsewhere. Any other project_root (tests pass a temp root) is
+    used as-is."""
+    import os
+    pkg_root = Path(__file__).resolve().parents[1]
+    try:
+        is_pkg = Path(project_root).resolve() == pkg_root
+    except OSError:
+        is_pkg = False
+    inputs = project_root / "inputs"
+    outputs = project_root / "outputs"
+    if is_pkg:
+        inputs = Path(os.environ.get("REPORTING_INPUT_DIR") or inputs)
+        outputs = Path(os.environ.get("REPORTING_OUTPUT_DIR") or outputs)
+    return inputs, outputs
+
+
 def investigation_candidate_paths(project_root: Path, ticket_id: str | None = None) -> list[Path]:
     """[FYP-FUNCTION] [FYP-INPUT] Enumerate candidate filesystem locations for a ticket's investigation_result.json, most-specific first.
 
@@ -191,8 +214,7 @@ def investigation_candidate_paths(project_root: Path, ticket_id: str | None = No
     checked here -- see resolve_investigation_context for that).
     Called by: resolve_investigation_context.
     """
-    outputs = project_root / "outputs"
-    inputs = project_root / "inputs"
+    inputs, outputs = _io_dirs(project_root)
     paths: list[Path] = []
     if ticket_id:
         paths.extend([
@@ -218,8 +240,7 @@ def approval_candidate_paths(project_root: Path, ticket_id: str | None = None) -
     (investigation_approval_result.json / approval_result.json).
     Called by: resolve_investigation_approval_context.
     """
-    outputs = project_root / "outputs"
-    inputs = project_root / "inputs"
+    inputs, outputs = _io_dirs(project_root)
     paths: list[Path] = []
     if ticket_id:
         paths.extend([
@@ -387,8 +408,7 @@ def ensure_reporting_inputs(project_root: Path, ticket_id: str | None = None, ti
     Calls: resolve_investigation_context, resolve_investigation_approval_context,
     _write_json.
     """
-    inputs = project_root / "inputs"
-    outputs = project_root / "outputs"
+    inputs, outputs = _io_dirs(project_root)
     inputs.mkdir(parents=True, exist_ok=True)
     outputs.mkdir(parents=True, exist_ok=True)
 

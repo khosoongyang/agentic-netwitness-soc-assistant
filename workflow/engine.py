@@ -2516,8 +2516,14 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
         inputs  = attempt_dir / "inputs"
     else:
         attempt_dir = None
-        outputs = REP_DIR / "outputs"
-        inputs  = REP_DIR / "inputs"
+        # Flat legacy workspace. Honour REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR
+        # exactly as the reporting adapter that reads these files does
+        # (agents/reporting/adapters/common.py), so the writer and the reader
+        # agree on the location -- and so the test suite (conftest.py points
+        # both at a temp tree) never mutates the TRACKED fixtures under
+        # agents/reporting/inputs/. Unset -> the original REP_DIR paths.
+        outputs = Path(os.environ.get("REPORTING_OUTPUT_DIR") or (REP_DIR / "outputs"))
+        inputs  = Path(os.environ.get("REPORTING_INPUT_DIR") or (REP_DIR / "inputs"))
     outputs.mkdir(parents=True, exist_ok=True)
     inputs.mkdir(parents=True, exist_ok=True)
 

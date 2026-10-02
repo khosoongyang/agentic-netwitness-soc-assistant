@@ -13,12 +13,20 @@ when TI data is absent, partial, or malformed.
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 
 import pytest
 
 from workflow import engine as sw
 import agents.investigation.skills_sidecar as skills_sidecar
 from agents.investigation.tools.triage_verdict import aggregate_verdict
+
+
+def _flat_outputs() -> Path:
+    """Where handoff_to_reporting()'s flat path writes (REPORTING_OUTPUT_DIR,
+    set to a temp tree by conftest.py; REP_DIR/outputs otherwise)."""
+    return Path(os.environ.get("REPORTING_OUTPUT_DIR") or (sw.REP_DIR / "outputs"))
 
 
 def _incident(incident_id: str = "INC-1", **overrides) -> dict:
@@ -117,10 +125,10 @@ def test_reporting_handoff_completes_successfully_with_real_ti_result():
 
     assert ticket_id
     written_ti = json.loads(
-        (sw.REP_DIR / "outputs" / "threat_intel_result.json").read_text(encoding="utf-8"))
+        (_flat_outputs() / "threat_intel_result.json").read_text(encoding="utf-8"))
     assert written_ti == _REAL_TI_RESULT
     written_inv = json.loads(
-        (sw.REP_DIR / "outputs" / "investigation_result.json").read_text(encoding="utf-8"))
+        (_flat_outputs() / "investigation_result.json").read_text(encoding="utf-8"))
     assert written_inv  # handoff completed, investigation_result.json was written
 
 
