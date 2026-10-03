@@ -133,9 +133,11 @@ every case already imported or held in `soc_db/`.
 ## OpenAI setup
 
 Set `OPENAI_API_KEY` in `.env`, or from the running app's Settings page.
-`OPENAI_MODEL` selects the model (default `gpt-4o-mini`). Without a key,
-Triage/Investigation/Reporting fall back to their non-LLM/templated paths
-rather than failing the stage outright.
+`OPENAI_MODEL` selects the model (default `gpt-4o-mini`). Triage needs a
+key: without one (or with a placeholder such as `changeme`) the Triage stage
+fails fast with a `LLM_NOT_CONFIGURED` error and makes no network call. Ask
+Aegis reports itself unavailable. Offline runs use the mock triage mode
+(`--mock-triage`) or the offline evaluation harness instead.
 
 ## Runtime / data paths
 

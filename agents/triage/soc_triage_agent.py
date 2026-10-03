@@ -101,9 +101,10 @@ _ASSESSMENT_KEYS = ("proposed_disposition", "disposition", "hypotheses",
 class OpenAILLMConfig:
     """OpenAI connection config shared by triage and Ask Aegis."""
     base_url: str = "https://api.openai.com/v1"
+    # [AUDIT T-15] No "changeme" fallback: an unset key stays "" and triage
+    # fails fast with LLM_NOT_CONFIGURED instead of sending a placeholder.
     api_key: str = field(
         default_factory=lambda: os.environ.get("OPENAI_API_KEY", "").strip()
-        or "changeme"
     )
     model: str = field(
         default_factory=lambda: os.environ.get("OPENAI_MODEL", "").strip()
@@ -134,15 +135,42 @@ class OpenAILLMConfig:
 # [FYP-CALLS] Calls: `get`, `lower`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
+# [AUDIT T-16] Hosts known to honour response_format={"type":"json_object"}.
+_JSON_MODE_HOSTS = ("api.openai.com", ".openai.azure.com")
+
+
 def _provider_supports_json_mode(base_url: str) -> bool:
-    """Providers whose chat API honours response_format json_object.
+    """Providers whose chat API honours response_format json_object:
+    OpenAI and Azure OpenAI (by base_url host; unset = the OpenAI default).
+    Anything else (Ollama, vLLM, local gateways) defaults to False, so the
+    JSON is extracted/repaired from prose instead of the request failing.
     Override with TRIAGE_JSON_MODE=always|never."""
     forced = os.environ.get("TRIAGE_JSON_MODE", "").strip().lower()
     if forced == "always":
         return True
     if forced == "never":
         return False
-    return True
+    if not str(base_url or "").strip():
+        return True
+    from urllib.parse import urlparse
+    host = (urlparse(str(base_url)).hostname or "").lower()
+    return any(host == h or (h.startswith(".") and host.endswith(h)) for h in _JSON_MODE_HOSTS)
+
+
+# [AUDIT T-15] Specific, stable error prefix for an unconfigured provider.
+LLM_NOT_CONFIGURED = "LLM_NOT_CONFIGURED"
+_PLACEHOLDER_KEYS = {"changeme", "sk-replace_me"}
+
+
+def _llm_key_configured(key: str | None) -> bool:
+    """False for an unset or still-placeholder key (same patterns as
+    integrations.openai.client.is_placeholder_key; agents/ stays
+    import-independent of integrations/)."""
+    value = str(key or "").strip()
+    if not value:
+        return False
+    low = value.lower()
+    return not (low.startswith("replace_") or "your_openai_api_key" in low or low in _PLACEHOLDER_KEYS)
 
 
 # [FYP-FUNCTION] `build_llm` — constructs build llm output for the next triage consumer or analyst-facing view.
@@ -166,7 +194,9 @@ def build_llm(cfg: OpenAILLMConfig, json_mode: bool = False) -> ChatOpenAI:
         extra["model_kwargs"] = {"response_format": {"type": "json_object"}}
     return ChatOpenAI(
         base_url     = cfg.base_url,
-        api_key      = cfg.api_key,
+        # The client constructor rejects an empty key; an unconfigured key is
+        # never USED (triage() fails fast on LLM_NOT_CONFIGURED first).
+        api_key      = cfg.api_key if _llm_key_configured(cfg.api_key) else "unconfigured",
         model        = cfg.model,
         temperature  = cfg.temperature,
         max_tokens   = cfg.max_tokens,
@@ -1438,6 +1468,11 @@ class TriageAgent:
         raw_text   = _stream_or_invoke(text_chain, self.thinking_container)
         return raw_text
 
+    # [AUDIT T-15] Marks the real provider call; a harness that replaces
+    # _call (tests, offline eval/acceptance scripts) is not blocked by the
+    # missing-key fail-fast in triage().
+    _call._real_llm_call = True
+
     # ── Phase 1: IOC Checklists (single combined call) ────────────────────────
 
     # [FYP-FUNCTION] `_run_ioc` — orchestrates the run ioc entry point and its ordered triage operations.
@@ -1783,6 +1818,17 @@ class TriageAgent:
                     for phase in ("IOC Checklists", "Risk Rating", "SOC Classification"):
                         self._emit("phase_complete", phase, "cached")
                     return validated
+
+        # [AUDIT T-15] Fail fast, before any LLM call, when no real key is set
+        # (and no test/offline harness has replaced _call). Cache hits above
+        # still serve stored results.
+        if not _llm_key_configured(self.cfg.api_key) and getattr(self._call, "_real_llm_call", False):
+            return dump_triage_agent_output(validate_triage_agent_output({
+                "error": (f"{LLM_NOT_CONFIGURED}: OPENAI_API_KEY is not set (or is a placeholder). "
+                          "Triage needs an LLM; set the key in .env or Settings, or use the "
+                          "offline mock triage mode."),
+                "metakeys_payload": {}, "ticket": {}, "trace": trace,
+            }))
 
         try:
             # Phase 0 — [FYP-TRIAGE-STEP1] measured prior + evidence packet.

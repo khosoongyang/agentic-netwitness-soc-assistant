@@ -11,7 +11,7 @@ All variables are optional unless noted. Set them in `.env` (copy from
 
 | Variable | Purpose | Required | Default | Example |
 |---|---|---|---|---|
-| `OPENAI_API_KEY` | Enables all AI-assisted features (triage classification text, investigation reasoning, reporting narrative, Ask Aegis). Without it, those stages fall back to non-LLM/templated behavior rather than failing. | No (but most features degrade without it) | unset | `sk-...` |
+| `OPENAI_API_KEY` | Enables all AI-assisted features (triage classification text, investigation reasoning, reporting narrative, Ask Aegis). Triage requires it: without a key (or with a placeholder) the Triage stage fails fast with `LLM_NOT_CONFIGURED` and makes no network call; Ask Aegis reports itself unavailable. | Yes for Triage (offline: mock triage mode) | unset | `sk-...` |
 | `OPENAI_MODEL` | Model name for chat/completions calls. | No | `gpt-4o-mini` | `gpt-4o-mini` |
 | `OPENAI_SEED` | Fixed sampling seed, for more reproducible model output. | No | unset (non-deterministic) | `42` |
 
