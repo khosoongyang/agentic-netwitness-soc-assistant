@@ -701,17 +701,45 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate
 const _TRIAGE_METAKEY_LABELS = {
   "ip.src": "Source IP",
   "ip.dst": "Destination IP",
+  "port.src": "Source Port",
+  "port.dst": "Destination Port",
   "host.name": "Host Name",
   "user.name": "User Name",
+  "user.target": "Target User",
+  "group.name": "Group Name",
   "domain": "Domain",
   "event.type": "Event Type",
   "bytes.out": "Bytes Out",
+  "bytes.in": "Bytes In",
+  "packets.out": "Packets Out",
+  "packets.in": "Packets In",
   "protocol": "Protocol",
+  "network.service": "Network Service",
   "geo.country": "Country",
   "file.name": "File Name",
+  "file.path": "File Path",
   "file.hash": "File Hash",
   "process.name": "Process Name",
+  "parent_process.name": "Parent Process Name",
+  "process.pid": "Process PID",
+  "parent_process.pid": "Parent Process PID",
+  "command_line": "Command Line",
+  "powershell.command": "PowerShell Command",
+  "registry.path": "Registry Path",
+  "service.name": "Service Name",
+  "task.name": "Task Name",
+  "change.type": "Change Type",
+  "alert.type": "Alert Type",
+  "signature": "Signature",
+  "payload.snippet": "Payload Snippet",
+  "http.uri": "HTTP URI",
   "os.version": "OS Version",
+  "share.name": "Share Name",
+  "cert.status": "Certificate Status",
+  "process.target": "Target Process",
+  "config.change": "Config Change",
+  "process.privilege": "Process Privilege",
+  "status.code": "Status Code",
 };
 
 const _TRIAGE_IOC_CATEGORY_ORDER = ["confidentiality", "integrity", "availability"];
@@ -751,13 +779,18 @@ function triageIOCEvidence(iocStep, ticket, result) {
   const count = ticket.matched_ioc_count ?? iocStep?.total_ioc_count ?? 0;
   const mono = (v) => _poValue(v, { mono: true });
 
-  // Array.isArray / typeof guards: a persisted result the backend sanitizer
-  // has redacted-to-string (or any other unexpected shape) must degrade to
-  // "no rows" here rather than throw and blank the whole stage.
-  const rawValues = result.metakeys_payload?.metakey_values;
+  const _IGNORED_OBSERVED_KEYS = new Set([
+    "alert.type", "alert_type", "alerttype", "alert",
+    "risk_score", "riskscore", "risk", "risk_level",
+  ]);
+  const rawValues =
+    result?.metakeys_payload?.metakey_values ||
+    result?.metakey_values ||
+    ticket?.metakey_values ||
+    iocStep?.metakey_values;
   const metakeyValues = rawValues && typeof rawValues === "object" && !Array.isArray(rawValues) ? rawValues : {};
   const observedRows = Object.entries(metakeyValues)
-    .filter(([, value]) => _poHas(value))
+    .filter(([key, value]) => _poHas(value) && !_IGNORED_OBSERVED_KEYS.has(String(key).trim().toLowerCase()))
     .map(([key, value]) => [
       `${escapeHTML(_TRIAGE_METAKEY_LABELS[key] || key)}${_TRIAGE_METAKEY_LABELS[key] ? `<small class="mono triage-metakey">${escapeHTML(key)}</small>` : ""}`,
       mono(value),
@@ -777,17 +810,17 @@ function triageIOCEvidence(iocStep, ticket, result) {
     const names = Array.isArray(data.matched_ioc_names) ? data.matched_ioc_names : [];
     if (!names.length) return;
     categoryRows.push([escapeHTML(categoryLabel(key)), escapeHTML(names.join(", "))]);
-    if (data.reasoning) reasoningItems.push(`<li><div><strong>${escapeHTML(categoryLabel(key))}:</strong> ${escapeHTML(data.reasoning)}</div></li>`);
+    if (data.reasoning) {
+      reasoningItems.push(`<li><div><strong>${escapeHTML(categoryLabel(key))}:</strong> ${escapeHTML(data.reasoning)}</div></li>`);
+    }
   });
 
   const ticketKeys = Array.isArray(ticket.metakeys) ? ticket.metakeys : [];
   const traceKeys = Array.isArray(iocStep?.matched_metakeys) ? iocStep.matched_metakeys : [];
-  const mkeys = ticketKeys.length ? ticketKeys : traceKeys;
-  const iocSummary = iocStep?.ioc_summary || "";
+  const mkeys = (ticketKeys.length ? ticketKeys : traceKeys).filter((k) => !_IGNORED_OBSERVED_KEYS.has(String(k).trim().toLowerCase()));
 
   const technical = [
     reasoningItems.length ? `<h4 class="triage-subheading">Category Reasoning</h4><ul class="data-list">${reasoningItems.join("")}</ul>` : "",
-    iocSummary ? `<h4 class="triage-subheading">IOC Summary</h4><code class="parsing-overview-code">${escapeHTML(iocSummary)}</code>` : "",
     mkeys.length ? `<h4 class="triage-subheading">Matched Metakeys</h4><div class="parsing-field-chips">${mkeys.map((key) => `<span class="evidence-chip">${escapeHTML(key)}</span>`).join("")}</div>` : "",
   ].join("");
 
