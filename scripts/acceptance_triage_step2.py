@@ -194,11 +194,14 @@ def main() -> int:
             captured["target"](*captured["args"])
         r2 = persisted("INC-40000")
         ra2 = r2["evidence_packet"]["raw_alerts"]
+        # [AUDIT T-12] a re-run is a fresh result (new created_at) but keeps
+        # the incident's ticket number instead of burning a new UNC.
         check("durable re-run (run_triage_stage) reloads the run's data_availability",
-              r2["ticket"]["unc"] != r["ticket"]["unc"]
+              r2["ticket"]["unc"] == r["ticket"]["unc"]
+              and r2["ticket"]["created_at"] != r["ticket"]["created_at"]
               and "recorded by ingestion" in ra2["incident_source"]["source"]
               and r2["assessment"]["disposition"] == "needs_info",
-              f"new ticket {r2['ticket']['unc']} (was {r['ticket']['unc']}), "
+              f"same ticket {r2['ticket']['unc']} (was {r['ticket']['unc']}), "
               f"guard={[g['rule'] for g in r2['assessment']['guard_actions']]}")
 
         # ---------------- INC-53021: raw alerts from the on-disk export ------
