@@ -34,10 +34,23 @@ ever included). All routes are under `/api`.
 |---|---|---|
 | GET | `/api/runs/<run_id>` | Status of a specific run |
 | POST | `/api/cases/<case_id>/stages/<stage>/runs` | Start a stage |
-| POST | `/api/cases/<case_id>/stages/<stage>/reruns` | Rerun a stage (advances that stage's attempt counter; invalidates its downstream results - see [`workflow.md`](workflow.md)) |
-| POST | `/api/cases/<case_id>/approvals/<stage>` | Approve or reject a stage (`triage`, `investigation`, `reporting`) |
+| POST | `/api/cases/<case_id>/stages/<stage>/reruns` | Rerun a stage (advances that stage's attempt counter; invalidates its downstream results - see [`workflow.md`](workflow.md)). Triage only: optional `{analyst_note, analyst}` -> `context.analyst_note` (Step 3) |
+| POST | `/api/cases/<case_id>/approvals/<stage>` | Approve or reject a stage (`triage`, `investigation`, `reporting`). Triage only: optional `review` object (`TriageReview`), stored in the same transaction (Step 3) |
+| GET | `/api/cases/<case_id>/triage/reviews` | Structured triage reviews for the case (`?include_packet=1` adds the evidence snapshot) |
 | POST | `/api/cases/<case_id>/evidence-gap-decisions` | Record an evidence-gap decision during Investigation |
 | POST | `/api/cases/<case_id>/workflow/resume` | Re-trigger the durable claim path after an interruption (see **Restart / recovery** in [`workflow.md`](workflow.md)) |
+
+## Triage feedback (Step 3, see [`triage-review.md`](triage-review.md))
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/api/triage/tuning-backlog` | False-positive reviews aggregated per detection source + signature + entity |
+| GET | `/api/triage/suppressions` | Suppression proposals (`?status=`) |
+| POST | `/api/triage/suppressions` | Propose from a benign_expected review `{review_id, analyst, scope?, expiry_days?}` |
+| POST | `/api/triage/suppressions/<id>/approve` | `{analyst, confirmation: <exact scope text>}`; approver must differ from proposer |
+| POST | `/api/triage/suppressions/<id>/reject` / `/revoke` | `{analyst, note}` |
+| GET | `/api/triage/noisy-rules` | Read-only top (detection source, entity) pairs by 30/90-day counts + review counts |
+| GET | `/api/triage/metrics` | Cohen's kappa, confusion matrices, override / needs_info / revision rates |
 
 ## NetWitness integration
 
