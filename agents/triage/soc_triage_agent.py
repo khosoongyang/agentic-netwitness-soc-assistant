@@ -47,7 +47,7 @@ import re
 import sqlite3
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -484,14 +484,14 @@ def _next_unc() -> str:
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
 # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
-# [FYP-CALLS] Calls: `commit`, `connect`, `dumps`, `execute`, `isoformat`, `str`, `utcnow`.
+# [FYP-CALLS] Calls: `commit`, `connect`, `dumps`, `execute`, `isoformat`, `str`, `now(timezone.utc)`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _store_ticket(unc: str, incident_id: str, severity: str, payload: dict) -> None:
     with sqlite3.connect(str(_TICKET_DB), timeout=30) as con:
         con.execute("INSERT OR REPLACE INTO tickets VALUES (?,?,?,?,?)",
                     (unc, incident_id, severity,
-                     datetime.utcnow().isoformat(), json.dumps(payload)))
+                     datetime.now(timezone.utc).isoformat(), json.dumps(payload)))
         con.commit()
 
 
@@ -605,7 +605,7 @@ def _cache_get(fingerprint: str) -> dict | None:
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
 # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
-# [FYP-CALLS] Calls: `commit`, `connect`, `dumps`, `execute`, `isoformat`, `str`, `utcnow`.
+# [FYP-CALLS] Calls: `commit`, `connect`, `dumps`, `execute`, `isoformat`, `str`, `now(timezone.utc)`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
 def _cache_put(fingerprint: str, incident_id: str, result: dict) -> None:
@@ -614,7 +614,7 @@ def _cache_put(fingerprint: str, incident_id: str, result: dict) -> None:
             con.execute(
                 "INSERT OR REPLACE INTO triage_cache VALUES (?,?,?,?)",
                 (fingerprint, incident_id,
-                 datetime.utcnow().isoformat(), json.dumps(result, default=str)),
+                 datetime.now(timezone.utc).isoformat(), json.dumps(result, default=str)),
             )
             con.commit()
     except Exception:
@@ -1122,19 +1122,45 @@ def _flatten(d: Any, prefix: str = "") -> dict:
 # [FYP-CALLS] Calls: `_flatten`, `get`, `len`, `str`, `strftime`, `strip`, `strptime`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
+def _parse_time_utc(value: Any) -> datetime | None:
+    """[AUDIT T-13] Parse an incident timestamp and CONVERT it to UTC.
+    Offsets are honoured ("+08:00" -> minus 8 h); naive values are treated
+    as UTC (NetWitness emits UTC); epoch seconds / milliseconds (int or
+    digit string) are supported. Returns None when unparseable."""
+    if isinstance(value, bool):
+        return None
+    raw = str(value).strip()
+    if isinstance(value, (int, float)) or re.fullmatch(r"\d{9,13}(?:\.\d+)?", raw):
+        try:
+            num = float(raw)
+            return datetime.fromtimestamp(num / 1000 if num > 1e11 else num, tz=timezone.utc)
+        except (ValueError, OverflowError, OSError):
+            return None
+    text = raw.replace(" ", "T", 1) if "T" not in raw and " " in raw else raw
+    text = re.sub(r"(?i)z$", "+00:00", text)
+    # Python 3.10 fromisoformat only accepts 3- or 6-digit fractions.
+    m = re.match(r"^(.*T\d{2}:\d{2}:\d{2})(\.\d+)?(.*)$", text)
+    if m and m.group(2):
+        frac = (m.group(2)[1:] + "000000")[:6]
+        text = f"{m.group(1)}.{frac}{m.group(3)}"
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _extract_incident_time(incident: dict) -> str:
     flat = _flatten(incident)
     for field in _TIME_FIELDS:
         val = flat.get(field) or incident.get(field)
         if val:
             raw = str(val).strip()
-            for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%SZ",
-                        "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S"):
-                try:
-                    dt = datetime.strptime(raw[:19], fmt[:19])
-                    return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-                except ValueError:
-                    continue
+            dt = _parse_time_utc(val)
+            if dt is not None:
+                return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
             if len(raw) >= 8:
                 return raw
     return "—"
@@ -1692,7 +1718,7 @@ class TriageAgent:
         # DB lookup of its own) -> context.suppression_match. Both optional.
         inc_id    = str(incident.get("id") or incident.get("incidentId") or "unknown")
         inc_title = incident.get("title") or incident.get("name") or "Untitled"
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         inc_time  = _extract_incident_time(incident)
         trace: list[dict] = []
 
@@ -1728,7 +1754,7 @@ class TriageAgent:
                     validated = dump_triage_agent_output(validate_triage_agent_output(cached))
                 except ValidationError as exc:
                     print(
-                        f"[{datetime.utcnow().strftime('%H:%M:%S')}] [TRIAGE] "
+                        f"[{datetime.now(timezone.utc).strftime('%H:%M:%S')}] [TRIAGE] "
                         f"cached result failed current contract validation "
                         f"(incident_id={inc_id!r}, fingerprint={fingerprint[:12]}...); "
                         f"treating as cache miss ({len(exc.errors())} field error(s))",
