@@ -18,6 +18,19 @@
 
 const MAX_HISTORY = 50;
 
+// [AUDIT T-01] Block text is attacker-influenced (incident titles, alert text
+// and AI summaries reach the Triage Ticket / report blocks), so every value
+// interpolated into innerHTML below is escaped. Only .textContent is ever
+// read back, so escaping keeps the saved text byte-for-byte identical.
+function escapeText(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function cloneBlocks(blocks) {
   return JSON.parse(JSON.stringify(blocks || []));
 }
@@ -124,7 +137,7 @@ export function createBlockEditor(initialBlocks) {
           <option value="3">Heading 3</option>
           <option value="4">Heading 4</option>
         </select>
-        <div class="editor-text editor-heading-text" contenteditable="true" data-field="heading-text" data-index="${index}">${block.text || ""}</div>
+        <div class="editor-text editor-heading-text" contenteditable="true" data-field="heading-text" data-index="${index}">${escapeText(block.text)}</div>
       </div>`;
     wrap.querySelector(".editor-heading-level").value = String(block.level || 2);
     return wrap;
@@ -136,7 +149,7 @@ export function createBlockEditor(initialBlocks) {
     wrap.innerHTML = `
       ${blockControls(index)}
       <div class="editor-block-body">
-        <div class="editor-text" contenteditable="true" data-field="paragraph-text" data-index="${index}" data-placeholder="Paragraph text…">${block.text || ""}</div>
+        <div class="editor-text" contenteditable="true" data-field="paragraph-text" data-index="${index}" data-placeholder="Paragraph text…">${escapeText(block.text)}</div>
       </div>`;
     return wrap;
   }
@@ -151,7 +164,7 @@ export function createBlockEditor(initialBlocks) {
         <ul class="editor-list">
           ${items.map((item, itemIndex) => `
             <li class="editor-list-item" style="margin-left:${clampLevel(item.level) * 1.4}rem">
-              <div class="editor-text" contenteditable="true" data-field="list-item-text" data-index="${index}" data-item="${itemIndex}">${item.text || ""}</div>
+              <div class="editor-text" contenteditable="true" data-field="list-item-text" data-index="${index}" data-item="${itemIndex}">${escapeText(item.text)}</div>
               <div class="editor-list-item-controls">
                 <button type="button" class="editor-block-btn" data-outdent="${index}:${itemIndex}" title="Outdent" ${clampLevel(item.level) === 0 ? "disabled" : ""}>&lt;</button>
                 <button type="button" class="editor-block-btn" data-indent="${index}:${itemIndex}" title="Indent" ${clampLevel(item.level) === 2 ? "disabled" : ""}>&gt;</button>
@@ -174,9 +187,9 @@ export function createBlockEditor(initialBlocks) {
       <div class="editor-block-body">
         <div class="table-wrap">
           <table class="editor-table">
-            <thead><tr>${columns.map((col, colIndex) => `<th class="editor-text" contenteditable="true" data-field="table-col" data-index="${index}" data-col="${colIndex}">${col || ""}</th>`).join("")}</tr></thead>
+            <thead><tr>${columns.map((col, colIndex) => `<th class="editor-text" contenteditable="true" data-field="table-col" data-index="${index}" data-col="${colIndex}">${escapeText(col)}</th>`).join("")}</tr></thead>
             <tbody>
-              ${rows.map((row, rowIndex) => `<tr>${columns.map((_, colIndex) => `<td class="editor-text" contenteditable="true" data-field="table-cell" data-index="${index}" data-row="${rowIndex}" data-col="${colIndex}">${(row[colIndex] ?? "")}</td>`).join("")}<td class="editor-table-row-actions"><button type="button" class="editor-block-btn editor-block-btn-danger" data-remove-row="${index}:${rowIndex}" title="Remove row">✕</button></td></tr>`).join("")}
+              ${rows.map((row, rowIndex) => `<tr>${columns.map((_, colIndex) => `<td class="editor-text" contenteditable="true" data-field="table-cell" data-index="${index}" data-row="${rowIndex}" data-col="${colIndex}">${escapeText(row[colIndex])}</td>`).join("")}<td class="editor-table-row-actions"><button type="button" class="editor-block-btn editor-block-btn-danger" data-remove-row="${index}:${rowIndex}" title="Remove row">✕</button></td></tr>`).join("")}
             </tbody>
           </table>
         </div>
@@ -204,7 +217,7 @@ export function createBlockEditor(initialBlocks) {
     if (block.type === "page_break") return renderPageBreak(block, index);
     const wrap = document.createElement("div");
     wrap.className = "editor-block";
-    wrap.innerHTML = `${blockControls(index)}<div class="editor-block-body muted">Unsupported block type: ${block.type}</div>`;
+    wrap.innerHTML = `${blockControls(index)}<div class="editor-block-body muted">Unsupported block type: ${escapeText(block.type)}</div>`;
     return wrap;
   }
 
