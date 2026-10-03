@@ -275,11 +275,17 @@ def _threat_intel_blocks(ti: dict[str, Any]) -> list[dict[str, Any]]:
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def build_ticket_blocks(ticket: dict[str, Any],
-                        threat_intel: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+                        threat_intel: dict[str, Any] | None = None,
+                        triage_review: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """Structured-block twin of soc_triage_agent.format_ticket_display() —
     same fields, same order, same labels — plus the Threat Intelligence
     Enrichment section. The ticket's UNC is not repeated in a body block
-    because it is carried by the document title (see export_report())."""
+    because it is carried by the document title (see export_report()).
+
+    [FYP-TRIAGE-STEP3] When the Triage approval carried a structured
+    analyst review, an "Analyst Verdict" section shows "AI: X -> Analyst: Y"
+    plus the justification and the evidence checked (Step 9: document the
+    verdict AND the evidence trail). Classification (severity) is unchanged."""
     if not ticket:
         return []
     rr = ticket.get("risk_rating") or {}
@@ -314,8 +320,36 @@ def build_ticket_blocks(ticket: dict[str, Any],
     if metakeys:
         blocks += [{"type": "heading", "level": 2, "text": "Matched Meta-Keys"},
                    {"type": "paragraph", "text": _joined(metakeys)}]
+    blocks += _triage_review_blocks(triage_review)
     blocks += _threat_intel_blocks(threat_intel or {})
     return blocks
+
+
+def _triage_review_blocks(block: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """[FYP-TRIAGE-STEP3] "Analyst Verdict" section for the ticket export."""
+    if not isinstance(block, dict) or not block.get("final_disposition"):
+        return []
+    from agents.triage.review import ai_to_analyst_line, disposition_label
+    agrees = block.get("agrees_with_ai")
+    rows = [
+        ["Verdict", _txt(ai_to_analyst_line(block))],
+        ["Final disposition (analyst)", _txt(disposition_label(block.get("final_disposition")))],
+        ["AI disposition", _txt(disposition_label(block.get("ai_disposition")))],
+        ["Agrees with AI", "Unknown" if agrees is None else ("Yes" if agrees else "No")],
+        ["Analyst", _txt(block.get("analyst"))],
+        ["Decided at", _txt(block.get("decided_at"))],
+    ]
+    out: list[dict[str, Any]] = [
+        {"type": "heading", "level": 2, "text": "Analyst Verdict"},
+        {"type": "table", "columns": ["Field", "Value"], "rows": rows},
+    ]
+    if block.get("justification"):
+        out.append({"type": "paragraph", "text": _txt(block.get("justification"))})
+    checked = [str(e) for e in (block.get("evidence_checked") or []) if str(e).strip()]
+    if checked:
+        out += [{"type": "heading", "level": 3, "text": "Evidence Checked"},
+                {"type": "bullet_list", "items": [{"text": _txt(e), "level": 0} for e in checked]}]
+    return out
 
 
 # [FYP-FUNCTION] `_content_signature` — implements the content signature operation used by the surrounding triage workflow.
@@ -350,11 +384,21 @@ def _content_signature(blocks: list[dict[str, Any]]) -> str:
 def ticket_row_state(incident_id: str, run_id: str, *, ticket: dict[str, Any],
                      threat_intel: dict[str, Any] | None,
                      triage_status: str | None = None,
-                     triage_updated_at: str | None = None) -> dict[str, Any]:
+                     triage_updated_at: str | None = None,
+                     triage_review: dict[str, Any] | None = None) -> dict[str, Any]:
     """Merges the agent-generated ticket with any saved analyst edit into the
     single dict the header actions and the editor both read. Never raises —
-    worst case is a "Not generated" row with no blocks."""
-    generated_blocks = build_ticket_blocks(ticket or {}, threat_intel or {})
+    worst case is a "Not generated" row with no blocks.
+
+    [FYP-TRIAGE-STEP3] triage_review=None -> looked up from the review
+    store for this run (the analyst's approved verdict)."""
+    if triage_review is None:
+        try:
+            from workflow import review_store
+            triage_review = review_store.latest_review_block(incident_id, run_id)
+        except Exception:
+            triage_review = None
+    generated_blocks = build_ticket_blocks(ticket or {}, threat_intel or {}, triage_review)
     ticket_set_id = _content_signature(generated_blocks) if generated_blocks else None
 
     edit = wss.get_report_edit(incident_id, run_id, TICKET_REPORT_TYPE)

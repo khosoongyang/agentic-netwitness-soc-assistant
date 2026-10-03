@@ -149,7 +149,8 @@ def main() -> int:
                       f"stages={ctx['stages']} ({time.time() - t0:.1f}s)")
                 res = persisted(case_id)
             contract = {k: v for k, v in res.items()
-                        if k not in ("ai_summary", "ai_thinking", "ai_summary_model", "ai_summary_generated_at")}
+                        if k not in ("ai_summary", "ai_thinking", "ai_summary_model", "ai_summary_generated_at",
+                                 "triage_provenance")}
             check(f"{case_id}: persisted result validates (Step 2 contract)",
                   isinstance(validate_triage_agent_output(contract), TriageAgentSuccessOutput))
             return res

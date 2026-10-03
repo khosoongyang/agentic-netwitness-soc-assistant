@@ -133,7 +133,8 @@ def main() -> int:
                               (CASE_ID,)).fetchone()
         persisted = json.loads(row[1])
         contract = {k: v for k, v in persisted.items()
-                    if k not in ("ai_summary", "ai_thinking", "ai_summary_model", "ai_summary_generated_at")}
+                    if k not in ("ai_summary", "ai_thinking", "ai_summary_model", "ai_summary_generated_at",
+                                 "triage_provenance")}
         out = validate_triage_agent_output(contract)
         check("persisted triage_result_json validates as TriageAgentSuccessOutput",
               isinstance(out, TriageAgentSuccessOutput), f"triage_status={row[0]}")

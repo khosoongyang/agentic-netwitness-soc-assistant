@@ -435,9 +435,111 @@ def db_init() -> None:
                 approved_by              TEXT
             )
         """)
+        _create_triage_review_tables(con)
         con.commit()
     _ensure_workflow_columns()
     _ensure_workflow_approvals_attempt_columns()
+
+
+def _create_triage_review_tables(con) -> None:
+    """[FYP-FUNCTION] [FYP-DATABASE] [FYP-TRIAGE-STEP3] Purely additive
+    schema for the analyst triage review (X1), feedback routing (X3) and
+    the labelled-verdict store (X6). CREATE TABLE IF NOT EXISTS only -- no
+    existing table is altered. Queries live in workflow/review_store.py.
+
+    * triage_reviews -- one row per Triage decision that carried a
+      structured review, inserted in the SAME transaction as its
+      workflow_approvals row (see _atomic_stage_transition's in_tx hook).
+      It IS the labelled-verdict store: label_provenance stays 'analyst'
+      until a blind re-review agrees (feedback-loop circularity: a human
+      verdict is not ground truth until independently re-reviewed).
+    * suppression_proposals -- scoped, EXPIRING proposals that a second
+      human must approve. Nothing ever auto-suppresses or auto-closes.
+    * blind_reviews -- the mentor's blind labels, imported from CSV.
+    * triage_analyst_notes -- analyst notes attached to a Triage re-run;
+      fed to the agent as context.analyst_note (a human-attested fact)."""
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS triage_reviews (
+            id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_id                 TEXT NOT NULL,
+            run_id                      TEXT NOT NULL,
+            triage_attempt              INTEGER NOT NULL DEFAULT 1,
+            approval_attempt            INTEGER,
+            analyst                     TEXT NOT NULL,
+            decision                    TEXT NOT NULL,
+            decided_at                  TEXT NOT NULL,
+            ai_proposed_disposition     TEXT,
+            ai_final_disposition        TEXT,
+            uncertainty                 TEXT,
+            analyst_disposition         TEXT NOT NULL,
+            agrees_with_ai              INTEGER,
+            evidence_checked            TEXT NOT NULL,
+            justification               TEXT NOT NULL,
+            lookalike_considered        TEXT,
+            rule_tuning_note            TEXT,
+            benign_context              TEXT,
+            disagreement_reason         TEXT,
+            suppression_proposal_id     INTEGER,
+            evidence_packet_json        TEXT,
+            evidence_packet_sha256      TEXT,
+            raw_incident_sha256         TEXT,
+            prompt_version              TEXT,
+            model                       TEXT,
+            review_mode                 TEXT NOT NULL DEFAULT 'assisted',
+            analyst_initial_disposition TEXT,
+            revised_after_ai_reveal     INTEGER NOT NULL DEFAULT 0,
+            revision_reason             TEXT,
+            detection_source            TEXT,
+            entity                      TEXT,
+            alert_signature             TEXT,
+            label_provenance            TEXT NOT NULL DEFAULT 'analyst'
+        )
+    """)
+    con.execute("CREATE INDEX IF NOT EXISTS idx_triage_reviews_incident "
+                "ON triage_reviews (incident_id, run_id)")
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS suppression_proposals (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            detection_source  TEXT NOT NULL,
+            entity            TEXT NOT NULL,
+            alert_signature   TEXT,
+            scope_text        TEXT NOT NULL,
+            benign_context    TEXT NOT NULL,
+            proposed_by       TEXT NOT NULL,
+            created_at        TEXT NOT NULL,
+            expires_at        TEXT NOT NULL,
+            status            TEXT NOT NULL DEFAULT 'proposed',
+            decided_by        TEXT,
+            decided_at        TEXT,
+            decision_note     TEXT,
+            source_review_id  INTEGER,
+            incident_id       TEXT,
+            run_id            TEXT
+        )
+    """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS blind_reviews (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            review_id     INTEGER NOT NULL,
+            reviewer      TEXT NOT NULL,
+            disposition   TEXT NOT NULL,
+            evidence_note TEXT,
+            reviewed_at   TEXT NOT NULL,
+            imported_at   TEXT NOT NULL,
+            UNIQUE(review_id, reviewer)
+        )
+    """)
+    con.execute("""
+        CREATE TABLE IF NOT EXISTS triage_analyst_notes (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_id     TEXT NOT NULL,
+            run_id          TEXT NOT NULL,
+            triage_attempt  INTEGER NOT NULL,
+            analyst         TEXT NOT NULL,
+            note            TEXT NOT NULL,
+            created_at      TEXT NOT NULL
+        )
+    """)
 
 
 def _ensure_workflow_columns() -> None:
@@ -981,7 +1083,8 @@ _APPROVAL_STAGE_ATTEMPT_COLUMN = {
 def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
                              sets: dict, approval_stage: str, decision: str,
                              analyst: str, comments: str = "",
-                             metadata: dict | None = None) -> dict:
+                             metadata: dict | None = None,
+                             in_tx=None) -> dict:
     """[FYP-FUNCTION] Atomic Approve/Reject Compare-and-Swap Engine
     [FYP-APPROVAL] [FYP-DECISION] [FYP-STATE] [FYP-EVALUATOR]
     This IS the exact approval-state-transition function every gate is built
@@ -1082,12 +1185,28 @@ def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
         except sqlite3.IntegrityError as exc:
             raise ApprovalConflictError(
                 f"{approval_stage} was already decided for run {run_id!r}") from exc
-        return {"incident_id": str(incident_id), "run_id": run_id, "decided_at": now}
+        result = {"incident_id": str(incident_id), "run_id": run_id, "decided_at": now}
+        # [FYP-TRIAGE-STEP3] `in_tx` (optional, additive): a callable
+        # in_tx(con, ctx) run INSIDE this same BEGIN IMMEDIATE transaction,
+        # after the CAS check passed and the workflow_approvals row was
+        # inserted. Used only by the Triage gate to insert the structured
+        # triage_reviews row, so a decision with a review is all-or-nothing:
+        # if in_tx raises, the status change AND the approval row roll back;
+        # if the CAS fails, in_tx never runs. Every existing caller passes
+        # nothing and gets exactly the previous behaviour.
+        if in_tx is not None:
+            extra = in_tx(con, {"row": dict(row), "decided_at": now,
+                                "stage_attempt": stage_attempt,
+                                "approval_attempt": approval_attempt,
+                                "decision": decision, "analyst": analyst})
+            if isinstance(extra, dict):
+                result.update(extra)
+        return result
     return _tx(_do)
 
 
 def approve_triage(incident_id: str, run_id: str, *, approved_by: str,
-                   comments: str = "") -> dict:
+                   comments: str = "", in_tx=None) -> dict:
     """[FYP-FUNCTION] Approve Triage (Gate 1 of 3)
     [FYP-APPROVAL] [FYP-STAGE-LOCK] [FYP-DECISION] [FYP-EVALUATOR]
     Params: incident_id, run_id (str), approved_by (str, the analyst
@@ -1128,11 +1247,11 @@ def approve_triage(incident_id: str, run_id: str, *, approved_by: str,
         sets={"triage_status": "Approved", "threat_intel_status": "Pending",
              "workflow_status": "Awaiting Action", "approval_stage": None},
         approval_stage="triage", decision="approved",
-        analyst=approved_by, comments=comments)
+        analyst=approved_by, comments=comments, in_tx=in_tx)
 
 
 def reject_triage(incident_id: str, run_id: str, *, rejected_by: str,
-                  reason: str) -> dict:
+                  reason: str, in_tx=None) -> dict:
     """[FYP-FUNCTION] Reject Triage (Gate 1 of 3)
     [FYP-APPROVAL] [FYP-STAGE-LOCK] [FYP-DECISION] [FYP-EVALUATOR]
     Params: incident_id, run_id (str), rejected_by (str, analyst), reason
@@ -1156,7 +1275,7 @@ def reject_triage(incident_id: str, run_id: str, *, rejected_by: str,
         sets={"triage_status": "Rejected", "threat_intel_status": "Blocked",
              "workflow_status": "Rejected", "approval_stage": None},
         approval_stage="triage", decision="rejected",
-        analyst=rejected_by, comments=reason)
+        analyst=rejected_by, comments=reason, in_tx=in_tx)
 
 
 def approve_investigation(incident_id: str, run_id: str, *, approved_by: str,

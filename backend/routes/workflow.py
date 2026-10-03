@@ -38,7 +38,15 @@ def start_stage(case_id: str, stage: str):
 
 @workflow_blueprint.post("/cases/<case_id>/stages/<stage>/reruns")
 def rerun_stage(case_id: str, stage: str):
-    result = _command(commands.rerun_stage, case_id, stage)
+    # [FYP-TRIAGE-STEP3] optional analyst_note (+ analyst) for "re-triage
+    # with this note"; absent -> exactly the previous call.
+    body = _json_body()
+    note = str(body.get("analyst_note") or "").strip()
+    if note:
+        result = _command(commands.rerun_stage, case_id, stage, analyst_note=note,
+                          analyst=str(body.get("analyst") or "").strip())
+    else:
+        result = _command(commands.rerun_stage, case_id, stage)
     return jsonify(result), 202
 
 
@@ -53,6 +61,10 @@ def decide_approval(case_id: str, stage: str):
     decision = str(body.get("decision") or "").strip().lower()
     analyst = str(body.get("analyst") or "").strip()
     comments = str(body.get("comments") or "")
+    # [FYP-TRIAGE-STEP3] optional structured review (Triage only). Absent ->
+    # the original {decision, analyst, comments} contract, unchanged.
+    review = body.get("review")
+    extra = {"review": review} if review is not None else {}
     if decision == "approve":
         result = _command(
             commands.approve_stage,
@@ -60,6 +72,7 @@ def decide_approval(case_id: str, stage: str):
             stage,
             analyst=analyst,
             comments=comments,
+            **extra,
         )
     elif decision == "reject":
         result = _command(
@@ -68,6 +81,7 @@ def decide_approval(case_id: str, stage: str):
             stage,
             analyst=analyst,
             comments=comments,
+            **extra,
         )
     else:
         raise APIError(

@@ -302,9 +302,28 @@ def rerun_stage(
     stage: str,
     *,
     executor: Callable[..., Any] | None = None,
+    analyst_note: str | None = None,
+    analyst: str | None = None,
 ) -> dict[str, Any]:
-    """Re-run a stage using the legacy UI's exact canonical path."""
+    """Re-run a stage using the legacy UI's exact canonical path.
+
+    [FYP-TRIAGE-STEP3] Triage only: an optional ``analyst_note`` (with the
+    analyst's name) is stored against the NEW triage attempt and handed to
+    TriageAgent as context.analyst_note -- "re-triage with this note"."""
     stage = normalise_stage(stage)
+    note = str(analyst_note or "").strip()
+    if note and stage != "triage":
+        raise WorkflowCommandError(
+            "INVALID_REQUEST", "analyst_note is only supported when re-running Triage.", 400)
+    if note and not str(analyst or "").strip():
+        raise WorkflowCommandError(
+            "INVALID_REQUEST", "analyst is required with an analyst_note.", 400)
+    if note:
+        from workflow.review_store import ANALYST_NOTE_MAX_CHARS
+        if len(note) > ANALYST_NOTE_MAX_CHARS:
+            raise WorkflowCommandError(
+                "INVALID_REQUEST",
+                f"analyst_note is limited to {ANALYST_NOTE_MAX_CHARS} characters.", 400)
     if stage == "parsing":
         return _launch_fresh(
             str(case_id), stage, allow_retry=True, executor=executor
@@ -317,14 +336,61 @@ def rerun_stage(
         result = wss.rerun_stage(str(case_id), run_id, stage)
     except wss.ApprovalConflictError as exc:
         raise _canonical_conflict(exc, default_code="STAGE_LOCKED") from exc
-    _spawn_background(run_id, stage, executor or _stage_chain, (str(case_id), run_id))
     updated = _state_or_error(case_id)
-    return {
+    stored_note = None
+    if note:
+        # Stored after the rerun transition (so it is keyed to the NEW
+        # triage_attempt) and before the worker starts (so the worker sees it).
+        from workflow import review_store
+        stored_note = review_store.add_analyst_note(
+            str(case_id), run_id, triage_attempt=int(updated.get("triage_attempt") or 1),
+            analyst=str(analyst).strip(), note=note)
+    _spawn_background(run_id, stage, executor or _stage_chain, (str(case_id), run_id))
+    out = {
         **result,
         "case_id": str(case_id),
         "status": "running",
         "attempt": int(updated.get(f"{stage}_attempt") or 1),
     }
+    if stored_note is not None:
+        out["analyst_note"] = stored_note
+    return out
+
+
+def _triage_review_inserter(case_id: str, state: dict[str, Any], review: Any):
+    """[FYP-TRIAGE-STEP3] Validate the optional structured review against the
+    PERSISTED triage result and build the same-transaction insert hook. The
+    AI disposition comes from the server's own triage_result_json."""
+    if review is None:
+        return None
+    from pydantic import ValidationError
+    from agents.triage.review import validate_review
+    from workflow import review_store
+    try:
+        triage_result = json.loads(state.get("triage_result_json") or "{}")
+    except (TypeError, ValueError):
+        triage_result = {}
+    ai_final = ((triage_result.get("assessment") or {}).get("disposition")
+                if isinstance(triage_result, dict) else None)
+    try:
+        validated = validate_review(review, ai_final_disposition=ai_final)
+    except ValidationError as exc:
+        messages = []
+        for err in exc.errors():
+            loc = ".".join(str(p) for p in err.get("loc") or ()) or "review"
+            messages.append(f"{loc}: {err.get('msg')}")
+        raise WorkflowCommandError("INVALID_REVIEW", "; ".join(messages)[:1500], 400) from exc
+    except ValueError as exc:
+        raise WorkflowCommandError("INVALID_REVIEW", str(exc)[:1500], 400) from exc
+    raw_path = state.get("raw_incident_path")
+    try:
+        from workflow.engine import _resolve_trusted_path
+        resolved = _resolve_trusted_path(raw_path)
+    except Exception:
+        resolved = None
+    return review_store.build_review_inserter(
+        validated, triage_result=triage_result,
+        raw_incident_path=str(resolved) if resolved else None)
 
 
 def approve_stage(
@@ -333,6 +399,7 @@ def approve_stage(
     *,
     analyst: str,
     comments: str = "",
+    review: Any = None,
 ) -> dict[str, Any]:
     """Approve an existing gate without automatically starting its successor."""
     stage = normalise_stage(stage)
@@ -342,6 +409,9 @@ def approve_stage(
         )
     if not str(analyst or "").strip():
         raise WorkflowCommandError("INVALID_REQUEST", "analyst is required.", 400)
+    if review is not None and stage != "triage":
+        raise WorkflowCommandError(
+            "INVALID_REQUEST", "A structured review is only supported for Triage.", 400)
     state = _state_or_error(case_id)
     run_id = _current_run(state)
     prior_decisions = [
@@ -356,10 +426,12 @@ def approve_stage(
         raise WorkflowCommandError(
             "DUPLICATE_APPROVAL", f"{stage} was already decided for this workflow run."
         )
+    in_tx = _triage_review_inserter(str(case_id), state, review) if stage == "triage" else None
     try:
         if stage == "triage":
             result = wss.approve_triage(
-                str(case_id), run_id, approved_by=analyst.strip(), comments=comments
+                str(case_id), run_id, approved_by=analyst.strip(), comments=comments,
+                in_tx=in_tx,
             )
         elif stage == "investigation":
             result = wss.approve_investigation(
@@ -384,6 +456,8 @@ def approve_stage(
     except Exception as exc:
         if exc.__class__.__name__ == "ReportValidationError":
             raise WorkflowCommandError("APPROVAL_CONFLICT", str(exc)) from exc
+        if exc.__class__.__name__ in ("SuppressionError", "ReviewStoreError"):
+            raise WorkflowCommandError(exc.code, exc.message, exc.status_code) from exc
         raise
     return {**result, "case_id": str(case_id), "stage": stage, "decision": "approve"}
 
@@ -394,6 +468,7 @@ def reject_stage(
     *,
     analyst: str,
     comments: str,
+    review: Any = None,
 ) -> dict[str, Any]:
     """Reject an existing gate through the stage's atomic transition."""
     stage = normalise_stage(stage)
@@ -409,12 +484,16 @@ def reject_stage(
         raise WorkflowCommandError(
             "REJECTION_REASON_REQUIRED", "A rejection reason is required.", 400
         )
+    if review is not None and stage != "triage":
+        raise WorkflowCommandError(
+            "INVALID_REQUEST", "A structured review is only supported for Triage.", 400)
     state = _state_or_error(case_id)
     run_id = _current_run(state)
+    in_tx = _triage_review_inserter(str(case_id), state, review) if stage == "triage" else None
     try:
         if stage == "triage":
             result = wss.reject_triage(
-                str(case_id), run_id, rejected_by=analyst, reason=reason
+                str(case_id), run_id, rejected_by=analyst, reason=reason, in_tx=in_tx
             )
         elif stage == "investigation":
             result = wss.reject_investigation(
@@ -434,6 +513,10 @@ def reject_stage(
                 "DUPLICATE_APPROVAL", f"{stage} was already decided for this workflow run."
             ) from exc
         raise _canonical_conflict(exc, default_code="APPROVAL_CONFLICT") from exc
+    except Exception as exc:
+        if exc.__class__.__name__ in ("SuppressionError", "ReviewStoreError"):
+            raise WorkflowCommandError(exc.code, exc.message, exc.status_code) from exc
+        raise
     return {**result, "case_id": str(case_id), "stage": stage, "decision": "reject"}
 
 

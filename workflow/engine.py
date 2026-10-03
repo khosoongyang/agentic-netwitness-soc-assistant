@@ -944,7 +944,9 @@ class LeaseRenewer:
 def run_triage(incident: dict, progress_fn=None,
                parsed_context: dict | None = None,
                force: bool = False,
-               data_availability: dict | None = None) -> dict:
+               data_availability: dict | None = None,
+               analyst_note: dict | None = None,
+               suppressions: list[dict] | None = None) -> dict:
     """
     [FYP-FUNCTION] Triage Stage Runner (in-process, LLM-backed)
 
@@ -991,8 +993,70 @@ def run_triage(incident: dict, progress_fn=None,
     from agents.triage import OpenAILLMConfig, TriageAgent
     agent = TriageAgent(cfg=OpenAILLMConfig(), progress_fn=progress_fn,
                         baseline_db_path=wss.DB_FILE)
-    return agent.triage(incident, force=force, parsed_context=parsed_context,
-                        data_availability=data_availability)
+    # [FYP-TRIAGE-STEP3] analyst_note / suppressions are only passed when
+    # present, so every existing stub of TriageAgent.triage() keeps working.
+    extra: dict = {}
+    if analyst_note:
+        extra["analyst_note"] = analyst_note
+    if suppressions:
+        extra["suppressions"] = suppressions
+    result = agent.triage(incident, force=force, parsed_context=parsed_context,
+                          data_availability=data_availability, **extra)
+    _stamp_triage_provenance(result, model=getattr(getattr(agent, "cfg", None), "model", None))
+    return result
+
+
+def _stamp_triage_provenance(result: dict, *, model: str | None) -> None:
+    """[FYP-TRIAGE-STEP3] Persisted-only provenance (prompt version + model)
+    for the triage_reviews row, kept OUTSIDE the agent contract exactly like
+    generate_triage_ai_summary()'s ai_summary* keys (stripped before any
+    contract validation; see scripts/acceptance_triage_step*.py)."""
+    if not isinstance(result, dict) or result.get("error") or not isinstance(result.get("ticket"), dict):
+        return
+    try:
+        from agents.triage.soc_triage_agent import TRIAGE_PROMPT_VERSION
+    except Exception:
+        TRIAGE_PROMPT_VERSION = None
+    result["triage_provenance"] = {"prompt_version": TRIAGE_PROMPT_VERSION, "model": model}
+
+
+def _triage_context_inputs(incident_id: str, run_id: str) -> tuple[dict | None, list[dict]]:
+    """[FYP-TRIAGE-STEP3] (analyst_note for the CURRENT triage attempt,
+    active suppressions) for a durable triage run. Never raises: a lookup
+    failure means "no note / no suppression" (missing, never assumed)."""
+    note, supps = None, []
+    try:
+        from workflow import review_store
+        state = wss.get_state(incident_id) or {}
+        attempt = int(state.get("triage_attempt") or 1)
+        row = review_store.analyst_note_for_attempt(incident_id, run_id, attempt)
+        if row:
+            note = {"note": row["note"], "analyst": row["analyst"],
+                    "created_at": row["created_at"]}
+        supps = review_store.active_suppressions()
+    except Exception as exc:
+        _log("TRIAGE", f"analyst note / suppression lookup failed (non-fatal): {exc}")
+    return note, supps
+
+
+def _attach_triage_review(triage_result: dict, incident_id: str | None,
+                          run_id: str | None) -> dict:
+    """[FYP-TRIAGE-STEP3] Returns a SHALLOW COPY of triage_result carrying
+    the additive `triage_review` block (the analyst's verdict -- canonical
+    downstream) when the current run's Triage approval had a structured
+    review. ticket.classification (severity) is untouched."""
+    if not incident_id or not run_id or not isinstance(triage_result, dict):
+        return triage_result
+    try:
+        from workflow import review_store
+        block = review_store.latest_review_block(str(incident_id), run_id)
+    except Exception:
+        block = None
+    if not block:
+        return triage_result
+    out = dict(triage_result)
+    out["triage_review"] = block
+    return out
 
 
 def run_parsing(incident: dict, run_id: str) -> dict:
@@ -1714,6 +1778,13 @@ def build_investigation_alert(triage_result: dict, incident: dict,
         },
         **({"alerts": sub_alerts} if sub_alerts else {}),
         **({"triage_deep_dive": supplement} if supplement else {}),
+        # [FYP-TRIAGE-STEP3] Additive: the analyst's reviewed verdict is the
+        # canonical disposition downstream (final_disposition = analyst's;
+        # ai_disposition kept for traceability). Absent when the Triage
+        # approval carried no structured review. ticket.classification
+        # (severity) above is unchanged: severity != disposition.
+        **({"triage_review": triage_result["triage_review"]}
+           if isinstance(triage_result.get("triage_review"), dict) else {}),
         **({
             # Phase 5B: additive compact projection, rendered ahead of the
             # generic narrative by ingest_pipeline.serialize_json_to_narrative()
@@ -2550,6 +2621,10 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
         "ticket": ticket,
         "created_at": ticket.get("created_at"),
     }
+    # [FYP-TRIAGE-STEP3] additive analyst-verdict block (see
+    # build_investigation_alert); omitted when no structured review exists.
+    if isinstance(triage_result.get("triage_review"), dict):
+        triage_doc["triage_review"] = triage_result["triage_review"]
     _write_json(outputs / "triage_result.json", triage_doc)
 
     _ctx = _harvest_incident_context(incident)
@@ -3404,9 +3479,14 @@ def run_triage_stage(incident_id: str, run_id: str) -> dict:
         data_availability = load_data_availability_for_run(incident_id, run_id)
 
         _log("TRIAGE", f"running triage for incident {inc_id}")
+        # [FYP-TRIAGE-STEP3] analyst note for THIS triage attempt (from
+        # "Reject and re-triage with this note") + active suppressions.
+        analyst_note, suppressions = _triage_context_inputs(incident_id, run_id)
         try:
             triage_result = run_triage(incident, parsed_context=parsed_context, force=True,
-                                       data_availability=data_availability)
+                                       data_availability=data_availability,
+                                       analyst_note=analyst_note,
+                                       suppressions=suppressions)
         except Exception as exc:
             triage_result = {"error": str(exc)[:500]}
 
@@ -3740,6 +3820,8 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
         state = wss.get_state(incident_id)
         triage_result  = json.loads(state.get("triage_result_json") or "{}")
         ti_result      = json.loads(state.get("threat_intel_result_json") or "{}")
+        # [FYP-TRIAGE-STEP3] the analyst's reviewed verdict travels downstream.
+        triage_result  = _attach_triage_review(triage_result, incident_id, run_id)
         incident       = load_raw_incident_for_run(incident_id, run_id) or {}
         parsing_result = load_parsing_result_for_run(incident_id, run_id) or {}
         ticket = triage_result.get("ticket") or {}
@@ -3949,6 +4031,8 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
 
         state = wss.get_state(incident_id)
         triage_result = json.loads(state.get("triage_result_json") or "{}")
+        # [FYP-TRIAGE-STEP3] the analyst's reviewed verdict travels downstream.
+        triage_result = _attach_triage_review(triage_result, incident_id, run_id)
         investigation_result = json.loads(state.get("investigation_result_json") or "{}")
         threat_intel_result = json.loads(state.get("threat_intel_result_json") or "{}")
         incident = load_raw_incident_for_run(incident_id, run_id) or {}
