@@ -97,10 +97,9 @@ function stageCards(stages) {
 // produce a verdict/evidence to distil — Parsing is pure normalisation and
 // Reporting consumes prior findings rather than discovering new ones, so
 // neither gets a card at all (see renderWorkflow()'s hideKeyFindings check).
-// Triage is excluded too: its Overview tab already presents the same
-// classification/IOC/risk evidence, so the sidebar only duplicated it and
-// the stage now takes the full width (.workspace-grid.stage-only).
-const KEY_FINDINGS_STAGES = new Set(["threat_intel", "investigation"]);
+// Triage and Investigation present their findings within their Overview tab,
+// so their stages take the full width (.workspace-grid.stage-only).
+const KEY_FINDINGS_STAGES = new Set(["threat_intel"]);
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -113,22 +112,51 @@ function escapeRegExp(value) {
 // detects a general SHAPE (IP, hash, path, port, …), never a specific
 // hardcoded example value.
 const EVIDENCE_PATTERNS = [
+  // Full URLs
   /https?:\/\/[^\s"'<>)]+/g,
-  /[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]+/g,
+  
+  // Full ISO timestamps with timezone offset (+/-HH:MM or Z)
+  /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b/gi,
+
+  // Full command invocations with arguments/flags/quoted paths:
+  // e.g., cmd.exe /c "C:\...", powershell.exe -ExecutionPolicy Bypass, sc.exe start wuauserv,
+  //       Upfc.exe /launchtype periodic /cv ..., sihclient.exe /cv ...
+  /\b[\w-]+\.(?:exe|bat|ps1|cmd|sh)\b(?:\s+(?:(?:"[^"\\]*(?:\\.[^"\\]*)*")|(?:'[^'\\]*(?:\\.[^'\\]*)*')|(?:[-/][\w.:/-]+(?:\s+(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|[A-Za-z]:\\[^\s,;"]+|HK[A-Z0-9_\\]+|(?!on\b|in\b|with\b|by\b|and\b|to\b|for\b|at\b|from\b|of\b|the\b|a\b|an\b|was\b|is\b|were\b|activity\b)[\w.-]+))?)|(?:ADD|DELETE|QUERY|CREATE|STOP|START|CONFIG|install-manifest|uninstall-manifest|runasservice|periodic)\b(?:\s+(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|HK[A-Z0-9_\\]+|[A-Za-z]:\\[^\s,;"]+|(?!on\b|in\b|with\b|by\b|and\b|to\b|for\b|at\b|from\b|of\b|the\b|a\b|an\b|was\b|is\b|were\b|activity\b)[\w.-]+))*))+/gi,
+
+  // Standalone command arguments / switches with values (e.g. -ExecutionPolicy Bypass, /v EnableLUA, /t REG_DWORD, /d 0, /f, /c "...")
+  /(?:^|(?<=\s))(?:[-/][a-zA-Z0-9_:-]+(?:\s+(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|[A-Za-z]:\\[^\s,;"]+|HK[A-Z0-9_\\]+|(?!on\b|in\b|with\b|by\b|and\b|to\b|for\b|at\b|from\b|of\b|the\b|a\b|an\b|was\b|is\b|were\b|activity\b)[\w.-]+))?)(?=\s|[.,;:]|$)/g,
+
+  // Windows absolute paths (quoted or unquoted)
+  /(?:"[A-Za-z]:\\[^"]*"|'[A-Za-z]:\\[^']*'|[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n\s]+\\)*[^\\/:*?"<>|\r\n\s]+)/g,
+  
+  // Registry keys
+  /\bHK(?:EY_LOCAL_MACHINE|EY_CURRENT_USER|LM|CU|CR|U|CC)\\[^\s,;"]+/gi,
+  
+  // Hashes (SHA-256, SHA-1, MD5)
   /\b[a-fA-F0-9]{64}\b/g,
   /\b[a-fA-F0-9]{40}\b/g,
   /\b[a-fA-F0-9]{32}\b/g,
+  
+  // IPv6
   /\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g,
-  /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
-  /(?<=:)\d{2,5}\b/g,
-  /\bport\s+\d{1,5}\b/gi,
+  
+  // IPv4 with optional CIDR subnet or port
+  /\b(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2}|:\d{1,5})?\b/g,
+
+  // Standalone Executables / scripts / binaries
   /\b[\w-]+\.(?:exe|dll|ps1|psm1|bat|cmd|sh|py|js|vbs|hta|scr|msi|jar)\b/gi,
-  // Trailing lookahead: never chip a truncated domain ("starhub.net" out of "starhub.net.sg").
+  
+  // Domains
   /\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|ru|cn|info|biz|xyz|top|club|online|site|dev|co|uk|de|fr|gov|edu|int|mil|app|cloud)\b(?!\.?[\w-])/gi,
+  
+  // Unix paths
   /(?:\/[\w.-]+){2,}/g,
+  
+  // Event IDs / Process IDs
   /\b(?:Event ID|EventID|Process ID|Parent Process ID|PID|PPID)\s*[:#]?\s*\d+\b/gi,
-  /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g,
-  /\bHK(?:EY_LOCAL_MACHINE|EY_CURRENT_USER|LM|CU|CR|U|CC)\\[^\s,;]+/gi,
+  
+  // Explicit port
+  /\bport\s+\d{1,5}\b/gi,
 ];
 
 // Highlights evidence values inside `text` as compact chips so an analyst
@@ -208,14 +236,9 @@ function findingMeta(item) {
   return parts.length ? `<div class="finding-meta">${parts.join("")}</div>` : "";
 }
 
-function findings(workspace, stage) {
-  if (!stage || !KEY_FINDINGS_STAGES.has(stage.key)) return "";
-  // While the stage is running, key_findings_by_stage can still hold the
-  // previous run's findings (a re-run leaves the old result persisted until
-  // the new one lands), so it is ignored until the stage leaves Processing.
-  const items = stage.state === "in_progress" ? [] : (workspace?.overview?.key_findings_by_stage?.[stage.key] || []);
-  if (!items.length) return emptyState("No key findings have been distilled for this stage yet.");
-  return `<ul class="data-list findings-list">${items.slice(0, 5).map((item) => {
+function findingsList(items) {
+  if (!items || !items.length) return "";
+  return `<ul class="data-list findings-list">${items.map((item) => {
     const categoryLabel = FINDING_CATEGORY_LABELS[item.category] || "";
     return `<li class="finding-item">
       <div>
@@ -227,6 +250,16 @@ function findings(workspace, stage) {
       ${item.confidence ? `<span>${escapeHTML(item.confidence)}</span>` : ""}
     </li>`;
   }).join("")}</ul>`;
+}
+
+function findings(workspace, stage) {
+  if (!stage) return "";
+  // While the stage is running, key_findings_by_stage can still hold the
+  // previous run's findings (a re-run leaves the old result persisted until
+  // the new one lands), so it is ignored until the stage leaves Processing.
+  const items = stage.state === "in_progress" ? [] : (workspace?.overview?.key_findings_by_stage?.[stage.key] || []);
+  if (!items.length) return emptyState("No key findings have been distilled for this stage yet.");
+  return findingsList(items.slice(0, 5));
 }
 
 // One action bar for every stage (see ../stageContinue.js for the labels and
@@ -1558,8 +1591,17 @@ export function investigationAssessment(result) {
 
 export function investigationOverviewTab(workspace) {
   const ctx = workspace?.overview?.case_context || {};
+  const stageFindings = workspace?.overview?.key_findings_by_stage?.investigation || [];
   const assessment = investigationAssessment(workspace?.output?.investigation_result);
-  if (!Object.keys(ctx).length) return assessment || emptyState("No case overview is available yet.");
+
+  const findingsSection = stageFindings.length ? `
+    <section class="panel" style="margin-top:.75rem">
+      <h3>Key Findings</h3>
+      ${findingsList(stageFindings)}
+    </section>
+  ` : "";
+
+  if (!Object.keys(ctx).length && !findingsSection) return assessment || emptyState("No case overview is available yet.");
   const rows = [
     provenanceRow("NetWitness Severity", ctx.netwitness_severity),
     provenanceRow("Triage Classification", ctx.triage_classification),
@@ -1577,6 +1619,7 @@ export function investigationOverviewTab(workspace) {
   return `<div class="stage-sections">
     ${assessment}
     ${verdict ? `<div class="verdict-section" aria-label="Case-level assessment">${verdict}</div>` : ""}
+    ${findingsSection}
     <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>
   </div>`;
 }
@@ -1670,13 +1713,32 @@ function investigationTimelineTab(workspace) {
     info: "state-locked",
   };
   const rows = items.map((it) => {
-    const time = it.timestamp || "—";
-    const eventText = it.description || it.observed_evidence || it.event || "";
+    const time = it.timestamp ? formatDate(it.timestamp) : "—";
+    const originId = it.event_origin || it.incident_id || "—";
+    const headline = it.event || it.phase || "Security Event";
+    const narrative = it.description || it.observed_evidence || "";
+    const showNarrative = narrative && narrative.trim() !== headline.trim();
+
+    const eventContent = `
+      <div class="timeline-event-body">
+        <strong class="timeline-event-title">${escapeHTML(headline)}</strong>
+        ${showNarrative ? `<p class="timeline-event-narrative">${highlightEvidence(narrative, it.evidence ? { ev: it.evidence } : {})}</p>` : ""}
+      </div>
+    `;
     const typeLabel = it.tactic || it.event_type || "security";
-    const sourceLabel = it.technique_id ? `${it.technique_id}${it.technique_name ? ` (${it.technique_name})` : ""}` : (it.source_stage || "investigation");
-    return `<tr><td class="mono">${escapeHTML(time)}</td><td>${escapeHTML(eventText)}</td><td>${badge(typeLabel, typeTone[typeLabel] || "state-in_progress")}</td><td class="mono">${escapeHTML(sourceLabel)}</td></tr>`;
+    const mitreLabel = it.technique_id
+      ? `<span class="mono">${escapeHTML(it.technique_id)}</span>${it.technique_name ? `<br><small class="muted">${escapeHTML(it.technique_name)}</small>` : ""}`
+      : "—";
+
+    return `<tr>
+      <td class="mono" style="white-space:nowrap">${escapeHTML(time)}</td>
+      <td>${eventContent}</td>
+      <td>${badge(typeLabel, typeTone[typeLabel] || "state-in_progress")}</td>
+      <td>${mitreLabel}</td>
+      <td><span class="origin-tag mono">${escapeHTML(originId)}</span></td>
+    </tr>`;
   }).join("");
-  return `<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Timestamp</th><th>Event</th><th>Type</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="case-context-table timeline-table"><thead><tr><th style="min-width:140px">Timestamp</th><th>Event</th><th style="min-width:120px">Type</th><th style="min-width:160px">MITRE ID</th><th style="min-width:110px">Event Origin</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function investigationMitreTab(workspace) {
@@ -2041,7 +2103,6 @@ const _INVESTIGATION_SUBTABS = [
   ["overview", "Overview", investigationOverviewTab],
   ["output", "Output", investigationOutputTab],
   ["timeline", "Timeline", investigationTimelineTab],
-  ["mitre", "MITRE ATT&CK", investigationMitreTab],
   ["entity_graph", "Entity Graph", investigationEntityGraphTab, mountEntityGraph],
 ];
 

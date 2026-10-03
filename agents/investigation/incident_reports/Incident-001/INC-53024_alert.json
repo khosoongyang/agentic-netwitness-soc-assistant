@@ -5,17 +5,17 @@
     "severity": "MEDIUM",
     "triage_risk_rating": {
       "likelihood_initiation": "Medium",
-      "likelihood_occurrence": "Medium",
-      "likelihood_adverse_impact": "Medium",
+      "likelihood_occurrence": "Low",
+      "likelihood_adverse_impact": "Low",
       "overall_risk": "Medium",
-      "rationale": "The NetWitness alert is high severity with a risk score of 70 and internal IP-to-IP activity flagged as high risk, but there is no PowerShell evidence, no process/file/email context, and no demonstrated impact, so each dimension is best rated as Medium."
+      "rationale": "Initiation is Medium because the NetWitness high-risk alert and internal IP-to-IP communication indicate suspicious network activity, but no PowerShell, endpoint, file, or email evidence shows an active threat mechanism; occurrence is Low because this is a single observed event with no corroborating volume or repeated detections; adverse impact is Low because the alert contains only internal network indicators with no signs of exfiltration, credential theft, or file transfer, so the highest dimension is Medium overall."
     },
     "source_risk_score": 70
   },
   "incident_details": {
     "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
     "timestamp": "2025-12-01T08:59:00+00:00",
-    "description": "NetWitness generated a high-risk network alert involving internal IP communication between 192.168.10.204 and 192.168.10.202, but no endpoint, process, or PowerShell evidence is available to confirm malicious execution. The parser also notes missing network context fields (destination port and protocol), reducing confidence and supporting a suspicious-but-unconfirmed assessment.",
+    "description": "The alert shows internal network activity from 192.168.10.204 to 192.168.10.202 with no supporting evidence of PowerShell abuse, file activity, credential theft, or exfiltration. Given the incomplete network context and moderate risk score, this is suspicious but not yet indicative of active compromise.",
     "mitre_att&ck": {
       "tactic": "Lateral Movement"
     }
