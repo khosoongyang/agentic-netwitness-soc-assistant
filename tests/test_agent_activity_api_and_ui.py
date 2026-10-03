@@ -159,11 +159,13 @@ def test_workspace_replaces_the_hardcoded_provider_message_for_threat_intel():
     assert "Querying VirusTotal · AbuseIPDB · AlienVault OTX…" not in WORKSPACE
     assert ('mountStageActivity(root.querySelector("#threat-intel-agent-activity"), caseId, stage, '
             'workflow, { live: true })') in WORKSPACE
-    completed = WORKSPACE.index('<section id="threat-intel-agent-activity"></section>\n      <div class="stage-sections">')
+    completed = WORKSPACE.index('<section id="threat-intel-agent-activity"></section>\n      <div class="stage-sections ti-stage">')
     assert completed < WORKSPACE.index("${tiAssessment(result, block)}")
-    for kept in ("tiSummaryCard(result, workflow)", "tiIOCsCard(iocs)", "tiProviderResults(block)",
-                 "tiNotesCard(result)"):
-        assert kept in WORKSPACE
+    # IOC-centric completed view (IOC-coverage phase), still below the panel.
+    for kept in ("overview", "tiSkippedExcluded(block)", "tiIntelligenceGaps(result, block)",
+                 "tiProviderResults(block, { open: legacy })"):
+        assert f"${{{kept}}}" in WORKSPACE[completed:], kept
+    assert "tiIndicatorOverview(block)}</section>" in WORKSPACE[:completed]
     # No provider names are scripted into the generic renderer.
     for provider in ("VirusTotal", "AbuseIPDB", "OTX"):
         assert provider not in COMPONENT

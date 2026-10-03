@@ -52,7 +52,7 @@ _PROVIDERS = {
     "query_virustotal_domain": ("VirusTotal", "domain"),
     "query_abuseipdb": ("AbuseIPDB", "IP address"),
 }
-_OTX_KINDS = {"file": "file hash", "IPv4": "IP address", "domain": "domain"}
+_OTX_KINDS = {"file": "file hash", "IPv4": "IP address", "IPv6": "IP address", "domain": "domain"}
 
 
 def _scope() -> context.RunScope | None:
@@ -275,11 +275,28 @@ def _flat_alert_after(call: dict, token: Any, result: Any) -> None:
 
 # ── IOC extraction (rule-based, runs inside the TI engine) ─────────────────
 
+def _selection_after(call: dict, token: Any, result: Any) -> None:
+    """Keep the engine's own indicator selection (eligible / excluded /
+    limit-skipped, with reasons) for the extraction event below — the
+    adapter records it, it never re-derives it."""
+    scope = _scope()
+    if scope is not None and isinstance(result, dict):
+        scope.data["selection"] = result
+
+
+def _candidate_line(candidate: dict) -> str:
+    kind = _str(candidate.get("type"))
+    value = _hash_label(candidate.get("value")) if kind == "hash" else _str(candidate.get("value"))
+    reason = _str(candidate.get("exclusion_reason") or candidate.get("skip_reason"))
+    return f"{value} — {reason}" if reason else value
+
+
 def _iocs_after(call: dict, token: Any, result: Any) -> None:
     scope = _scope()
     if scope is None or not isinstance(result, dict):
         return
-    signature = (_str(result.get("file_hash")), tuple(sorted(result.get("ip_indicators") or [])),
+    hashes = tuple(result.get("file_hashes") or ([result["file_hash"]] if result.get("file_hash") else []))
+    signature = (hashes, tuple(sorted(result.get("ip_indicators") or [])),
                  tuple(sorted(result.get("domain_indicators") or [])),
                  tuple(sorted(result.get("url_indicators") or [])))
     # extract_iocs() runs twice on the same flattened alert (a preview that
@@ -288,29 +305,35 @@ def _iocs_after(call: dict, token: Any, result: Any) -> None:
     if scope.data.get("ioc_signature") == signature:
         return
     scope.data["ioc_signature"] = signature
-    alert = call.get("alert") or {}
-    file_hash, ips, domains, urls = signature[0], list(signature[1]), list(signature[2]), list(signature[3])
-    excluded = [ip for ip in (_str(alert.get("source_ip")), _str(alert.get("destination_ip")))
-                if ip and ip.lower() not in ("unknown", "none", "null", "n/a", "-") and ip not in ips]
-    total = (1 if file_hash else 0) + len(ips) + len(domains)
+    hashes, ips, domains, urls = list(signature[0]), list(signature[1]), list(signature[2]), list(signature[3])
+    candidates = (scope.data.get("selection") or {}).get("candidates") or []
+    # URLs and file names are listed in their own rows above, so only
+    # indicators deliberately kept from the providers are counted here.
+    excluded = [_candidate_line(c) for c in candidates
+                if c.get("selection") == "excluded" and c.get("exclusion_category") != "unsupported_type"]
+    skipped = [_candidate_line(c) for c in candidates if c.get("selection") == "skipped"]
+    total = len(hashes) + len(ips) + len(domains)
     emit(source="system", event_type="ioc_extraction", status="completed",
          title=("Observable extraction completed" if total
                 else "No supported observable indicators found"),
          detail=(" · ".join(p for p in (
-             "1 file hash" if file_hash else "",
+             (f"{len(hashes)} file hash" if len(hashes) == 1 else f"{len(hashes)} file hashes") if hashes else "",
              f"{len(ips)} public IP address(es)" if ips else "",
              f"{len(domains)} external domain(s)" if domains else "",
-             f"{len(urls)} URL(s)" if urls else "") if p)
+             f"{len(urls)} URL(s) (not enriched)" if urls else "",
+             f"{len(excluded)} excluded" if excluded else "",
+             f"{len(skipped)} skipped by enrichment limit" if skipped else "") if p)
              if total or urls else "No file hash, public IP or external domain to look up — no provider lookups will run."),
          metadata={"details": details.blocks(
+             details.items("File hashes", [_hash_label(h) for h in hashes]),
              details.fields([
-                 ("File hash", _hash_label(file_hash) if file_hash else None),
-                 ("Possible file name", result.get("possible_file_name") if not file_hash else None),
+                 ("Possible file name", result.get("possible_file_name") if not hashes else None),
              ]),
              details.items("Public IP addresses", ips),
              details.items("External domains", domains),
-             details.items("URLs", urls),
-             details.items("Not looked up (private or invalid IP)", excluded),
+             details.items("URLs (not enriched — provider support not implemented)", urls),
+             details.items("Excluded — not sent to providers", excluded),
+             details.items("Skipped — enrichment limit reached", skipped),
          )})
 
 
@@ -602,6 +625,7 @@ def install(patcher: Patcher) -> None:
                  Hooks(after=_flat_alert_after))
     patcher.wrap(Target(ti, "run_threat_intel_for_dashboard", ("alert", "output_dir")),
                  Hooks(after=_engine_after, error=_engine_error))
+    patcher.wrap(Target(ti, "select_indicators", ("alert",)), Hooks(after=_selection_after))
     patcher.wrap(Target(ti, "extract_iocs", ("alert",)), Hooks(after=_iocs_after))
     patcher.wrap(Target(ti, "enrich_alert", ("alert",)),
                  Hooks(before=_lookups_before, after=_lookups_after, cleanup=_lookups_cleanup))

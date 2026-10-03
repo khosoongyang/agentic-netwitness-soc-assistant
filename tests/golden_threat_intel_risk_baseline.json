@@ -1,0 +1,304 @@
+{
+ "_comment": "Captured from the pre-change Threat Intelligence engine (git HEAD 948abf9) with tests/ti_provider_mocks.py fakes. Used by test_threat_intel_ioc_coverage.py risk-regression tests.",
+ "scenarios": {
+  "single_ip_vt_9_detections": {
+   "enrichment_risk_score": 25,
+   "enrichment_risk_level": "Low",
+   "enrichment_risk_reasons": [
+    "VirusTotal reported 9 malicious detection(s) for IP 188.40.170.197."
+   ],
+   "recommended_next_action": "No elevated enrichment risk was identified from the available threat intelligence.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": [
+    [
+     "vt",
+     "188.40.170.197"
+    ],
+    [
+     "abuse",
+     "188.40.170.197"
+    ],
+    [
+     "otx",
+     "188.40.170.197"
+    ]
+   ]
+  },
+  "single_ip_abuse_high_otx_pulses": {
+   "enrichment_risk_score": 50,
+   "enrichment_risk_level": "Medium",
+   "enrichment_risk_reasons": [
+    "AbuseIPDB abuse confidence score is high for 34.107.243.93: 89.",
+    "AlienVault OTX found 50 related pulse(s) for 34.107.243.93."
+   ],
+   "recommended_next_action": "Medium enrichment risk was identified \u2014 review the risk reasons below.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": [
+    [
+     "vt",
+     "34.107.243.93"
+    ],
+    [
+     "abuse",
+     "34.107.243.93"
+    ],
+    [
+     "otx",
+     "34.107.243.93"
+    ]
+   ]
+  },
+  "ip_abuse_moderate": {
+   "enrichment_risk_score": 15,
+   "enrichment_risk_level": "Low",
+   "enrichment_risk_reasons": [
+    "AbuseIPDB abuse confidence score is moderate for 45.33.32.156: 45."
+   ],
+   "recommended_next_action": "No elevated enrichment risk was identified from the available threat intelligence.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": [
+    [
+     "vt",
+     "45.33.32.156"
+    ],
+    [
+     "abuse",
+     "45.33.32.156"
+    ],
+    [
+     "otx",
+     "45.33.32.156"
+    ]
+   ]
+  },
+  "domain_malicious_and_suspicious": {
+   "enrichment_risk_score": 55,
+   "enrichment_risk_level": "Medium",
+   "enrichment_risk_reasons": [
+    "VirusTotal reported 3 malicious detection(s) for domain evil.example.com.",
+    "VirusTotal reported 1 suspicious detection(s) for domain evil.example.com.",
+    "AlienVault OTX found 2 related pulse(s) for evil.example.com."
+   ],
+   "recommended_next_action": "Medium enrichment risk was identified \u2014 review the risk reasons below.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": [
+    [
+     "vt",
+     "evil.example.com"
+    ],
+    [
+     "otx",
+     "evil.example.com"
+    ]
+   ]
+  },
+  "hash_malicious": {
+   "enrichment_risk_score": 75,
+   "enrichment_risk_level": "High",
+   "enrichment_risk_reasons": [
+    "VirusTotal reported 40 malicious detection(s) for the file hash.",
+    "VirusTotal reported 2 suspicious detection(s) for the file hash.",
+    "AlienVault OTX found 5 related pulse(s) for aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa."
+   ],
+   "recommended_next_action": "High enrichment risk was identified \u2014 review the risk reasons below.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": [
+    [
+     "vt",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    [
+     "otx",
+     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ]
+   ]
+  },
+  "hash_ip_domain_all_flagged_high": {
+   "enrichment_risk_score": 120,
+   "enrichment_risk_level": "High",
+   "enrichment_risk_reasons": [
+    "VirusTotal reported 6 malicious detection(s) for the file hash.",
+    "VirusTotal reported 1 malicious detection(s) for IP 188.40.170.197.",
+    "VirusTotal reported 2 malicious detection(s) for domain evil.example.com.",
+    "AbuseIPDB abuse confidence score is high for 188.40.170.197: 95."
+   ],
+   "recommended_next_action": "High enrichment risk was identified \u2014 review the risk reasons below.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": [
+    [
+     "vt",
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    [
+     "otx",
+     "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    ],
+    [
+     "vt",
+     "188.40.170.197"
+    ],
+    [
+     "abuse",
+     "188.40.170.197"
+    ],
+    [
+     "otx",
+     "188.40.170.197"
+    ],
+    [
+     "vt",
+     "evil.example.com"
+    ],
+    [
+     "otx",
+     "evil.example.com"
+    ]
+   ]
+  },
+  "source_and_destination_public": {
+   "enrichment_risk_score": 45,
+   "enrichment_risk_level": "Medium",
+   "enrichment_risk_reasons": [
+    "VirusTotal reported 2 malicious detection(s) for IP 188.40.170.197.",
+    "AlienVault OTX found 1 related pulse(s) for 45.33.32.156."
+   ],
+   "recommended_next_action": "Medium enrichment risk was identified \u2014 review the risk reasons below.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": [
+    [
+     "vt",
+     "188.40.170.197"
+    ],
+    [
+     "abuse",
+     "188.40.170.197"
+    ],
+    [
+     "otx",
+     "188.40.170.197"
+    ],
+    [
+     "vt",
+     "45.33.32.156"
+    ],
+    [
+     "abuse",
+     "45.33.32.156"
+    ],
+    [
+     "otx",
+     "45.33.32.156"
+    ]
+   ]
+  },
+  "url_derived_domain": {
+   "enrichment_risk_score": 25,
+   "enrichment_risk_level": "Low",
+   "enrichment_risk_reasons": [
+    "VirusTotal reported 4 malicious detection(s) for domain bad.example.net."
+   ],
+   "recommended_next_action": "No elevated enrichment risk was identified from the available threat intelligence.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": [
+    [
+     "vt",
+     "bad.example.net"
+    ],
+    [
+     "otx",
+     "bad.example.net"
+    ]
+   ]
+  },
+  "no_indicators": {
+   "enrichment_risk_score": 0,
+   "enrichment_risk_level": "Low",
+   "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+   ],
+   "recommended_next_action": "No elevated enrichment risk was identified from the available threat intelligence.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": []
+  },
+  "private_ip_only": {
+   "enrichment_risk_score": 0,
+   "enrichment_risk_level": "Low",
+   "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+   ],
+   "recommended_next_action": "No elevated enrichment risk was identified from the available threat intelligence.",
+   "status": "completed",
+   "warnings": [],
+   "provider_calls": []
+  },
+  "virustotal_errors": {
+   "enrichment_risk_score": 20,
+   "enrichment_risk_level": "Low",
+   "enrichment_risk_reasons": [
+    "AlienVault OTX found 3 related pulse(s) for 188.40.170.197."
+   ],
+   "recommended_next_action": "Review the provider warnings below before relying on this enrichment result.",
+   "status": "completed_with_warnings",
+   "warnings": [
+    "VirusTotal lookup for 188.40.170.197 failed."
+   ],
+   "provider_calls": [
+    [
+     "vt",
+     "188.40.170.197"
+    ],
+    [
+     "abuse",
+     "188.40.170.197"
+    ],
+    [
+     "otx",
+     "188.40.170.197"
+    ]
+   ]
+  },
+  "no_provider_credentials": {
+   "enrichment_risk_score": 0,
+   "enrichment_risk_level": "Low",
+   "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+   ],
+   "recommended_next_action": "Review the provider warnings below before relying on this enrichment result.",
+   "status": "completed_with_warnings",
+   "warnings": [
+    "AbuseIPDB not queried \u2014 ABUSEIPDB_API_KEY is not configured.",
+    "AlienVault OTX not queried \u2014 OTX_API_KEY is not configured.",
+    "VirusTotal not queried \u2014 VT_API_KEY is not configured."
+   ],
+   "provider_calls": []
+  },
+  "partial_credentials_vt_only": {
+   "enrichment_risk_score": 25,
+   "enrichment_risk_level": "Low",
+   "enrichment_risk_reasons": [
+    "VirusTotal reported 5 malicious detection(s) for IP 188.40.170.197."
+   ],
+   "recommended_next_action": "Review the provider warnings below before relying on this enrichment result.",
+   "status": "completed_with_warnings",
+   "warnings": [
+    "AbuseIPDB not queried \u2014 ABUSEIPDB_API_KEY is not configured.",
+    "AlienVault OTX not queried \u2014 OTX_API_KEY is not configured."
+   ],
+   "provider_calls": [
+    [
+     "vt",
+     "188.40.170.197"
+    ]
+   ]
+  }
+ }
+}

@@ -101,7 +101,10 @@ function stageCards(stages) {
 // Triage is excluded too: its Overview tab already presents the same
 // classification/IOC/risk evidence, so the sidebar only duplicated it and
 // the stage now takes the full width (.workspace-grid.stage-only).
-const KEY_FINDINGS_STAGES = new Set(["threat_intel", "investigation"]);
+// Threat Intelligence is not listed: its stage page is itself the
+// per-indicator view (Indicator Overview), so a side panel repeating the
+// same provider facts would only duplicate it and narrow the IOC table.
+const KEY_FINDINGS_STAGES = new Set(["investigation"]);
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1007,22 +1010,31 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
 // stores the result verbatim in incidents.threat_intel_result_json.
 // backend/services/case_service.py::_safe_stage_result() only redacts
 // secret-looking keys / truncates long strings before it reaches
-// GET /api/cases/<id>/workflow as stage.result — every field rendered below
-// (iocs, virustotal, abuseipdb, alienvault_otx, enrichment_risk_*, notes,
-// warnings, recommended_next_action) is that same backend-computed value.
-// This section formats/labels/selects fields only; it never recomputes risk,
-// provider status, or IOC validity — see the ownership note on
-// tiWorkflowStatusLine() below for why the live "what happens next" line is
-// derived from the Investigation stage's own reported state rather than from
-// Threat Intelligence's recommended_next_action.
+// GET /api/cases/<id>/workflow as stage.result.
+//
+// The page is IOC-centric. Its layout, top to bottom:
+//   1. Aegis Assessment   — the engine's own risk level/score/reasons,
+//                           indicator counts, provider coverage and
+//                           recommended_next_action (tiAssessment)
+//   2. Indicator Overview — one row per enriched indicator, expandable into
+//                           its provider evidence (tiIndicatorOverview)
+//   3. Skipped / Excluded — eligible-but-not-looked-up and never-eligible
+//                           indicators, each with its recorded reason
+//   4. Intelligence Gaps  — warnings and gaps of this run
+//   5. Raw provider details (collapsed) — the full per-provider tables
+// Everything per-indicator comes from threat_intelligence.indicators /
+// coverage / provider_coverage / intelligence_gaps
+// (agents/threat_intelligence/indicators.py). This section formats, labels
+// and selects fields only: it never scores, ranks or re-derives provider
+// status, eligibility or risk, and provider values are shown as the
+// provider's own statements, never as Aegis conclusions.
 // "Continue to Investigation" (shared stageActionButtons()) is shown on the
 // completed Threat Intelligence card while the Investigation stage's OWN
 // backend `start` action (workflow/commands.py::available_actions()) is
-// available. Its presence/enabled state come straight from that
-// action — no workflow eligibility is re-derived client-side. Clicking it only
-// navigates to the Investigation stage, which stays "Pending"; Investigation
-// runs only from its own Run Investigation button (handleAction("start") ->
-// POST /stages/investigation/runs -> begin_stage()).
+// available. Clicking it only navigates to the Investigation stage, which
+// stays "Pending"; Investigation runs only from its own Run Investigation
+// button (handleAction("start") -> POST /stages/investigation/runs ->
+// begin_stage()).
 
 function tiDash() {
   return `<span class="value-pending">—</span>`;
@@ -1040,12 +1052,18 @@ function tiTable(columns, rows) {
   return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr>${columns.map((c) => `<th>${escapeHTML(c)}</th>`).join("")}</tr></thead><tbody>${rows.join("")}</tbody></table></div>`;
 }
 
+function _tiNum(value) {
+  return Number(value).toLocaleString();
+}
+
+function _tiPlural(count, word) {
+  return `${_tiNum(count)} ${word}${Number(count) === 1 ? "" : "s"}`;
+}
+
 // Presentation-only status -> badge tone, reusing the same state-* tones the
-// stage cards already render (state-completed/failed/locked/
-// awaiting_approval/not_started) rather than inventing new CSS. This labels
-// whatever status string the provider call already returned
-// (completed/skipped/not_found/error/unknown) — it never re-derives whether
-// a lookup "worked".
+// stage cards already render. This labels whatever status string the
+// provider call already returned (completed/skipped/not_found/error) — it
+// never re-derives whether a lookup "worked".
 function providerStatusBadge(status, label = status || "unknown") {
   const s = String(status || "").toLowerCase();
   const tone = s === "completed" ? "state-completed"
@@ -1058,71 +1076,405 @@ function providerStatusBadge(status, label = status || "unknown") {
 
 // Skipped/error results carry their own explanatory "reason" (or an HTTP
 // status_code) straight from threat_intel.py's provider functions — shown
-// visibly under the badge, not only as a hover title, so a failed/skipped
-// lookup is never mistaken for "no results".
+// visibly under the badge, so a failed/skipped lookup is never mistaken for
+// "no results".
 function providerStatusCell(result) {
   const detail = result?.reason || (result?.status_code ? `HTTP ${result.status_code}` : "");
   const badgeHTML = providerStatusBadge(result?.status);
-  return detail ? `${badgeHTML}<br><small style="opacity:0.7">${escapeHTML(detail)}</small>` : badgeHTML;
+  return detail ? `${badgeHTML}<br><small class="ti-muted">${escapeHTML(detail)}</small>` : badgeHTML;
 }
 
-const _INVESTIGATION_STATE_LINES = {
-  not_started: "Investigation has not started yet.",
-  in_progress: "Investigation is currently running.",
-  awaiting_approval: "Investigation is complete and awaiting SOC analyst approval.",
-  completed: "Investigation has been approved.",
-  failed: "Investigation failed.",
-  rejected: "Investigation was rejected.",
-  locked: "Investigation is locked pending an earlier stage.",
+const _TI_PROVIDERS = [["virustotal", "VirusTotal"], ["abuseipdb", "AbuseIPDB"], ["otx", "AlienVault OTX"]];
+const _TI_TYPE_LABELS = { ip: "IP address", domain: "Domain", hash: "File hash", url: "URL", file_name: "File name" };
+const _TI_ROLE_LABELS = { source: "Source", destination: "Destination" };
+const _TI_COVERAGE_STATES = {
+  available: ["Available", "state-completed"],
+  partial: ["Partial", "state-awaiting_approval"],
+  failed: ["Failed", "state-failed"],
+  not_configured: ["Not configured", "state-awaiting_approval"],
+  not_applicable: ["Not applicable", "state-locked"],
 };
 
-// [OWNERSHIP] Threat Intelligence has no analyst-approval gate of its own
-// (workflow/commands.py's APPROVAL_STAGES does not include "threat_intel"),
-// but its completion only UNLOCKS Investigation: workflow/engine.py::
-// resume_after_triage_approval() leaves investigation_status "Pending"
-// (available, waiting for the analyst) and workflow_status "Awaiting
-// Action". Investigation only moves to "Processing" (executing) when the
-// analyst explicitly clicks the Investigation card's own Run Investigation
-// button ("Continue to Investigation" only navigates there). So "what
-// happens next" is an
-// orchestration fact, not a Threat-Intelligence one: it is read here from
-// the Investigation stage's OWN already-computed `state` (the same enum
-// stateBadge() renders on every stage card), never inferred or recomputed
-// client-side. This is deliberately kept separate from — and never
-// substituted for — result.recommended_next_action below, which is
-// threat_intel.py's own risk-derived recommendation and must not be read as
-// a workflow-state claim (including for older persisted results that still
-// contain the pre-fix orchestration-claiming sentence).
-function tiWorkflowStatusLine(workflow) {
-  const investigation = workflow?.stages?.find((stage) => stage.key === "investigation");
-  if (!investigation) return "";
-  return _INVESTIGATION_STATE_LINES[investigation.state] || "";
+function _tiIndicators(block) {
+  return Array.isArray(block?.indicators) ? block.indicators.filter((r) => r && typeof r === "object") : null;
 }
 
-// Threat Intelligence Risk (level/score/reasons/recommendation) is the
-// stage's headline assessment (tiAssessment()); the summary carries the
-// narrative and the live workflow line only.
-function tiSummaryCard(result, workflow) {
-  const rows = [
-    ["Last enriched", (result.generated_at || result.created_at) ? escapeHTML(formatDate(result.generated_at || result.created_at)) : tiDash()],
+function _tiTypeLabel(record) {
+  const base = _TI_TYPE_LABELS[record.type] || record.type || "Indicator";
+  return record.hash_type ? `${base} (${String(record.hash_type).toUpperCase().replace("SHA", "SHA-")})` : base;
+}
+
+function _tiRoles(record) {
+  const roles = (record.roles || []).map((r) => _TI_ROLE_LABELS[r] || r);
+  return roles.length ? roles.join(" / ") : "";
+}
+
+function _tiIndicatorValue(value) {
+  return `<span class="mono ti-ioc-value" title="${escapeHTML(value)}">${escapeHTML(value)}</span>`;
+}
+
+// ── 1. Aegis Assessment ───────────────────────────────────────────────────
+// Only values the engine stored: the additive, uncapped score (shown raw,
+// never "/ 100") with enrichment_risk_level beside it, indicator coverage
+// counts and provider coverage counts.
+
+function _tiCoverageLine(info) {
+  if (info.state === "not_applicable") return "No applicable indicators in this run";
+  if (info.state === "not_configured") return `Not queried — not configured (${_tiPlural(info.applicable, "applicable indicator")})`;
+  const parts = [`${_tiNum(info.queried)} / ${_tiNum(info.applicable)} queried`];
+  if (info.returned_data) parts.push(`${_tiNum(info.returned_data)} returned data`);
+  if (info.not_found) parts.push(`${_tiNum(info.not_found)} no record`);
+  if (info.failed) parts.push(`${_tiNum(info.failed)} failed`);
+  if (info.not_configured) parts.push(`${_tiNum(info.not_configured)} not configured`);
+  return parts.join(" · ");
+}
+
+function _tiProviderCoverage(block) {
+  const coverage = block.provider_coverage;
+  if (!coverage || typeof coverage !== "object") return "";
+  const rows = _TI_PROVIDERS.filter(([key]) => coverage[key]).map(([key, name]) => {
+    const info = coverage[key];
+    const [label, tone] = _TI_COVERAGE_STATES[info.state] || [info.state, "state-not_started"];
+    return `<div class="ti-coverage-row"><span class="ti-coverage-name">${escapeHTML(name)}</span>${badge(label, tone)}<span class="ti-coverage-detail">${escapeHTML(_tiCoverageLine(info))}</span></div>`;
+  });
+  return rows.length ? `<div class="ti-coverage">${rows.join("")}</div>` : "";
+}
+
+function _tiCounts(coverage) {
+  if (!coverage || typeof coverage !== "object") return "";
+  const cells = [
+    ["Extracted", coverage.extracted, "Every indicator found in the incident"],
+    ["Enriched", coverage.enriched, "Looked up with at least one provider"],
+    ["Excluded", coverage.excluded, "Not eligible for external lookup (internal, non-global or unsupported)"],
+    ["Skipped", coverage.skipped, coverage.skipped_by_limit
+      ? `Eligible but not looked up — ${_tiNum(coverage.skipped_by_limit)} over the enrichment limit`
+      : "Eligible but not looked up"],
   ];
-  const table = `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
-  const summaryPara = result.summary ? `<p class="notice">${escapeHTML(result.summary)}</p>` : "";
-  const aiPara = result.ai_summary
-    ? `<p class="notice">${escapeHTML(result.ai_summary)}<br><small style="opacity:0.75">AI-generated summary${result.ai_summary_model ? ` · ${escapeHTML(result.ai_summary_model)}` : ""}</small></p>`
-    : "";
-  const workflowLine = tiWorkflowStatusLine(workflow);
-  const workflowPara = workflowLine ? `<p class="notice"><strong>Workflow:</strong> ${escapeHTML(workflowLine)}</p>` : "";
-  return table + summaryPara + aiPara + workflowPara;
+  return `<dl class="ti-counts">${cells.map(([label, value, hint]) => `<div class="ti-count" title="${escapeHTML(hint)}"><dt>${escapeHTML(label)}</dt><dd>${tiText(value)}</dd></div>`).join("")}</dl>`;
 }
 
-// Mirrors agents/reporting/triage_ticket_editing.py::_threat_intel_blocks()'s
-// Extracted IOCs table field-for-field (same source: threat_intelligence.iocs)
-// so the live workspace view and the generated ticket/report document never
-// disagree on what was extracted. possible_file_name is a single string on
-// the current contract (ThreatIntelIOCs.possible_file_name: str | None) —
-// rendered as plain text, not as a reconstructed list.
-function tiIOCsCard(iocs) {
+// No-indicator / no-request runs keep the engine's own Low/0 contract, but
+// the page must not read as "Threat Intelligence found this incident safe".
+function _tiNoEnrichmentNotice(coverage) {
+  if (!coverage || coverage.enriched) return "";
+  const text = coverage.eligible
+    ? "No provider requests were sent for the eligible indicators (see Intelligence Gaps). The risk level reflects the absence of external evidence — it is not a determination that the incident is safe."
+    : "No eligible external indicators were available for enrichment, so no provider requests were made. The risk level reflects the absence of external evidence — it is not a determination that the incident is safe.";
+  return `<p class="notice ti-no-enrichment">${escapeHTML(text)}</p>`;
+}
+
+export function tiAssessment(result, block = result.threat_intelligence || {}) {
+  const level = result.enrichment_risk_level;
+  const score = result.enrichment_risk_score;
+  const enrichedAt = result.generated_at || result.created_at;
+  // The engine's own level, shown beside its score: "170 (HIGH)".
+  const levelText = hasValue(level) ? String(level).trim().toUpperCase() : "";
+  const levelHTML = levelText
+    ? ` <span class="ti-risk-level ti-risk-${escapeHTML(levelText.toLowerCase())}">(${escapeHTML(levelText)})</span>`
+    : "";
+  const scoreHTML = hasValue(score) || levelText
+    ? `<p class="assessment-score">${hasValue(score) ? escapeHTML(String(score)) : pendingValue("—")}${levelHTML}</p><p class="assessment-footnote">Rule-based score calculated by Aegis from the provider results (additive, not a percentage).</p>`
+    : "";
+  const extra = [
+    `<h3>Summary</h3>`,
+    _tiNoEnrichmentNotice(block.coverage),
+    `<div class="ti-assessment-grid">`,
+    scoreHTML ? `<div class="ti-assessment-cell"><h4>Risk Score</h4>${scoreHTML}${enrichedAt ? `<p class="assessment-footnote">Last enriched ${escapeHTML(formatDate(enrichedAt))}</p>` : ""}</div>` : "",
+    block.coverage ? `<div class="ti-assessment-cell"><h4>Indicators</h4>${_tiCounts(block.coverage)}</div>` : "",
+    block.provider_coverage ? `<div class="ti-assessment-cell ti-assessment-wide"><h4>Provider Coverage</h4>${_tiProviderCoverage(block)}</div>` : "",
+    `</div>`,
+    _tiAiSummary(result),
+  ].join("");
+  return assessmentCard({ headlines: [], extra, className: "ti-assessment" });
+}
+
+// Whole-enrichment AI summary (workflow/stage_summaries.py, generated after
+// the stage from its indicator-attributed fact packet). Shown as written,
+// labelled as AI output; it plays no part in scoring or enrichment.
+function _tiAiSummary(result) {
+  const text = String(result.ai_summary || "").trim();
+  if (!text) return "";
+  const unavailable = /^ai summary unavailable/i.test(text);
+  const model = result.ai_summary_model ? ` by ${escapeHTML(result.ai_summary_model)}` : "";
+  return `<div class="ti-assessment-cell ti-ai-summary"><h4>AI Summary</h4><p class="${unavailable ? "ti-muted" : ""}">${escapeHTML(text)}</p><p class="assessment-footnote">AI-generated after enrichment${model}. Not used in risk scoring.</p></div>`;
+}
+
+// ── 2. Indicator Overview + per-indicator detail ───────────────────────────
+// Compact cells use the provider's own numbers; "—"/Not applicable/Not
+// configured/Failed are distinct, so a missing value is never shown as 0.
+
+function _tiEvidence(record, provider) {
+  return (record.providers || {})[provider] || { status: "not_queried" };
+}
+
+function _tiNonResultCell(evidence) {
+  const status = evidence.status;
+  if (status === "not_applicable") return `<span class="ti-muted" title="This provider does not look up this indicator type">Not applicable</span>`;
+  if (status === "not_configured") return `<span class="ti-muted" title="${escapeHTML(evidence.reason || "Provider not configured")}">Not configured</span>`;
+  if (status === "error") return badge("Failed", "state-failed", evidence.reason || "");
+  if (status === "not_found") return `<span class="ti-muted" title="The provider has no record of this indicator">No record</span>`;
+  if (status !== "completed") return tiDash();
+  return null;
+}
+
+function _tiVtCell(evidence) {
+  const other = _tiNonResultCell(evidence);
+  if (other !== null) return other;
+  const malicious = evidence.malicious ?? 0;
+  const ratio = hasValue(evidence.analysed_vendors)
+    ? `${_tiNum(malicious)} / ${_tiNum(evidence.analysed_vendors)} malicious`
+    : `${_tiNum(malicious)} malicious`;
+  const suspicious = evidence.suspicious ? `<small class="ti-muted">${_tiNum(evidence.suspicious)} suspicious</small>` : "";
+  return `<span class="${malicious > 0 ? "ti-flagged" : ""}" title="Security vendors in VirusTotal's last analysis that returned a verdict">${escapeHTML(ratio)}</span>${suspicious}`;
+}
+
+function _tiAbuseCell(evidence) {
+  const other = _tiNonResultCell(evidence);
+  if (other !== null) return other;
+  const score = evidence.abuse_confidence_score;
+  const text = `${hasValue(score) ? `${score}%` : "—"} · ${_tiPlural(evidence.total_reports ?? 0, "report")}`;
+  const tor = evidence.is_tor ? `<small class="ti-flagged">Tor exit node</small>` : "";
+  return `<span class="${score > 0 ? "ti-flagged" : ""}" title="AbuseIPDB abuse confidence score · reports in the last 90 days">${escapeHTML(text)}</span>${tor}`;
+}
+
+function _tiOtxCell(evidence) {
+  const other = _tiNonResultCell(evidence);
+  if (other !== null) return other;
+  const count = evidence.pulse_count ?? 0;
+  const families = (evidence.malware_families || []).slice(0, 2).join(", ");
+  return `<span class="${count > 0 ? "ti-flagged" : ""}" title="AlienVault OTX community threat reports (pulses) referencing this indicator">${escapeHTML(_tiPlural(count, "pulse"))}</span>${families ? `<small class="ti-muted">${escapeHTML(families)}</small>` : ""}`;
+}
+
+function _tiContextValue(record, ...fields) {
+  for (const field of fields) {
+    const row = (record.context || []).find((r) => r.field === field);
+    if (row) return row.value;
+  }
+  return "";
+}
+
+function _tiOwnerCell(record) {
+  let parts = [];
+  if (record.type === "ip") {
+    parts = [_tiContextValue(record, "as_owner", "isp"), _tiContextValue(record, "asn"), _tiContextValue(record, "country")];
+  } else if (record.type === "domain") {
+    const created = _tiContextValue(record, "domain_created_at");
+    parts = [_tiContextValue(record, "registrar"), created ? `registered ${formatDate(created)}` : ""];
+  } else if (record.type === "hash") {
+    parts = [_tiContextValue(record, "popular_threat_label", "meaningful_name"), _tiContextValue(record, "type_description")];
+  }
+  const text = parts.filter(Boolean).join(" · ");
+  return text ? `<span class="ti-owner" title="${escapeHTML(text)}">${escapeHTML(text)}</span>` : tiDash();
+}
+
+function _tiAnswered(record) {
+  const applicable = _TI_PROVIDERS.filter(([key]) => _tiEvidence(record, key).status !== "not_applicable").length;
+  const failed = _TI_PROVIDERS.filter(([key]) => _tiEvidence(record, key).status === "error").length;
+  const notConfigured = _TI_PROVIDERS.filter(([key]) => _tiEvidence(record, key).status === "not_configured").length;
+  const parts = [`${record.providers_answered ?? 0} of ${applicable} providers answered`];
+  if (failed) parts.push(`${failed} failed`);
+  if (notConfigured) parts.push(`${notConfigured} not configured`);
+  return parts.join(" · ");
+}
+
+function _tiRows(rows) {
+  const shown = rows.filter(([, value]) => hasValue(value) && value !== tiDash());
+  if (!shown.length) return "";
+  return `<dl class="ti-kv">${shown.map(([label, value, note]) => `<div class="ti-kv-row"><dt>${escapeHTML(label)}</dt><dd>${value}${note ? `<small class="ti-muted">${escapeHTML(note)}</small>` : ""}</dd></div>`).join("")}</dl>`;
+}
+
+function _tiChips(values) {
+  const list = (values || []).filter(Boolean);
+  return list.length ? `<span class="ti-chips">${list.map((v) => `<span class="evidence-chip">${escapeHTML(String(v))}</span>`).join("")}</span>` : "";
+}
+
+function _tiDate(value) {
+  return value ? escapeHTML(formatDate(value)) : "";
+}
+
+function _tiYesNo(value) {
+  return value === true ? "Yes" : value === false ? "No" : "";
+}
+
+function _tiProviderCard(name, evidence, body) {
+  const status = evidence.status;
+  if (status === "not_applicable") return "";
+  let content = body;
+  if (status === "not_configured" || status === "not_queried") content = `<p class="ti-muted">${escapeHTML(evidence.reason || "Not queried.")}</p>`;
+  else if (status === "error") content = `<p class="ti-muted">Lookup failed${evidence.reason ? ` — ${escapeHTML(evidence.reason)}` : ""}.</p>`;
+  else if (status === "not_found") content = `<p class="ti-muted">${escapeHTML(name)} has no record of this indicator.</p>`;
+  const statusBadge = status === "completed" ? "" : status === "error" ? badge("Failed", "state-failed")
+    : status === "not_found" ? badge("No record", "state-awaiting_approval") : badge("Not queried", "state-locked");
+  return `<section class="ti-evidence-card"><h5>${escapeHTML(name)}${statusBadge}</h5>${content || `<p class="ti-muted">No further details returned.</p>`}</section>`;
+}
+
+function _tiVtEvidence(e) {
+  const detections = Array.isArray(e.top_detections) ? e.top_detections : [];
+  const vendorTable = detections.length
+    ? `<details class="ti-subdetails"><summary>Top detecting vendors (${detections.length}${e.detecting_engine_count > detections.length ? ` of ${e.detecting_engine_count}` : ""})</summary><table class="ti-vendor-table"><tbody>${detections.map((d) => `<tr><td>${escapeHTML(d.engine || "—")}</td><td>${escapeHTML(d.category || "")}</td><td class="mono">${escapeHTML(d.result || "")}</td></tr>`).join("")}</tbody></table></details>`
+    : "";
+  const votes = e.community_votes ? `${_tiNum(e.community_votes.harmless ?? 0)} harmless · ${_tiNum(e.community_votes.malicious ?? 0)} malicious` : "";
+  return _tiRows([
+    ["Detections", hasValue(e.analysed_vendors) ? escapeHTML(`${_tiNum(e.malicious ?? 0)} / ${_tiNum(e.analysed_vendors)} vendors flagged malicious`) : tiText(e.malicious), hasValue(e.analysed_vendors) ? `${_tiNum(e.harmless ?? 0)} harmless · ${_tiNum(e.undetected ?? 0)} undetected` : ""],
+    ["Suspicious", e.suspicious ? tiText(e.suspicious) : ""],
+    ["Reputation", hasValue(e.reputation) ? tiText(e.reputation) : "", "VirusTotal community reputation score"],
+    ["Community votes", votes ? escapeHTML(votes) : ""],
+    ["Threat label", e.popular_threat_label ? escapeHTML(e.popular_threat_label) : ""],
+    ["Malware family names", _tiChips(e.popular_threat_names)],
+    ["Threat categories", _tiChips(e.popular_threat_categories)],
+    ["Categories", _tiChips(e.categories)],
+    ["Tags", _tiChips(e.tags)],
+  ]) + vendorTable;
+}
+
+function _tiAbuseEvidence(e) {
+  const categories = (e.report_categories || []).map((c) => `${c.name}${c.count > 1 ? ` ×${c.count}` : ""}`);
+  return _tiRows([
+    ["Abuse confidence", hasValue(e.abuse_confidence_score) ? escapeHTML(`${e.abuse_confidence_score}%`) : ""],
+    ["Total reports", hasValue(e.total_reports) ? tiText(e.total_reports) : "", "Last 90 days"],
+    ["Distinct reporters", e.num_distinct_users ? tiText(e.num_distinct_users) : ""],
+    ["Last reported", _tiDate(e.last_reported_at)],
+    ["Tor exit node", escapeHTML(_tiYesNo(e.is_tor))],
+    ["AbuseIPDB allow-listed", escapeHTML(_tiYesNo(e.is_whitelisted))],
+    ["Recent report categories", _tiChips(categories), e.reports_considered ? `From ${_tiPlural(e.reports_considered, "report")} returned by AbuseIPDB` : ""],
+  ]);
+}
+
+function _tiOtxEvidence(e) {
+  const pulses = Array.isArray(e.pulses) ? e.pulses : [];
+  const pulseList = pulses.length
+    ? `<details class="ti-subdetails"><summary>Pulses (${pulses.length}${e.pulse_count > pulses.length ? ` of ${_tiNum(e.pulse_count)}` : ""})</summary><ul class="ti-pulse-list">${pulses.map((p) => `<li><strong>${escapeHTML(p.name || "Unnamed pulse")}</strong>${p.modified ? `<small class="ti-muted">updated ${escapeHTML(formatDate(p.modified))}</small>` : ""}${_tiChips([...(p.malware_families || []), ...(p.attack_ids || []), ...(p.tags || [])])}</li>`).join("")}</ul></details>`
+    : "";
+  return _tiRows([
+    ["Pulses", tiText(e.pulse_count ?? 0), "Community threat reports referencing this indicator"],
+    ["Malware families", _tiChips(e.malware_families)],
+    ["Adversaries", _tiChips(e.adversaries)],
+    ["ATT&CK techniques", _tiChips(e.attack_ids)],
+    ["Pulse tags", _tiChips(e.pulse_tags)],
+    ["Most recent pulse update", _tiDate(e.latest_pulse_modified)],
+  ]) + pulseList;
+}
+
+function _tiIndicatorDetail(record) {
+  const contextRows = (record.context || []).map((row) => [row.label, escapeHTML(row.value), (row.sources || []).join(", ")]);
+  const freshnessRows = (record.freshness || []).map((row) => [row.label, _tiDate(row.value), row.source]);
+  const meta = [
+    _tiTypeLabel(record),
+    _tiRoles(record),
+    `Enriched — ${_tiAnswered(record)}`,
+  ].filter(Boolean).map((m) => `<span>${escapeHTML(m)}</span>`).join("");
+  const origins = (record.origins || []).length ? `<p class="ti-muted">Found in: ${escapeHTML(record.origins.join(", "))}</p>` : "";
+  const context = _tiRows(contextRows);
+  const freshness = _tiRows(freshnessRows);
+  const evidence = [
+    _tiProviderCard("VirusTotal", _tiEvidence(record, "virustotal"), _tiVtEvidence(_tiEvidence(record, "virustotal"))),
+    _tiProviderCard("AbuseIPDB", _tiEvidence(record, "abuseipdb"), _tiAbuseEvidence(_tiEvidence(record, "abuseipdb"))),
+    _tiProviderCard("AlienVault OTX", _tiEvidence(record, "otx"), _tiOtxEvidence(_tiEvidence(record, "otx"))),
+  ].join("");
+  return `<div class="ti-ioc-detail">
+    <div class="ti-ioc-detail-head">${_tiIndicatorValue(record.value)}<div class="ti-ioc-detail-meta">${meta}</div>${origins}</div>
+    ${context || freshness ? `<div class="ti-ioc-detail-grid">
+      ${context ? `<section><h5>Indicator Context</h5>${context}</section>` : ""}
+      ${freshness ? `<section><h5>Freshness</h5>${freshness}</section>` : ""}
+    </div>` : ""}
+    <h5 class="ti-evidence-title">Provider Evidence <small class="ti-muted">— statements returned by each provider, not Aegis conclusions</small></h5>
+    <div class="ti-evidence-grid">${evidence}</div>
+  </div>`;
+}
+
+export function tiIndicatorOverview(block) {
+  const all = _tiIndicators(block);
+  if (all === null) return "";
+  const enriched = all.filter((r) => r.status === "enriched");
+  if (!enriched.length) return emptyState("No indicators were enriched in this run — see Skipped and Excluded Indicators and Intelligence Gaps below.");
+  const rows = enriched.map((record, index) => {
+    const id = `ti-ioc-detail-${index}`;
+    return `<tr class="ti-ioc-row">
+      <td data-label="Indicator">${_tiIndicatorValue(record.value)}<small class="ti-muted">${escapeHTML(_tiTypeLabel(record))} · ${escapeHTML(_tiAnswered(record))}</small></td>
+      <td data-label="Role">${_tiRoles(record) ? escapeHTML(_tiRoles(record)) : `<span class="ti-muted" title="No source/destination role recorded for this indicator">—</span>`}</td>
+      <td data-label="VirusTotal">${_tiVtCell(_tiEvidence(record, "virustotal"))}</td>
+      <td data-label="AbuseIPDB">${_tiAbuseCell(_tiEvidence(record, "abuseipdb"))}</td>
+      <td data-label="AlienVault OTX">${_tiOtxCell(_tiEvidence(record, "otx"))}</td>
+      <td data-label="Owner / Context">${_tiOwnerCell(record)}</td>
+      <td class="ti-ioc-action"><button type="button" class="ti-ioc-toggle" aria-expanded="false" aria-controls="${id}"><span class="ti-when-closed">Details</span><span class="ti-when-open">Hide</span></button></td>
+    </tr>
+    <tr class="ti-ioc-detail-row" id="${id}" hidden><td colspan="7">${_tiIndicatorDetail(record)}</td></tr>`;
+  }).join("");
+  return `<div class="ti-ioc-table-wrap"><table class="ti-ioc-table" aria-label="Enriched indicators">
+    <thead><tr><th scope="col">Indicator</th><th scope="col">Role</th><th scope="col">VirusTotal</th><th scope="col">AbuseIPDB</th><th scope="col">AlienVault OTX</th><th scope="col">Owner / Context</th><th scope="col"><span class="provider-summary-sr">Details</span></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+// ── 3. Skipped / Excluded indicators ───────────────────────────────────────
+
+function _tiReasonTable(records) {
+  const rows = records.map((r) => {
+    const where = [_tiRoles(r), (r.origins || []).join(", ")].filter(Boolean).join(" · ");
+    return `<tr><td data-label="Indicator">${_tiIndicatorValue(r.value)}</td><td data-label="Type">${escapeHTML(_tiTypeLabel(r))}</td><td data-label="Role / found in">${where ? escapeHTML(where) : tiDash()}</td><td data-label="Reason">${escapeHTML(r.status_reason || "—")}</td></tr>`;
+  }).join("");
+  return `<div class="ti-reason-wrap"><table class="ti-reason-table"><thead><tr><th scope="col">Indicator</th><th scope="col">Type</th><th scope="col">Role / found in</th><th scope="col">Reason</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+export function tiSkippedExcluded(block) {
+  const all = _tiIndicators(block);
+  if (all === null) return "";
+  const skipped = all.filter((r) => r.status === "skipped");
+  const excluded = all.filter((r) => r.status === "excluded");
+  return [
+    skipped.length ? `<section class="panel ti-skipped"><h3>Skipped Indicators (${skipped.length})</h3><p class="assessment-footnote">Eligible for enrichment but not looked up.</p>${_tiReasonTable(skipped)}</section>` : "",
+    excluded.length ? `<section class="panel ti-excluded"><h3>Excluded Indicators (${excluded.length})</h3><p class="assessment-footnote">Not sent to external providers — internal, non-global or an indicator type the configured providers do not look up.</p>${_tiReasonTable(excluded)}</section>` : "",
+  ].join("");
+}
+
+// ── 4. Intelligence Gaps / limitations ─────────────────────────────────────
+// warnings (missing credential / provider error) and intelligence_gaps
+// (scope of those problems plus every other limitation) — both recorded by
+// the backend for this run; nothing generic is added here.
+
+export function tiIntelligenceGaps(result, block) {
+  const clean = (list) => (Array.isArray(list) ? list : []).filter((item) => String(item || "").trim());
+  const warnings = clean(result.warnings);
+  const gaps = clean(block.intelligence_gaps);
+  const list = (items) => `<ul class="data-list">${items.map((item) => `<li><div>${escapeHTML(item)}</div></li>`).join("")}</ul>`;
+  const body = [
+    warnings.length ? `<div class="notice notice-error ti-provider-note"><strong>Warnings</strong>${list(warnings)}</div>` : "",
+    gaps.length ? list(gaps) : "",
+  ].join("");
+  return `<section class="panel ti-gaps"><h3>Intelligence Gaps &amp; Limitations</h3>${body || emptyState("No intelligence gaps or provider warnings were recorded for this run.")}</section>`;
+}
+
+// ── 5. Raw provider details (collapsed) ────────────────────────────────────
+
+function tiVirusTotalCard(vt, iocs) {
+  const rows = [];
+  const hashResults = Array.isArray(vt?.file_hash_results) ? vt.file_hash_results
+    : (vt?.file_hash && typeof vt.file_hash === "object" ? [vt.file_hash] : []);
+  for (const r of hashResults) rows.push(["File hash", r.indicator || iocs?.file_hash, r]);
+  for (const r of vt?.ip_results || []) rows.push(["IP", r.indicator, r]);
+  for (const r of vt?.domain_results || []) rows.push(["Domain", r.indicator, r]);
+  if (!rows.length) return emptyState("No VirusTotal lookups were performed for this run.");
+  const body = rows.map(([type, indicator, r]) => `<tr><td>${tiText(type)}</td><td class="mono">${tiText(indicator)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.malicious)}</td><td>${tiText(r.suspicious)}</td><td>${tiText(r.harmless)}</td><td>${tiText(r.undetected)}</td><td>${tiText(r.reputation)}</td></tr>`).join("");
+  return tiTable(["Type", "Indicator", "Status", "Malicious", "Suspicious", "Harmless", "Undetected", "Reputation"], [body]);
+}
+
+function tiAbuseIPDBCard(abuse) {
+  const rows = abuse?.ip_results || [];
+  if (!rows.length) return emptyState("No AbuseIPDB lookups were performed for this run.");
+  const body = rows.map((r) => `<tr><td class="mono">${tiText(r.indicator)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.abuse_confidence_score)}</td><td>${tiText(r.total_reports)}</td><td>${tiText(r.country_code)}</td><td>${tiText(r.isp)}</td><td>${tiText(r.usage_type)}</td><td>${r.last_reported_at ? escapeHTML(formatDate(r.last_reported_at)) : tiDash()}</td></tr>`).join("");
+  return tiTable(["IP", "Status", "Abuse confidence", "Total reports", "Country", "ISP", "Usage type", "Last reported"], [body]);
+}
+
+function tiOTXCard(otx) {
+  const rows = otx?.otx_results || [];
+  if (!rows.length) return emptyState("No AlienVault OTX lookups were performed for this run.");
+  const body = rows.map((r) => `<tr><td class="mono">${tiText(r.indicator)}</td><td>${tiText(r.indicator_type)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.pulse_count)}</td><td>${tiJoined(r.related_pulses)}</td></tr>`).join("");
+  return tiTable(["Indicator", "Type", "Status", "Pulse count", "Related pulses"], [body]);
+}
+
+// Results persisted before per-indicator recording existed: the extraction
+// table those results always carried, unchanged.
+function tiLegacyIOCsCard(iocs) {
   if (!iocs || !Object.keys(iocs).length) return emptyState("No IOC extraction data is available for this run.");
   const rows = [
     ["Possible file name", iocs.possible_file_name ? escapeHTML(iocs.possible_file_name) : tiDash()],
@@ -1130,331 +1482,38 @@ function tiIOCsCard(iocs) {
     ["Public IP indicators", tiJoined(iocs.ip_indicators)],
     ["Domain indicators", tiJoined(iocs.domain_indicators)],
     ["URL indicators", tiJoined(iocs.url_indicators)],
-    ["PowerShell enrichment", iocs.powershell_enrichment_note ? escapeHTML(iocs.powershell_enrichment_note) : tiDash()],
   ];
   return `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><thead><tr><th>Field</th><th>Value</th></tr></thead><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
 }
 
-// powershell_analysis (agents/parsing/powershell_decoder.py's real output,
-// passed through threat_intel.py's extract_iocs() unchanged) — rendered as
-// a compact field table, never as a raw nested JSON dump. When the decoder
-// found no encoded command at all, this degrades to a one-line empty state
-// instead of a table of all-empty fields.
-// Returns the body only; tiProviderResults() wraps it in its section.
-function tiPowerShellCard(psa) {
-  if (!psa || typeof psa !== "object" || !Object.keys(psa).length) return "";
-  const hasActivity = Boolean(psa.encoded_command_present || psa.powershell_indicator_present)
-    || Boolean(psa.decode_status && !["not_present", "not_found"].includes(psa.decode_status));
-  if (!hasActivity) {
-    return emptyState(psa.decoded_command_summary || "No PowerShell activity was detected for this alert.");
-  }
-  const risk = psa.risk_assessment || {};
-  const extracted = psa.extracted_iocs || {};
-  const rows = [
-    ["Decode status", psa.decode_status ? escapeHTML(psa.decode_status) : tiDash()],
-    ["Encoded command detected", psa.encoded_command_present ? "Yes" : "No"],
-    ["Encoded command count", tiText(psa.encoded_command_count)],
-    ["Decoded command count", tiText(psa.decoded_command_count)],
-    ["PowerShell Risk", risk.risk_level ? bandValue(risk.risk_level) : tiDash()],
-    ["PowerShell Risk Score", tiText(risk.risk_score)],
-    ["Extracted URLs", tiJoined(extracted.urls)],
-    ["Extracted domains", tiJoined(extracted.domains)],
-    ["Extracted public IPs", tiJoined(extracted.public_ips)],
-    ["Extracted hashes", tiJoined(extracted.hashes)],
-    ["Extracted file paths", tiJoined(extracted.file_paths)],
-    ["Extracted file names", tiJoined(extracted.file_names)],
-  ];
-  const table = `<div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows.map(([label, value]) => `<tr><th scope="row">${escapeHTML(label)}</th><td>${value}</td></tr>`).join("")}</tbody></table></div>`;
-  const summary = psa.decoded_command_summary ? `<p class="notice ti-provider-note">${escapeHTML(psa.decoded_command_summary)}</p>` : "";
-  return `${table}${summary}`;
-}
-
-// Columns mirror _threat_intel_blocks()'s VirusTotal table (Type/Indicator/
-// Status/Malicious/Suspicious/Reputation) plus a visible status detail —
-// file_hash is always present as a dict (real result or an explicit
-// {"status":"skipped",...}), so a "skipped" row is expected, not a bug.
-function tiVirusTotalCard(vt, iocs) {
-  const rows = [];
-  const fileHash = vt?.file_hash;
-  if (fileHash && typeof fileHash === "object") {
-    rows.push([tiText("File hash"), tiText(fileHash.indicator || iocs?.file_hash), providerStatusCell(fileHash), tiText(fileHash.malicious), tiText(fileHash.suspicious), tiText(fileHash.reputation)]);
-  }
-  for (const r of vt?.ip_results || []) rows.push([tiText("IP"), tiText(r.indicator), providerStatusCell(r), tiText(r.malicious), tiText(r.suspicious), tiText(r.reputation)]);
-  for (const r of vt?.domain_results || []) rows.push([tiText("Domain"), tiText(r.indicator), providerStatusCell(r), tiText(r.malicious), tiText(r.suspicious), tiText(r.reputation)]);
-  if (!rows.length) return emptyState(_TI_NO_VT_LOOKUPS);
-  const body = rows.map(([type, indicator, status, malicious, suspicious, reputation]) => `<tr><td>${type}</td><td class="mono">${indicator}</td><td>${status}</td><td>${malicious}</td><td>${suspicious}</td><td>${reputation}</td></tr>`).join("");
-  return tiTable(["Type", "Indicator", "Status", "Malicious", "Suspicious", "Reputation"], [body]);
-}
-
-// No-result wording shared by the full provider tables and the Provider
-// Summary, keyed only on which indicators extraction actually produced.
-const _TI_NO_VT_LOOKUPS = "No VirusTotal lookups were performed for this run.";
-
-function _tiAbuseEmptyText(iocs) {
-  return (iocs?.ip_indicators || []).length
-    ? "AbuseIPDB did not return a result for the extracted IP indicator(s)."
-    : "No AbuseIPDB results for this run — no usable public IP indicator was extracted.";
-}
-
-function _tiOTXEmptyText(iocs) {
-  const hasIndicator = Boolean(iocs?.file_hash) || (iocs?.ip_indicators || []).length || (iocs?.domain_indicators || []).length;
-  return hasIndicator
-    ? "AlienVault OTX did not return a result for the extracted indicator(s)."
-    : "No AlienVault OTX results for this run — no usable indicator was extracted.";
-}
-
-function tiAbuseIPDBCard(abuse, iocs) {
-  const rows = abuse?.ip_results || [];
-  if (!rows.length) return emptyState(_tiAbuseEmptyText(iocs));
-  const body = rows.map((r) => `<tr><td class="mono">${tiText(r.indicator)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.abuse_confidence_score)}</td><td>${tiText(r.total_reports)}</td><td>${tiText(r.country_code)}</td><td>${tiText(r.isp)}</td><td>${tiText(r.usage_type)}</td><td>${r.last_reported_at ? escapeHTML(formatDate(r.last_reported_at)) : tiDash()}</td></tr>`).join("");
-  return tiTable(["IP", "Status", "Abuse confidence", "Total reports", "Country", "ISP", "Usage type", "Last reported"], [body]);
-}
-
-function tiOTXCard(otx, iocs) {
-  const rows = otx?.otx_results || [];
-  if (!rows.length) return emptyState(_tiOTXEmptyText(iocs));
-  const body = rows.map((r) => `<tr><td class="mono">${tiText(r.indicator)}</td><td>${tiText(r.indicator_type)}</td><td>${providerStatusCell(r)}</td><td>${tiText(r.pulse_count)}</td><td>${tiJoined(r.related_pulses)}</td><td>${tiJoined(r.sections_available)}</td></tr>`).join("");
-  return tiTable(["Indicator", "Type", "Status", "Pulse count", "Related pulses", "Available sections"], [body]);
-}
-
-// ── Provider Summary (concise, inside the assessment) ──────────────────────
-// One row per provider: which indicators it was given, the lookup statuses
-// the provider result itself recorded, and one line per lookup — its own
-// status/reason or, when completed, the provider's own counts (VirusTotal
-// malicious/suspicious, AbuseIPDB abuse_confidence_score/total_reports, OTX
-// pulse_count). Nothing is summed, weighted or turned into a per-provider
-// verdict; the full rows live in tiProviderResults().
-//
-// "No malicious result" and "never queried" stay distinct: a completed
-// lookup shows COMPLETED plus its counts, a lookup the backend skipped shows
-// its own SKIPPED status and reason, and a provider with no lookup entry at
-// all (no usable indicator reached it) shows NOT QUERIED.
-
-const _TI_OVERVIEW_MAX_LINES = 3;
-
-const _TI_PROVIDERS = [["virustotal", "VirusTotal"], ["abuseipdb", "AbuseIPDB"], ["otx", "AlienVault OTX"]];
-
-const _TI_STATUS_LABELS = { completed: "Completed", skipped: "Skipped", not_found: "Not Found", error: "Error" };
-
-function _tiList(value) {
-  return Array.isArray(value) ? value.filter((item) => item && typeof item === "object") : [];
-}
-
-// Every lookup entry the provider result holds, tagged with its kind.
-function _tiLookups(provider, block) {
-  if (provider === "virustotal") {
-    const vt = block.virustotal || {};
-    return [
-      ...(vt.file_hash && typeof vt.file_hash === "object" ? [{ kind: "hash", lookup: vt.file_hash }] : []),
-      ..._tiList(vt.ip_results).map((lookup) => ({ kind: "ip", lookup })),
-      ..._tiList(vt.domain_results).map((lookup) => ({ kind: "domain", lookup })),
-    ];
-  }
-  if (provider === "abuseipdb") return _tiList(block.abuseipdb?.ip_results).map((lookup) => ({ kind: "ip", lookup }));
-  return _tiList(block.alienvault_otx?.otx_results).map((lookup) => ({ kind: "indicator", lookup }));
-}
-
-function _tiPlural(count, word) {
-  return `${count} ${word}${count === 1 ? "" : "s"}`;
-}
-
-// Which extracted indicators actually reached this provider. VirusTotal's
-// file_hash entry exists even when no hash was extracted (as an explicit
-// "skipped"), so it only counts when a hash is on the lookup or in the IOCs.
-function _tiSummaryText(provider, lookups, iocs) {
-  const hasIPs = (iocs.ip_indicators || []).length > 0;
-  const hasAny = Boolean(iocs.file_hash) || hasIPs || (iocs.domain_indicators || []).length > 0;
-  if (provider === "virustotal") {
-    const hash = lookups.some(({ kind, lookup }) => kind === "hash" && (lookup.indicator || iocs.file_hash));
-    const ips = lookups.filter(({ kind }) => kind === "ip").length;
-    const domains = lookups.filter(({ kind }) => kind === "domain").length;
-    const parts = [hash ? "File hash" : "", ips ? _tiPlural(ips, "IP") : "", domains ? _tiPlural(domains, "domain") : ""].filter(Boolean);
-    if (parts.length) return parts.join(" + ");
-    return hasAny ? "No lookup recorded" : "No usable indicator";
-  }
-  if (provider === "abuseipdb") {
-    if (lookups.length) return _tiPlural(lookups.length, "public IP");
-    return hasIPs ? "No lookup recorded" : "No usable public IP";
-  }
-  if (lookups.length) return _tiPlural(lookups.length, "indicator");
-  return hasAny ? "No lookup recorded" : "No usable indicator";
-}
-
-// Short no-lookup wording for the summary table (the full provider sections
-// keep their longer _tiAbuseEmptyText()/_tiOTXEmptyText() sentences).
-function _tiNoLookupDetail(provider, iocs) {
-  const hasIPs = (iocs.ip_indicators || []).length > 0;
-  const hasAny = Boolean(iocs.file_hash) || hasIPs || (iocs.domain_indicators || []).length > 0;
-  if (provider === "abuseipdb") {
-    return hasIPs ? "AbuseIPDB did not return a result for the extracted IP indicator(s)." : "No public IP indicator was extracted.";
-  }
-  if (provider === "otx") {
-    return hasAny ? "AlienVault OTX did not return a result for the extracted indicator(s)." : "No indicator was extracted for OTX lookup.";
-  }
-  return hasAny ? _TI_NO_VT_LOOKUPS : "No file hash, IP or domain indicator was extracted.";
-}
-
-function _tiStatusBadges(lookups) {
-  if (!lookups.length) return badge("Not Queried", "state-locked");
-  const statuses = [...new Set(lookups.map(({ lookup }) => String(lookup.status || "unknown").toLowerCase()))];
-  return statuses.map((status) => providerStatusBadge(status, _TI_STATUS_LABELS[status] || _poHumanise(status))).join("");
-}
-
-function tiProviderSummary(block) {
+export function tiProviderResults(block, { open = false } = {}) {
   const iocs = block.iocs || {};
-  const rows = _TI_PROVIDERS.map(([key, name]) => {
-    const lookups = _tiLookups(key, block);
-    const lines = lookups.length ? _tiOverviewLines(key, block) : [_tiNoLookupDetail(key, iocs)];
-    const shown = lines.slice(0, _TI_OVERVIEW_MAX_LINES).map((line) => `<span>${escapeHTML(line)}</span>`);
-    if (lines.length > _TI_OVERVIEW_MAX_LINES) {
-      shown.push(`<span class="value-pending">+${lines.length - _TI_OVERVIEW_MAX_LINES} more — see full results</span>`);
-    }
-    const target = TI_PROVIDER_SECTION_IDS[key];
-    const jump = `Jump to the full ${escapeHTML(name)} results`;
-    return `<tr>
-      <th scope="row" data-label="Provider"><a class="provider-summary-link" href="#${target}" data-scroll-target="${target}" title="${jump}">${escapeHTML(name)}<span class="provider-summary-chevron" aria-hidden="true">›</span></a></th>
-      <td data-label="Summary">${escapeHTML(_tiSummaryText(key, lookups, iocs))}</td>
-      <td data-label="Status"><span class="provider-summary-status">${_tiStatusBadges(lookups)}</span></td>
-      <td data-label="Details"><span class="provider-summary-details">${shown.join("")}</span></td>
-      <td class="provider-summary-go"><a class="provider-summary-arrow" href="#${target}" data-scroll-target="${target}" tabindex="-1" aria-hidden="true" title="${jump}">›</a></td>
-    </tr>`;
-  });
-  return `<div class="provider-summary"><table class="provider-summary-table" aria-label="Provider summary">
-    <thead><tr><th scope="col">Provider</th><th scope="col">Summary</th><th scope="col">Status</th><th scope="col">Details</th><th scope="col"><span class="provider-summary-sr">Open full results</span></th></tr></thead>
-    <tbody>${rows.join("")}</tbody>
-  </table></div>`;
+  const section = (title, body) => `<section class="ti-provider-section"><h4>${escapeHTML(title)}</h4>${body}</section>`;
+  return `<details class="parsing-field-list ti-raw-details"${open ? " open" : ""}>
+    <summary>Raw provider details</summary>
+    <div class="ti-provider-results">
+      ${section("VirusTotal", tiVirusTotalCard(block.virustotal, iocs))}
+      ${section("AbuseIPDB", tiAbuseIPDBCard(block.abuseipdb))}
+      ${section("AlienVault OTX", tiOTXCard(block.alienvault_otx))}
+    </div>
+  </details>`;
 }
 
-const TI_PROVIDER_SECTION_IDS = {
-  virustotal: "ti-provider-virustotal",
-  abuseipdb: "ti-provider-abuseipdb",
-  otx: "ti-provider-otx",
-  powershell: "ti-provider-powershell",
-};
-
-function _tiCount(value, word) {
-  if (value === null || value === undefined || value === "") return `— ${word}s`;
-  return `${value} ${word}${Number(value) === 1 ? "" : "s"}`;
-}
-
-function _tiLookupLine(label, lookup, completedText) {
-  const status = String(lookup?.status || "unknown");
-  if (status === "completed") return `${label}: ${completedText}`;
-  const why = lookup?.reason || (lookup?.status_code ? `HTTP ${lookup.status_code}` : "");
-  return `${label}: ${_poHumanise(status)}${why ? ` (${why})` : ""}`;
-}
-
-function _tiOverviewLines(provider, block) {
-  const iocs = block.iocs || {};
-  if (provider === "virustotal") {
-    const vt = block.virustotal || {};
-    const counts = (r) => `${_tiCount(r.malicious, "malicious detection")}, ${r.suspicious ?? "—"} suspicious`;
-    const lines = [];
-    if (vt.file_hash && typeof vt.file_hash === "object") {
-      const hash = vt.file_hash.indicator || iocs.file_hash;
-      lines.push(_tiLookupLine(`File hash${hash ? ` ${hash}` : ""}`, vt.file_hash, counts(vt.file_hash)));
-    }
-    (vt.ip_results || []).forEach((r) => lines.push(_tiLookupLine(`IP ${r.indicator ?? "—"}`, r, counts(r))));
-    (vt.domain_results || []).forEach((r) => lines.push(_tiLookupLine(`Domain ${r.indicator ?? "—"}`, r, counts(r))));
-    return lines.length ? lines : [_TI_NO_VT_LOOKUPS];
-  }
-  if (provider === "abuseipdb") {
-    const rows = block.abuseipdb?.ip_results || [];
-    if (!rows.length) return [_tiAbuseEmptyText(iocs)];
-    return rows.map((r) => _tiLookupLine(String(r.indicator ?? "—"), r,
-      `abuse confidence ${r.abuse_confidence_score ?? "—"}, ${_tiCount(r.total_reports, "report")}`));
-  }
-  const rows = block.alienvault_otx?.otx_results || [];
-  if (!rows.length) return [_tiOTXEmptyText(iocs)];
-  return rows.map((r) => _tiLookupLine(`${r.indicator ?? "—"}${r.indicator_type ? ` (${r.indicator_type})` : ""}`, r,
-    _tiCount(r.pulse_count, "related pulse")));
-}
-
-// Headline = enrichment_risk_level, the Threat Intelligence stage's own
-// case-level risk (threat_intel.py::calculate_enrichment_risk()), labelled
-// "Threat Intelligence Risk" so it is never read as an overall incident risk.
-// The details are a concise explanation only: enrichment_risk_reasons (that
-// calculation's own finished sentences) as the rationale, the Provider
-// Summary, the score and recommended_next_action — each shown verbatim. The
-// full provider output is stage output, rendered separately by
-// tiProviderResults() — never inside this assessment.
-//
-// enrichment_risk_score is additive and uncapped (several flagged indicators
-// can take it past 100), so it is shown as the raw score, never "/ 100", and
-// kept visually secondary to the headline level. recommended_next_action is
-// threat_intel.py's risk-derived recommendation, not a workflow-state claim
-// — the live workflow line stays in tiSummaryCard() (tiWorkflowStatusLine()).
-export function tiAssessment(result, block = result.threat_intelligence || {}) {
-  const level = result.enrichment_risk_level;
-  const reasons = (Array.isArray(result.enrichment_risk_reasons) ? result.enrichment_risk_reasons : []).filter((r) => String(r || "").trim());
-  const score = result.enrichment_risk_score;
-  const scoreHTML = hasValue(score)
-    ? `<p class="assessment-score">${escapeHTML(String(score))}</p><p class="assessment-footnote">Calculated from the provider results (additive score, not a percentage).</p>`
-    : "";
-  const details = [
-    assessmentRationale(reasons, { fallback: `<p class="value-pending">No risk reasons were recorded for this run.</p>` }),
-    assessmentSection("Provider Summary", tiProviderSummary(block), { icon: "globe" }),
-    assessmentSection("Risk Score", scoreHTML, { icon: "bars" }),
-    assessmentSection("Recommended Next Action", assessmentProse(result.recommended_next_action), { icon: "target" }),
-  ].join("");
-  return assessmentCard({
-    headlines: [assessmentHeadline("Threat Intelligence Risk", hasValue(level) ? bandValue(level) : pendingValue("Not assessed"))],
-    details,
-  });
-}
-
-// The stage's actual output: each provider's full existing table (and the
-// PowerShell analysis) as its own section, each an in-page scroll target for
-// the Provider Summary links above.
-export function tiProviderResults(block) {
-  const iocs = block.iocs || {};
-  const section = (key, title, body) => (body
-    ? `<section class="panel ti-provider-section" id="${TI_PROVIDER_SECTION_IDS[key]}" tabindex="-1" aria-labelledby="${TI_PROVIDER_SECTION_IDS[key]}-title"><h3 id="${TI_PROVIDER_SECTION_IDS[key]}-title">${escapeHTML(title)}</h3>${body}</section>`
-    : "");
-  return `<section class="ti-provider-results" aria-labelledby="ti-provider-results-title">
-    <h3 class="ti-provider-results-title" id="ti-provider-results-title">Threat Intelligence Provider Results</h3>
-    ${section("virustotal", "VirusTotal", tiVirusTotalCard(block.virustotal, iocs))}
-    ${section("abuseipdb", "AbuseIPDB", tiAbuseIPDBCard(block.abuseipdb, iocs))}
-    ${section("otx", "AlienVault OTX", tiOTXCard(block.alienvault_otx, iocs))}
-    ${section("powershell", "PowerShell Analysis", tiPowerShellCard(iocs.powershell_analysis))}
-  </section>`;
-}
-
-// Provider Summary links scroll within the page. The default `#fragment`
-// navigation is prevented because it fires `popstate`, which the router
-// (router.js::installRouter) treats as a navigation and re-renders on.
-function bindInPageLinks(root) {
-  root.querySelectorAll("[data-scroll-target]").forEach((link) => {
-    link.addEventListener("click", (event) => {
-      const target = root.querySelector(`#${link.dataset.scrollTarget}`);
-      if (!target) return;
-      event.preventDefault();
-      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
-      target.focus({ preventScroll: true });
+function bindIndicatorToggles(root) {
+  root.querySelectorAll(".ti-ioc-toggle").forEach((button) => {
+    button.addEventListener("click", () => {
+      const detail = root.querySelector(`#${button.getAttribute("aria-controls")}`);
+      if (!detail) return;
+      const open = button.getAttribute("aria-expanded") !== "true";
+      button.setAttribute("aria-expanded", String(open));
+      detail.hidden = !open;
+      button.closest("tr")?.classList.toggle("is-open", open);
     });
   });
 }
 
-// notes (informational — why a lookup was skipped, PowerShell handling,
-// etc.) and warnings (missing API key / provider error only) are two
-// distinct lists on the real result and are kept visually distinct here —
-// warnings get their own notice-error treatment rather than being merged
-// into the informational list.
-function tiNotesCard(result) {
-  const notes = (Array.isArray(result.notes) ? result.notes : []).filter((n) => String(n || "").trim());
-  const warnings = (Array.isArray(result.warnings) ? result.warnings : []).filter((w) => String(w || "").trim());
-  const notesBlock = notes.length
-    ? `<ul class="data-list">${notes.map((n) => `<li><div>${escapeHTML(n)}</div></li>`).join("")}</ul>`
-    : emptyState("No enrichment notes were recorded for this run.");
-  const warningsBlock = warnings.length
-    ? `<div class="notice notice-error ti-provider-note"><strong>Warnings</strong><ul class="data-list">${warnings.map((w) => `<li><div>${escapeHTML(w)}</div></li>`).join("")}</ul></div>`
-    : "";
-  return `<article class="panel"><h3>Notes</h3>${notesBlock}${warningsBlock}</article>`;
-}
-
 function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavigate, workflow) {
-  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>VirusTotal, AbuseIPDB, and AlienVault OTX enrichment for the extracted IOCs, with the resulting case-level risk verdict.</p></div>${stateBadge(stage)}</div>`;
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2><p>VirusTotal, AbuseIPDB and AlienVault OTX evidence for every extracted indicator, with Aegis's case-level risk assessment.</p></div>${stateBadge(stage)}</div>`;
   if (stage.state === "in_progress") {
     // Backend-driven: only the provider lookups that actually run appear.
     root.innerHTML = `
@@ -1485,23 +1544,25 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
       mountStageActivity(root.querySelector("#threat-intel-agent-activity"), caseId, stage, workflow);
     }
   } else {
-    const iocs = block.iocs || {};
-    // Assessment (concise conclusion) first, then the stage's own output.
+    const legacy = _tiIndicators(block) === null;
+    const overview = legacy
+      ? `<section class="panel"><h3>Extracted IOCs</h3><p class="notice">Indicator-level detail is not available for this result — it was produced before per-indicator recording was added. Re-run Threat Intelligence Enrichment to see the indicator overview, exclusions and provider coverage.</p>${tiLegacyIOCsCard(block.iocs)}</section>`
+      : `<section class="panel ti-overview"><h3>Indicator Overview</h3><p class="assessment-footnote">Provider evidence for each enriched indicator. Select Details for context, freshness and the full provider statements.</p>${tiIndicatorOverview(block)}</section>`;
     root.innerHTML = `
       ${header}
       <section id="threat-intel-agent-activity"></section>
-      <div class="stage-sections">
+      <div class="stage-sections ti-stage">
         ${tiAssessment(result, block)}
-        <section class="panel"><h3>Summary</h3>${tiSummaryCard(result, workflow)}</section>
-        <section class="panel"><h3>Extracted IOCs</h3>${tiIOCsCard(iocs)}</section>
-        ${tiProviderResults(block)}
-        ${tiNotesCard(result)}
+        ${overview}
+        ${tiSkippedExcluded(block)}
+        ${tiIntelligenceGaps(result, block)}
+        ${tiProviderResults(block, { open: legacy })}
       </div>
       ${stageActionButtons(stage, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
-    bindInPageLinks(root);
-    // Full trace stays available above the unchanged Threat Intelligence result.
+    bindIndicatorToggles(root);
+    // Full trace stays available above the Threat Intelligence result.
     mountStageActivity(root.querySelector("#threat-intel-agent-activity"), caseId, stage, workflow, { collapsed: true });
   }
   bindStageActions(root, stage, workflow, onAction, onNavigate);

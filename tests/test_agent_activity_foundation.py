@@ -283,7 +283,9 @@ def test_install_wraps_every_target_and_uninstall_restores_original_objects(tmp_
     all_targets = (_parsing_targets() + _triage_targets() + _threat_intel_targets()
                    + _investigation_targets() + _reporting_targets())
     targets = list({t.label: t for t in all_targets}.values())
-    assert len(targets) == 70  # shared points (claim/complete/requests/summary/model call) once each
+    # Shared points (claim/complete/requests/summary/model call) once each;
+    # 71 = 70 + Threat Intelligence select_indicators (IOC-coverage phase).
+    assert len(targets) == 71
     originals = {t.label: getattr(resolve_owner(t), t.attr) for t in targets}
     try:
         state = observability.install(str(tmp_path / "activity.db"))

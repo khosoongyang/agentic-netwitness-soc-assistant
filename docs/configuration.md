@@ -25,6 +25,7 @@ to "unavailable" for that provider only, not a stage failure.
 | `VT_API_KEY` | VirusTotal IOC lookups |
 | `ABUSEIPDB_API_KEY` | AbuseIPDB reputation lookups |
 | `OTX_API_KEY` | AlienVault OTX pulse lookups |
+| `TI_MAX_INDICATORS_PER_TYPE` | Max IP / domain / file-hash indicators looked up per Threat Intelligence run (default 10). Eligible indicators over the limit are recorded as skipped and shown to the analyst. |
 
 ## NetWitness
 

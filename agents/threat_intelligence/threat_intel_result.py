@@ -71,6 +71,10 @@ class ThreatIntelIOCs(BaseModel):
     url_indicators: list[str]
     powershell_analysis: dict[str, Any]
     powershell_enrichment_note: str
+    # Additive (IOC-coverage phase): every file hash selected for lookup, in
+    # priority order; `file_hash` above stays the first of them. Absent on
+    # results persisted before this field existed.
+    file_hashes: list[str] | None = None
 
 
 class VirusTotalResults(BaseModel):
@@ -98,6 +102,11 @@ class VirusTotalResults(BaseModel):
     file_hash: dict[str, Any]
     ip_results: list[dict[str, Any]]
     domain_results: list[dict[str, Any]]
+    # Additive (IOC-coverage phase): one lookup per selected file hash, the
+    # first being the same dict as `file_hash`. `file_hash` alone is what
+    # calculate_enrichment_risk() reads, unchanged. Absent when no hash was
+    # looked up and on results persisted before this field existed.
+    file_hash_results: list[dict[str, Any]] | None = None
 
 
 class AbuseIPDBResults(BaseModel):
@@ -120,6 +129,68 @@ class AlienVaultOTXResults(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     otx_results: list[dict[str, Any]]
+
+
+class ThreatIntelIndicator(BaseModel):
+    """One indicator in the IOC-centric view (indicators.build_indicator_view).
+
+    `status`: "enriched" (at least one provider request was sent),
+    "excluded" (not eligible for external lookup — `status_reason` says why:
+    private/multicast/broadcast/internal hostname/unsupported type...) or
+    "skipped" (eligible but not looked up — enrichment limit reached, or no
+    applicable provider configured). `providers` / `context` / `freshness`
+    are concise copies of the providers' own values (flexible payloads, as
+    for the raw provider bundles above); empty unless enriched."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: str
+    type: Literal["ip", "domain", "hash", "url", "file_name"]
+    roles: list[str]
+    origins: list[str]
+    eligible: bool
+    status: Literal["enriched", "excluded", "skipped"]
+    status_category: str | None
+    status_reason: str | None
+    providers_queried: int
+    providers_answered: int
+    providers: dict[str, dict[str, Any]]
+    context: list[dict[str, Any]]
+    freshness: list[dict[str, Any]]
+    hash_type: str | None = None
+
+
+class ThreatIntelCoverage(BaseModel):
+    """Run-level indicator counts. extracted = enriched + excluded + skipped;
+    eligible = enriched + skipped."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    extracted: int
+    eligible: int
+    enriched: int
+    excluded: int
+    skipped: int
+    skipped_by_limit: int
+    provider_requests: int
+    limit_per_type: int | None
+    by_type: dict[str, dict[str, int]]
+
+
+class ThreatIntelProviderCoverage(BaseModel):
+    """Per-provider counts of the lookups actually issued in this run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    label: str
+    configured: bool
+    state: Literal["available", "partial", "failed", "not_configured", "not_applicable"]
+    applicable: int
+    queried: int
+    returned_data: int
+    not_found: int
+    failed: int
+    not_configured: int
 
 
 class ThreatIntelProviderBundle(BaseModel):
@@ -146,6 +217,13 @@ class ThreatIntelProviderBundle(BaseModel):
     abuseipdb: AbuseIPDBResults
     alienvault_otx: AlienVaultOTXResults
     notes: list[str]
+    # Additive (IOC-coverage phase) — the IOC-centric view. Optional so a
+    # result persisted before this phase still validates; every newly
+    # produced result carries all four.
+    indicators: list[ThreatIntelIndicator] | None = None
+    coverage: ThreatIntelCoverage | None = None
+    provider_coverage: dict[str, ThreatIntelProviderCoverage] | None = None
+    intelligence_gaps: list[str] | None = None
 
 
 class ThreatIntelResult(BaseModel):
@@ -207,11 +285,13 @@ def dump_threat_intel_result(result: ThreatIntelResult) -> dict[str, Any]:
     plain-dict shape `run_threat_intel_for_dashboard()` returned before
     this contract existed.
 
-    Every field on `ThreatIntelResult` is required (no defaults), so --
-    unlike Triage's `cached` field -- `model_dump(mode="json")` alone is
-    already byte-for-byte safe here: it emits exactly the keys that were
-    present on the validated input, nothing more."""
-    return result.model_dump(mode="json")
+    Every field on `ThreatIntelResult` itself is required. The IOC-coverage
+    phase added optional nested fields (`file_hashes`, `file_hash_results`,
+    `indicators`, `coverage`, `provider_coverage`, `intelligence_gaps`);
+    `exclude_unset=True` keeps a result that lacks them (one persisted
+    before that phase) at exactly the key set it was validated with, rather
+    than gaining `null` placeholders on re-serialization."""
+    return result.model_dump(mode="json", exclude_unset=True)
 
 
 __all__ = [
@@ -219,6 +299,9 @@ __all__ = [
     "VirusTotalResults",
     "AbuseIPDBResults",
     "AlienVaultOTXResults",
+    "ThreatIntelIndicator",
+    "ThreatIntelCoverage",
+    "ThreatIntelProviderCoverage",
     "ThreatIntelProviderBundle",
     "ThreatIntelResult",
     "validate_threat_intel_result",

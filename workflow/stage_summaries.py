@@ -44,6 +44,10 @@ def _split_ai_summary_sections(text: str) -> tuple[str, str]:
 
 _AI_SUMMARY_MAX_SENTENCES = 2
 _AI_SUMMARY_MAX_WORDS = 80
+# Threat Intelligence summarises a whole multi-indicator enrichment, so it
+# gets a little more room than the other stages' one-to-two sentences.
+_TI_AI_SUMMARY_MAX_SENTENCES = 4
+_TI_AI_SUMMARY_MAX_WORDS = 120
 _AI_SUMMARY_ABBREVIATIONS = {
     "e.g.", "i.e.", "etc.", "mr.", "mrs.", "ms.", "dr.", "prof.",
     "inc.", "ltd.", "vs.", "no.",
@@ -145,6 +149,146 @@ def limit_ai_summary_sentences(
     return limited
 
 
+_STAGE_KEY_ALIASES = {
+    "parsing_and_normalisation": "parsing",
+    "parsing_normalisation": "parsing",
+    "threat_intelligence_enrichment": "threat_intel",
+    "threat_intelligence": "threat_intel",
+    "investigation_agent": "investigation",
+    "reporting_agent": "reporting",
+}
+
+
+def _summary_stage_key(stage: str) -> str:
+    key = re.sub(r"[^a-z]+", "_", str(stage or "").strip().lower()).strip("_")
+    return _STAGE_KEY_ALIASES.get(key, key)
+
+
+_TI_PROVIDER_LABELS = {"virustotal": "VirusTotal", "abuseipdb": "AbuseIPDB", "otx": "AlienVault OTX"}
+
+
+def _ti_provider_line(provider: str, evidence: dict) -> str | None:
+    """One provider's result for one indicator, in the provider's own terms."""
+    status = evidence.get("status")
+    if status in (None, "not_applicable"):
+        return None
+    if status != "completed":
+        return {"not_configured": "not configured", "not_found": "no record",
+                "error": f"lookup failed ({evidence.get('reason') or 'error'})"}.get(status, str(status))
+    if provider == "virustotal":
+        total = evidence.get("analysed_vendors")
+        text = (f"{evidence.get('malicious', 0)}/{total} vendors malicious" if total is not None
+                else f"{evidence.get('malicious', 0)} malicious")
+        if evidence.get("suspicious"):
+            text += f", {evidence['suspicious']} suspicious"
+        if evidence.get("popular_threat_label"):
+            text += f", label {evidence['popular_threat_label']}"
+        return text
+    if provider == "abuseipdb":
+        text = (f"{evidence.get('abuse_confidence_score', 0)}% abuse confidence, "
+                f"{evidence.get('total_reports', 0)} reports")
+        if evidence.get("is_tor"):
+            text += ", Tor exit node"
+        categories = [c.get("name") for c in evidence.get("report_categories") or [] if c.get("name")]
+        if categories:
+            text += f", report categories {', '.join(categories[:3])}"
+        return text
+    text = f"{evidence.get('pulse_count', 0)} pulses"
+    families = evidence.get("malware_families") or []
+    if families:
+        text += f", malware families {', '.join(families[:3])}"
+    return text
+
+
+def _ti_has_provider_result(provider: str, evidence: dict) -> bool:
+    """Whether a completed lookup returned any detection, report or pulse."""
+    if evidence.get("status") != "completed":
+        return False
+    if provider == "virustotal":
+        return bool(evidence.get("malicious") or evidence.get("suspicious"))
+    if provider == "abuseipdb":
+        return bool(evidence.get("abuse_confidence_score"))
+    return bool(evidence.get("pulse_count"))
+
+
+def _threat_intel_summary_packet(result: dict) -> dict | None:
+    """Compact, indicator-attributed facts for the Threat Intelligence AI
+    summary, built from the stage's IOC view (threat_intelligence.indicators
+    / coverage / provider_coverage / intelligence_gaps). Each provider result
+    is listed under the indicator it belongs to, so the model cannot pair a
+    detection with the wrong indicator, and the packet stays well inside the
+    context budget however many indicators a case has.
+
+    Returns None for results persisted before the IOC view existed (the
+    caller then falls back to the original packet)."""
+    block = result.get("threat_intelligence") or {}
+    indicators = block.get("indicators")
+    if not isinstance(indicators, list):
+        return None
+    with_results, without_results, failures = [], [], []
+    excluded: dict[str, int] = {}
+    for record in indicators:
+        if not isinstance(record, dict):
+            continue
+        if record.get("status") == "excluded":
+            reason = str(record.get("status_reason") or "excluded")
+            excluded[reason] = excluded.get(reason, 0) + 1
+            continue
+        if record.get("status") != "enriched":
+            continue
+        providers = record.get("providers") or {}
+        lines = {}
+        for key, label in _TI_PROVIDER_LABELS.items():
+            evidence = providers.get(key) or {}
+            line = _ti_provider_line(key, evidence)
+            if line:
+                lines[label] = line
+            if evidence.get("status") == "error":
+                failures.append(f"{label} for {record.get('value')}: {evidence.get('reason') or 'error'}")
+        # First value per field, matching the Owner / Context column the
+        # analyst sees for the same indicator.
+        context: dict = {}
+        for row in record.get("context") or []:
+            if isinstance(row, dict):
+                context.setdefault(row.get("field"), row.get("value"))
+        owner = " / ".join(str(v) for v in (
+            context.get("as_owner") or context.get("isp") or context.get("registrar")
+            or context.get("meaningful_name"), context.get("asn"), context.get("country")) if v)
+        if any(_ti_has_provider_result(key, providers.get(key) or {}) for key in _TI_PROVIDER_LABELS):
+            entry = {"indicator": record.get("value"), "type": record.get("type"),
+                     "role": "/".join(record.get("roles") or []), "owner": owner,
+                     "provider_results": lines}
+            with_results.append({k: v for k, v in entry.items() if v})
+        else:
+            without_results.append(record.get("value"))
+    coverage = block.get("coverage") or {}
+    provider_coverage = {
+        info.get("label", key): (f"{info.get('queried', 0)}/{info.get('applicable', 0)} queried, "
+                                 f"{info.get('returned_data', 0)} returned data, "
+                                 f"{info.get('failed', 0)} failed, state {info.get('state')}")
+        for key, info in (block.get("provider_coverage") or {}).items() if isinstance(info, dict)
+    }
+    return {
+        "status": result.get("status"),
+        "enrichment_risk_score": result.get("enrichment_risk_score"),
+        "enrichment_risk_level": result.get("enrichment_risk_level"),
+        "risk_scoring_factors": (result.get("enrichment_risk_reasons") or [])[:8],
+        "indicator_coverage": {k: coverage.get(k) for k in (
+            "extracted", "eligible", "enriched", "excluded", "skipped", "skipped_by_limit",
+            "provider_requests", "limit_per_type")},
+        "excluded_indicators_by_reason": excluded,
+        "provider_coverage": provider_coverage,
+        "enriched_indicators_with_provider_results": with_results[:15],
+        "more_enriched_indicators_with_provider_results": max(0, len(with_results) - 15),
+        "enriched_indicators_with_no_detections_reports_or_pulses": without_results[:15],
+        "more_enriched_indicators_with_no_results": max(0, len(without_results) - 15),
+        "lookup_failures": failures[:10],
+        "intelligence_gaps": block.get("intelligence_gaps") or [],
+        "warnings": (result.get("warnings") or [])[:10],
+        "recommended_next_action": result.get("recommended_next_action"),
+    }
+
+
 def _stage_ai_summary_context(stage: str, result: dict) -> str:
     """[FYP-FUNCTION] Build a bounded, stage-specific fact packet for the summary model.
     Normalises the many possible stage-name spellings (aliases dict) down to
@@ -152,16 +296,7 @@ def _stage_ai_summary_context(stage: str, result: dict) -> str:
     just the fields relevant to that stage out of its raw result dict, so
     the LLM summary prompt stays small and on-topic instead of receiving
     the whole (often large) stage result verbatim."""
-    key = re.sub(r"[^a-z]+", "_", str(stage or "").strip().lower()).strip("_")
-    aliases = {
-        "parsing_and_normalisation": "parsing",
-        "parsing_normalisation": "parsing",
-        "threat_intelligence_enrichment": "threat_intel",
-        "threat_intelligence": "threat_intel",
-        "investigation_agent": "investigation",
-        "reporting_agent": "reporting",
-    }
-    key = aliases.get(key, key)
+    key = _summary_stage_key(stage)
     result = result if isinstance(result, dict) else {}
 
     if key == "parsing":
@@ -190,6 +325,8 @@ def _stage_ai_summary_context(stage: str, result: dict) -> str:
             "ioc_summary": meta.get("ioc_summary"),
             "risk_level": meta.get("risk_level"),
         }
+    elif key == "threat_intel" and _threat_intel_summary_packet(result) is not None:
+        context = _threat_intel_summary_packet(result)
     elif key == "threat_intel":
         context = {
             "status": result.get("status"),
@@ -281,22 +418,43 @@ def generate_stage_ai_summary(
 
     selected_model = model or os.getenv("OPENAI_MODEL") or "gpt-5.4-mini"
     context = _stage_ai_summary_context(stage, stage_result)
+    system = (
+        "You are a SOC analyst assistant summarising the current "
+        "workflow stage for an analyst. Return exactly one or two "
+        "concise plain-English sentences, with no heading, bullets, "
+        "brackets, or raw field dump, and no more than 70 words total. "
+        "State what happened or was found; use the second sentence only "
+        "for why it matters or the next action. Use only facts in the "
+        "provided stage result and never invent missing values."
+    )
+    limits: dict = {}
+    max_output_tokens = 180
+    if (_summary_stage_key(stage) == "threat_intel" and isinstance(stage_result, dict)
+            and _threat_intel_summary_packet(stage_result) is not None):
+        # Whole-enrichment summary from the indicator-attributed packet.
+        system = (
+            "You are a SOC analyst assistant summarising a completed Threat "
+            "Intelligence Enrichment for an analyst. Return two to four concise "
+            "plain-English sentences, with no heading, bullets, brackets, or "
+            "raw field dump, and no more than 120 words total. Cover how many "
+            "indicators were enriched, excluded and skipped; which specific "
+            "indicators had provider detections, reports or pulses and what "
+            "each provider reported for them; any lookup failures or gaps that "
+            "limit the result; and the next action. Attribute a provider result "
+            "only to the indicator it is listed under, never to another "
+            "indicator. Use only facts in the provided stage result and never "
+            "invent missing values."
+        )
+        limits = {"max_sentences": _TI_AI_SUMMARY_MAX_SENTENCES, "max_words": _TI_AI_SUMMARY_MAX_WORDS}
+        max_output_tokens = 300
     try:
         summary = invoke_openai_text(
             f"{stage} stage result fields:\n{context}",
-            system=(
-                "You are a SOC analyst assistant summarising the current "
-                "workflow stage for an analyst. Return exactly one or two "
-                "concise plain-English sentences, with no heading, bullets, "
-                "brackets, or raw field dump, and no more than 70 words total. "
-                "State what happened or was found; use the second sentence only "
-                "for why it matters or the next action. Use only facts in the "
-                "provided stage result and never invent missing values."
-            ),
+            system=system,
             model=selected_model,
-            max_output_tokens=180,
+            max_output_tokens=max_output_tokens,
         )
-        summary = limit_ai_summary_sentences(summary)
+        summary = limit_ai_summary_sentences(summary, **limits)
     except Exception as exc:
         summary = limit_ai_summary_sentences(
             f"AI summary unavailable — LLM call failed: {exc}"

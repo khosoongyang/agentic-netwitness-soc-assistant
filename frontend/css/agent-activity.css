@@ -18,6 +18,12 @@
   border-bottom: 1px solid var(--border-soft);
 }
 
+/* Collapsed: the divider has nothing to separate and would double up with
+   the panel's own bottom border. */
+.agent-activity-header:has(+ .agent-activity-body[hidden]) {
+  border-bottom: 0;
+}
+
 .agent-activity-toggle {
   display: inline-flex;
   align-items: center;

@@ -1,21 +1,21 @@
 {
   "incident_id": "INC-53011",
   "classification": {
-    "alert_type": "Policy violations",
-    "severity": "MEDIUM",
+    "alert_type": "AV Alert with minimal consequences",
+    "severity": "LOW",
     "triage_risk_rating": {
-      "likelihood_initiation": "Medium",
-      "likelihood_occurrence": "Medium",
+      "likelihood_initiation": "Low",
+      "likelihood_occurrence": "Low",
       "likelihood_adverse_impact": "Low",
-      "overall_risk": "Medium",
-      "rationale": "Initiation is Medium because the alert is high-risk and has elevated scoring (70) but no IOCs matched and no concrete malicious telemetry was provided; occurrence is Medium because this is a small alert set (2 alerts/event count 2) without evidence of widespread repetition; adverse impact is Low because there are no identified endpoint/process/network indicators, no decoded PowerShell, and no corroborating IOCs to indicate likely harm."
+      "overall_risk": "Low",
+      "rationale": "Initiation is Low because there are no IOCs, no PowerShell indicators, and no concrete malicious telemetry; occurrence is Low because this is a single generic high-risk NetWitness alert with only 2 alerts/events and no supporting artifact evidence; adverse impact is Low because the alert lacks endpoint/process/network details and matched indicators, so there is insufficient evidence of realized harm."
     },
     "source_risk_score": 70
   },
   "incident_details": {
     "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
     "timestamp": "2025-07-25T09:56:24+00:00",
-    "description": "The alert is high severity from NetWitness, but the available telemetry is generic with no endpoint, network, process, file, or PowerShell evidence, and no IOC matches were found. Based on the risk rating result of Medium and the lack of concrete indicators of compromise or active malicious behavior, this is best treated as suspicious activity requiring investigation rather than a confirmed compromise."
+    "description": "This alert is high-severity at the source level but contains no supporting telemetry, no decoded PowerShell, and no IOC matches. With no endpoint, network, process, or file evidence indicating active compromise, it appears to be a low-confidence, low-immediacy detection requiring routine validation rather than urgent response."
   },
   "network_indicators": {
     "source": {

@@ -1465,41 +1465,544 @@ td {
   }
 }
 
-/* Threat Intelligence — full provider output (stage output, not assessment). */
-.ti-provider-results {
+/* Threat Intelligence — IOC-centric completed stage (workspace.js
+   renderThreatIntelStage): Aegis Assessment, Indicator Overview with
+   expandable per-indicator evidence, Skipped/Excluded indicators,
+   Intelligence Gaps, then collapsed raw provider tables and AI summary.
+   Wide tables become one labelled card per row when their own container is
+   narrow (Ask Aegis open, small windows, high zoom), so the workspace never
+   scrolls horizontally. */
+/* One column that may shrink below its widest child's min-content, so a
+   long indicator or table can never widen the whole workspace. */
+.ti-stage {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ti-muted {
+  color: var(--muted);
+}
+
+.ti-flagged {
+  color: #ffb3bd;
+  font-weight: 600;
+}
+
+.ti-no-enrichment {
+  margin-top: var(--assess-space-2);
+  font-size: 0.84rem;
+}
+
+.ti-assessment {
+  container-type: inline-size;
+}
+
+.ti-assessment-grid {
+  margin: var(--assess-space-3) 0;
   display: grid;
-  gap: var(--assess-space-3);
-  min-width: 0;
-  padding-top: var(--assess-space-2);
-  border-top: 1px solid var(--border-soft);
+  grid-template-columns: minmax(9rem, 0.7fr) minmax(16rem, 1.2fr) minmax(18rem, 1.6fr);
+  gap: var(--assess-space-2);
 }
 
-.ti-provider-results-title {
+.ti-assessment-grid:first-child,
+.ti-assessment > h3 + .ti-assessment-grid {
+  margin-top: 0;
+}
+
+.ti-assessment-grid:last-child {
+  margin-bottom: 0;
+}
+
+.ti-ai-summary > p:not(.assessment-footnote) {
+  color: var(--text);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.ti-ai-summary > .assessment-footnote {
+  margin-top: 0.35rem;
+}
+
+/* "170 (HIGH)": the engine's risk level beside its score, in the same
+   tones as the severity badges. */
+.ti-risk-level {
+  margin-left: 0.2rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.ti-risk-high {
+  color: #ffd89a;
+}
+
+.ti-risk-medium {
+  color: #ffe08a;
+}
+
+.ti-risk-low {
+  color: #9ff0ca;
+}
+
+.ti-assessment-cell {
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.6rem;
+  background: var(--surface);
+}
+
+.ti-assessment-cell h4,
+.ti-ioc-detail h5 {
+  margin: 0 0 0.5rem;
+  color: #7895bd;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ti-counts {
   margin: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
 }
 
-.ti-provider-section {
+.ti-count dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.ti-count dd {
+  margin: 0.1rem 0 0;
+  color: var(--text);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.ti-coverage {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.ti-coverage-row {
+  display: grid;
+  grid-template-columns: 7.5rem auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.ti-coverage-name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ti-coverage-detail {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.ti-overview,
+.ti-skipped,
+.ti-excluded {
   min-width: 0;
-  scroll-margin-top: calc(var(--header-height) + var(--assess-space-3));
+  container-type: inline-size;
 }
 
-.ti-provider-section:focus {
-  outline: none;
+.ti-overview > .assessment-footnote,
+.ti-skipped > .assessment-footnote,
+.ti-excluded > .assessment-footnote {
+  margin: -0.5rem 0 0.75rem;
 }
 
-.ti-provider-section:focus-visible {
+.ti-ioc-table-wrap,
+.ti-reason-wrap {
+  border: 1px solid var(--border-soft);
+  border-radius: 0.6rem;
+  background: var(--surface-raised);
+}
+
+.ti-reason-wrap {
+  max-height: 22rem;
+  overflow-y: auto;
+}
+
+.ti-ioc-table,
+.ti-reason-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.ti-ioc-table thead th,
+.ti-reason-table thead th {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  color: #7895bd;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ti-ioc-table td,
+.ti-reason-table td {
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.ti-ioc-table td small,
+.ti-reason-table td small {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+}
+
+.ti-ioc-row.is-open > td {
+  background: var(--surface);
+}
+
+.ti-ioc-row.is-open > td {
+  border-bottom-color: transparent;
+}
+
+.ti-ioc-value {
+  display: block;
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ti-reason-table .ti-ioc-value {
+  max-width: 32ch;
+}
+
+.ti-owner {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.ti-ioc-action {
+  width: 1%;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.ti-ioc-toggle {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--accent);
+  background: transparent;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.ti-ioc-toggle:hover {
+  border-color: var(--accent);
+}
+
+.ti-ioc-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
-.ti-provider-section .state-panel {
-  min-height: 0;
-  padding: var(--assess-space-3);
-  font-size: 0.86rem;
+.ti-ioc-toggle .ti-when-open,
+.ti-ioc-toggle[aria-expanded="true"] .ti-when-closed {
+  display: none;
+}
+
+.ti-ioc-toggle[aria-expanded="true"] .ti-when-open {
+  display: inline;
+}
+
+.ti-ioc-detail-row > td {
+  padding: 0 0.75rem 0.9rem;
+  background: var(--surface);
+}
+
+.ti-ioc-detail {
+  display: grid;
+  gap: 0.85rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.55rem;
+  background: var(--bg);
+}
+
+.ti-ioc-detail-head .ti-ioc-value {
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+}
+
+.ti-ioc-detail-meta {
+  margin-top: 0.3rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.9rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.ti-ioc-detail-head > p {
+  margin-top: 0.25rem;
+  font-size: 0.76rem;
+}
+
+.ti-ioc-detail-grid,
+.ti-evidence-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: 0.75rem;
+}
+
+.ti-evidence-title {
+  margin: 0;
+}
+
+.ti-evidence-title small {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ti-evidence-card {
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border-soft);
+  border-radius: 0.5rem;
+  background: var(--surface);
+}
+
+.ti-evidence-card h5 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.82rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ti-evidence-card > p {
+  font-size: 0.8rem;
+}
+
+.ti-kv {
+  margin: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ti-kv-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, 40%) minmax(0, 1fr);
+  gap: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.ti-kv-row dt {
+  color: var(--muted);
+}
+
+.ti-kv-row dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.ti-kv-row dd small {
+  display: block;
+  margin-top: 0.1rem;
+  font-size: 0.72rem;
+}
+
+.ti-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.ti-chips .evidence-chip {
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  color: #cdd7e5;
+  background: var(--surface-raised);
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+}
+
+.ti-subdetails {
+  margin-top: 0.6rem;
+  font-size: 0.78rem;
+}
+
+.ti-subdetails summary {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.ti-vendor-table {
+  width: 100%;
+  margin-top: 0.4rem;
+  border-collapse: collapse;
+}
+
+.ti-vendor-table td {
+  padding: 0.25rem 0.4rem 0.25rem 0;
+  border-bottom: 1px solid var(--border-soft);
+  overflow-wrap: anywhere;
+}
+
+.ti-pulse-list {
+  margin: 0.4rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+  list-style: none;
+}
+
+.ti-pulse-list small {
+  margin-left: 0.4rem;
+}
+
+.ti-pulse-list .ti-chips {
+  margin-top: 0.25rem;
+}
+
+/* Raw provider tables: secondary, collapsed by default. */
+.ti-raw-details {
+  margin-top: 0;
+}
+
+.ti-provider-results {
+  display: grid;
+  gap: var(--assess-space-3);
+  min-width: 0;
+}
+
+.ti-provider-section {
+  min-width: 0;
+}
+
+.ti-provider-section h4 {
+  margin: 0 0 0.5rem;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.ti-provider-section .case-context-table-wrap {
+  overflow-x: auto;
 }
 
 .ti-provider-note {
   margin-top: var(--assess-space-2);
+}
+
+/* Warnings/gaps can name a full hash or URL: let it wrap. */
+.ti-gaps .data-list div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@container (max-width: 60rem) {
+  .ti-assessment-grid {
+    grid-template-columns: minmax(9rem, 0.6fr) minmax(0, 1.4fr);
+  }
+
+  .ti-assessment-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (max-width: 40rem) {
+  .ti-assessment-grid,
+  .ti-counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ti-coverage-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .ti-coverage-detail {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Narrow: each table row becomes a labelled card. */
+@container (max-width: 56rem) {
+  .ti-ioc-table thead,
+  .ti-reason-table thead {
+    display: none;
+  }
+
+  .ti-ioc-table,
+  .ti-ioc-table tbody,
+  .ti-ioc-table tr,
+  .ti-ioc-table td,
+  .ti-reason-table,
+  .ti-reason-table tbody,
+  .ti-reason-table tr,
+  .ti-reason-table td {
+    display: block;
+  }
+
+  .ti-ioc-row,
+  .ti-reason-table tr {
+    position: relative;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .ti-ioc-row > td,
+  .ti-reason-table td {
+    padding: 0.2rem 0;
+    border-bottom: 0;
+  }
+
+  .ti-ioc-table td[data-label]::before,
+  .ti-reason-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: #7895bd;
+    font-size: 0.64rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .ti-ioc-value {
+    max-width: calc(100% - 5.5rem);
+  }
+
+  .ti-ioc-action {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.8rem;
+    width: auto;
+    padding: 0;
+  }
+
+  .ti-ioc-detail-row[hidden] {
+    display: none;
+  }
+
+  .ti-ioc-detail-row > td {
+    padding: 0 0.6rem 0.8rem;
+  }
 }
 
 /* Triage — Overview view (workspace.js::renderTriageStage), a read-only

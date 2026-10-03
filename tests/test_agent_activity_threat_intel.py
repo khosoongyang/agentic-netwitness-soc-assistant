@@ -92,6 +92,15 @@ def _fake_model(prompt, *, system=None, model=None, temperature=None, max_output
 PROCESSED = {"incident_id": CASE, "alert_title": "Suspicious binary with outbound traffic",
              "source_ip": "10.1.2.3", "destination_ip": PUBLIC_IP, "file_hash": FILE_HASH,
              "event_domain": DOMAIN, "possible_file_name": "evil.exe"}
+# Multiple indicators of every type, with excluded and limit-skipped ones
+# (run with TI_MAX_INDICATORS_PER_TYPE=2): 2 hashes x 2 + 2 IPs x 3 +
+# 2 domains x 2 = 14 provider requests.
+SECOND_HASH = "b" * 64
+MULTI = {"incident_id": CASE, "alert_title": "Multi-indicator alert",
+         "network_indicators": {"source_ips": ["10.1.2.3"],
+                                "destination_ips": [PUBLIC_IP, "198.51.100.7", "224.0.0.251", "192.0.2.9"]},
+         "web_indicators": {"domains": [DOMAIN, "c2.example.net", "dc01.corp.local"]},
+         "file_indicators": {"file_hashes": [FILE_HASH, SECOND_HASH]}}
 INCIDENT = {"id": CASE, "title": "Suspicious binary with outbound traffic", "alertMeta": {}}
 TRIAGE = {"ticket": {"incident_id": CASE, "classification": "HIGH", "unc": "#00001A"},
           "metakeys_payload": {"incident_id": CASE}}
@@ -179,7 +188,8 @@ def _snapshot(case_id, run_id, result) -> dict:
 
 # ── 30-33. Equivalence ─────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("scenario", ["all_ok", "provider_failures", "no_keys", "no_iocs", "stage_failure"])
+@pytest.mark.parametrize("scenario", ["all_ok", "provider_failures", "no_keys", "no_iocs", "stage_failure",
+                                      "multi_ioc"])
 def test_threat_intel_is_identical_with_observability_on_and_off(env, tmp_path, scenario):
     mp = env["monkeypatch"]
     processed, triage = None, None
@@ -192,6 +202,9 @@ def test_threat_intel_is_identical_with_observability_on_and_off(env, tmp_path, 
         processed = {"incident_id": CASE, "source_ip": "10.0.0.5", "destination_ip": "192.168.1.9"}
     if scenario == "stage_failure":
         triage = {"ticket": {"incident_id": "INC-SOMEONE-ELSE"}, "metakeys_payload": {}}
+    if scenario == "multi_ioc":
+        processed = MULTI
+        mp.setenv("TI_MAX_INDICATORS_PER_TYPE", "2")
 
     case_id, run_off = env["prepare"]("off", processed, triage)
     off = _snapshot(case_id, run_off, engine.resume_after_triage_approval(case_id, run_off))
@@ -210,9 +223,10 @@ def test_threat_intel_is_identical_with_observability_on_and_off(env, tmp_path, 
     assert events, "observability was active for the 'on' run"
     expected_status = {"all_ok": "Complete", "provider_failures": "Complete with Warnings",
                        "no_keys": "Complete with Warnings", "no_iocs": "Complete",
-                       "stage_failure": "Failed"}[scenario]
+                       "stage_failure": "Failed", "multi_ioc": "Complete"}[scenario]
     assert off["statuses"]["threat_intel_status"] == expected_status
-    expected_requests = {"all_ok": 7, "provider_failures": 7, "no_keys": 0, "no_iocs": 0, "stage_failure": 0}
+    expected_requests = {"all_ok": 7, "provider_failures": 7, "no_keys": 0, "no_iocs": 0, "stage_failure": 0,
+                         "multi_ioc": 14}
     assert len(off["requests"]) == expected_requests[scenario]
     assert len(off["model_calls"]) == (0 if scenario == "stage_failure" else 1)
 
@@ -244,10 +258,11 @@ def test_successful_enrichment_timeline_is_real_and_in_execution_order(env, acti
 
     # 2. Extraction reports the real indicators (hash abbreviated; private IP excluded).
     extraction = next(e for e in top if e["event_type"] == "ioc_extraction")
-    assert extraction["detail"] == "1 file hash · 1 public IP address(es) · 1 external domain(s)"
+    assert extraction["detail"] == "1 file hash · 1 public IP address(es) · 1 external domain(s) · 1 excluded"
     extraction_text = json.dumps(extraction["metadata"]["details"], ensure_ascii=False)
     assert "SHA-256 aaaaaaaa…91ff" in extraction_text and FILE_HASH not in extraction_text
-    assert "10.1.2.3" in extraction_text  # listed as not looked up
+    # Listed as not looked up, with the engine's own exclusion reason.
+    assert "10.1.2.3 — Private/internal address" in extraction_text
 
     # 4-14. One event pair per real request, in the engine's real order:
     # file hash (VT, OTX) -> each IP (VT, AbuseIPDB, OTX) -> each domain (VT, OTX).
@@ -405,6 +420,50 @@ def test_ai_summary_failure_does_not_change_the_enrichment_result(env, activity)
     assert result["status"] == "completed"
 
 
+# ── Multiple indicators, exclusions and the enrichment limit ────────────────
+
+def test_multiple_iocs_with_exclusions_and_limit_skips(env, activity):
+    env["monkeypatch"].setenv("TI_MAX_INDICATORS_PER_TYPE", "2")
+    _, run_id = env["prepare"]("multi", MULTI)
+    result = engine.resume_after_triage_approval(CASE, run_id)
+    events = _events(activity, run_id)
+
+    extraction = next(e for e in events if e["event_type"] == "ioc_extraction")
+    assert extraction["detail"] == ("2 file hashes · 2 public IP address(es) · 2 external domain(s) · "
+                                    "3 excluded · 1 skipped by enrichment limit")
+    text = json.dumps(extraction["metadata"]["details"], ensure_ascii=False)
+    for line in ("10.1.2.3 — Private/internal address",
+                 "224.0.0.251 — Multicast address",
+                 "dc01.corp.local — Internal/non-public domain suffix",
+                 "192.0.2.9 — Enrichment limit reached"):
+        assert line in text, line
+    assert FILE_HASH not in text and SECOND_HASH not in text  # hashes abbreviated
+
+    # One completed event per real request, in the engine's order, nothing for
+    # excluded or skipped indicators.
+    done = [e for e in _lookups(events) if e["status"] != "running"]
+    assert len(done) == len(REQUESTS) == 14
+    titles = [e["title"] for e in done]
+    assert titles[:4] == ["VirusTotal · SHA-256 aaaaaaaa…91ff", "AlienVault OTX · SHA-256 aaaaaaaa…91ff",
+                          "VirusTotal · SHA-256 bbbbbbbb…bbbb", "AlienVault OTX · SHA-256 bbbbbbbb…bbbb"]
+    assert not any(ip in t for t in titles for ip in ("192.0.2.9", "224.0.0.251", "10.1.2.3"))
+    assert not any("dc01.corp.local" in t for t in titles)
+    group = [e for e in events if e["event_type"] == "provider_lookups"][-1]
+    assert group["title"] == "Provider lookups finished — 14 of 14 answered"
+
+    # The persisted result carries the same accounting the timeline shows.
+    coverage = result["threat_intelligence"]["coverage"]
+    assert (coverage["enriched"], coverage["excluded"], coverage["skipped_by_limit"]) == (6, 3, 1)
+
+    client = create_app({"TESTING": True, "AGENT_ACTIVITY_DB_PATH": str(activity.path),
+                         "AGENT_ACTIVITY_STREAM_SECONDS": 0.3}).test_client()
+    history = client.get(f"/api/cases/{CASE}/activity?stage=threat_intel").get_json()
+    assert [e["sequence"] for e in history["events"]] == [e["sequence"] for e in events]
+    body = client.get(f"/api/cases/{CASE}/activity/stream?stage=threat_intel").get_data(as_text=True)
+    streamed = [json.loads(m) for m in re.findall(r"^data: (.*)$", body, re.M)]
+    assert [e["sequence"] for e in streamed] == [e["sequence"] for e in events]
+
+
 # ── 27-29. Transport, history, isolation ───────────────────────────────────
 
 def test_threat_intel_events_are_served_by_history_and_sse(env, activity):
@@ -447,6 +506,7 @@ def test_threat_intel_wrap_points_match_their_expected_signatures():
     patcher = Patcher()
     patcher.wrap = lambda target, hooks: recorded.append(target) or True  # type: ignore[assignment]
     threat_intel_adapter.install(patcher)
-    assert len(recorded) == 20
+    # 20 original wrap points + select_indicators (IOC-coverage phase).
+    assert len(recorded) == 21
     for target in recorded:
         assert actual_params(target) == target.params, target.label

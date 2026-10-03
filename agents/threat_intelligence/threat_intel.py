@@ -119,6 +119,11 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
+try:
+    from . import indicators as ioc_view
+except ImportError:  # standalone `python threat_intel.py` (no package context)
+    import indicators as ioc_view
+
 
 INPUT_FILE = "outputs/processed_alert_test_iocs.json"
 JSON_OUTPUT_FILE = "outputs/enriched_alert.json"
@@ -335,54 +340,35 @@ def extract_iocs(alert: Dict[str, Any]) -> Dict[str, Any]:
     query_virustotal_*/query_abuseipdb/query_otx_indicator().
     [FYP-USED-BY] enrich_alert() (this file) and run_threat_intel_for_dashboard()
     (via its iocs_preview call) are the two callers.
-    [FYP-EVALUATOR] IOC extraction happens here."""
-    source_ip = alert.get("source_ip")
-    destination_ip = alert.get("destination_ip")
-    event_domain = alert.get("event_domain")
-    url_indicator = alert.get("url")
-    possible_file_name = alert.get("possible_file_name")
+    [FYP-EVALUATOR] IOC extraction happens here.
 
-    file_hash = (
-        alert.get("file_hash")
-        or alert.get("sha256")
-        or alert.get("sha1")
-        or alert.get("md5")
-        or alert.get("entity_file_hash")
-    )
-
-    ip_indicators = []
-
-    if is_available(source_ip) and is_ip_address(source_ip) and not is_private_ip(source_ip):
-        ip_indicators.append(source_ip)
-
-    if is_available(destination_ip) and is_ip_address(destination_ip) and not is_private_ip(destination_ip):
-        ip_indicators.append(destination_ip)
-
-    domain_indicators = []
-
-    if is_available(event_domain) and is_external_domain(event_domain):
-        domain_indicators.append(event_domain)
-
-    url_indicators = []
-    if is_available(url_indicator):
-        url_indicators.append(str(url_indicator).strip())
-        try:
-            from urllib.parse import urlparse
-            host = urlparse(str(url_indicator)).hostname
-            if host and is_external_domain(host):
-                domain_indicators.append(host)
-        except Exception:
-            pass
-
+    Every eligible, de-duplicated indicator is kept (not only the first of
+    each type), up to the per-type enrichment limit — see
+    indicators.select_indicators(). ip_indicators / domain_indicators /
+    file_hashes are the values that WILL be looked up, in priority order;
+    file_hash stays the first of them for existing single-hash consumers.
+    Excluded and limit-skipped indicators are recorded per indicator in
+    threat_intelligence["indicators"] by enrich_alert(), never dropped."""
+    selection = select_indicators(alert)
+    selected, candidates = selection["selected"], selection["candidates"]
     return {
-        "possible_file_name": possible_file_name,
-        "file_hash": file_hash,
-        "ip_indicators": list(set(ip_indicators)),
-        "domain_indicators": list(set(domain_indicators)),
-        "url_indicators": list(set(url_indicators)),
+        "possible_file_name": alert.get("possible_file_name"),
+        "file_hash": selected["hash"][0] if selected["hash"] else None,
+        "ip_indicators": list(selected["ip"]),
+        "domain_indicators": list(selected["domain"]),
+        "url_indicators": [c["value"] for c in candidates if c["type"] == "url"],
         "powershell_analysis": alert.get("powershell_analysis") or {},
         "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available." if alert.get("powershell_analysis") else "No decoded PowerShell analysis was available before enrichment.",
+        "file_hashes": list(selected["hash"]),
     }
+
+
+def select_indicators(alert: Dict[str, Any]) -> Dict[str, Any]:
+    """[FYP-VALIDATION] Classify every candidate indicator (eligible /
+    excluded with a reason) and apply the per-type enrichment limit — thin
+    module-level entry point so the Agent Activity adapter can observe the
+    selection (see indicators.select_indicators for the rules)."""
+    return ioc_view.select_indicators(alert)
 
 
 # -----------------------------------------------------------------------------
@@ -462,7 +448,10 @@ def query_virustotal_file_hash(file_hash: str) -> Dict[str, Any]:
             "reputation": attributes.get("reputation"),
             "meaningful_name": attributes.get("meaningful_name"),
             "first_submission_date": attributes.get("first_submission_date"),
-            "last_analysis_date": attributes.get("last_analysis_date")
+            "last_analysis_date": attributes.get("last_analysis_date"),
+            # Additional analyst context from the same response (no extra request).
+            **ioc_view.virustotal_extras(attributes),
+            **ioc_view.virustotal_file_extras(attributes),
         }
 
     except (requests.RequestException, json.JSONDecodeError) as error:
@@ -522,7 +511,12 @@ def query_virustotal_ip(ip_address: str) -> Dict[str, Any]:
             "undetected": stats.get("undetected", 0),
             "reputation": attributes.get("reputation"),
             "country": attributes.get("country"),
-            "as_owner": attributes.get("as_owner")
+            "as_owner": attributes.get("as_owner"),
+            # Additional analyst context from the same response (no extra request).
+            "asn": attributes.get("asn"),
+            "network": attributes.get("network"),
+            "last_analysis_date": attributes.get("last_analysis_date"),
+            **ioc_view.virustotal_extras(attributes),
         }
 
     except (requests.RequestException, json.JSONDecodeError) as error:
@@ -583,7 +577,10 @@ def query_virustotal_domain(domain: str) -> Dict[str, Any]:
             "undetected": stats.get("undetected", 0),
             "reputation": attributes.get("reputation"),
             "registrar": attributes.get("registrar"),
-            "creation_date": attributes.get("creation_date")
+            "creation_date": attributes.get("creation_date"),
+            # Additional analyst context from the same response (no extra request).
+            "last_analysis_date": attributes.get("last_analysis_date"),
+            **ioc_view.virustotal_extras(attributes),
         }
 
     except (requests.RequestException, json.JSONDecodeError) as error:
@@ -649,7 +646,10 @@ def query_abuseipdb(ip_address: str) -> Dict[str, Any]:
             "isp": result.get("isp"),
             "domain": result.get("domain"),
             "usage_type": result.get("usageType"),
-            "last_reported_at": result.get("lastReportedAt")
+            "last_reported_at": result.get("lastReportedAt"),
+            # Flags and a report-category summary from the same verbose
+            # response (reporter identities/comments are not retained).
+            **ioc_view.abuseipdb_extras(result),
         }
 
     except (requests.RequestException, json.JSONDecodeError) as error:
@@ -713,7 +713,9 @@ def query_otx_indicator(indicator_type: str, indicator_value: str) -> Dict[str, 
             "indicator_type": indicator_type,
             "pulse_count": pulse_info.get("count", 0),
             "related_pulses": related_pulses,
-            "sections_available": result.get("sections", [])
+            "sections_available": result.get("sections", []),
+            # Concise pulse context from the same response (no extra request).
+            **ioc_view.otx_extras(result),
         }
 
     except (requests.RequestException, json.JSONDecodeError) as error:
@@ -908,12 +910,24 @@ def enrich_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
         "notes": notes
     }
 
-    if is_available(file_hash):
-        threat_intel["virustotal"]["file_hash"] = query_virustotal_file_hash(file_hash)
+    # Which lookup belongs to which indicator — a skipped (no-credential)
+    # provider result carries no "indicator" field, so the association is
+    # recorded here, at dispatch time, for the per-indicator view below.
+    lookups: Dict[tuple, Dict[str, Any]] = {}
+    file_hashes = iocs.get("file_hashes") or ([file_hash] if is_available(file_hash) else [])
 
-        threat_intel["alienvault_otx"]["otx_results"].append(
-            query_otx_indicator("file", file_hash)
-        )
+    if file_hashes:
+        # virustotal.file_hash stays the FIRST hash's lookup (the single
+        # value calculate_enrichment_risk() has always read);
+        # file_hash_results holds every hash's lookup, first included.
+        threat_intel["virustotal"]["file_hash_results"] = []
+        for hash_value in file_hashes:
+            vt_result = query_virustotal_file_hash(hash_value)
+            otx_result = query_otx_indicator("file", hash_value)
+            threat_intel["virustotal"]["file_hash_results"].append(vt_result)
+            threat_intel["alienvault_otx"]["otx_results"].append(otx_result)
+            lookups[("hash", hash_value)] = {"virustotal": vt_result, "otx": otx_result}
+        threat_intel["virustotal"]["file_hash"] = threat_intel["virustotal"]["file_hash_results"][0]
     else:
         threat_intel["virustotal"]["file_hash"] = {
             "status": "skipped",
@@ -921,28 +935,28 @@ def enrich_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
         }
 
     for ip_address in ip_indicators:
-        threat_intel["virustotal"]["ip_results"].append(
-            query_virustotal_ip(ip_address)
-        )
-
-        threat_intel["abuseipdb"]["ip_results"].append(
-            query_abuseipdb(ip_address)
-        )
-
-        threat_intel["alienvault_otx"]["otx_results"].append(
-            query_otx_indicator("IPv4", ip_address)
-        )
+        vt_result = query_virustotal_ip(ip_address)
+        abuse_result = query_abuseipdb(ip_address)
+        otx_type = "IPv6" if ":" in ip_address else "IPv4"
+        otx_result = query_otx_indicator(otx_type, ip_address)
+        threat_intel["virustotal"]["ip_results"].append(vt_result)
+        threat_intel["abuseipdb"]["ip_results"].append(abuse_result)
+        threat_intel["alienvault_otx"]["otx_results"].append(otx_result)
+        lookups[("ip", ip_address)] = {"virustotal": vt_result, "abuseipdb": abuse_result, "otx": otx_result}
 
     for domain in domain_indicators:
-        threat_intel["virustotal"]["domain_results"].append(
-            query_virustotal_domain(domain)
-        )
-
-        threat_intel["alienvault_otx"]["otx_results"].append(
-            query_otx_indicator("domain", domain)
-        )
+        vt_result = query_virustotal_domain(domain)
+        otx_result = query_otx_indicator("domain", domain)
+        threat_intel["virustotal"]["domain_results"].append(vt_result)
+        threat_intel["alienvault_otx"]["otx_results"].append(otx_result)
+        lookups[("domain", domain)] = {"virustotal": vt_result, "otx": otx_result}
 
     enrichment_risk = calculate_enrichment_risk(threat_intel)
+
+    # IOC-centric view (per-indicator evidence, coverage, exclusions, gaps).
+    # Built AFTER the risk calculation and read by nothing in it — purely a
+    # presentation/record of what the lookups returned.
+    threat_intel.update(ioc_view.build_indicator_view(select_indicators(alert), lookups))
 
     enriched_alert = {
         **alert,
@@ -1112,8 +1126,56 @@ def flatten_alert_for_enrichment(alert: Dict[str, Any]) -> Dict[str, Any]:
         "host": _first_non_empty(alert.get("host"), alert.get("hostname"), compatibility.get("event_domain"), *_as_list(users.get("hostnames"))),
         "hostname": _first_non_empty(alert.get("hostname"), alert.get("host"), compatibility.get("event_domain"), *_as_list(users.get("hostnames"))),
         "iocs": alert.get("iocs") or normalised.get("threat_context", {}).get("related_iocs") or [],
+        "ti_indicator_sources": _indicator_sources(alert, network, users, files, web, ioc_summary, ps_iocs, ioc_lists),
     }
     return flat
+
+
+def _indicator_sources(alert: Dict[str, Any], network: Dict[str, Any], users: Dict[str, Any],
+                       files: Dict[str, Any], web: Dict[str, Any], ioc_summary: Dict[str, Any],
+                       ps_iocs: Dict[str, Any], ioc_lists: Dict[str, List[str]]) -> List[Dict[str, Any]]:
+    """Every indicator value the flattened scalars above were picked from,
+    tagged with its type, its source/destination role (only where the list
+    itself states one) and where it was found — so enrichment can process
+    all of them, not only the first of each type. Order matches the scalar
+    priority order above."""
+    entries: List[Dict[str, Any]] = []
+
+    def add(values: Any, kind: str, origin: str, role: Optional[str] = None) -> None:
+        for value in _as_list(values):
+            entries.append({"value": value, "type": kind, "origin": origin, "role": role})
+
+    add(network.get("source_ips"), "ip", ioc_view.ORIGIN_NETWORK, "source")
+    add(alert.get("source_ip"), "ip", ioc_view.ORIGIN_ALERT, "source")
+    add(network.get("destination_ips"), "ip", ioc_view.ORIGIN_NETWORK, "destination")
+    add(alert.get("destination_ip"), "ip", ioc_view.ORIGIN_ALERT, "destination")
+    add(network.get("external_ips"), "ip", ioc_view.ORIGIN_NETWORK)
+    add(ioc_summary.get("ips"), "ip", ioc_view.ORIGIN_IOC_SUMMARY)
+    add(ps_iocs.get("public_ips"), "ip", ioc_view.ORIGIN_POWERSHELL)
+    add(ioc_lists["ips"], "ip", ioc_view.ORIGIN_RELATED)
+    add(users.get("domains"), "domain", ioc_view.ORIGIN_USERS)
+    add(web.get("domains"), "domain", ioc_view.ORIGIN_WEB)
+    add(ioc_summary.get("domains"), "domain", ioc_view.ORIGIN_IOC_SUMMARY)
+    add(alert.get("event_domain"), "domain", ioc_view.ORIGIN_ALERT)
+    add(ps_iocs.get("domains"), "domain", ioc_view.ORIGIN_POWERSHELL)
+    add(ioc_lists["domains"], "domain", ioc_view.ORIGIN_RELATED)
+    add(web.get("urls"), "url", ioc_view.ORIGIN_WEB)
+    add(ioc_summary.get("urls"), "url", ioc_view.ORIGIN_IOC_SUMMARY)
+    add(alert.get("url"), "url", ioc_view.ORIGIN_ALERT)
+    add(ps_iocs.get("urls"), "url", ioc_view.ORIGIN_POWERSHELL)
+    add(files.get("file_hashes"), "hash", ioc_view.ORIGIN_FILES)
+    add(ioc_summary.get("hashes"), "hash", ioc_view.ORIGIN_IOC_SUMMARY)
+    add(alert.get("file_hash"), "hash", ioc_view.ORIGIN_ALERT)
+    add(ps_iocs.get("hashes"), "hash", ioc_view.ORIGIN_POWERSHELL)
+    add(ioc_lists["hashes"], "hash", ioc_view.ORIGIN_RELATED)
+    add(files.get("file_names"), "file_name", ioc_view.ORIGIN_FILES)
+    add(ioc_summary.get("files"), "file_name", ioc_view.ORIGIN_IOC_SUMMARY)
+    add(alert.get("possible_file_name"), "file_name", ioc_view.ORIGIN_ALERT)
+    add(alert.get("file_name"), "file_name", ioc_view.ORIGIN_ALERT)
+    add(ps_iocs.get("file_names"), "file_name", ioc_view.ORIGIN_POWERSHELL)
+    add(ioc_lists["file_names"], "file_name", ioc_view.ORIGIN_RELATED)
+    entries += [e for e in _as_list(alert.get("ti_alert_meta_indicators")) if isinstance(e, dict)]
+    return entries
 
 
 # [FYP-FUNCTION] `_build_flat_alert` — constructs build flat alert output for the next threat intelligence and NetWitness integration consumer or analyst-facing view.
@@ -1162,6 +1224,21 @@ def _build_flat_alert(incident: Optional[Dict[str, Any]], triage_result: Optiona
     if not is_available(base.get("file_hash")):
         base["file_hash"] = _first_am("Checksum", "FileHash", "SHA256", "SHA1", "MD5")
 
+    # Every value of those same alertMeta fields (not only the first), so a
+    # multi-valued alertMeta field is enriched in full rather than truncated.
+    meta_entries = []
+    for fields, kind, role in ((("SourceIp", "Source_IP", "source_ip"), "ip", "source"),
+                               (("DestinationIp", "Destination_IP", "destination_ip"), "ip", "destination"),
+                               (("AlertDomain", "Domain", "domain", "EventDomain"), "domain", None),
+                               (("Checksum", "FileHash", "SHA256", "SHA1", "MD5"), "hash", None)):
+        for field in fields:
+            for value in _as_list(am.get(field)):
+                if is_available(value):
+                    meta_entries.append({"value": value, "type": kind, "role": role,
+                                         "origin": ioc_view.ORIGIN_ALERT_META})
+    if meta_entries:
+        base["ti_alert_meta_indicators"] = meta_entries
+
     return base
 
 
@@ -1179,7 +1256,11 @@ def _iter_provider_results(threat_intel: Dict[str, Any]):
     as a single dict (VirusTotal's file_hash) or a list (everything else)."""
     vt = threat_intel.get("virustotal") or {}
     file_hash_result = vt.get("file_hash")
-    if isinstance(file_hash_result, dict):
+    if isinstance(vt.get("file_hash_results"), list):
+        # Every hash looked up (virustotal.file_hash is the first of these).
+        for r in vt["file_hash_results"]:
+            yield "VirusTotal", r
+    elif isinstance(file_hash_result, dict):
         yield "VirusTotal", file_hash_result
     for r in vt.get("ip_results") or []:
         yield "VirusTotal", r

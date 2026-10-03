@@ -306,24 +306,6 @@ def _headline(html: str) -> str:
     return html.split("<details", 1)[0]
 
 
-def _provider_rows(html: str) -> dict:
-    """Provider Summary rows -> {provider: {summary, statuses, details}}."""
-    body = html.split('class="provider-summary-table"', 1)[1].split("<tbody>", 1)[1].split("</tbody>", 1)[0]
-    rows = {}
-    for tr in body.split("<tr>")[1:]:
-        name = re.search(r'class="provider-summary-link"[^>]*>([^<]+)<', tr).group(1)
-
-        def cell(label, tr=tr):
-            return tr.split(f'data-label="{label}">', 1)[1].split("</td>", 1)[0]
-
-        rows[name] = {
-            "summary": cell("Summary"),
-            "statuses": re.findall(r'class="badge [^"]*">([^<]+)<', cell("Status")),
-            "details": cell("Details"),
-        }
-    return rows
-
-
 PARSING_NA = {
     "alert_summary": {"severity": "High", "risk_score": 70},
     "powershell_analysis": {"risk_assessment": {"risk_level": "Low", "risk_score": 0}},
@@ -413,104 +395,74 @@ def test_triage_omits_absent_risk_dimensions():
 def test_threat_intel_headline_and_details():
     html = _render({"ti": TI})["ti"]
     head = _headline(html)
-    assert "Threat Intelligence Risk" in head and "severity-low" in head
+    # Score and level are one compact value: "25 (LOW)".
+    assert "Risk Score" in head
+    assert '25 <span class="ti-risk-level ti-risk-low">(LOW)</span>' in head
     assert "Risk level" not in html
-    assert "Risk Score" in html and ">25<" in html
-    assert "Assessment Rationale" in html and "9 malicious detection" in html
-    assert "Recommended Next Action" in html
-    assert "No elevated enrichment risk was identified." in html
-    assert "Provider Summary" in html
-    for old in ("Why Low?", "Threat Intelligence Recommendation", "Provider Overview", "Risk Level"):
+    # Removed: the separate risk headline row and the Aegis Assessment caption.
+    assert "Threat Intelligence Risk" not in html and "assessment-headline" not in html
+    assert "Aegis Assessment" not in html
+    # Removed from the card: recommended action, workflow line and the
+    # scoring-factors disclosure.
+    assert "<details" not in html
+    for old in ("Why Low?", "Threat Intelligence Recommendation", "Provider Overview", "Risk Level",
+                "Provider Summary", "Recommended Next Action", "No elevated enrichment risk was identified.",
+                "Workflow:", "Assessment Rationale", "scoring factors", "9 malicious detection"):
         assert old not in html, old
 
 
 @requires_node
-def test_threat_intel_assessment_holds_only_a_concise_provider_overview():
-    out = _render({"ti": TI})
-    html = out["ti"]
-    # Full provider tables are NOT inside the assessment...
+def test_threat_intel_assessment_holds_no_provider_tables_or_fabricated_counts():
+    html = _render({"ti": TI})["ti"]
     for column in ("<th>Reputation</th>", "<th>Abuse confidence</th>", "<th>Pulse count</th>", "PowerShell Analysis"):
         assert column not in html, column
-    # ...only one line per lookup, from the provider's own fields.
-    assert "File hash: skipped (No file hash was available.)" in html
-    assert "IP 188.40.170.197: 9 malicious detections, 0 suspicious" in html
-    assert "188.40.170.197: abuse confidence 0, 0 reports" in html
-    assert "188.40.170.197 (IPv4): 0 related pulses" in html
-    # The provider name and the row's trailing arrow both link to its full
-    # section, which exists exactly once.
-    results = out["tiResults"]
-    for target in ("ti-provider-virustotal", "ti-provider-abuseipdb", "ti-provider-otx"):
-        assert html.count(f'data-scroll-target="{target}"') == 2
-        assert html.count(f'href="#{target}"') == 2
-        assert results.count(f'id="{target}"') == 1
+    # A result persisted before per-indicator recording has no coverage data:
+    # nothing is invented for it.
+    assert "Provider Coverage" not in html and "Extracted" not in html
 
 
 @requires_node
-def test_threat_intel_provider_results_are_full_stage_output():
+def test_threat_intel_raw_provider_details_are_collapsed_and_complete():
     results = _render({"ti": TI})["tiResults"]
-    assert "Threat Intelligence Provider Results" in results
-    for text in ("<th>Reputation</th>", "<th>Abuse confidence</th>", "<th>Pulse count</th>",
-                 "Hetzner", "PowerShell Analysis", 'id="ti-provider-powershell"'):
+    assert results.startswith('<details class="parsing-field-list ti-raw-details">')
+    assert "Raw provider details" in results
+    for text in ("<th>Reputation</th>", "<th>Abuse confidence</th>", "<th>Pulse count</th>", "Hetzner"):
         assert text in results, text
-    assert 'tabindex="-1"' in results
+    # Purely technical metadata and Parsing's PowerShell analysis are not repeated here.
+    assert "Available sections" not in results and "PowerShell Analysis" not in results
 
 
 @requires_node
-def test_threat_intel_summary_without_indicators_is_not_a_clean_result():
+def test_threat_intel_without_indicators_is_not_a_clean_result():
     html = _render({"ti": TI_NO_INDICATORS})["ti"]
-    assert "No risk reasons were recorded for this run." in html
-    rows = _provider_rows(html)
-    # VirusTotal's file-hash entry is the backend's own "skipped" status.
-    assert rows["VirusTotal"]["summary"] == "No usable indicator"
-    assert rows["VirusTotal"]["statuses"] == ["Skipped"]
-    assert "File hash: skipped (No file hash was available.)" in rows["VirusTotal"]["details"]
-    # No lookup entry at all -> neutral "Not Queried", never a result.
-    assert rows["AbuseIPDB"]["summary"] == "No usable public IP"
-    assert rows["AbuseIPDB"]["statuses"] == ["Not Queried"]
-    assert "No public IP indicator was extracted." in rows["AbuseIPDB"]["details"]
-    assert rows["AlienVault OTX"]["summary"] == "No usable indicator"
-    assert rows["AlienVault OTX"]["statuses"] == ["Not Queried"]
+    assert "safe" not in html.lower().replace("not a determination that the incident is safe", "")
     assert "Completed" not in html
 
 
 @requires_node
-def test_threat_intel_summary_with_completed_lookups():
-    rows = _provider_rows(_render({"ti": TI})["ti"])
-    assert rows["VirusTotal"]["summary"] == "1 IP"
-    assert rows["VirusTotal"]["statuses"] == ["Skipped", "Completed"]
-    assert rows["AbuseIPDB"]["summary"] == "1 public IP"
-    assert rows["AbuseIPDB"]["statuses"] == ["Completed"]
-    assert rows["AlienVault OTX"]["summary"] == "1 indicator"
-    assert rows["AlienVault OTX"]["statuses"] == ["Completed"]
-
-
-@requires_node
-def test_threat_intel_summary_shows_error_and_not_found_as_recorded():
+def test_threat_intel_raw_tables_show_error_and_not_found_as_recorded():
     ti = copy.deepcopy(TI)
     ti["threat_intelligence"]["abuseipdb"]["ip_results"][0] = {
         "indicator": "188.40.170.197", "status": "error", "status_code": 429}
     ti["threat_intelligence"]["alienvault_otx"]["otx_results"][0]["status"] = "not_found"
-    rows = _provider_rows(_render({"ti": ti})["ti"])
-    assert rows["AbuseIPDB"]["statuses"] == ["Error"]
-    assert "HTTP 429" in rows["AbuseIPDB"]["details"]
-    assert rows["AlienVault OTX"]["statuses"] == ["Not Found"]
+    results = _render({"ti": ti})["tiResults"]
+    assert "HTTP 429" in results and "state-failed" in results
+    assert ">not_found<" in results
 
 
 @requires_node
 def test_threat_intel_risk_score_is_secondary_and_uncapped():
     html = _render({"ti": {**TI, "enrichment_risk_score": 180, "enrichment_risk_level": "High"}})["ti"]
-    assert '<p class="assessment-score">180</p>' in html
+    assert '<p class="assessment-score">180 <span class="ti-risk-level ti-risk-high">(HIGH)</span></p>' in html
     assert "/ 100" not in html and "/100" not in html
-    assert "severity-high" in _headline(html)
 
 
 @requires_node
-def test_threat_intel_rationale_and_recommendation_are_verbatim():
+def test_threat_intel_card_omits_rationale_and_recommendation():
     reasons = ["First stored reason.", "Second stored reason."]
     action = "Stored recommendation, unchanged."
     html = _render({"ti": {**TI, "enrichment_risk_reasons": reasons, "recommended_next_action": action}})["ti"]
-    assert "<p>First stored reason.</p><p>Second stored reason.</p>" in html
-    assert f"<p>{action}</p>" in html
+    assert "First stored reason." not in html and action not in html
 
 
 @requires_node
