@@ -133,14 +133,14 @@ function lolbasHighlights(packet) {
   const rows = [];
   ((lol && lol.strong_hits) || []).slice(0, 6).forEach((h) => rows.push(`<li><span class="badge severity-high">strong</span> <code>${escapeHTML(short(h.binary))}</code> ${escapeHTML(short(h.category || ""))} ${h.path_mismatch ? '<span class="badge severity-critical">path_mismatch</span>' : ""}</li>`));
   if (lol && lol.weak_hit_count) rows.push(`<li><span class="badge severity-low">weak</span> ${escapeHTML(lol.weak_hit_count)} name-only hit(s)</li>`);
-  ((mas && mas.path_mismatches) || []).slice(0, 4).forEach((h) => rows.push(`<li><span class="badge severity-critical">masquerade</span> <code>${escapeHTML(short(h.binary))}</code> in <code>${escapeHTML(short(h.observed_directory || ""))}</code></li>`));
-  return rows.length ? `<ul class="data-list">${rows.join("")}</ul>` : `<p class="form-help">No abused-tool (LOLBAS) hits.</p>`;
+  ((mas && mas.path_mismatches) || []).slice(0, 4).forEach((h) => rows.push(`<li><span class="badge severity-critical">masquerade</span> <code>${escapeHTML(short(h.binary))}</code> in <code>${escapeHTML(short(h.observed_directory || "unknown directory"))}</code>${(h.expected_directories || []).length ? ` (expected ${escapeHTML(short(h.expected_directories.join(", ")))})` : ""}</li>`));
+  return rows.length ? `<ul class="triage-review-claims">${rows.join("")}</ul>` : `<p class="form-help">No abused-tool (LOLBAS) hits.</p>`;
 }
 
 function threatDesc(packet) {
   const td = val(packet, "raw_alerts.threat_desc");
   const items = (td && td.items) || [];
-  return items.length ? `<ul class="data-list">${items.slice(0, 6).map((t) => `<li><span>${escapeHTML(short(t.value ?? t))}</span>${t.count ? `<strong>${escapeHTML(t.count)}</strong>` : ""}</li>`).join("")}</ul>` : "";
+  return items.length ? `<ul class="triage-review-claims">${items.slice(0, 6).map((t) => `<li><span>${escapeHTML(short(t.threat_desc ?? t.value ?? t))}</span>${t.count ? `<strong>${escapeHTML(t.count)}</strong>` : ""}</li>`).join("")}</ul>` : "";
 }
 
 // ── Left: evidence packet ───────────────────────────────────────────────────
