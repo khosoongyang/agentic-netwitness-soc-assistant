@@ -8,6 +8,7 @@ import { renderReports } from "./pages/reports.js";
 import { renderSearch } from "./pages/search.js";
 import { renderPipeline } from "./pages/pipeline.js";
 import { renderSettings } from "./pages/settings.js";
+import { renderTriageFeedback } from "./pages/triageFeedback.js";
 
 
 const root = document.querySelector("#app-content");
@@ -32,6 +33,8 @@ async function render() {
     await renderPipeline(root, context);
   } else if (route.view === "settings") {
     await renderSettings(root, context);
+  } else if (route.view === "triage-feedback") {
+    await renderTriageFeedback(root, context);
   } else {
     await renderOverview(root, context);
   }

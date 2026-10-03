@@ -2,7 +2,7 @@ export function currentRoute() {
   const params = new URLSearchParams(window.location.search);
   const view = params.get("view") || "overview";
   return {
-    view: ["case", "cases", "chat", "reports", "search", "pipeline", "integrations", "settings"].includes(view) ? view : "overview",
+    view: ["case", "cases", "chat", "reports", "search", "pipeline", "integrations", "settings", "triage-feedback"].includes(view) ? view : "overview",
     caseId: params.get("case"),
     params,
   };
