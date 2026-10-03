@@ -1006,7 +1006,7 @@ def run_triage(incident: dict, progress_fn=None,
     return result
 
 
-def _stamp_triage_provenance(result: dict, *, model: str | None) -> None:
+def _stamp_triage_provenance(result: dict, *, model: str | None, mock: bool = False) -> None:
     """[FYP-TRIAGE-STEP3] Persisted-only provenance (prompt version + model)
     for the triage_reviews row, kept OUTSIDE the agent contract exactly like
     generate_triage_ai_summary()'s ai_summary* keys (stripped before any
@@ -1017,6 +1017,9 @@ def _stamp_triage_provenance(result: dict, *, model: str | None) -> None:
         from agents.triage.soc_triage_agent import TRIAGE_PROMPT_VERSION
     except Exception:
         TRIAGE_PROMPT_VERSION = None
+    if mock:   # [AUDIT T-21] offline --mock-triage: no prompt, no model
+        result["triage_provenance"] = {"prompt_version": "mock", "model": "mock"}
+        return
     result["triage_provenance"] = {"prompt_version": TRIAGE_PROMPT_VERSION, "model": model}
 
 
@@ -1134,7 +1137,8 @@ from workflow.stage_summaries import (
 
 
 
-def mock_triage_result(incident: dict, data_availability: dict | None = None) -> dict:
+def mock_triage_result(incident: dict, data_availability: dict | None = None,
+                       suppressions: list[dict] | None = None) -> dict:
     """
     [FYP-FUNCTION] [FYP-FALLBACK] Canned Triage Result (offline/LLM-less testing)
 
@@ -1175,10 +1179,13 @@ def mock_triage_result(incident: dict, data_availability: dict | None = None) ->
 
     inc_id  = str(incident.get("id") or incident.get("incidentId") or "unknown")
     title   = incident.get("title") or incident.get("name") or "Untitled"
-    now_iso = datetime.utcnow().isoformat()
+    now_iso = datetime.now(timezone.utc).isoformat()
     metakeys = ["ip.src", "ip.dst", "user.name", "host.name"]
+    # [AUDIT T-21] approved suppressions apply to the mock path too (parity
+    # with run_triage); the guard pipeline below is the real one.
     evidence_packet = build_evidence_packet(
-        incident, None, compute_baseline(incident, wss.DB_FILE), data_availability)
+        incident, None, compute_baseline(incident, wss.DB_FILE), data_availability,
+        suppressions=suppressions or None)
     assessment = build_assessment({
         "proposed_disposition": "true_positive",
         "hypotheses": {
@@ -3314,14 +3321,20 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
         # [FYP-TRIAGE-STEP3] a fresh run carries no analyst note (notes are
         # tied to a re-run of an existing run), but approved suppressions
         # apply to every triage of a matching scope.
-        _note, _suppressions = (None, []) if use_mock_triage else _triage_context_inputs(inc_id, run_id)
-        triage_result = (mock_triage_result(incident, data_availability=data_availability)
-                         if use_mock_triage
-                         else run_triage(incident, progress_fn=progress_fn,
-                                         parsed_context=parsed_context,
-                                         force=force_triage,
-                                         data_availability=data_availability,
-                                         suppressions=_suppressions))
+        _note, _suppressions = _triage_context_inputs(inc_id, run_id)
+        if use_mock_triage:
+            # suppressions only passed when present, like run_triage(), so
+            # existing stubs of mock_triage_result() keep working.
+            _mock_extra = {"suppressions": _suppressions} if _suppressions else {}
+            triage_result = mock_triage_result(incident, data_availability=data_availability,
+                                               **_mock_extra)
+            _stamp_triage_provenance(triage_result, model=None, mock=True)
+        else:
+            triage_result = run_triage(incident, progress_fn=progress_fn,
+                                       parsed_context=parsed_context,
+                                       force=force_triage,
+                                       data_availability=data_availability,
+                                       suppressions=_suppressions)
     except Exception as exc:
         ctx["stages"]["triage"] = "failed"
         ctx["errors"]["triage"] = str(exc)

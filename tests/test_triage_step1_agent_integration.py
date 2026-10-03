@@ -358,3 +358,25 @@ def test_mock_triage_result_with_evidence_keeps_true_positive():
                                   "riskScore": 70, "priority": "High", "alertCount": 2})
     out = validate_triage_agent_output({k: v for k, v in mock.items() if k != "mock"})
     assert out.assessment.disposition == "true_positive"
+
+
+def test_mock_triage_carries_suppressions_and_mock_provenance():
+    """Audit T-21: the --mock-triage path skipped suppressions and stamped no
+    provenance, so its review rows stored NULL prompt_version/model."""
+    from workflow import engine as sw
+    from agents.triage.suppression import scope_from_packet
+    inc = {"id": "INC-9997", "title": "High Risk Alerts: ESA for 10.0.0.5", "createdBy": "ESA",
+           "ruleId": "R-1", "riskScore": 70, "priority": "High", "alertCount": 2}
+    scope = scope_from_packet(sw.mock_triage_result(inc)["evidence_packet"])
+    assert scope["detection_source"] and scope["entity"]
+    supp = [{"id": 7, "status": "approved", "detection_source": scope["detection_source"],
+             "entity": scope["entity"], "decided_by": "Bob", "decided_at": "2026-10-01T00:00:00+00:00",
+             "expires_at": "2999-01-01T00:00:00+00:00"}]
+    mock = sw.mock_triage_result(inc, suppressions=supp)
+    out = validate_triage_agent_output({k: v for k, v in mock.items() if k != "mock"})
+    assert isinstance(out, TriageAgentSuccessOutput)
+    leaf = mock["evidence_packet"]["context"]["suppression_match"]
+    assert leaf["status"] == "measured" and leaf["value"]["matches"][0]["suppression_id"] == 7
+    stamped = dict(mock)
+    sw._stamp_triage_provenance(stamped, model=None, mock=True)
+    assert stamped["triage_provenance"] == {"prompt_version": "mock", "model": "mock"}
