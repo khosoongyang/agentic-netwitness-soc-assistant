@@ -479,10 +479,20 @@ def _render_value(path: str, value: Any) -> str:
 ANALYST_CONTEXT_OPEN = "<analyst_provided_context>"
 ANALYST_CONTEXT_CLOSE = "</analyst_provided_context>"
 _ANALYST_TAG_RE = re.compile(r"<\s*/?\s*analyst_provided_context\s*>", re.IGNORECASE)
+# [AUDIT T-08] Packet values quote incident data (alert names, threat_desc,
+# command lines). Neither prompt delimiter may survive inside a rendered
+# value, so incident text can never forge an analyst-context block or close
+# an untrusted-data block.
+_PROMPT_DELIMITER_RE = re.compile(
+    r"<\s*/?\s*(?:analyst_provided_context|untrusted_incident_data)\s*>", re.IGNORECASE)
+
+
+def defang_prompt_delimiters(text: str) -> str:
+    return _PROMPT_DELIMITER_RE.sub("[removed-delimiter]", text)
 
 
 def render_analyst_note(value: Any) -> str:
-    text = _ANALYST_TAG_RE.sub("[removed-delimiter]", str(value or ""))
+    text = defang_prompt_delimiters(str(value or ""))
     text = text.replace("\r", " ").replace("\n", " ")
     return f"{ANALYST_CONTEXT_OPEN}{json.dumps(text, ensure_ascii=False)}{ANALYST_CONTEXT_CLOSE}"
 
@@ -513,7 +523,12 @@ def render_packet_for_prompt(packet: dict) -> str:
     escaped JSON strings, i.e. data, never instructions."""
     lines = []
     for path, leaf in iter_leaves(packet):
-        value = "—" if leaf["status"] == "missing" else _render_value(path, leaf["value"])
+        if leaf["status"] == "missing":
+            value = "—"
+        elif path == "context.analyst_note":
+            value = render_analyst_note(leaf["value"])   # defangs internally
+        else:
+            value = defang_prompt_delimiters(_render_value(path, leaf["value"]))
         lines.append(f"{path} [{leaf['status']}] = {value}")
     return "\n".join(lines)
 
@@ -524,6 +539,7 @@ __all__ = [
     "EvidencePacket",
     "STRONG_SIGNAL_LABELS",
     "build_evidence_packet",
+    "defang_prompt_delimiters",
     "get_leaf",
     "iter_leaves",
     "render_packet_for_prompt",

@@ -51,7 +51,7 @@ The prompt delimits it as `<analyst_provided_context>"..."</analyst_provided_con
 (delimiter text inside the note is defanged). A **valid cite** to it counts as
 context evidence for guard rules b/c - the only way `benign_expected` is reachable
 in this step, because confirmed-benign requires a human-attested fact.
-`TRIAGE_PROMPT_VERSION` = `2026-10-step3-analyst-note-suppression`.
+`TRIAGE_PROMPT_VERSION` = `2026-10-audit-prompt-hardening` (was `2026-10-step3-analyst-note-suppression` before the audit T-08 delimiter hardening).
 
 ## 4. Scripts
 
