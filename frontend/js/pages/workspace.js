@@ -2194,8 +2194,17 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onNavigat
 // Approve control is the one approval path; there is no second "confirm"
 // button competing with it.
 function renderReportingStage(root, stage, caseId, lastError, onAction, onNavigate, workflow) {
-  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>${stageActionButtons(stage, workflow)}<div id="action-status" aria-live="polite"></div><div id="reporting-panel"></div>`;
+  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>${stageActionButtons(stage, workflow)}<div id="action-status" aria-live="polite"></div><section id="reporting-agent-activity"></section><div id="reporting-panel"></div>`;
   bindStageActions(root, stage, workflow, onAction, onNavigate);
+  // Live trace while Reporting runs; afterwards the full trace stays above
+  // the unchanged reports UI, expanded while it awaits the analyst's
+  // decision or after a failure.
+  if (stage.state === "in_progress") {
+    mountStageActivity(root.querySelector("#reporting-agent-activity"), caseId, stage, workflow, { live: true });
+  } else if (stage.state !== "not_started" && stage.state !== "locked") {
+    mountStageActivity(root.querySelector("#reporting-agent-activity"), caseId, stage, workflow,
+      { collapsed: stage.state !== "awaiting_approval" && stage.state !== "failed" });
+  }
   const panel = root.querySelector("#reporting-panel");
   mountReportsPanel(panel, { caseId, navigate: null, embedded: true });
 }

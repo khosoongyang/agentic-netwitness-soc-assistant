@@ -169,6 +169,21 @@ def test_workspace_replaces_the_hardcoded_provider_message_for_threat_intel():
         assert provider not in COMPONENT
 
 
+def test_workspace_mounts_the_reporting_panel_above_the_unchanged_reports_ui():
+    body = WORKSPACE[WORKSPACE.index("function renderReportingStage"):]
+    body = body[:body.index("\nfunction ")]
+    assert ('mountStageActivity(root.querySelector("#reporting-agent-activity"), caseId, stage, workflow, '
+            '{ live: true })') in body
+    assert 'stage.state !== "awaiting_approval" && stage.state !== "failed"' in body
+    # Completed view: panel above the existing reports panel, which is unchanged.
+    assert body.index('<section id="reporting-agent-activity"></section>') < body.index('<div id="reporting-panel"></div>')
+    assert "mountReportsPanel(panel, { caseId, navigate: null, embedded: true });" in body
+    # No scripted Reporting steps or simulated progress in the page or the renderer.
+    for forbidden in ("Generating Executive Summary", "Rendering templates", "Narrative enhancement…", "%"):
+        assert forbidden not in body, forbidden
+    assert "Reporting" not in COMPONENT and "narrative" not in COMPONENT.lower()
+
+
 def test_workspace_replaces_the_generic_parsing_message_and_keeps_parsing_results():
     assert 'loadingState("Parsing incident…")' not in WORKSPACE
     assert 'mountStageActivity(root.querySelector("#parsing-agent-activity"), caseId, stage, workflow, { live: true })' in WORKSPACE

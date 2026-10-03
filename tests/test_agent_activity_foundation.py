@@ -267,13 +267,23 @@ def _investigation_targets():
     return recorded
 
 
+def _reporting_targets():
+    from observability.adapters import reporting_adapter
+
+    patcher = Patcher()
+    recorded: list[Target] = []
+    patcher.wrap = lambda target, hooks: recorded.append(target) or True  # type: ignore[assignment]
+    reporting_adapter.install(patcher)
+    return recorded
+
+
 def test_install_wraps_every_target_and_uninstall_restores_original_objects(tmp_path):
     from observability.instrument import HOOKS_ATTR, resolve_owner
 
     all_targets = (_parsing_targets() + _triage_targets() + _threat_intel_targets()
-                   + _investigation_targets())
+                   + _investigation_targets() + _reporting_targets())
     targets = list({t.label: t for t in all_targets}.values())
-    assert len(targets) == 61  # shared points (claim/complete/requests/summary/model call) once each
+    assert len(targets) == 70  # shared points (claim/complete/requests/summary/model call) once each
     originals = {t.label: getattr(resolve_owner(t), t.attr) for t in targets}
     try:
         state = observability.install(str(tmp_path / "activity.db"))

@@ -1,0 +1,61 @@
+{
+  "incident_id": "INC-53011",
+  "classification": {
+    "alert_type": "Policy violations",
+    "severity": "MEDIUM",
+    "triage_risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is Medium because the alert is high-risk and has elevated scoring (70) but no IOCs matched and no concrete malicious telemetry was provided; occurrence is Medium because this is a small alert set (2 alerts/event count 2) without evidence of widespread repetition; adverse impact is Low because there are no identified endpoint/process/network indicators, no decoded PowerShell, and no corroborating IOCs to indicate likely harm."
+    },
+    "source_risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "timestamp": "2025-07-25T09:56:24+00:00",
+    "description": "The alert is high severity from NetWitness, but the available telemetry is generic with no endpoint, network, process, file, or PowerShell evidence, and no IOC matches were found. Based on the risk rating result of Medium and the lack of concrete indicators of compromise or active malicious behavior, this is best treated as suspicious activity requiring investigation rather than a confirmed compromise."
+  },
+  "network_indicators": {
+    "source": {
+      "hostname": "BETHANYCHUCHU"
+    }
+  },
+  "endpoint_indicators": {
+    "hostname": "BETHANYCHUCHU"
+  },
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      }
+    },
+    "notes": [
+      "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

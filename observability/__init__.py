@@ -50,7 +50,7 @@ def install(db_path: str | None = None) -> dict[str, Any]:
         try:
             from .store import ActivityStore
             from .adapters import (investigation_adapter, langchain_adapter, parsing_adapter,
-                                   threat_intel_adapter, triage_adapter)
+                                   reporting_adapter, threat_intel_adapter, triage_adapter)
 
             store = ActivityStore(db_path)
             emitter.attach_store(store)
@@ -60,6 +60,7 @@ def install(db_path: str | None = None) -> dict[str, Any]:
             triage_adapter.install(patcher)
             threat_intel_adapter.install(patcher)
             investigation_adapter.install(patcher)
+            reporting_adapter.install(patcher)
             _STATE["patcher"] = patcher
             _STATE["error"] = None
         except Exception as exc:  # leave nothing half-installed
@@ -114,7 +115,7 @@ def status() -> dict[str, Any]:
     return {
         "enabled": patcher is not None and store is not None,
         "error": _STATE["error"],
-        "coverage": ["parsing", "triage", "threat_intel", "investigation"] if patcher is not None else [],
+        "coverage": ["parsing", "triage", "threat_intel", "investigation", "reporting"] if patcher is not None else [],
         "wrappers": dict(patcher.report) if patcher is not None else {},
         "dropped_events": getattr(store, "dropped", 0) if store else 0,
         "write_errors": getattr(store, "write_errors", 0) if store else 0,
