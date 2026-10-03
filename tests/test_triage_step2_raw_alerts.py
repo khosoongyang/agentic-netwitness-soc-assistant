@@ -385,3 +385,31 @@ def test_large_parsed_context_cannot_crowd_out_raw_alert_signatures(inc_52825):
     assert ctx["parser_status"] == "completed"
     assert "normalised_alert" not in ctx and "normalised_alert" in ctx["_omitted_for_prompt_budget"]
     assert len(text) <= soc_triage_agent._MAX_PROMPT_CHARS
+
+
+def test_packet_prompt_render_fits_its_budget_on_1000_alert_incident(inc_52825):
+    """Audit T-19: the rendered packet (9,782 chars) exceeded the documented
+    cap and was not budgeted. It now fits _PACKET_PROMPT_BUDGET_CHARS by
+    shrinking only raw_alerts.* list renders: every leaf / dot-path is still
+    present and rule signals are untouched."""
+    from agents.triage import evidence_packet as ep
+    p = build_evidence_packet(inc_52825, None, measured_baseline(), _da(inc_52825))
+    text = render_packet_for_prompt(p)
+    assert len(text) <= ep._PACKET_PROMPT_BUDGET_CHARS
+    paths = [path for path, _ in ep.iter_leaves(p)]
+    assert all(f"{path} [" in text for path in paths)
+    full = dict(ep.iter_leaves(p))["rule_signals.lolbas"]
+    assert ep._render_value("rule_signals.lolbas", full["value"]) in text
+    # the old constant name still works and names the incident-block cap
+    assert soc_triage_agent._MAX_PROMPT_CHARS == soc_triage_agent._MAX_INCIDENT_BLOCK_CHARS
+
+
+def test_small_packet_render_is_unchanged_by_budget():
+    from agents.triage import evidence_packet as ep
+    p = build_evidence_packet(SAMPLE_INCIDENT, SAMPLE_PARSED_CONTEXT, measured_baseline(), LIVE)
+    text = render_packet_for_prompt(p)
+    lines = []
+    for path, leaf in ep.iter_leaves(p):
+        v = "—" if leaf["status"] == "missing" else ep.defang_prompt_delimiters(ep._render_value(path, leaf["value"]))
+        lines.append(f"{path} [{leaf['status']}] = {v}")
+    assert text == "\n".join(lines)

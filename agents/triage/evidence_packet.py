@@ -449,9 +449,14 @@ def _short(value: Any, limit: int = 220) -> str:
 # shown in the INCIDENT block (_compact_incident), so only their truncation
 # note is repeated here.
 _RAW_ALERTS_RENDER_CHARS = 600
+# [AUDIT T-19] Budget for the whole rendered packet. When a large incident
+# exceeds it, only the raw_alerts.* list renders shrink (stepwise); every
+# leaf / dot-path stays present and rule signals are never shortened.
+_PACKET_PROMPT_BUDGET_CHARS = 9000
+_RAW_ALERTS_RENDER_STEPS = (600, 420, 300, 200, 120)
 
 
-def _render_value(path: str, value: Any) -> str:
+def _render_value(path: str, value: Any, raw_limit: int = _RAW_ALERTS_RENDER_CHARS) -> str:
     if path == "context.analyst_note":
         return render_analyst_note(value)
     if path == "context.suppression_match" and isinstance(value, dict):
@@ -463,13 +468,12 @@ def _render_value(path: str, value: Any) -> str:
         if path == "raw_alerts.signatures":
             return _short({"note": value.get("note"),
                            "alerts_covered_by_shown": value.get("alerts_covered_by_shown")},
-                          _RAW_ALERTS_RENDER_CHARS)
-        return _short({"note": value.get("note"), "items": value.get("items")},
-                      _RAW_ALERTS_RENDER_CHARS)
+                          raw_limit)
+        return _short({"note": value.get("note"), "items": value.get("items")}, raw_limit)
     if path in ("rule_signals.lolbas", "rule_signals.masquerade"):
         return _short(_compact_abused_tool(value), 900)
     if path.startswith("raw_alerts."):
-        return _short(value, _RAW_ALERTS_RENDER_CHARS)
+        return _short(value, raw_limit)
     return _short(value)
 
 
@@ -520,17 +524,26 @@ def _compact_abused_tool(value: Any) -> Any:
 def render_packet_for_prompt(packet: dict) -> str:
     """[FYP-FUNCTION] One line per leaf -- ``path [status] = value`` -- so the
     model can cite exact dot-paths. Values quoted from the incident are
-    escaped JSON strings, i.e. data, never instructions."""
-    lines = []
-    for path, leaf in iter_leaves(packet):
-        if leaf["status"] == "missing":
-            value = "—"
-        elif path == "context.analyst_note":
-            value = render_analyst_note(leaf["value"])   # defangs internally
-        else:
-            value = defang_prompt_delimiters(_render_value(path, leaf["value"]))
-        lines.append(f"{path} [{leaf['status']}] = {value}")
-    return "\n".join(lines)
+    escaped JSON strings, i.e. data, never instructions. [AUDIT T-19] Fits
+    _PACKET_PROMPT_BUDGET_CHARS by shrinking raw_alerts.* renders only; if
+    even the smallest step does not fit (e.g. a maximal analyst note) the
+    smallest rendering is returned rather than dropping evidence."""
+    leaves = list(iter_leaves(packet))
+    text = ""
+    for raw_limit in _RAW_ALERTS_RENDER_STEPS:
+        lines = []
+        for path, leaf in leaves:
+            if leaf["status"] == "missing":
+                value = "—"
+            elif path == "context.analyst_note":
+                value = render_analyst_note(leaf["value"])   # defangs internally
+            else:
+                value = defang_prompt_delimiters(_render_value(path, leaf["value"], raw_limit))
+            lines.append(f"{path} [{leaf['status']}] = {value}")
+        text = "\n".join(lines)
+        if len(text) <= _PACKET_PROMPT_BUDGET_CHARS:
+            break
+    return text
 
 
 __all__ = [

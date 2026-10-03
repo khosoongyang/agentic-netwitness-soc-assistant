@@ -835,7 +835,11 @@ def _stream_or_invoke(text_chain, thinking_container=None) -> str:
 _MAX_SIGNATURES_IN_PROMPT = 12
 _MAX_ALERTS_IN_PROMPT = _MAX_SIGNATURES_IN_PROMPT
 _SIGNATURE_PROMPT_BUDGET_CHARS = 5200
-_MAX_PROMPT_CHARS     = 9000
+# [AUDIT T-19] This caps the INCIDENT block (_compact_incident) only; the
+# evidence packet has its own budget (evidence_packet.
+# _PACKET_PROMPT_BUDGET_CHARS). _MAX_PROMPT_CHARS is kept as the old name.
+_MAX_INCIDENT_BLOCK_CHARS = 9000
+_MAX_PROMPT_CHARS     = _MAX_INCIDENT_BLOCK_CHARS
 # Top-level list fields (e.g. groupByDestinationIp with 126 IPs) are capped
 # so they cannot crowd the ranked signatures out of the prompt budget; the
 # full lists stay in the evidence packet's raw_alerts digest.
