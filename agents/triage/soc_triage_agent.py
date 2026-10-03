@@ -2010,13 +2010,21 @@ def format_ticket_display(ticket: dict, include_header: bool = True) -> str:
 # 11.  TRIAGE TRIGGER & CHAT RESPOND
 # ══════════════════════════════════════════════════════════════════════════════
 
-_TRIAGE_TRIGGER = re.compile(
-    r"\b(triage|re-?triage|analys[ei]s?|ioc|classify|classification|ticket|investigate)\b",
-    re.IGNORECASE,
-)
+# [AUDIT T-07] Only an explicit re-triage request is recognised. Ordinary
+# questions ("explain the ticket", "is the classification right?") go to the
+# grounded Q&A path. Chat never runs triage itself: a run started here would
+# skip the workflow's baseline DB, data_availability, suppressions,
+# provenance and analyst review, so the request is pointed at the durable
+# "Re-run Triage" control instead.
+_TRIAGE_TRIGGER = re.compile(r"(?<![\w-])/?re-?triage\b", re.IGNORECASE)
 
-# Words that force a fresh LLM run instead of returning the cached result
-_FORCE_TRIGGER = re.compile(r"\b(re-?triage|force|fresh|again)\b", re.IGNORECASE)
+_RETRIAGE_VIA_WORKFLOW_MSG = (
+    "Ask Aegis does not re-run triage from chat. Use **Re-run Triage** on the "
+    "case workspace: it re-runs the full workflow (measured baseline, data "
+    "availability, approved suppressions, analyst review) and records the "
+    "result on the case. To re-run with extra context, use **Reject and "
+    "re-triage with this note** in the triage review."
+)
 
 
 # [FYP-FUNCTION] `_build_qa_chain` — constructs build qa chain output for the next triage consumer or analyst-facing view.
@@ -2307,8 +2315,9 @@ def soc_triage_chat_respond(
     parsed_context: optional processed_alert from the Parsing & Normalisation
     stage (see soc_workflow.run_parsing / app.py's db_load_parsed_context) —
     when given, triage reuses those already-extracted indicators instead of
-    re-deriving them from the raw incident. Only consumed by the retriage
-    trigger branch below (unaffected by case_context).
+    re-deriving them from the raw incident. [AUDIT T-07] Retained for API
+    compatibility; chat no longer runs triage, so it is not consumed.
+    result_sink is likewise never filled (no triage result is produced).
 
     case_context: optional cumulative, cross-stage bundle from
     case_view.build_aegis_context() — consumed only by the plain Q&A
@@ -2318,38 +2327,8 @@ def soc_triage_chat_respond(
     today's exact fallback behaviour."""
     cfg = llm_config or OpenAILLMConfig()
 
-    if incident and _TRIAGE_TRIGGER.search(user_msg):
-        agent  = TriageAgent(
-            cfg                = cfg,
-            progress_fn        = progress_fn,
-            thinking_container = thinking_container,
-        )
-        result = agent.triage(incident, force=bool(_FORCE_TRIGGER.search(user_msg)),
-                              parsed_context=parsed_context)
-        if result_sink is not None:
-            result_sink["result"] = result
-
-        if result.get("error"):
-            return f"❌ Triage error: {result['error']}"
-
-        trace_md  = render_triage_trace(result["trace"])
-        ticket_md = format_ticket_display(result["ticket"])
-        unc       = result["ticket"].get("unc", "—")
-        n_keys    = len(result["metakeys_payload"].get("matched_metakeys", []))
-
-        cached_note = ""
-        if result.get("cached"):
-            cached_note = (
-                "♻️ **Stored result** — this incident's content is unchanged since "
-                f"it was last triaged, so the identical findings (ticket `{unc}`) "
-                "are returned. Type **retriage** to force a fresh analysis.\n\n"
-            )
-
-        return (
-            cached_note + trace_md + "\n\n" + ticket_md + "\n\n---\n\n"
-            + f"📤 **Meta-key payload queued** ({n_keys} keys)\n\n"
-            + f"📋 **Ticket `{unc}` created and queued for ticketing agent.**"
-        )
+    if _TRIAGE_TRIGGER.search(user_msg):
+        return _RETRIAGE_VIA_WORKFLOW_MSG
 
     # Plain Q&A fallback
     llm = build_llm(cfg)
