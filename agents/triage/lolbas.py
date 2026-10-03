@@ -364,7 +364,17 @@ def load_lolbas_dataset(path: str | Path | None = None) -> tuple[LolbasDataset |
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
             except Exception:
                 meta = {}
-        meta.setdefault("sha256", hashlib.sha256(raw).hexdigest())
+        actual_sha = hashlib.sha256(raw).hexdigest()
+        recorded_sha = str(meta.get("sha256") or "").strip().lower()
+        # [AUDIT T-10] The sidecar's sha256 is verified, not just displayed:
+        # a cache that no longer matches what update_lolbas.py fetched fails
+        # closed (enrichment unknown, never a silently-trusted dataset).
+        if recorded_sha and recorded_sha != actual_sha:
+            return None, (f"LOLBAS cache at {p} does not match its recorded sha256 "
+                          f"({recorded_sha[:12]}... != {actual_sha[:12]}...) -- re-run "
+                          "`python scripts/update_lolbas.py` (abused-tool enrichment "
+                          "unavailable: unknown, not safe)")
+        meta.setdefault("sha256", actual_sha)
         ds = LolbasDataset(entries, meta, str(p))
     except Exception as exc:  # corrupt cache must never crash triage
         return None, f"LOLBAS cache at {p} could not be read ({type(exc).__name__}: {exc})"

@@ -109,6 +109,7 @@ confidence, or caching system — each stage run performs its own fresh lookups.
 # =============================================================================
 
 import csv
+import ipaddress
 import json
 import os
 import re
@@ -266,17 +267,41 @@ def is_ip_address(value: str) -> bool:
 # [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
 # [FYP-USED-BY] Static symbol references include threat_intel.py:extract_iocs; dynamic framework calls may add callers.
-# [FYP-CALLS] Calls: `int`, `is_ip_address`, `split`.
-# [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+# [FYP-CALLS] Calls: `ipaddress.ip_address` against `_INTERNAL_NETWORKS`.
+# [FYP-ERROR] Invalid input returns False (never raises).
+
+# [AUDIT T-11] Internal / non-routable networks that must never be sent to
+# an external TI provider. Explicit list (not ipaddress.is_global): the RFC
+# 5737 documentation ranges are deliberately NOT here, because they stand in
+# for public attacker addresses in fixtures and demo data.
+_INTERNAL_NETWORKS = tuple(ipaddress.ip_network(n) for n in (
+    "0.0.0.0/8",        # "this network"
+    "10.0.0.0/8",       # RFC 1918
+    "100.64.0.0/10",    # RFC 6598 carrier-grade NAT
+    "127.0.0.0/8",      # loopback
+    "169.254.0.0/16",   # link-local (incl. cloud metadata 169.254.169.254)
+    "172.16.0.0/12",    # RFC 1918
+    "192.168.0.0/16",   # RFC 1918
+    "::/128", "::1/128",  # unspecified / loopback
+    "fc00::/7",         # unique local (incl. fd00::/8)
+    "fe80::/10",        # link-local
+))
+
 
 def is_private_ip(ip_address: str) -> bool:
-    """[FYP-VALIDATION] Private-IP filter — True for RFC1918 ranges
-    (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16) and loopback (127.0.0.0/8).
-    extract_iocs() only queries VirusTotal/AbuseIPDB/OTX for source/
-    destination IPs where this returns False, so internal addresses are
-    never sent to an external provider."""
-    if not is_ip_address(ip_address):
+    """[FYP-VALIDATION] Internal-address filter -- True for RFC 1918,
+    loopback, link-local, CGNAT, "this network" and IPv6 ULA/link-local/
+    loopback addresses (see _INTERNAL_NETWORKS). extract_iocs() only queries
+    VirusTotal/AbuseIPDB/OTX for source/destination IPs where this returns
+    False, so internal addresses are never sent to an external provider.
+    Invalid strings return False (they are rejected by is_ip_address)."""
+    try:
+        addr = ipaddress.ip_address(str(ip_address or "").strip())
+    except ValueError:
         return False
+    if getattr(addr, "ipv4_mapped", None) is not None:
+        addr = addr.ipv4_mapped
+    return any(addr.version == net.version and addr in net for net in _INTERNAL_NETWORKS)
 
     parts = ip_address.split(".")
     first = int(parts[0])
