@@ -572,3 +572,21 @@ def test_reviews_endpoint_sanitizes_packet_snapshot(client):
     assert "sk-SHOULD-NOT-LEAK" not in body
     data = json.loads(body)
     assert data["reviews"][0]["evidence_packet"]["entity"]["value"]["value"] == "10.0.0.5"
+
+
+def test_aegis_context_triage_facts_carry_reviewed_verdict(db):
+    """Audit T-06: Ask Aegis grounding (build_aegis_context -> confirmed
+    facts) carries the canonical verdict: the analyst's reviewed
+    disposition plus the AI->analyst change, not severity alone."""
+    from backend.services.case_view_service import build_aegis_context
+    _awaiting("needs_info")
+    commands.approve_stage(CASE, "triage", analyst="Alice",
+                           review=_review(analyst_disposition="benign_expected",
+                                          disagreement_reason="Change ticket explains it.",
+                                          lookalike_considered="Attacker WSUS abuse ruled out by CHG-1.",
+                                          benign_context={"who": "IT ops", "when": "02:00-04:00",
+                                                          "why": "WSUS rollout CHG-1"}))
+    facts = build_aegis_context(CASE)["confirmed_facts"]["triage"]
+    assert facts["disposition"] == "Benign-expected (analyst)"
+    assert facts["ai_disposition"] == "Needs-info"
+    assert facts["analyst_verdict"] == "AI: Needs-info -> Analyst: Benign-expected"

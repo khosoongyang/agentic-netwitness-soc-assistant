@@ -323,8 +323,50 @@ def ai_to_analyst_line(block: dict | None) -> str | None:
             f"Analyst: {disposition_label(block.get('final_disposition'))}")
 
 
+def canonical_disposition(triage_result: dict | None) -> dict:
+    """[AUDIT T-03..T-06] The ONE verdict every downstream consumer shows.
+
+    Precedence: the analyst's reviewed disposition (``triage_review.
+    final_disposition``) > the AI's guarded disposition (``assessment.
+    disposition``, falling back to ``ticket.disposition`` for flattened
+    handoff docs) > none. Returns {disposition, label, source, ai_disposition,
+    ai_label, uncertainty, guard_actions, ai_to_analyst} -- every key present,
+    values None when unknown. Severity (classification) is NOT part of this:
+    severity != disposition."""
+    tr = triage_result if isinstance(triage_result, dict) else {}
+    assessment = tr.get("assessment") if isinstance(tr.get("assessment"), dict) else {}
+    ticket = tr.get("ticket") if isinstance(tr.get("ticket"), dict) else {}
+    review = tr.get("triage_review") if isinstance(tr.get("triage_review"), dict) else None
+
+    ai = assessment.get("disposition") or ticket.get("disposition")
+    ai = ai if ai in DISPOSITIONS else None
+    analyst = (review or {}).get("final_disposition")
+    analyst = analyst if analyst in DISPOSITIONS else None
+    if analyst:
+        disp, source = analyst, "analyst"
+    elif ai:
+        disp, source = ai, "ai"
+    else:
+        disp, source = None, None
+    uncertainty = assessment.get("uncertainty") or ticket.get("uncertainty")
+    guards = [g for g in (assessment.get("guard_actions") or []) if isinstance(g, dict)]
+    return {
+        "disposition": disp,
+        "label": disposition_label(disp) if disp else None,
+        "source": source,
+        "ai_disposition": ai,
+        "ai_label": disposition_label(ai) if ai else None,
+        "uncertainty": uncertainty if uncertainty in ("low", "medium", "high") else None,
+        "guard_actions": [
+            {k: g.get(k) for k in ("rule", "from", "to", "reason") if g.get(k) is not None}
+            for g in guards[:6]],
+        "ai_to_analyst": ai_to_analyst_line(review) if analyst else None,
+    }
+
+
 __all__ = [
     "REVIEW_MODES",
+    "canonical_disposition",
     "DISPOSITION_LABELS",
     "BenignContext",
     "SuppressionScope",

@@ -451,6 +451,19 @@ def _build_appendix_summaries(
 # [FYP-CALLS] Calls: `_build_appendix_summaries`, `_extract_evidence_value`, `_first`, `_get`, `_is_ransomware_case`, `_label`, `_list`, `_normalise_asset`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
+def _triage_disposition(triage: dict) -> dict[str, Any]:
+    """[AUDIT T-05] agents.triage.review.canonical_disposition() over the
+    flattened triage_result.json (ticket.disposition + triage_review).
+    Fault-tolerant: an empty verdict (rendered "Not recorded") on failure."""
+    empty = {"disposition": None, "label": None, "source": None, "ai_disposition": None,
+             "ai_label": None, "uncertainty": None, "guard_actions": [], "ai_to_analyst": None}
+    try:
+        from agents.triage.review import canonical_disposition
+        return canonical_disposition(triage)
+    except Exception:
+        return empty
+
+
 def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] | None = None, output_dir: Any = None) -> dict[str, Any]:
     inputs = inputs or {}
     warnings = warnings or []
@@ -791,6 +804,9 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "severity": severity,
         "confidence": confidence,
         "classification": classification,
+        # [AUDIT T-05] canonical triage verdict (analyst-reviewed, else AI);
+        # severity/classification above is a separate axis.
+        "triage_disposition": _triage_disposition(triage),
         "likely_scenario": likely_scenario,
         "scenario_type": scenario_type,
         # triage.get("report_status"/"validation_status"/"current_stage")

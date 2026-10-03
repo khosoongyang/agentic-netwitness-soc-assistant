@@ -137,6 +137,17 @@ def _as_list(v: Any) -> list:
 
 # ── investigation-side signal collectors (each -> {level 0-3, label, detail} | None)
 
+def _canonical_disposition(triage_result) -> dict:
+    """[AUDIT T-03] The analyst-reviewed / AI triage disposition (see
+    agents.triage.review.canonical_disposition). Fault-tolerant: {} on any
+    failure, so the verdict degrades to substantiation wording only."""
+    try:
+        from agents.triage.review import canonical_disposition
+        return canonical_disposition(triage_result)
+    except Exception:
+        return {}
+
+
 def _triage_base(incident, triage_result, ti_result) -> dict | None:
     """[FYP-FUNCTION] [FYP-CALLS] Pre-investigation baseline signal.
     Re-runs triage_verdict.aggregate_verdict() to get the triage-time
@@ -419,15 +430,28 @@ def _build(incident, triage_result, inv, ti_result) -> dict:
     # from a thin-evidence incident that was already LOW ("no adverse
     # findings") — this is what prevents subst==0 from ever reading as a
     # clean bill of health on a triage-time CRITICAL/HIGH.
+    # [AUDIT T-03] This is SUBSTANTIATION wording only; it never uses the
+    # triage disposition vocabulary (true/false positive, benign-expected),
+    # which belongs to the analyst-reviewed triage verdict. When that
+    # verdict exists it is shown as-is and a strong-substantiation clash is
+    # flagged as a conflict for the analyst -- never silently relabelled.
     if subst >= 3:
-        disposition = "Confirmed — True Positive"
+        substantiation_text = "Strongly substantiated"
     elif subst == 2:
-        disposition = "Likely True Positive"
+        substantiation_text = "Substantiated"
     elif subst == 1:
-        disposition = "Inconclusive — partial substantiation"
+        substantiation_text = "Partially substantiated"
     else:
-        disposition = ("Unsubstantiated — verify (possible false positive)"
-                       if triage_level >= 2 else "No adverse findings")
+        substantiation_text = ("Unsubstantiated -- verify" if triage_level >= 2
+                               else "No adverse findings")
+    canon = _canonical_disposition(triage_result)
+    analyst_disp = canon.get("disposition") if canon.get("source") == "analyst" else None
+    conflict = bool(analyst_disp in ("false_positive", "benign_expected") and subst >= 2)
+    if analyst_disp:
+        disposition = (f"Analyst verdict: {canon.get('label')}; "
+                       f"investigation: {substantiation_text.lower()}")
+    else:
+        disposition = substantiation_text
 
     # [FYP-DECISION] Confidence calculation — fully deterministic dict lookup
     # keyed on `subst` (the same 0-3 substantiation score the band/
@@ -448,6 +472,10 @@ def _build(incident, triage_result, inv, ti_result) -> dict:
         "level": refined_band,
         "priority": priority,
         "disposition": disposition,
+        "substantiation_text": substantiation_text,
+        "analyst_disposition": analyst_disp,
+        "triage_disposition": canon,
+        "disposition_conflict": conflict,
         "confidence": confidence,
         "action": action,
         "delta": delta,
@@ -488,6 +516,10 @@ def format_final_verdict(v: dict | None, compact: bool = False) -> str:
     lines.append(f"**{v['level']}** · **{v['disposition']}** · confidence **{v['confidence']}** "
                  f"· priority {v['priority']}/5{delta_note}")
     lines.append(f"- **Next action:** {v['action']}")
+    if v.get("disposition_conflict"):
+        lines.append("- **Verdict conflict:** investigation substantiation is strong but the "
+                     "analyst's triage verdict is "
+                     f"{(v.get('triage_disposition') or {}).get('label')} -- re-review before closure.")
     drivers = [f"{s['name']} ({s['label']})" for s in v.get("rationale") or []
                if s.get("level", 0) > 0]
     if drivers:

@@ -2462,9 +2462,20 @@ def _confirmed_facts_block(state: dict, stages: list[dict]) -> dict:
         # rather than kept as always-null placeholders.
         tri = _json_or_empty(state.get("triage_result_json"))
         ticket = tri.get("ticket") or {}
+        # [AUDIT T-06] Ask Aegis grounding carries the canonical verdict
+        # (analyst-reviewed, else AI), not severity alone. The analyst's
+        # review is attached the same way the downstream handoffs do it.
+        from agents.triage.review import canonical_disposition
+        tri_with_review = sw._attach_triage_review(
+            tri, state.get("id") or state.get("incident_id"), state.get("run_id"))
+        canon = canonical_disposition(tri_with_review)
         facts["triage"] = {
             "label": "confirmed",
             "classification": ticket.get("classification"),
+            "disposition": (f"{canon['label']} ({canon['source']})" if canon["disposition"] else None),
+            "ai_disposition": canon["ai_label"],
+            "uncertainty": canon["uncertainty"],
+            "analyst_verdict": canon["ai_to_analyst"],
             "summary": _cap_text(ticket.get("summary")),
             "recommended_actions": _cap_list(ticket.get("recommended_actions")),
         }

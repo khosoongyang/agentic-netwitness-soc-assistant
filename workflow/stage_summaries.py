@@ -1033,9 +1033,19 @@ def generate_triage_ai_summary(triage_result: dict, model: str | None = None) ->
     """
     from integrations.openai.client import invoke_openai_text
 
+    from agents.triage.review import canonical_disposition
+
     ticket = triage_result.get("ticket") or {}
     meta   = triage_result.get("metakeys_payload") or {}
+    # [AUDIT T-04] The panel analysts read first must state the guarded
+    # disposition (and its uncertainty / guard overrides), not just severity.
+    canon = canonical_disposition(triage_result)
     context = json.dumps({
+        "disposition": canon["disposition"],
+        "disposition_label": canon["label"],
+        "disposition_source": canon["source"],
+        "uncertainty": canon["uncertainty"],
+        "guard_actions": canon["guard_actions"],
         "classification": ticket.get("classification"),
         "incident_category": ticket.get("incident_category"),
         "mitre_tactic": ticket.get("mitre_tactic"),
@@ -1060,6 +1070,12 @@ def generate_triage_ai_summary(triage_result: dict, model: str | None = None) ->
                 "recommended actions. Reply with exactly one or two concise "
                 "plain-English sentences, no more than 70 words total, on what "
                 "this incident is and why it was classified this way. "
+                "classification is SEVERITY, not a verdict. The verdict is "
+                "`disposition` (true_positive / false_positive / "
+                "benign_expected / needs_info, after code guards): state it "
+                "as given, mention high uncertainty or guard overrides when "
+                "present, and never call the incident malicious or benign "
+                "beyond that disposition. "
                 "Only state facts present in the data below — never invent "
                 "values that aren't there."
             ),

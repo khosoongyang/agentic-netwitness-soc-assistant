@@ -339,9 +339,19 @@ def aggregate_verdict(incident: dict, triage_result: dict | None = None,
 
     missing = [s["name"] for s in signals if s.get("error") or s.get("absent")]
 
+    # [AUDIT T-03] Severity banding above is unchanged; the canonical triage
+    # disposition (analyst-reviewed, else AI) travels alongside it so this
+    # verdict can never be read as a second, independent disposition.
+    try:
+        from agents.triage.review import canonical_disposition
+        disposition = canonical_disposition(triage_result)
+    except Exception:
+        disposition = {}
+
     return {
         "available": True,
         "level": band, "priority": priority,
+        "disposition": disposition,
         "action": _ACTIONS[band],
         "signals": signals,
         "rationale": rationale,
@@ -363,6 +373,9 @@ def format_verdict(v: dict) -> str:
         "  aggregated from the platform's triage-side skills — decision support, "
         "does not overwrite the triage classification:",
     ]
+    disp = v.get("disposition") or {}
+    if disp.get("disposition"):
+        lines.insert(1, f"  triage disposition: {disp.get('label')} ({disp.get('source')})")
     for s in v["signals"]:
         bar = "●" * (s["level"] + 1) + "○" * (3 - s["level"])
         detail = f" — {s['detail']}" if s.get("detail") else ""

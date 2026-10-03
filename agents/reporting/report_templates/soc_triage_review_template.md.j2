@@ -16,6 +16,13 @@
 | Report Status | {{ report_status_display | default(report_status) }} |
 | Data Consistency | {{ data_consistency_status_display | default(data_consistency_status) }} |
 | Severity | {{ severity.label }} |
+| Disposition | {% if triage_disposition and triage_disposition.disposition %}{{ triage_disposition.label }} ({{ triage_disposition.source }}){% else %}Not recorded{% endif %} |
+{%- if triage_disposition and triage_disposition.ai_to_analyst %}
+| Analyst Review | {{ triage_disposition.ai_to_analyst }} |
+{%- endif %}
+{%- if triage_disposition and triage_disposition.uncertainty %}
+| Triage Uncertainty | {{ triage_disposition.uncertainty }} |
+{%- endif %}
 | Confidence | {{ confidence.label }} |
 | Classification | {{ classification }} |
 | Likely Scenario | {{ likely_scenario }} |
