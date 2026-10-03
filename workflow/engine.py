@@ -3311,12 +3311,17 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     # ── Stage 1: Triage ───────────────────────────────────────────────────────
     _log("TRIAGE", f"running triage for incident {inc_id}")
     try:
+        # [FYP-TRIAGE-STEP3] a fresh run carries no analyst note (notes are
+        # tied to a re-run of an existing run), but approved suppressions
+        # apply to every triage of a matching scope.
+        _note, _suppressions = (None, []) if use_mock_triage else _triage_context_inputs(inc_id, run_id)
         triage_result = (mock_triage_result(incident, data_availability=data_availability)
                          if use_mock_triage
                          else run_triage(incident, progress_fn=progress_fn,
                                          parsed_context=parsed_context,
                                          force=force_triage,
-                                         data_availability=data_availability))
+                                         data_availability=data_availability,
+                                         suppressions=_suppressions))
     except Exception as exc:
         ctx["stages"]["triage"] = "failed"
         ctx["errors"]["triage"] = str(exc)

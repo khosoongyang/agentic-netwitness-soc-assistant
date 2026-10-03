@@ -465,3 +465,25 @@ def test_settings_review_mode(db, monkeypatch):
     assert bad.status_code == 400 and bad.get_json()["error"]["code"] == "SETTINGS_INVALID"
     ok = client.put("/api/settings", json={"review_mode": "blind_first"}).get_json()
     assert ok["review_mode"] == "blind_first"
+
+
+def test_combined_fresh_run_passes_active_suppressions_to_triage(db, monkeypatch):
+    """Regression (found by scripts/acceptance_triage_step3.py): the combined
+    run_until_triage_approval() path must hand approved suppressions to
+    run_triage(), not only the durable re-run path."""
+    from workflow import engine
+    rid = _approved_be_review()
+    p = review_store.propose_suppression_from_review(rid, proposed_by="Alice")
+    review_store.approve_suppression(p["id"], analyst="Bob", confirmation=p["scope_text"])
+    captured = {}
+
+    def fake_run_triage(incident, **kw):
+        captured.update(kw)
+        return {"error": "stop here"}
+    monkeypatch.setattr(engine, "run_triage", fake_run_triage)
+    monkeypatch.setattr(engine, "run_parsing", lambda inc, run_id: {
+        "status": "completed", "processed_alert": {"parser_status": "completed"},
+        "normalised_alert": {"alert_summary": {"incident_id": CASE}}})
+    ctx = engine.run_until_triage_approval({"id": CASE, "title": "ESA for 10.0.0.5"}, allow_retry=True)
+    assert captured, ctx
+    assert [s["id"] for s in captured.get("suppressions") or []] == [p["id"]]
