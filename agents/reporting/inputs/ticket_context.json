@@ -2,7 +2,9 @@
   "ticket": {
     "incident_id": "INC-1",
     "unc": "#001",
-    "classification": "MEDIUM"
+    "classification": "HIGH",
+    "mitre_tactic": "Execution",
+    "mitre_technique": "T1059.001"
   },
   "ticket_id": "TKT-001"
 }

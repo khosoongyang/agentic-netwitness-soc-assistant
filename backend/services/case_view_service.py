@@ -1978,37 +1978,31 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
     return items
 
 
-def build_entity_graph(incident: dict, data_availability: dict) -> dict:
+def build_entity_graph(incident: dict, data_availability: dict,
+                       state: dict | None = None,
+                       incident_id: str | None = None,
+                       run_id: str | None = None) -> dict:
     """
     [FYP-FUNCTION] Entity Graph tab data — nodes/edges/stats from
-    incident_map.build_incident_map(), with one honesty relabel applied on
-    top: an edge whose ONLY evidence is "alertMeta co-occurrence" (e.g.
-    every SourceIp paired with every DestinationIp in the same alert
-    record) is relation "connected_to" from incident_map's own naming, but
-    that is not an observed network connection — merely two values that
-    appeared in the same alert. Relabeled here to "possibly_related" with
-    evidence_status="co_occurrence_only" so the graph UI doesn't imply a
-    confirmed link that was never actually observed. Every other edge is
-    tagged evidence_status "observed" (has real evidence) or "unlabeled"
-    (none recorded) instead.
-
-    [FYP-USED-BY]: internal only — build_case_view() (Entity Graph tab).
-    the frontend renders the returned nodes/edges via its graph view,
-    importing incident_map.to_dot directly (as `_cv_to_dot`) rather than
-    through this module's own `incident_map_to_dot` re-export at the top
-    of this file — that re-export is currently unused, left available for
-    a caller that wants the DOT conversion without importing incident_map
-    separately. Not part of build_aegis_context()'s context (chat has no
-    graph rendering) and no other function here calls build_entity_graph().
+    incident_map.build_incident_map(), with multi-stage enrichment and
+    cross-incident correlation support.
     """
-    imap = build_incident_map(incident)
+    triage_result = _json_or_empty(state.get("triage_result_json")) if state else None
+    threat_intel_result = _json_or_empty(state.get("threat_intel_result_json")) if state else None
+    investigation_result = _json_or_empty(state.get("investigation_result_json")) if state else None
+    ioc_correlation_result = _json_or_empty(state.get("ioc_correlation_result_json")) if state else None
+
+    imap = build_incident_map(
+        incident=incident,
+        triage_result=triage_result,
+        threat_intel_result=threat_intel_result,
+        investigation_result=investigation_result,
+        ioc_correlation_result=ioc_correlation_result,
+    )
     edges = []
     for e in imap.get("edges", []):
         relation = e.get("relation", "")
         evidence = e.get("evidence") or []
-        # Co-occurrence in alertMeta lists (e.g. every SourceIp paired with
-        # every DestinationIp) is NOT an observed connection — relabel it
-        # honestly rather than implying a confirmed network link.
         if relation.startswith("connected_to") and evidence == ["alertMeta co-occurrence"]:
             edges.append({**e, "relation": "possibly_related",
                          "evidence_status": "co_occurrence_only",
@@ -2016,9 +2010,15 @@ def build_entity_graph(incident: dict, data_availability: dict) -> dict:
         else:
             edges.append({**e, "evidence_status": "observed" if evidence else "unlabeled",
                          "provenance": ", ".join(evidence) if evidence else ""})
-    return {"nodes": imap.get("nodes", []), "edges": edges,
-            "stats": imap.get("stats", {}),
-            "data_availability_warning": _availability_warning(data_availability)}
+    return {
+        "nodes": imap.get("nodes", []),
+        "edges": edges,
+        "stats": imap.get("stats", {}),
+        "primary_incident_color": imap.get("primary_incident_color"),
+        "correlated_incidents": imap.get("correlated_incidents", []),
+        "data_availability_warning": _availability_warning(data_availability),
+    }
+
 
 
 def build_evidence(state: dict, incident: dict, incident_id: str, run_id: str,
@@ -3139,7 +3139,7 @@ def build_case_view(incident_id: str, run_id: str | None = None) -> dict:
     output = build_output(state)
     reporting = build_reporting(state, incident_id, resolved_run_id)
     timeline = build_timeline(state, incident, incident_id, resolved_run_id, data_availability)
-    entity_graph = build_entity_graph(incident, data_availability)
+    entity_graph = build_entity_graph(incident, data_availability, state=state, incident_id=incident_id, run_id=resolved_run_id)
     evidence = build_evidence(state, incident, incident_id, resolved_run_id, data_availability)
     activity = build_activity(incident_id, resolved_run_id)
 
@@ -3155,9 +3155,12 @@ def build_case_view(incident_id: str, run_id: str | None = None) -> dict:
         "entity_graph": {
             "nodes": entity_graph["nodes"], "edges": entity_graph["edges"],
             "stats": entity_graph.get("stats", {}),
+            "primary_incident_color": entity_graph.get("primary_incident_color"),
+            "correlated_incidents": entity_graph.get("correlated_incidents", []),
             "data_availability_warning": entity_graph.get("data_availability_warning"),
         },
         "evidence": evidence,
         "activity": activity,
         "warnings": [w for w in (data_availability.get("warnings") or [])],
     }
+
