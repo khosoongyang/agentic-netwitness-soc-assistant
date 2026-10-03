@@ -358,6 +358,9 @@ def _build_appendix_summaries(
     confidence: dict[str, Any],
     evidence_gaps: list[dict[str, Any]],
     threat_intel_result: dict[str, Any],
+    triage_level: Any = None,
+    triage_category: Any = None,
+    investigation_result_source: Any = None,
 ) -> dict[str, dict[str, str]]:
     """Build compact, always-present appendix summaries for Jinja templates.
 
@@ -408,10 +411,19 @@ def _build_appendix_summaries(
             "Enriched Risk Score": _short_value(_first(threat_intel_result.get("enrichment_risk_score"), enriched.get("enrichment_risk_score"), default="Not Provided")),
             "Final Risk Rating": _short_value(severity.get("label")),
             "Threat Intel Notes": _short_value(_first(threat_intel_result.get("notes"), threat_intel_result.get("summary"), enriched.get("notes"), enriched.get("summary"), default="Not Provided")),
+            # Phase 3: TI coverage / warnings / intelligence gaps (TI-owned).
+            "TI Coverage": _short_value(_first(_get(threat_intel_result, "threat_intelligence.coverage"), default="Not recorded in this TI result")),
+            "TI Warnings": _short_value(_first(threat_intel_result.get("warnings"), default="None recorded")),
+            "Intelligence Gaps": _short_value(_first(_get(threat_intel_result, "threat_intelligence.intelligence_gaps"), default="None recorded")),
+            "Enriched Alert Source": _short_value(_first(enriched.get("enriched_alert_source"), default="Not recorded")),
         },
         "triage": {
             "Classification": _short_value(_first(triage.get("classification"), triage.get("incident_category"), default="Not Provided")),
-            "Severity": _short_value(_first(triage.get("severity"), severity.get("label"), default="Not Provided")),
+            # Phase 3: the Triage LEVEL (Triage-owned) -- previously labelled
+            # "Severity" and backfilled with the incident severity.
+            "Triage Level": _short_value(_first(triage_level, default="Not Provided")),
+            "Category": _short_value(_first(triage_category, default="Not Provided")),
+            "MITRE (Triage)": _short_value(_first(" / ".join(str(v) for v in (triage.get("mitre_tactic"), triage.get("mitre_technique")) if v not in (None, "", "Unknown")), default="Not Provided")),
             # Triage has never produced a "confidence" field (see
             # agents/triage/triage_result.py's own scope docstring) --
             # triage.get("confidence") always resolved to None here, so this
@@ -426,6 +438,7 @@ def _build_appendix_summaries(
         },
         "investigation": {
             "Status": _short_value(_first(investigation.get("status"), investigation.get("workflow_decision"), default="Not Provided")),
+            "Result Source": _short_value(_first(investigation_result_source, default="Not recorded")),
             "Classification": _short_value(_first(investigation.get("classification"), default="Not Provided")),
             "Likely Scenario": _short_value(_first(investigation.get("likely_scenario"), default="Not Provided")),
             "Finding Count": str(len(_list(investigation.get("findings")))),
@@ -504,7 +517,19 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # whenever investigation_analysis.json validated, same value as the
     # nested payload today, kept as a fallback in case a producer only sets
     # one of the two), then Triage/enrichment/reporting exactly as before.
-    severity_value = _first(investigation_analysis.get("severity"), investigation.get("severity"), triage.get("severity"), enriched.get("severity"), enriched.get("risk_level"), reporting.get("severity"), default="Not Provided")
+    # Canonical audit Phase 3: the incident severity is Investigation's. The
+    # only fallback is the Triage LEVEL, and then it is labelled as such
+    # (severity["source"]) -- never silently equivalent. NetWitness severity
+    # (Parsing/TI enriched alert "severity") and the TI enrichment level are
+    # different concepts and are reported only in severity_sources below.
+    investigation_severity = _first(investigation_analysis.get("severity"), investigation.get("severity"), default=None)
+    triage_level = _first(triage.get("triage_level"), triage.get("classification"), default=None)
+    if investigation_severity is not None:
+        severity_value, severity_source = investigation_severity, "Investigation"
+    elif triage_level is not None:
+        severity_value, severity_source = triage_level, "Triage level (Investigation severity unavailable)"
+    else:
+        severity_value, severity_source = "Not Provided", "not available"
     # Phase 4 (Reporting dead-fallback cleanup) correction: triage.get(
     # "confidence") is dropped -- Triage has never produced a "confidence"
     # field (see agents/triage/triage_result.py's own scope docstring), so
@@ -513,12 +538,29 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # fallback was enriched.get("confidence")/reporting.get("confidence")/
     # the "Not Provided" default -- never a genuine "Triage pre-investigation
     # confidence estimate", which has never existed at any point.
-    confidence_value = _first(investigation_analysis.get("confidence"), investigation.get("confidence"), enriched.get("confidence"), reporting.get("confidence"), default="Not Provided")
+    # Phase 3: Investigation's confidence first; the pre-existing
+    # enriched_alert/reporting fallbacks are kept but labelled with their
+    # real owner (confidence["source"]) instead of reading as Investigation's.
+    investigation_confidence = _first(investigation_analysis.get("confidence"), investigation.get("confidence"), default=None)
+    if investigation_confidence is not None:
+        confidence_value, confidence_source = investigation_confidence, "Investigation"
+    elif _first(enriched.get("confidence"), default=None) is not None:
+        confidence_value, confidence_source = enriched["confidence"], "Threat Intelligence enriched alert (Investigation confidence unavailable)"
+    elif _first(reporting.get("confidence"), default=None) is not None:
+        confidence_value, confidence_source = reporting["confidence"], "Prior reporting result (Investigation confidence unavailable)"
+    else:
+        confidence_value, confidence_source = "Not Provided", "not available"
     # Classification remains Triage-owned -- the Investigation Agent contract
     # (agents/investigation/investigation_result.py::InvestigationAgentOutput)
     # has no classification field, so there is no canonical Investigation
     # source to prefer here. Left unchanged from before Phase 5.
     classification = _first(investigation.get("classification"), triage.get("classification"), triage.get("incident_category"), reporting.get("classification"), default="Not Provided")
+    # Phase 3: say who owns it (the compatibility key is kept for templates).
+    classification_source = (
+        "Investigation" if investigation.get("classification") not in (None, "", [], {}) else
+        "Triage" if _first(triage.get("classification"), triage.get("incident_category"), default=None) is not None else
+        "not available")
+    triage_category = _first(triage.get("incident_category"), default=None)
     # triage.get("likely_scenario") dropped -- Triage does not produce a
     # "likely_scenario" field (see agents/triage/triage_result.py's own
     # scope docstring); this term always resolved to None.
@@ -564,8 +606,21 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # triage.get("missing_evidence"/"missing_fields") dropped -- evidence
     # gaps are an Investigation-stage concept (workflow/engine.py::
     # detect_evidence_gaps()); Triage never produces either key.
-    evidence_gaps = [_normalise_gap(x) for x in _list(_first(feedback_loop.get("gaps"), investigation.get("missing_evidence"), investigation.get("missing_fields"), reporting.get("missing_report_fields"), default=[]))]
-    missing_required_fields = [g.get("gap", str(g)) for g in evidence_gaps]
+    evidence_gaps = [_normalise_gap(x) for x in _list(_first(feedback_loop.get("gaps"), investigation.get("missing_evidence"), investigation.get("missing_fields"), default=[]))]
+    # Canonical audit Phase 3: missing_required_fields is Reporting-owned --
+    # report fields Reporting itself could not populate. It previously held
+    # the Investigation evidence gaps above (playbook step text from
+    # feedback_loop.gaps), which the templates, the agent printout and Agent
+    # Activity then presented as "missing required fields".
+    missing_required_fields = [str(x) for x in _list(reporting.get("missing_report_fields"))]
+    for field_name, missing in (
+            ("incident_id", incident_id in ("", "unknown", "UNKNOWN-INCIDENT")),
+            ("alert_id", alert_id == "UNKNOWN-ALERT"),
+            ("case_title", title == "Not Provided"),
+            ("severity", severity_value == "Not Provided"),
+            ("confidence", confidence_value == "Not Provided")):
+        if missing and field_name not in missing_required_fields:
+            missing_required_fields.append(field_name)
     investigation_limitations = evidence_gaps if reporting_mode == "with_limitations" else []
     investigation_completeness_note = (
         "Investigation completed with evidence gaps. The selected playbook could not be fully answered because required telemetry was missing. Reporting proceeds with limitations documented for SOC analyst validation."
@@ -674,11 +729,23 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # nested at ticket.risk_rating.rationale, a differently-shaped field
     # not wired into this chain in Phase 4 -- adding a new source is out of
     # scope for a dead-field-removal phase).
-    severity = _label(severity_value, _first(investigation.get("severity_reason"), default="Not Provided"))
-    confidence = _label(confidence_value, _first(investigation.get("confidence_reason"), default="Not Provided"))
+    # Phase 3: the Investigation contract's real field names are
+    # severity_justification / confidence_justification (severity_reason /
+    # confidence_reason never existed, so the report always showed a
+    # placeholder reason). A Triage-level fallback says so in its reason.
+    if severity_source == "Investigation":
+        severity_reason = _first(investigation_analysis.get("severity_justification"), investigation.get("severity_justification"), investigation.get("severity_reason"), default="Not Provided")
+    elif triage_level is not None:
+        severity_reason = (f"Investigation severity unavailable; showing the Triage level ({triage_level}), "
+                           "a Triage-owned pre-investigation assessment.")
+    else:
+        severity_reason = "Not Provided"
+    severity = {**_label(severity_value, severity_reason), "source": severity_source}
+    confidence = {**_label(confidence_value, _first(investigation_analysis.get("confidence_justification"), investigation.get("confidence_justification"), investigation.get("confidence_reason"), default="Not Provided")),
+                  "source": confidence_source}
 
     evidence_backed_findings = [
-        {"finding_id": "KF-001", "statement": f"The incident classification is {classification}.", "finding": f"The incident classification is {classification}.", "status": "Fact", "confidence": confidence["label"], "evidence_refs": ["investigation_result.json"], "evidence": "investigation_result.json", "interpretation": "Classification is taken from investigation output first, with triage as fallback."},
+        {"finding_id": "KF-001", "statement": f"The incident classification is {classification}.", "finding": f"The incident classification is {classification}.", "status": "Fact", "confidence": confidence["label"], "evidence_refs": ["investigation_result.json" if classification_source == "Investigation" else "triage_result.json"], "evidence": "investigation_result.json" if classification_source == "Investigation" else "triage_result.json", "interpretation": f"Classification source: {classification_source}" + (" (Triage-owned assessment; Investigation produces no classification)." if classification_source == "Triage" else ".")},
         {"finding_id": "KF-002", "statement": "Affected scope requires validation." if not affected_assets and not affected_users else "Affected scope has available context.", "finding": "Affected scope requires validation." if not affected_assets and not affected_users else "Affected scope has available context.", "status": "Evidence Gap" if not affected_assets and not affected_users else "Fact", "confidence": confidence["label"], "evidence_refs": [], "evidence": "", "interpretation": "Assets and users should be validated against NetWitness and endpoint evidence."},
         {"finding_id": "KF-003", "statement": f"Approval status is {approval['approval_status']}.", "finding": f"Approval status is {approval['approval_status']}.", "status": "Fact", "confidence": confidence["label"], "evidence_refs": ["approval_result.json"], "evidence": "approval_result.json", "interpretation": "Approval data is recorded only from analyst approval context."},
     ]
@@ -766,6 +833,37 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         {"check": "Evidence present", "status": "Pass" if evidence else "Review Required"},
     ]
 
+    # ── Phase 3 provenance blocks ──────────────────────────────────────────
+    investigation_mitre = [m for m in _list(_first(
+        investigation_analysis.get("mitre_mappings"), investigation.get("mitre_mappings"),
+        investigation.get("mitre_attack_mapping"), investigation.get("mitre_attack"), default=[]))
+        if m not in (None, "", [], {})]
+    triage_tactic = _first(triage.get("mitre_tactic"), default=None)
+    triage_technique = _first(triage.get("mitre_technique"), default=None)
+    triage_mitre = {
+        "tactic": triage_tactic if str(triage_tactic or "").lower() != "unknown" else None,
+        "technique": triage_technique if str(triage_technique or "").lower() != "unknown" else None,
+        "source": "Triage",
+    }
+    ti_bundle = threat_intel_result.get("threat_intelligence") if isinstance(threat_intel_result.get("threat_intelligence"), dict) else {}
+    ti_contract = ("multi_indicator" if isinstance(ti_bundle.get("indicators"), list)
+                   else "legacy" if ti_bundle else "none")
+    severity_sources = {
+        "netwitness_severity": {"value": _first(processed.get("severity"), default=None),
+                                "source": "NetWitness alert (as normalised by Parsing)"},
+        "triage_level": {"value": triage_level, "source": "Triage"},
+        "ti_enrichment_level": {"value": threat_intel_result.get("enrichment_risk_level"), "source": "Threat Intelligence"},
+        "ti_enrichment_score": {"value": threat_intel_result.get("enrichment_risk_score"), "source": "Threat Intelligence"},
+        "investigation_severity": {"value": investigation_severity, "source": "Investigation"},
+        "investigation_confidence": {"value": confidence_value if confidence_source == "Investigation" else None,
+                                     "source": "Investigation"},
+        "final_severity_source": severity_source,
+    }
+    workflow_block = investigation.get("workflow") if isinstance(investigation.get("workflow"), dict) else {}
+    investigation_result_source = _first(investigation.get("investigation_result_source"),
+                                         workflow_block.get("investigation_source"),
+                                         default="missing" if not investigation else "not_recorded")
+
     appendix_summaries = _build_appendix_summaries(
         processed=processed,
         enriched=enriched,
@@ -779,6 +877,9 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         confidence=confidence,
         evidence_gaps=evidence_gaps,
         threat_intel_result=threat_intel_result,
+        triage_level=triage_level,
+        triage_category=triage_category,
+        investigation_result_source=investigation_result_source,
     )
 
     return {
@@ -825,6 +926,18 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "archived_duplicate_tickets": archived_duplicate_tickets,
         "triage": triage,
         "investigation": investigation,
+        # Phase 3 explicit ownership / provenance.
+        "triage_level": triage_level,
+        "triage_category": triage_category,
+        "classification_source": classification_source,
+        "severity_sources": severity_sources,
+        "investigation_result_source": investigation_result_source,
+        "correlation_cluster_indicators": _list(investigation.get("correlation_cluster_indicators")),
+        "ti_contract": ti_contract,
+        "ti_coverage": ti_bundle.get("coverage") or {},
+        "ti_provider_coverage": ti_bundle.get("provider_coverage") or {},
+        "ti_intelligence_gaps": _list(ti_bundle.get("intelligence_gaps")),
+        "ti_warnings": _list(threat_intel_result.get("warnings")),
         # Threat Intelligence, passed explicitly (see input_loader.py's
         # threat_intel_result input key / HARD_REQUIRED_INPUT_KEYS) rather
         # than assumed to have survived into enriched_alert/investigation —
@@ -866,8 +979,16 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         # .mitre_mappings, structured JSON -- no Markdown parsing) is checked
         # first; the flat investigation.get("mitre_mappings") alias and every
         # older field-name spelling remain as fallbacks, unchanged.
-        "mitre_mapping": _list(_first(investigation_analysis.get("mitre_mappings"), investigation.get("mitre_mappings"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
-        "mitre_attack_mapping": _list(_first(investigation_analysis.get("mitre_mappings"), investigation.get("mitre_mappings"), investigation.get("mitre_attack_mapping"), investigation.get("mitre_mapping"), powershell_analysis.get("mitre_mapping"), investigation.get("mitre_attack"), default=[])),
+        # Phase 3: Investigation-owned mappings ONLY. The Triage tactic/
+        # technique the handoff used to inject as investigation.mitre_mapping,
+        # the skills sidecar's union and Parsing's powershell_analysis
+        # mapping are no longer read here; Triage MITRE is exposed separately
+        # as triage_mitre.
+        "mitre_mapping": list(investigation_mitre),
+        "mitre_attack_mapping": list(investigation_mitre),
+        "investigation_mitre": list(investigation_mitre),
+        "triage_mitre": triage_mitre,
+        "mitre_mapping_source": "Investigation" if investigation_mitre else "none (Investigation produced no MITRE mapping)",
         "powershell_analysis": powershell_analysis,
         "powershell_command_analysis": powershell_analysis,
         "missing_evidence": evidence_gaps,
@@ -911,9 +1032,9 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "llm_status_explanation": _first(reporting.get("llm_status_explanation"), reporting.get("llm_explanation"), default="None"),
         "llm_section_results": reporting.get("llm_section_results") or {},
         "report_generation_mode": _first(reporting.get("generation_mode"), default="deterministic_plus_template_export"),
-        "report_completeness_score": _first(reporting.get("report_completeness_score"), default=65 if missing_required_fields else 90),
-        "report_completeness_status": _first(reporting.get("report_completeness_status"), default="Completeness needs review" if missing_required_fields else "Complete enough for analyst review"),
-        "report_completeness_status_display": _first(reporting.get("report_completeness_status_display"), reporting.get("report_completeness_status"), default="Completeness needs review" if missing_required_fields else "Complete enough for analyst review"),
+        "report_completeness_score": _first(reporting.get("report_completeness_score"), default=65 if evidence_gaps else 90),
+        "report_completeness_status": _first(reporting.get("report_completeness_status"), default="Completeness needs review" if evidence_gaps else "Complete enough for analyst review"),
+        "report_completeness_status_display": _first(reporting.get("report_completeness_status_display"), reporting.get("report_completeness_status"), default="Completeness needs review" if evidence_gaps else "Complete enough for analyst review"),
         "report_classification": "Internal / Restricted",
         "prepared_by": "Reporting Agent",
         "review_limitations": {

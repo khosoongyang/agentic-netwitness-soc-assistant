@@ -3801,13 +3801,25 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
     outputs.mkdir(parents=True, exist_ok=True)
     inputs.mkdir(parents=True, exist_ok=True)
 
+    # Canonical audit Phase 3: Triage-owned fields only, named as Triage
+    # names them. The Triage result carries no status field, so the status
+    # is derived from what it actually contains (never a hard-coded
+    # "completed"), and Triage's classification is its triage LEVEL -- it
+    # is exposed as triage_level, never as a "severity" that Reporting could
+    # mistake for the incident severity Investigation owns.
+    if triage_result.get("error"):
+        triage_status = "failed"
+    elif ticket:
+        triage_status = "completed"
+    else:
+        triage_status = "not_recorded"
     triage_doc = {
         "agent": "Triage Agent",
-        "status": "completed",
+        "status": triage_status,
         "incident_id": inc_id,
         "alert_id": inc_id,
         "title": title,
-        "severity": ticket.get("classification"),
+        "triage_level": ticket.get("classification"),
         "classification": ticket.get("classification"),
         "mitre_tactic": _first(payload.get("mitre_tactic"),
                                ticket.get("mitre_tactic"), default="Unknown"),
@@ -3826,25 +3838,42 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
     }
     _write_json(outputs / "triage_result.json", triage_doc)
 
-    _ctx = _harvest_incident_context(incident)
-    _mkv = payload.get("metakey_values") or {}
-    enriched = {
-        "incident_id": inc_id,
-        "alert_title": title,
-        "incident_summary": _first(incident.get("summary"), ticket.get("summary"),
-                                   default=f"SOC alert requires review: {title}"),
-        "severity": str(ticket.get("classification") or "Medium").capitalize(),
-        "risk_score": _first(incident.get("riskScore"), incident.get("risk_score")),
-        "host": _first(incident.get("hostname"), _scalar(_mkv.get("host.name")),
-                       (_ctx["hosts"] or [None])[0]),
-        "source_ip": _first(incident.get("source_ip"), _scalar(_mkv.get("ip.src")),
-                            (_ctx["source_ips"] or _ctx["ips"] or [None])[0]),
-        "username": _first(incident.get("username"), _scalar(_mkv.get("user.name")),
-                           (_ctx["users"] or [None])[0]),
-        "iocs": payload.get("ioc_summary") and [{"summary": payload["ioc_summary"],
-                                                 "severity": payload.get("risk_level")}] or [],
-        "raw_incident": incident,
-    }
+    # Phase 3: Reporting's enriched_alert.json is Threat Intelligence's own
+    # canonical enriched alert (Parsing's processed alert + TI enrichment),
+    # identity-checked against this case. Only when TI produced none is the
+    # legacy Triage/raw-incident reconstruction written -- explicitly marked
+    # non-canonical, and without a Triage-derived "severity".
+    case_for_identity = str(incident_id if incident_id is not None else inc_id)
+    ti_enriched = (threat_intel_result or {}).get("enriched_alert") \
+        if isinstance((threat_intel_result or {}).get("enriched_alert"), dict) else None
+    ti_enriched_case = str((ti_enriched or {}).get("incident_id") or (ti_enriched or {}).get("alert_id") or "")
+    if ti_enriched and (not ti_enriched_case or ti_enriched_case == case_for_identity):
+        enriched = {**ti_enriched, "incident_id": ti_enriched.get("incident_id") or case_for_identity,
+                    "enriched_alert_source": "threat_intelligence", "canonical": True}
+    else:
+        if ti_enriched:
+            _log("HANDOFF", f"TI enriched_alert belongs to {ti_enriched_case!r}, expected "
+                            f"{case_for_identity!r} -- not used; legacy reconstruction written")
+        _ctx = _harvest_incident_context(incident)
+        _mkv = payload.get("metakey_values") or {}
+        enriched = {
+            "incident_id": inc_id,
+            "alert_title": title,
+            "incident_summary": _first(incident.get("summary"), ticket.get("summary"),
+                                       default=f"SOC alert requires review: {title}"),
+            "risk_score": _first(incident.get("riskScore"), incident.get("risk_score")),
+            "host": _first(incident.get("hostname"), _scalar(_mkv.get("host.name")),
+                           (_ctx["hosts"] or [None])[0]),
+            "source_ip": _first(incident.get("source_ip"), _scalar(_mkv.get("ip.src")),
+                                (_ctx["source_ips"] or _ctx["ips"] or [None])[0]),
+            "username": _first(incident.get("username"), _scalar(_mkv.get("user.name")),
+                               (_ctx["users"] or [None])[0]),
+            "iocs": payload.get("ioc_summary") and [{"summary": payload["ioc_summary"],
+                                                     "severity": payload.get("risk_level")}] or [],
+            "raw_incident": incident,
+            "enriched_alert_source": "reconstructed_triage_raw",
+            "canonical": False,
+        }
     _write_json(inputs / "enriched_alert.json", enriched)
     _write_json(outputs / "enriched_alert.json", enriched)
     _write_json(inputs / "ticket_context.json", {"ticket": ticket,
@@ -3858,20 +3887,27 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
             "summary": "Investigation stage was skipped or produced no output.",
             "missing_evidence": ["Investigation was not run for this incident."],
             "reporting_mode": "with_limitations",
+            "investigation_result_source": "missing",
         }
-    else:
-        # Feed the report's IOC table and MITRE section: the reporting
-        # context builder reads investigation.iocs / .mitre_mapping directly.
+    elif investigation_result:
+        # Phase 3: the Reporting copy carries Investigation-owned fields
+        # only. Previously the Triage MITRE tactic/technique was injected
+        # here as Investigation's "mitre_mapping", and the correlation
+        # cluster's indicator set (every case in the cluster) was aliased to
+        # "iocs" -- Reporting presented both as this case's Investigation
+        # findings. Triage MITRE stays in triage_result.json; the cluster
+        # set stays available, labelled as correlated-cluster evidence.
         investigation_result = dict(investigation_result)
-        if investigation_result.get("indicators"):
-            investigation_result.setdefault("iocs",
-                                            investigation_result["indicators"])
-        tac  = _first(payload.get("mitre_tactic"), ticket.get("mitre_tactic"))
-        tech = _first(payload.get("mitre_technique"), ticket.get("mitre_technique"))
-        if tac and str(tac) != "Unknown":
-            mapping = str(tac) if not tech or str(tech) == "Unknown" \
-                      else f"{tac} — {tech}"
-            investigation_result.setdefault("mitre_mapping", [mapping])
+        if "indicators" in investigation_result:
+            investigation_result["correlation_cluster_indicators"] = \
+                investigation_result.pop("indicators") or []
+        workflow_meta = investigation_result.get("workflow") \
+            if isinstance(investigation_result.get("workflow"), dict) else {}
+        investigation_result["investigation_result_source"] = \
+            workflow_meta.get("investigation_source") or "not_recorded"
+    # An empty ({}) Investigation result is passed through unchanged (no
+    # sidecar enrichment, no injected fields), so Reporting's input loader
+    # rejects it as a missing hard-required input instead of reporting on it.
 
     # ── Skills sidecar: fold the deterministic skill suite (Diamond Model,
     # unified triage verdict, IOC correlation, asset criticality, mitigation
@@ -3894,6 +3930,8 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
     # persisted result here is a pure data-availability fix with no control
     # flow change when threat_intel_result is None, same as before.
     try:
+        if not investigation_result:
+            raise ValueError("no Investigation result to enrich")
         import agents.investigation.skills_sidecar as skills_sidecar
         _bundle = skills_sidecar.build_skills_context(
             incident, triage_result=triage_result,

@@ -1,54 +1,54 @@
 {
   "incident_id": "INC-52970",
-  "severity": "High",
+  "severity": "Medium",
   "confidence": "Medium",
   "execution_trace": [
     {
       "step_id": "step_1",
       "instruction": "Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System",
       "status": "NOT_MET",
-      "findings": "The incident data does not provide a confirmed username, login details, computer name, or operating system for the victim endpoint. The source IP is 192.168.10.200. The only user-like clue is the upstream/source trail admin2@192.168.20.14:50005, which appears to be an investigation/session reference rather than verified logon context on the affected host."
+      "findings": "The timeline does not provide a confirmed username, login details, computer name, or operating system for the victim host. The concrete endpoint identifier is source IP 192.168.10.200, with MAC a8:1e:84:9b:3e:9d / 00:0c:29:f3:50:e1 appearing in later alert context. A source trail reference to admin2@192.168.20.14:50005 appears in the telemetry, but that reads as an upstream/session trail rather than confirmed victim user identity. No authenticated user, host inventory record, or OS metadata is present."
     },
     {
       "step_id": "step_2",
       "instruction": "Was it horizontal or vertical",
       "status": "NOT_MET",
-      "findings": "Horizontal vs vertical movement cannot be confirmed from the timeline. The observable activity is outbound network traffic from 192.168.10.200 to public/Microsoft-related IPs and to 224.0.0.251, with no authenticated access to a second internal host, no peer-to-peer internal destination, and no logon trail that would support confirmed lateral or privilege-based movement."
+      "findings": "The evidence does not establish horizontal or vertical movement. The alert is labeled as lateral movement, but the observed traffic is outbound from 192.168.10.200 to public/external destinations such as 8.8.8.8 and 4.145.79.81 over DNS/HTTPS, plus multicast/broadcast addresses, not a clear internal host-to-host connection. There is no authentication trail or second internal target host to prove lateral movement or privilege escalation."
     },
     {
       "step_id": "step_3",
       "instruction": "Was any malicious process spawned on the victim's machine?",
       "status": "NOT_MET",
-      "findings": "No malicious process spawn is evidenced. There is no process creation telemetry, parent-child chain, command line, hash, or endpoint execution artifact for 192.168.10.200 in the provided record. The alert is network-only, so process execution cannot be confirmed."
+      "findings": "No malicious process spawn is evidenced in the timeline. The incident data is network-only and contains no process creation events, parent/child process lineage, command lines, hashes, or endpoint execution telemetry for 192.168.10.200. Therefore, whether a malicious process was spawned on the victim machine cannot be determined from the provided record."
     },
     {
       "step_id": "step_4",
       "instruction": "Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
       "status": "NOT_MET",
-      "findings": "A process tree cannot be analyzed because no endpoint process telemetry is present. There are no signs of privilege escalation, remote execution, service creation, or file/process activity in the evidence set. The available data only shows outbound network behavior, which is insufficient to validate escalation or exfiltration from process lineage."
+      "findings": "A process tree cannot be analyzed from the provided evidence because no endpoint process telemetry is present. There are no Sysmon/Event ID 4688-style process records, no parent-child relationships, no privilege escalation artifacts, and no service creation or PowerShell evidence. The behavior is limited to network flows (DNS/HTTPS and multicast/broadcast traffic), which is insufficient to confirm privilege escalation, lateral movement, or data exfiltration."
     },
     {
       "step_id": "step_5",
       "instruction": "Based on the analysis, determine if further investigation is necessary and the containment steps",
       "status": "MET",
-      "findings": "Further investigation is necessary. The alert remains suspicious because of repeated outbound DNS/HTTPS activity and the presence of suspicious file/process artifacts, but compromise is not confirmed. Recommended containment is conservative and evidence-preserving: isolate 192.168.10.200 if risk tolerance requires, preserve volatile state, and collect endpoint, authentication, DNS, and network telemetry before any destructive action."
+      "findings": "Further investigation is necessary. The evidence is suspicious but unconfirmed: 192.168.10.200 shows repeated outbound DNS/HTTPS activity to external IPs including 4.145.79.81 and 8.8.8.8, with additional multicast/broadcast traffic, but there is no endpoint/process proof of compromise. Recommended containment is cautious: isolate 192.168.10.200 if risk tolerance requires it, preserve volatile evidence, and collect Windows Security, Sysmon, and EDR telemetry before destructive remediation. Review recent authentications, running processes, and network connections to determine whether this is benign noisy traffic or true compromise."
     }
   ],
-  "incident_summary": "On 2025-07-15T09:38:52+00:00, NetWitness generated incident INC-52970 for internal host 192.168.10.200. The alert sequence showed repeated DNS, HTTP, and HTTPS activity from 192.168.10.200 toward public infrastructure including 8.8.8.8 and 4.145.79.81, along with multicast traffic to 224.0.0.251 on mDNS port 5353. The timeline also noted suspicious endpoint artifacts, including filenames authrootstl.cab and pR5k1Jb0=, but no decoded PowerShell payload, no confirmed malicious executable, and no process creation or parent-child lineage were present in the record. The network behavior was repeatedly described as outbound and suspicious, with one rule labeling it as lateral movement, but the raw telemetry showed only single-sided network flows and no internal host-to-host access, authenticated remote session, or privilege escalation evidence. The source trail admin2@192.168.20.14:50005 appeared in the metadata, but it was not tied to a verified user logon on the affected endpoint. Across the related alerts, the evidence consistently pointed to suspicious network communications from 192.168.10.200 without endpoint corroboration, making the activity unconfirmed for malware execution, lateral movement, or exfiltration.",
+  "incident_summary": "On 2025-07-15 at 09:38:52 UTC, NetWitness raised INC-52970 for host 192.168.10.200, describing repeated DNS/HTTP/HTTPS activity and suspicious file/process artifacts. The alert identified outbound network activity from 192.168.10.200 to 8.8.8.8 over DNS and to external public IPs including 4.145.79.81 over HTTPS, with additional destinations later expanded in the telemetry to 52.123.129.14, 20.189.173.8, 51.104.15.252, 224.0.0.251, and other observed IPs. The network details show source port 59821 and destination port 443 for the HTTPS session, while the DNS flow used port 53. The source trail repeatedly referenced admin2@192.168.20.14:50005, but the incident data did not establish that as the victim user on 192.168.10.200. The endpoint artifact set included authrootstl.cab and pR5k1Jb0=, and the hostname field in the alert context referenced ctldl.windowsupdate.com rather than a confirmed local computer name. The threat intelligence results for 8.8.8.8 and 4.145.79.81 did not confirm maliciousness strongly enough to prove compromise, and there was no decoded PowerShell, no process creation telemetry, and no endpoint tree to connect the network activity to a specific executable or privilege escalation chain. Across the later alert context, the same host 192.168.10.200 continued to generate outbound HTTPS/DNS activity and multicast traffic, but the observed behavior remained network-centric and uncorroborated by host execution evidence.",
   "actions_taken": [
-    "Reviewed the incident timeline and preserved all observed source/destination IPs, ports, and associated filenames from the alert record.",
-    "Re-evaluated the playbook steps against the updated timeline and marked host identity, movement type, process spawning, and process-tree analysis as not evidenced.",
-    "Assessed threat intelligence results for 8.8.8.8, 4.145.79.81, and 224.0.0.251 and noted that the available reputation data did not confirm malicious activity on its own.",
-    "Determined that the evidence remains network-only and insufficient to confirm compromise or privilege escalation."
+    "Reviewed the ESA alert series for INC-52970 and correlated the repeated network observations for host 192.168.10.200.",
+    "Compared the observed destinations against enrichment results and noted that 8.8.8.8 and 4.145.79.81 were not sufficient on their own to confirm malicious execution.",
+    "Checked for PowerShell indicators and confirmed there was no decoded or encoded PowerShell payload in the available telemetry.",
+    "Assessed the presence of suspicious file artifacts (authrootstl.cab and pR5k1Jb0=) and noted that no hash-based file reputation check was available.",
+    "Evaluated the incident against the privilege escalation playbook steps and confirmed that user, host, OS, and process lineage data were missing from the provided record."
   ],
   "recommended_containment": [
-    "Isolate host 192.168.10.200 from the network using EDR network containment or NAC port shutdown until endpoint telemetry is collected and reviewed.",
-    "Preserve volatile evidence on 192.168.10.200 immediately, including running processes, active connections, logged-on users, services, autoruns, and recent DNS cache.",
-    "Collect Windows Security logs 4624, 4625, 4648, 4672, 4688, 4697, 7045, and 4103/4104 for the incident window on the affected endpoint and any associated domain controller.",
-    "Export Sysmon Event IDs 1, 3, 7, 11, 12, 13, and 22 from the host to reconstruct process creation, network connections, file writes, registry changes, and DNS resolution.",
-    "Hunt for the suspicious filenames authrootstl.cab and pR5k1Jb0= across EDR, file-share, proxy, and endpoint inventories to determine whether they were created, downloaded, or executed.",
-    "Validate whether 224.0.0.251 traffic was benign mDNS/Bonjour discovery by comparing the host\u2019s network behavior against baseline LAN discovery activity and DHCP/asset records.",
-    "Quarantine and inspect any files or scripts associated with outbound connections to 4.145.79.81 and 8.8.8.8, and block the specific destination IPs only if they are confirmed in your environment as malicious infrastructure."
+    "If the host 192.168.10.200 is still active and cannot be ruled out as compromised, isolate it immediately using EDR network containment or NAC port shutdown, but preserve the endpoint state before any cleanup.",
+    "Capture volatile evidence from 192.168.10.200 before remediation: running processes, active network connections, logged-on users, scheduled tasks, services, autoruns, and open handles.",
+    "Export Windows Security logs, Sysmon logs, and EDR telemetry for the window 2025-07-15 09:10:00 UTC through 2025-07-15 10:10:00 UTC, with special focus on Event IDs 4624, 4625, 4672, 4688, 4697, 7045, 4104, and Sysmon 1/3/11/22.",
+    "Hunt for the suspicious artifacts authrootstl.cab and pR5k1Jb0= on 192.168.10.200 and across the fleet, and quarantine any matching files pending hash validation and sandbox analysis.",
+    "Review DNS and proxy logs for 192.168.10.200 to confirm whether the outbound sessions to 8.8.8.8, 4.145.79.81, and the other observed IPs were expected software-update activity or an unapproved callback pattern.",
+    "If admin2@192.168.20.14:50005 maps to a real administrative session, validate whether that account had authorized access to 192.168.10.200 during the incident window and revoke credentials if there is any sign of misuse."
   ],
   "business_impact_checklist": {
     "critical_system": "unknown",
@@ -56,35 +56,42 @@
     "data_sensitivity": "unknown",
     "operational_impact": "unknown"
   },
-  "severity_justification": "High severity is appropriate because the incident shows repeated suspicious outbound activity from an internal host, includes suspicious file/process artifacts, and has a rule classification of elevated risk with multiple related alerts. However, the available evidence does not confirm compromise, exfiltration, or privilege escalation, so Critical is not supported.",
-  "confidence_justification": "Confidence is Medium because the network telemetry, filenames, and repeated alerting consistently support that something unusual occurred, but the record lacks endpoint process telemetry, logon context, hostname/OS identity, and any direct proof of malicious execution. The evidence is partially sufficient but still incomplete.",
+  "severity_justification": "Medium is appropriate because the incident shows suspicious repeated outbound DNS/HTTPS activity from an internal host plus suspicious artifacts, but there is no confirmed malicious process, privilege escalation, data exfiltration, service outage, or impacted critical system. The evidence aligns with a contained or unconfirmed suspicious activity case rather than a high-confidence compromise.",
+  "confidence_justification": "Medium confidence is warranted because multiple timeline entries consistently show the same network behavior and the alert includes concrete IPs, ports, and file artifacts, but key corroborating evidence is missing. There is no endpoint process telemetry, no user/login confirmation, no hostname/OS inventory, and no PowerShell or process-tree evidence, so the conclusion remains partially supported rather than fully proven.",
   "mitre_mappings": [
     {
-      "timeline_phase": "Initial network discovery and multicast LAN activity",
-      "observed_evidence": "Internal host 192.168.10.200 generated traffic to 224.0.0.251 on UDP/5353, with repeated mDNS-style discovery behavior and no endpoint process telemetry.",
+      "timeline_phase": "Initial network anomaly detection",
+      "observed_evidence": "192.168.10.200 generated outbound DNS traffic to 8.8.8.8 and additional network connections with no accompanying endpoint telemetry.",
+      "tactic": "Command and Control",
+      "technique_name": "Application Layer Protocol: DNS",
+      "technique_id": "T1071.004"
+    },
+    {
+      "timeline_phase": "Repeated suspicious outbound HTTPS activity",
+      "observed_evidence": "192.168.10.200 connected to 4.145.79.81:443 and other external IPs over HTTPS, with recurring network events and no process evidence.",
+      "tactic": "Command and Control",
+      "technique_name": "Application Layer Protocol: Web Protocols",
+      "technique_id": "T1071.001"
+    },
+    {
+      "timeline_phase": "Multicast and broadcast noise on the LAN",
+      "observed_evidence": "The same host also produced multicast/broadcast traffic including 224.0.0.251 and 255.255.255.255, which is consistent with discovery-style network behavior.",
       "tactic": "Discovery",
       "technique_name": "Network Service Discovery",
       "technique_id": "T1046"
     },
     {
-      "timeline_phase": "Outbound DNS and web communications to external infrastructure",
-      "observed_evidence": "Host 192.168.10.200 repeatedly connected to 8.8.8.8 over DNS and to 4.145.79.81:443 over HTTPS, with the timeline describing repeated DNS/HTTP/HTTPS activity and an outbound session.",
-      "tactic": "Command and Control",
-      "technique_name": "Application Layer Protocol",
-      "technique_id": "T1071"
-    },
-    {
-      "timeline_phase": "Suspicious external web egress to cloud-hosted destination",
-      "observed_evidence": "The alert set included outbound HTTPS activity from 192.168.10.200 to 4.145.79.81 and other public IPs, with the source trail admin2@192.168.20.14:50005 present in metadata but no host process lineage or authenticated remote session evidence on the victim endpoint.",
-      "tactic": "Command and Control",
-      "technique_name": "Web Protocols",
-      "technique_id": "T1071.001"
+      "timeline_phase": "Suspicious artifact association without execution proof",
+      "observed_evidence": "Alert context surfaced files authrootstl.cab and pR5k1Jb0= on 192.168.10.200, but no process creation, command line, or hash evidence was provided.",
+      "tactic": "Execution",
+      "technique_name": "User Execution",
+      "technique_id": "T1204"
     }
   ],
-  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial network discovery and multicast LAN activity | Internal host 192.168.10.200 generated traffic to 224.0.0.251 on UDP/5353, with repeated mDNS-style discovery behavior and no endpoint process telemetry. | Discovery | Network Service Discovery | T1046 |\n| Outbound DNS and web communications to external infrastructure | Host 192.168.10.200 repeatedly connected to 8.8.8.8 over DNS and to 4.145.79.81:443 over HTTPS, with the timeline describing repeated DNS/HTTP/HTTPS activity and an outbound session. | Command and Control | Application Layer Protocol | T1071 |\n| Suspicious external web egress to cloud-hosted destination | The alert set included outbound HTTPS activity from 192.168.10.200 to 4.145.79.81 and other public IPs, with the source trail admin2@192.168.20.14:50005 present in metadata but no host process lineage or authenticated remote session evidence on the victim endpoint. | Command and Control | Web Protocols | T1071.001 |",
+  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial network anomaly detection | 192.168.10.200 generated outbound DNS traffic to 8.8.8.8 and additional network connections with no accompanying endpoint telemetry. | Command and Control | Application Layer Protocol: DNS | T1071.004 |\n| Repeated suspicious outbound HTTPS activity | 192.168.10.200 connected to 4.145.79.81:443 and other external IPs over HTTPS, with recurring network events and no process evidence. | Command and Control | Application Layer Protocol: Web Protocols | T1071.001 |\n| Multicast and broadcast noise on the LAN | The same host also produced multicast/broadcast traffic including 224.0.0.251 and 255.255.255.255, which is consistent with discovery-style network behavior. | Discovery | Network Service Discovery | T1046 |\n| Suspicious artifact association without execution proof | Alert context surfaced files authrootstl.cab and pR5k1Jb0= on 192.168.10.200, but no process creation, command line, or hash evidence was provided. | Execution | User Execution | T1204 |",
   "policy_audit_logs": [
     {
-      "audit_id": "AUD-DP07-1790602970-1",
+      "audit_id": "AUD-DP07-1791046863-1",
       "incident_id": "INC-52970",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix C",
@@ -92,27 +99,27 @@
       "input_summary": "Critical System: False, Sensitive Data: False",
       "result": "Pass",
       "decision_made": "Investigate",
-      "timestamp": 1790602970.2164102,
+      "timestamp": 1791046863.6649342,
       "evidence_reference": "business_impact_checklist",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP08-1790602970-2",
+      "audit_id": "AUD-DP08-1791046863-2",
       "incident_id": "INC-52970",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix A",
       "decision_point": "DP-08",
-      "input_summary": "Severity classification: High",
-      "result": "Warning",
-      "decision_made": "Escalate",
-      "timestamp": 1790602970.2164102,
+      "input_summary": "Severity classification: Medium",
+      "result": "Pass",
+      "decision_made": "Investigate",
+      "timestamp": 1791046863.6649342,
       "evidence_reference": "incident_summary",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP09-1790602970-3",
+      "audit_id": "AUD-DP09-1791046863-3",
       "incident_id": "INC-52970",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix F",
@@ -120,21 +127,21 @@
       "input_summary": "Confidence level: Medium",
       "result": "Warning",
       "decision_made": "Escalate",
-      "timestamp": 1790602970.2164102,
+      "timestamp": 1791046863.6649342,
       "evidence_reference": "execution_trace",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP10-1790602970-4",
+      "audit_id": "AUD-DP10-1791046863-4",
       "incident_id": "INC-52970",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix G",
       "decision_point": "DP-10/DP-11",
-      "input_summary": "Severity: High, Confidence: Medium, Ransomware: False, Guest OS: False",
+      "input_summary": "Severity: Medium, Confidence: Medium, Ransomware: False, Guest OS: False",
       "result": "Fail",
       "decision_made": "Escalate",
-      "timestamp": 1790602970.2164102,
+      "timestamp": 1791046863.6649342,
       "evidence_reference": "recommended_containment",
       "human_review_required": true,
       "final_reviewer": null

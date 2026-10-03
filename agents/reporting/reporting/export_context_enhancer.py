@@ -837,8 +837,26 @@ def _candidate_ioc_items(context: dict[str, Any]) -> list[tuple[Any, str | None,
 
     for idx, item in enumerate(context.get("iocs") or []):
         add(item, item.get("type") if isinstance(item, dict) else None, "report_context", f"iocs[{idx}]")
+    # Phase 3: Threat Intelligence's own per-case indicators are current-case
+    # IOC candidates (with their TI status); legacy TI contributes its iocs.
+    ti_result = context.get("threat_intel_result") or {}
+    ti_bundle = ti_result.get("threat_intelligence") if isinstance(ti_result.get("threat_intelligence"), dict) else {}
+    if isinstance(ti_bundle.get("indicators"), list):
+        for idx, item in enumerate(ti_bundle["indicators"]):
+            if isinstance(item, dict):
+                add(item.get("value"), item.get("type"), "threat_intel_result", f"threat_intelligence.indicators[{idx}]")
+    else:
+        legacy_iocs = ti_bundle.get("iocs") if isinstance(ti_bundle.get("iocs"), dict) else {}
+        for key, hinted in (("ip_indicators", "ip"), ("domain_indicators", "domain"), ("file_hashes", "sha256")):
+            add(legacy_iocs.get(key), hinted, "threat_intel_result", f"threat_intelligence.iocs.{key}")
     for source_name, source in [("processed_alert", processed), ("enriched_alert", enriched), ("triage_result", triage), ("investigation_result", investigation)]:
         for key in ("iocs", "matched_iocs", "extracted_iocs", "final_iocs", "indicators"):
+            # Phase 3: Investigation's "indicators" is the whole correlation
+            # cluster's indicator set (every case in the cluster), not this
+            # case's IOCs -- never a candidate (it is shown separately as
+            # correlation_cluster_indicators).
+            if source_name == "investigation_result" and key == "indicators":
+                continue
             add(source.get(key), None, source_name, key)
         for key in ("source_ip", "destination_ip", "domain", "event_domain", "url", "sha256", "sha1", "md5", "file_hash", "process_name", "process_path", "command_line", "file_name", "registry_key", "hostname", "host"):
             add(source.get(key), key, source_name, key)
@@ -931,6 +949,50 @@ def _threat_intel_index(enriched: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 walk(item, f"{path}[{idx}]")
 
     walk(ti, "threat_intelligence")
+
+    # Phase 3: the multi-indicator TI contract keeps provider verdicts under
+    # indicators[].providers{} and a per-IOC status -- the generic walk above
+    # cannot see either, so these entries (authoritative) replace its
+    # placeholder ones. A skipped or excluded IOC is never "benign".
+    for item in ti.get("indicators") or []:
+        if not isinstance(item, dict) or item.get("value") in (None, ""):
+            continue
+        status = str(item.get("status") or "status not recorded")
+        category = item.get("status_category")
+        providers = item.get("providers") if isinstance(item.get("providers"), dict) else {}
+        verdicts, positive = [], False
+        vt = providers.get("virustotal") if isinstance(providers.get("virustotal"), dict) else {}
+        ab = providers.get("abuseipdb") if isinstance(providers.get("abuseipdb"), dict) else {}
+        otx = providers.get("otx") or providers.get("alienvault_otx")
+        otx = otx if isinstance(otx, dict) else {}
+        if vt.get("status") == "completed":
+            verdicts.append(f"VirusTotal {int(vt.get('malicious') or 0)} malicious, {int(vt.get('suspicious') or 0)} suspicious")
+            positive = positive or int(vt.get("malicious") or 0) > 0 or int(vt.get("suspicious") or 0) > 0
+        if ab.get("status") == "completed":
+            verdicts.append(f"AbuseIPDB confidence {ab.get('abuse_confidence_score')}")
+            positive = positive or int(ab.get("abuse_confidence_score") or 0) >= 50
+        if otx.get("status") == "completed":
+            verdicts.append(f"OTX {int(otx.get('pulse_count') or 0)} pulse(s)")
+            positive = positive or int(otx.get("pulse_count") or 0) > 0
+        if status == "enriched":
+            reputation = "; ".join(verdicts) or "Looked up; no provider returned data"
+            confidence = "High" if positive else "Medium"
+        elif status == "skipped":
+            reputation = (f"Not checked by Threat Intelligence (skipped: {category or 'reason not recorded'}) "
+                          "-- not evidence of benign")
+            confidence = "Not assessed"
+        elif status == "excluded":
+            reputation = (f"Excluded from Threat Intelligence lookup ({category or 'reason not recorded'}) "
+                          "-- not evidence of benign")
+            confidence = "Not assessed"
+        else:
+            reputation = f"Threat Intelligence status: {status} -- not evidence of benign"
+            confidence = "Not assessed"
+        index[_normalise_lookup(item["value"])] = {
+            "source": "Threat Intelligence", "reputation": reputation, "confidence": confidence,
+            "source_path": "threat_intelligence.indicators", "ti_status": status,
+            "roles": list(item.get("roles") or []), "origins": list(item.get("origins") or []),
+        }
     return index
 
 
@@ -1002,13 +1064,28 @@ def rebuild_iocs(context: dict[str, Any], evidence_index: dict[str, list[str]]) 
         ti = ti_index.get(_normalise_lookup(value), {})
         if ti:
             placeholders_reduced += 3
+        # Phase 3: an IOC with no Threat Intelligence record was NOT checked
+        # -- say so explicitly (never an implied clean result).
+        if ti:
+            reputation = ti.get("reputation")
+            ti_status = ti.get("ti_status") or "looked up (legacy TI)"
+        elif context.get("threat_intel_result"):
+            reputation = "Not checked by Threat Intelligence (no TI record) -- not evidence of benign"
+            ti_status = "not_checked"
+        else:
+            reputation = "Threat Intelligence result unavailable -- not checked"
+            ti_status = "not_checked"
         out.append({
             "type": ioc_type,
             "value": _clean_text(value),
             "ioc": _clean_text(value),
             "source": ti.get("source") or _source_label(source),
             "confidence": ti.get("confidence") or "Observed",
-            "reputation": ti.get("reputation") or "No external reputation supplied",
+            "reputation": reputation,
+            "ti_status": ti_status,
+            "roles": ti.get("roles") or [],
+            "origins": ti.get("origins") or [],
+            "observed_in": _source_label(source),
             "evidence": ", ".join(refs) if refs else "",
             "evidence_refs": refs,
             "source_path": ti.get("source_path") or source_path,
@@ -1721,14 +1798,19 @@ def _apply_field_provenance(context: dict[str, Any], evidence_index: dict[str, l
             ("enriched_alert", "mitre_technique_id", enriched.get("mitre_technique_id")),
             ("investigation_result", "mitre_technique_id", investigation.get("mitre_technique_id")),
         ],
+        # Phase 3: mirrors context_builder's ownership -- Investigation
+        # severity, else the Triage LEVEL (labelled as such). The enriched
+        # alert's "severity" is the NetWitness alert severity, a different
+        # concept, and is never recorded as the incident severity's source.
         "severity": [
+            ("investigation_result", "investigation_analysis.severity", get_path(investigation, "investigation_analysis.severity")),
             ("investigation_result", "severity", investigation.get("severity")),
-            ("triage_result", "severity", triage.get("severity")),
-            ("enriched_alert", "severity", enriched.get("severity")),
+            ("triage_result", "triage_level (Investigation severity unavailable)",
+             first_present(triage.get("triage_level"), triage.get("classification"), default=None)),
         ],
         "confidence": [
+            ("investigation_result", "investigation_analysis.confidence", get_path(investigation, "investigation_analysis.confidence")),
             ("investigation_result", "confidence", investigation.get("confidence")),
-            ("enriched_alert", "confidence", enriched.get("confidence")),
         ],
         "classification": [
             ("investigation_result", "classification", investigation.get("classification")),
@@ -1939,6 +2021,14 @@ def repair_mitre_mapping(context: dict[str, Any], evidence_index: dict[str, list
         if not existing:
             _bump(context, "fields_recovered_from_fallback_sources", len(repaired))
             _bump(context, "placeholders_reduced", len(repaired))
+        # Phase 3: never presented as the Investigation stage's mapping --
+        # each row names the stage its technique ID was found in.
+        for row in repaired:
+            owner = str(row.get("source") or "report context")
+            row["mapping_source"] = f"Reporting recovery ({owner}); not an Investigation mapping"
+            row["reason"] = (f"Technique ID found in {owner} by Reporting's deterministic scan -- "
+                             "not an Investigation-stage MITRE mapping.")
+        context["mitre_mapping_source"] = "Reporting recovery (no Investigation MITRE mapping)"
         return repaired
     return []
 
@@ -2310,16 +2400,25 @@ def build_appendix_summaries(context: dict[str, Any]) -> dict[str, Any]:
             "First Seen": alert.get("timestamp"),
             "Host": first_asset,
             "Severity": get_path(context, "severity.label", ""),
+            # Phase 3: who the incident severity came from, and the alert's
+            # own NetWitness severity kept distinct from it.
+            "Severity Source": get_path(context, "severity.source", ""),
+            "NetWitness Severity": first_present(get_path(context, "severity_sources.netwitness_severity.value"), default="Not Provided"),
             "Confidence": get_path(context, "confidence.label", ""),
             "Original Alert Risk Score": first_present(context.get("original_alert_risk_score"), context.get("initial_risk_score"), default=""),
             "Enriched Risk Score": first_present(context.get("enriched_risk_score"), context.get("enrichment_risk_score"), default=""),
             "Final Risk Rating": first_present(context.get("final_risk_rating"), get_path(context, "severity.label", ""), default=""),
             "Primary IOC": first_ioc,
         },
+        # Phase 3: Triage-owned values only. "Severity"/"Confidence" here
+        # previously showed the incident severity and Investigation
+        # confidence under the Triage heading; they now appear (with their
+        # owner) in the Investigation appendix.
         "triage": {
             "Classification": first_present(triage.get("classification"), context.get("classification")),
-            "Severity": get_path(context, "severity.label", ""),
-            "Confidence": get_path(context, "confidence.label", ""),
+            "Triage Level": first_present(context.get("triage_level"), triage.get("triage_level"), default="Not Provided"),
+            "Category": first_present(context.get("triage_category"), triage.get("incident_category"), default="Not Provided"),
+            "MITRE (Triage)": first_present(" / ".join(str(v) for v in (get_path(context, "triage_mitre.tactic"), get_path(context, "triage_mitre.technique")) if v), default="Not Provided"),
             # triage.get("next_action") dropped -- Triage's field is the
             # plural recommended_actions list (see "Recommended Action
             # Count" below), never a single "next_action" string.
@@ -2331,6 +2430,11 @@ def build_appendix_summaries(context: dict[str, Any]) -> dict[str, Any]:
             "Classification": context.get("classification"),
             "Likely Scenario": context.get("likely_scenario"),
             "Status": first_present(investigation.get("status"), default=""),
+            "Result Source": first_present(context.get("investigation_result_source"), default="Not recorded"),
+            "Investigation Severity": first_present(get_path(context, "severity_sources.investigation_severity.value"), default="Not Provided"),
+            "Investigation Confidence": first_present(get_path(context, "severity_sources.investigation_confidence.value"), default="Not Provided"),
+            "MITRE Mapping Source": first_present(context.get("mitre_mapping_source"), default="Not recorded"),
+            "Correlation Cluster Indicators": len(as_list(context.get("correlation_cluster_indicators"))),
             "Finding Count": len(as_list(investigation.get("findings"))),
             "Missing Evidence": ", ".join(str(g.get("gap", g)) for g in gaps) if gaps else "None recorded",
             "Recommended Next Action": first_present(investigation.get("recommended_next_action"), default="No standalone investigation next action supplied."),

@@ -730,14 +730,11 @@ def enrich_investigation_result(investigation_result: dict | None,
     if not bundle or not bundle.get("available"):
         return inv
     try:
-        # MITRE — union (keeps the investigation/triage mapping, adds skill-inferred)
-        if bundle.get("mitre_mapping"):
-            inv["mitre_mapping"] = _merge_lists(inv.get("mitre_mapping"),
-                                                bundle["mitre_mapping"])
-
-        # IOCs — lead with enriched entries, then keep the originals (deduped).
-        if bundle.get("iocs"):
-            inv["iocs"] = _merge_lists(bundle["iocs"], _as_list(inv.get("iocs")))
+        # Canonical audit Phase 3: the skill-inferred MITRE mapping and IOCs
+        # are NOT merged into the Investigation-owned mitre_mapping / iocs
+        # fields (that presented skill output as Investigation conclusions).
+        # They stay inside the sidecar's own namespace (skills_intelligence,
+        # below) as skills_mitre_mapping / skills_iocs.
 
         # Scope tables — fill only if the investigation left them empty.
         if bundle.get("affected_assets") and not inv.get("affected_assets"):
@@ -779,7 +776,12 @@ def enrich_investigation_result(investigation_result: dict | None,
 
         # Structured bundle — namespaced; harmless to the template, preserved in
         # the report's raw_inputs appendix for auditability.
-        inv["skills_intelligence"] = bundle.get("skills_intelligence")
+        skills_intelligence = dict(bundle.get("skills_intelligence") or {})
+        if bundle.get("mitre_mapping"):
+            skills_intelligence["skills_mitre_mapping"] = list(bundle["mitre_mapping"])
+        if bundle.get("iocs"):
+            skills_intelligence["skills_iocs"] = list(bundle["iocs"])
+        inv["skills_intelligence"] = skills_intelligence
         inv["skills_sidecar_applied"] = True
     except Exception:
         return dict(investigation_result or {})
