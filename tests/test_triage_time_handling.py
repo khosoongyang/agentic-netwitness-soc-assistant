@@ -50,3 +50,31 @@ def test_ticket_created_at_is_timezone_aware(tmp_path, monkeypatch):
     monkeypatch.setattr(a, "_call", FakeLLM())
     res = a.triage(_incident(), force=True)
     assert res["ticket"]["created_at"].endswith("+00:00")
+
+
+def test_forced_re_triage_reuses_the_incident_ticket_number(tmp_path, monkeypatch):
+    """Audit T-12: every forced run / re-triage burned a new UNC. One
+    incident keeps one ticket number (latest payload replaces the row);
+    only a new incident advances the counter."""
+    import sqlite3
+    from test_triage_step1_agent_integration import FakeLLM, _history_db, _incident
+    db = tmp_path / "t.db"
+    monkeypatch.setattr(sta, "_TICKET_DB", db)
+    sta._ticket_db_init()
+    a = sta.TriageAgent(baseline_db_path=_history_db(tmp_path / "h.db"))
+    monkeypatch.setattr(a, "_call", FakeLLM())
+    u1 = a.triage(_incident(id="INC-UNC-1"), force=True)["ticket"]["unc"]
+    u2 = a.triage(_incident(id="INC-UNC-1"), force=True)["ticket"]["unc"]
+    u3 = a.triage(_incident(id="INC-UNC-2"), force=True)["ticket"]["unc"]
+    assert u1 == u2 and u3 != u1
+    with sqlite3.connect(str(db)) as con:
+        rows = con.execute("SELECT unc, incident_id FROM tickets ORDER BY unc").fetchall()
+        counter = con.execute("SELECT number FROM ticket_counter WHERE id=1").fetchone()[0]
+    assert rows == [(u1, "INC-UNC-1"), (u3, "INC-UNC-2")]
+    assert counter == 2
+
+
+def test_incidents_without_id_never_share_a_ticket(tmp_path, monkeypatch):
+    monkeypatch.setattr(sta, "_TICKET_DB", tmp_path / "t.db")
+    sta._ticket_db_init()
+    assert sta._unc_for_incident("unknown") != sta._unc_for_incident("unknown")

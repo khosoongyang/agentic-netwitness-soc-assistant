@@ -487,6 +487,25 @@ def _next_unc() -> str:
 # [FYP-CALLS] Calls: `commit`, `connect`, `dumps`, `execute`, `isoformat`, `str`, `now(timezone.utc)`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
+def _unc_for_incident(incident_id: str) -> str:
+    """[AUDIT T-12] One ticket number per incident: a forced run / re-triage
+    of the same incident reuses its existing UNC (the ticket row is replaced
+    with the latest payload by _store_ticket); only a new incident advances
+    the counter. Incidents without a real id ("unknown") always get a fresh
+    UNC so unrelated incidents never share a ticket."""
+    if incident_id and str(incident_id) != "unknown":
+        try:
+            with sqlite3.connect(str(_TICKET_DB), timeout=30) as con:
+                row = con.execute(
+                    "SELECT unc FROM tickets WHERE incident_id=? ORDER BY created_at DESC LIMIT 1",
+                    (str(incident_id),)).fetchone()
+            if row and row[0]:
+                return str(row[0])
+        except sqlite3.Error:
+            pass
+    return _next_unc()
+
+
 def _store_ticket(unc: str, incident_id: str, severity: str, payload: dict) -> None:
     with sqlite3.connect(str(_TICKET_DB), timeout=30) as con:
         con.execute("INSERT OR REPLACE INTO tickets VALUES (?,?,?,?,?)",
@@ -1861,7 +1880,7 @@ class TriageAgent:
         }
 
         # Output 2 — ticket
-        unc    = _next_unc()
+        unc    = _unc_for_incident(inc_id)
         ticket = {
             "unc":             unc,
             "incident_id":     inc_id,
