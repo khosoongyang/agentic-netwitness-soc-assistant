@@ -1430,6 +1430,681 @@ def build_investigation_threat_intel_context(threat_intel_result: dict | None) -
     return "\n".join(lines)
 
 
+# [FYP-SECTION] Investigation handoff entity semantics (canonical audit Phase 2A)
+# -----------------------------------------------------------------------------
+# Every entity value carries the ordered list of upstream sources ("origins")
+# it was observed in, so the handoff keeps genuinely multi-valued evidence
+# (several source/destination IPs, users, hosts...) instead of the first
+# value only, and the Context Brief can state provenance. Field meaning is
+# preserved: a DNS name is a domain, never an endpoint hostname (NetWitness
+# alias.host / triage "host.name" frequently carries the CONTACTED domain);
+# an endpoint hostname is not a network source hostname; per-alert values
+# are never inherited from case-level values; absent stays absent.
+
+ENTITY_ORIGIN_TRIAGE = "Triage metakeys"
+ENTITY_ORIGIN_INCIDENT = "Incident record"
+ENTITY_ORIGIN_PARSING = "Parsing"
+ENTITY_ORIGIN_ALERT_META = "NetWitness alert metadata"
+ENTITY_ORIGIN_SCAN = "Raw incident scan (heuristic)"
+ENTITY_ORIGIN_TITLE = "Incident title (heuristic)"
+_ENTITY_ROLES = ("source_ips", "destination_ips", "users", "hosts", "domains",
+                 "hashes", "files", "processes")
+
+_DOMAIN_SHAPED_RE = re.compile(
+    r"^(?=.{4,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,24}$")
+
+
+def _is_domain_shaped(value) -> bool:
+    """A DNS name such as "ctldl.windowsupdate.com" (dotted labels ending in an
+    alphabetic TLD). Such values are routed to domains, never treated as an
+    endpoint hostname."""
+    text = str(value or "").strip().rstrip(".")
+    return bool(text) and not _IP_RE.fullmatch(text) and bool(_DOMAIN_SHAPED_RE.match(text))
+
+
+def _add_entity(bucket: dict, value, origin: str) -> None:
+    """Add value(s) to an ordered {value: [origins]} bucket. Skips empty /
+    placeholder values and stringified containers; never reorders."""
+    values = value if isinstance(value, (list, tuple)) else [value]
+    for item in values:
+        if item is None or isinstance(item, (dict, list, tuple, set)):
+            continue
+        text = str(item).strip()
+        if (not text or text.lower() in _NOISE_VALUES
+                or (text[0] in "[{" and text[-1] in "]}")):
+            continue
+        origins = bucket.setdefault(text, [])
+        if origin not in origins:
+            origins.append(origin)
+
+
+def _route_host_semantics(hosts: dict, domains: dict) -> None:
+    """Endpoint hostnames only: DNS-name-shaped values move to domains (keeping
+    their origins); IP-shaped values are dropped from hosts (IPs are captured
+    under their own roles)."""
+    for value in list(hosts):
+        origins = hosts[value]
+        if _IP_RE.fullmatch(value):
+            del hosts[value]
+        elif _is_domain_shaped(value):
+            del hosts[value]
+            for origin in origins:
+                _add_entity(domains, value, origin)
+
+
+def _collect_case_entities(payload: dict, incident: dict,
+                           parsing_result: dict | None, ctx: dict) -> dict:
+    """Case-level entities with provenance, in a fixed source precedence:
+    Triage metakeys -> incident record -> Parsing (canonical normalised
+    telemetry) -> NetWitness alertMeta digest -> raw-incident heuristics.
+    Returns {role: {value: [origins]}}; insertion order is deterministic."""
+    roles: dict = {role: {} for role in _ENTITY_ROLES}
+    mkv = payload.get("metakey_values") or {}
+    am = incident.get("alertMeta") if isinstance(incident.get("alertMeta"), dict) else {}
+    parsed = (parsing_result or {}).get("processed_alert") or {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    net = parsed.get("network_indicators") or {}
+    uh = parsed.get("user_and_host_indicators") or {}
+    files = parsed.get("file_indicators") or {}
+    procs = parsed.get("process_indicators") or {}
+    web = parsed.get("web_indicators") or {}
+
+    def add(role: str, value, origin: str) -> None:
+        _add_entity(roles[role], value, origin)
+
+    add("source_ips", mkv.get("ip.src"), ENTITY_ORIGIN_TRIAGE)
+    add("destination_ips", mkv.get("ip.dst"), ENTITY_ORIGIN_TRIAGE)
+    add("users", mkv.get("user.name"), ENTITY_ORIGIN_TRIAGE)
+    add("hosts", mkv.get("host.name"), ENTITY_ORIGIN_TRIAGE)
+    for key in ("domain", "domain.dst", "alias.host"):
+        add("domains", mkv.get(key), ENTITY_ORIGIN_TRIAGE)
+    for key in ("file.hash", "checksum", "checksumSha256", "checksumSha1",
+                "checksumMd5", "sha256", "md5"):
+        add("hashes", mkv.get(key), ENTITY_ORIGIN_TRIAGE)
+    for key in ("file.name", "filename"):
+        add("files", mkv.get(key), ENTITY_ORIGIN_TRIAGE)
+    add("processes", mkv.get("process.name"), ENTITY_ORIGIN_TRIAGE)
+
+    add("source_ips", incident.get("source_ip"), ENTITY_ORIGIN_INCIDENT)
+    add("destination_ips", incident.get("destination_ip"), ENTITY_ORIGIN_INCIDENT)
+    add("users", incident.get("username"), ENTITY_ORIGIN_INCIDENT)
+    add("hosts", incident.get("hostname"), ENTITY_ORIGIN_INCIDENT)
+
+    add("source_ips", net.get("source_ips"), ENTITY_ORIGIN_PARSING)
+    add("destination_ips", net.get("destination_ips"), ENTITY_ORIGIN_PARSING)
+    add("users", uh.get("all_usernames"), ENTITY_ORIGIN_PARSING)
+    add("hosts", uh.get("hostnames"), ENTITY_ORIGIN_PARSING)
+    add("domains", uh.get("domains"), ENTITY_ORIGIN_PARSING)
+    add("domains", web.get("domains"), ENTITY_ORIGIN_PARSING)
+    add("hashes", files.get("file_hashes"), ENTITY_ORIGIN_PARSING)
+    add("files", files.get("file_names"), ENTITY_ORIGIN_PARSING)
+    add("processes", procs.get("process_names"), ENTITY_ORIGIN_PARSING)
+
+    add("source_ips", am.get("SourceIp"), ENTITY_ORIGIN_ALERT_META)
+    add("destination_ips", am.get("DestinationIp"), ENTITY_ORIGIN_ALERT_META)
+    add("users", am.get("User"), ENTITY_ORIGIN_ALERT_META)
+    add("users", am.get("AdUser"), ENTITY_ORIGIN_ALERT_META)
+    add("hosts", am.get("Hostname"), ENTITY_ORIGIN_ALERT_META)
+    add("domains", am.get("DnsDomain"), ENTITY_ORIGIN_ALERT_META)
+    add("hashes", am.get("FileHash"), ENTITY_ORIGIN_ALERT_META)
+    add("files", am.get("FileName"), ENTITY_ORIGIN_ALERT_META)
+
+    add("source_ips", ctx.get("source_ips"), ENTITY_ORIGIN_SCAN)
+    add("destination_ips", ctx.get("destination_ips"), ENTITY_ORIGIN_SCAN)
+    add("users", ctx.get("users"), ENTITY_ORIGIN_SCAN)
+    title_entity = ctx.get("title_entity")
+    title_fallback = bool(title_entity) and list(ctx.get("hosts") or []) == [title_entity]
+    add("hosts", ctx.get("hosts"),
+        ENTITY_ORIGIN_TITLE if title_fallback else ENTITY_ORIGIN_SCAN)
+
+    _route_host_semantics(roles["hosts"], roles["domains"])
+    return roles
+
+
+def _nw_value(*values):
+    """First value that is present (not None / blank string / empty container)."""
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        if isinstance(value, (list, dict)) and not value:
+            continue
+        return value
+    return None
+
+
+def _sub_alert_entry(sub: dict) -> dict:
+    """One NetWitness alert's OWN fields (flat or nested Respond structure:
+    alert{name,type,host_summary,events}, originalHeaders, originalAlert).
+    Nothing is inherited from the case and nothing is fabricated: a field the
+    alert does not carry stays absent."""
+    def _dict(value) -> dict:
+        return value if isinstance(value, dict) else {}
+
+    alert_obj = _dict(sub.get("alert"))
+    headers = _dict(sub.get("originalHeaders"))
+    original = _dict(sub.get("originalAlert"))
+    origin = "alert"
+    bucket: dict = {role: {} for role in ("source_ips", "destination_ips", "users",
+                                          "hostnames", "domains")}
+    _add_entity(bucket["source_ips"], [sub.get("sourceIp"), sub.get("src_ip"),
+                                       sub.get("source_ip")], origin)
+    _add_entity(bucket["destination_ips"], [sub.get("destinationIp"), sub.get("dst_ip"),
+                                            sub.get("destination_ip")], origin)
+    _add_entity(bucket["users"], [sub.get("userName"), sub.get("user")], origin)
+    _add_entity(bucket["hostnames"], [sub.get("hostname"), sub.get("host")], origin)
+
+    events = alert_obj.get("events") or original.get("events") or sub.get("events") or []
+    for ev in (events if isinstance(events, list) else [])[:50]:
+        if not isinstance(ev, dict):
+            continue
+        for side, role in (("source", "source_ips"), ("destination", "destination_ips")):
+            node = _dict(ev.get(side))
+            device = _dict(node.get("device"))
+            user = _dict(node.get("user"))
+            _add_entity(bucket[role], [device.get("ip_address"), device.get("ipAddress")], origin)
+            _add_entity(bucket["hostnames"], [device.get("dns_hostname"), device.get("dnsHostname"),
+                                              device.get("netbios_name")], origin)
+            _add_entity(bucket["domains"], [device.get("dns_domain"), device.get("dnsDomain")], origin)
+            _add_entity(bucket["users"], [user.get("username"), user.get("ad_username"),
+                                          user.get("adUsername")], origin)
+        _add_entity(bucket["source_ips"], ev.get("ip_src"), origin)
+        _add_entity(bucket["destination_ips"], ev.get("ip_dst"), origin)
+        _add_entity(bucket["users"], [ev.get("user_src"), ev.get("user_dst"), ev.get("username"),
+                                      ev.get("user_account"), ev.get("user")], origin)
+        # ECAT puts the endpoint machine name in events[].domain; a real DNS
+        # name there is routed to domains by _route_host_semantics().
+        _add_entity(bucket["hostnames"], [ev.get("hostname"), ev.get("host_src"),
+                                          ev.get("host_dst"), ev.get("domain")], origin)
+        _add_entity(bucket["domains"], [ev.get("domain_dst"), ev.get("alias_host")], origin)
+    _route_host_semantics(bucket["hostnames"], bucket["domains"])
+
+    alert_types = _nw_value(alert_obj.get("type"), sub.get("type"))
+    if isinstance(alert_types, str):
+        alert_types = [alert_types]
+    entry = {
+        "alert_id": _nw_value(sub.get("id"), sub.get("alert_id"), sub.get("_id"), original.get("id")),
+        "title": _nw_value(sub.get("title"), sub.get("name"), alert_obj.get("name"),
+                           headers.get("name"), original.get("moduleName"), sub.get("signature")),
+        "timestamp": _to_iso_timestamp(_nw_value(sub.get("created"), sub.get("receivedTime"),
+                                                 sub.get("timestamp"), headers.get("timestamp"))),
+        # The alert's own NetWitness severity (raw value) -- never a default,
+        # never the Triage classification.
+        "severity": _nw_value(sub.get("severity"), sub.get("priority"),
+                              headers.get("severity"), original.get("severity")),
+        "alert_types": alert_types if isinstance(alert_types, list) else None,
+        "detection_source": _nw_value(alert_obj.get("source"), headers.get("deviceProduct")),
+        # e.g. "192.168.10.200:53539 to 8.8.8.8:53" -- a connection summary,
+        # not a hostname.
+        "connection_summary": _nw_value(alert_obj.get("host_summary"), sub.get("hostSummary")),
+        "source_ips": list(bucket["source_ips"]),
+        "destination_ips": list(bucket["destination_ips"]),
+        "users": list(bucket["users"]),
+        "hostnames": list(bucket["hostnames"]),
+        "domains": list(bucket["domains"]),
+        "description": _nw_value(sub.get("detail"), sub.get("description"),
+                                 alert_obj.get("description"), headers.get("description")),
+    }
+    return prune_empty(entry)
+
+
+# [FYP-SECTION] Investigation Context Brief (canonical audit Phase 2B)
+# -----------------------------------------------------------------------------
+# A deterministic, bounded, sectioned text block built ONLY from canonical
+# structured stage results (Triage result, Parsing result, Threat
+# Intelligence result, the run's raw-incident record) -- never from post-stage
+# AI summaries or display objects. ingest_pipeline.serialize_json_to_narrative()
+# renders it FIRST, so verbose content (alert lists, raw provider data) can
+# never displace it under the 12,000-character document cap, and Pass 1 and
+# Pass 2 receive the same foundation (both consume the same documents).
+#
+# Budgets (characters) were chosen from the canonical-audit measurements:
+# CASE ~0.3k, TRIAGE 0.6-1.2k, TI summary block 0.15-0.6k (+coverage, gaps,
+# top-8 indicator lines of ~160 chars), entity lists bounded per role.
+# Worst case = 7,000 (+2,500 reserved for deep-dive answers on a feedback
+# pass) + ~120 framing = < 9,700, leaving the 12,000-char document cap intact.
+# A section over budget is cut with an explicit "[... section truncated ...]"
+# marker; lists show a deterministic top-N plus "(+N more)".
+INVESTIGATION_BRIEF_HEADER = "=== INVESTIGATION CONTEXT BRIEF (canonical stage results; bounded) ==="
+INVESTIGATION_BRIEF_FOOTER = "=== END INVESTIGATION CONTEXT BRIEF ==="
+BRIEF_SECTION_BUDGETS = {
+    "CASE": 500,
+    "TRIAGE": 1500,
+    "ENTITIES & TELEMETRY": 1800,
+    "THREAT INTELLIGENCE": 2400,
+    "DATA QUALITY / LIMITATIONS": 800,
+    "DEEP-DIVE ANSWERS (feedback pass)": 2500,   # reserved; rendered only when present
+}
+BRIEF_LIST_LIMITS = {"ips": 8, "users": 6, "hosts": 6, "domains": 8, "hashes": 5,
+                     "files": 6, "processes": 6, "command_lines": 3, "indicators": 8,
+                     "not_enriched_examples": 6, "gaps": 4, "warnings": 4,
+                     "parsing_warnings": 4, "missing_fields": 8, "deep_dive_gaps": 8}
+_BRIEF_LINE_MAX = 400
+
+
+def _brief_clip(text, limit: int = _BRIEF_LINE_MAX) -> str:
+    text = " ".join(str(text).split())
+    return text if len(text) <= limit else text[:limit - 1].rstrip() + "…"
+
+
+def _brief_section(title: str, lines: list[str]) -> str:
+    budget = BRIEF_SECTION_BUDGETS[title]
+    body = [f"[{title}]"] + [_brief_clip(line) for line in lines if line]
+    text = "\n".join(body)
+    if len(text) > budget:
+        marker = f"\n[... {title} section truncated at {budget} chars ...]"
+        text = text[:budget - len(marker)].rstrip() + marker
+    return text
+
+
+_BRIEF_ORIGIN_CODES = {
+    ENTITY_ORIGIN_PARSING: "P", ENTITY_ORIGIN_TRIAGE: "T", ENTITY_ORIGIN_ALERT_META: "NW",
+    ENTITY_ORIGIN_INCIDENT: "INC", ENTITY_ORIGIN_SCAN: "H", ENTITY_ORIGIN_TITLE: "H-title",
+}
+BRIEF_ORIGIN_LEGEND = ("Origins: P=Parsing, T=Triage metakeys, NW=NetWitness alert metadata, "
+                       "INC=incident record, H=raw-incident heuristic, H-title=incident title heuristic")
+
+
+def _brief_entity_line(label: str, entries: dict, limit: int, *, max_len: int = _BRIEF_LINE_MAX) -> str | None:
+    """`label (total): v1 [P,T]; v2 [NW]; (+N more)` -- packed to max_len so the
+    (+N more) marker always survives; items in deterministic source order."""
+    if not entries:
+        return None
+    items = list(entries.items())
+    head = f"{label} ({len(items)}): "
+    shown: list[str] = []
+    for value, srcs in items[:limit]:
+        codes = ",".join(_BRIEF_ORIGIN_CODES.get(s, s) for s in srcs)
+        piece = f"{value} [{codes}]" if codes else str(value)
+        remaining = len(items) - len(shown) - 1
+        tail = f"; (+{remaining} more)" if remaining else ""
+        if shown and len(head) + len("; ".join(shown + [piece])) + len(tail) > max_len:
+            break
+        shown.append(piece)
+    more = len(items) - len(shown)
+    return head + "; ".join(shown) + (f"; (+{more} more)" if more else "")
+
+
+def _pack_lines(lines: list[str], budget: int, more_label: str) -> list[str]:
+    """Keep whole lines while they fit `budget` chars, then a deterministic
+    "(+N more <label>)" line."""
+    kept, used = [], 0
+    for i, line in enumerate(lines):
+        reserve = len(f"(+{len(lines) - i} more {more_label})") + 1
+        if used + len(line) + 1 + (reserve if i < len(lines) - 1 else 0) > budget:
+            kept.append(f"(+{len(lines) - i} more {more_label})")
+            return kept
+        kept.append(line)
+        used += len(line) + 1
+    return kept
+
+
+def _brief_list(values, limit: int) -> tuple[list, int]:
+    values = [v for v in (values or []) if v not in (None, "", [], {})]
+    return values[:limit], max(0, len(values) - limit)
+
+
+def _ti_provider_verdict(provider: str, data) -> str:
+    """Compact per-provider verdict -- counts/scores only; never provider
+    free text (pulse names, ISP, meaningful names)."""
+    if not isinstance(data, dict) or not data:
+        return "not queried"
+    status = str(data.get("status") or "unknown")
+    if status != "completed":
+        return status
+    if provider == "virustotal":
+        mal, susp = data.get("malicious", 0) or 0, data.get("suspicious", 0) or 0
+        total = data.get("analysed_vendors")
+        return f"{mal} malicious, {susp} suspicious" + (f" of {total}" if total else "")
+    if provider == "abuseipdb":
+        score = data.get("abuse_confidence_score")
+        reports = data.get("total_reports")
+        return f"confidence {score}" + (f", {reports} reports" if reports is not None else "")
+    if provider in ("otx", "alienvault_otx"):
+        return f"{data.get('pulse_count', 0) or 0} pulses"
+    return status
+
+
+def _ti_indicator_rank(ind: dict) -> tuple:
+    prov = ind.get("providers") or {}
+    vt = prov.get("virustotal") or {}
+    ab = prov.get("abuseipdb") or {}
+    otx = prov.get("otx") or {}
+    return (-((vt.get("malicious") or 0) * 10 + (vt.get("suspicious") or 0)),
+            -(ab.get("abuse_confidence_score") or 0),
+            -(otx.get("pulse_count") or 0),
+            str(ind.get("value")))
+
+
+def _ti_indicator_line(ind: dict) -> str:
+    prov = ind.get("providers") or {}
+    roles = ", ".join(ind.get("roles") or []) or "not recorded"
+    origins = ind.get("origins") or []
+    origin_text = ", ".join(origins[:2]) + (f" (+{len(origins) - 2})" if len(origins) > 2 else "") \
+        if origins else "not recorded"
+    parts = [str(ind.get("value")), str(ind.get("type") or "?"), f"role: {roles}",
+             f"origin: {origin_text}", f"VT: {_ti_provider_verdict('virustotal', prov.get('virustotal'))}"]
+    if ind.get("type") == "ip":
+        parts.append(f"AbuseIPDB: {_ti_provider_verdict('abuseipdb', prov.get('abuseipdb'))}")
+    parts.append(f"OTX: {_ti_provider_verdict('otx', prov.get('otx'))}")
+    return "- " + " | ".join(parts)
+
+
+def _legacy_ti_indicator_lines(bundle: dict) -> list[str]:
+    """Legacy contract: per-IOC lines joined from the provider result lists.
+    Roles/origins were never recorded by that contract and are stated as such."""
+    iocs = bundle.get("iocs") or {}
+    vt = bundle.get("virustotal") or {}
+    by_value: dict = {}
+
+    def add(value, typ):
+        if value and str(value) not in by_value:
+            by_value[str(value)] = {"type": typ, "providers": {}}
+
+    for v in iocs.get("ip_indicators") or []:
+        add(v, "ip")
+    for v in iocs.get("domain_indicators") or []:
+        add(v, "domain")
+    for v in (iocs.get("file_hashes") or [iocs.get("file_hash")]):
+        add(v, "hash")
+    for provider, results in (("virustotal", (vt.get("ip_results") or []) + (vt.get("domain_results") or [])
+                               + (vt.get("file_hash_results") or ([vt["file_hash"]] if isinstance(vt.get("file_hash"), dict) else []))),
+                              ("abuseipdb", (bundle.get("abuseipdb") or {}).get("ip_results") or []),
+                              ("otx", (bundle.get("alienvault_otx") or {}).get("otx_results") or [])):
+        for r in results:
+            if isinstance(r, dict) and str(r.get("indicator")) in by_value:
+                by_value[str(r.get("indicator"))]["providers"].setdefault(provider, r)
+    lines = []
+    for value, info in by_value.items():
+        ind = {"value": value, "type": info["type"], "providers": info["providers"],
+               "roles": [], "origins": []}
+        line = _ti_indicator_line(ind).replace("role: not recorded", "role: not recorded (legacy TI)")
+        lines.append(line)
+    return lines
+
+
+def _brief_ti_section(ti: dict | None) -> tuple[list[str], list[str]]:
+    """(TI section lines, data-quality lines). Precedence: the canonical
+    multi-IOC fields (indicators/coverage/provider_coverage/intelligence_gaps)
+    when indicators[] is present; legacy provider lists only when it is absent
+    -- never both, so the two contracts are never silently merged. Line order
+    is priority order: risk summary, coverage, provider coverage, gaps,
+    warnings and not-enriched counts always precede the per-indicator lines,
+    which are packed last into whatever budget remains."""
+    if not ti:
+        return (["No Threat Intelligence result is available for this case."],
+                ["Threat Intelligence: no result -- external reputation evidence was NOT obtained."])
+    fixed, dq = [], []
+    summary = build_investigation_threat_intel_context(ti)
+    if summary:
+        fixed.extend(summary.splitlines())
+    fixed.append(f"TI stage status: {ti.get('status') or 'not recorded'}")
+    bundle = ti.get("threat_intelligence") if isinstance(ti.get("threat_intelligence"), dict) else {}
+    indicators = bundle.get("indicators")
+    indicator_lines: list[str] = []
+    more_label = "enriched indicators"
+    if isinstance(indicators, list):
+        fixed.append("TI contract: multi-indicator (per-IOC roles, origins and provider verdicts)")
+        cov = bundle.get("coverage") if isinstance(bundle.get("coverage"), dict) else None
+        if cov:
+            fixed.append(f"Coverage: extracted {cov.get('extracted')}, eligible {cov.get('eligible')}, "
+                         f"enriched {cov.get('enriched')}, excluded {cov.get('excluded')}, "
+                         f"skipped {cov.get('skipped')} (by limit {cov.get('skipped_by_limit')}; "
+                         f"limit {cov.get('limit_per_type')} per type)")
+        else:
+            fixed.append("Coverage: not recorded in this TI result")
+        pcov = bundle.get("provider_coverage") if isinstance(bundle.get("provider_coverage"), dict) else {}
+        if pcov:
+            fixed.append("Provider coverage: " + "; ".join(
+                f"{(pcov[k] or {}).get('label') or k} {(pcov[k] or {}).get('state')} "
+                f"(queried {(pcov[k] or {}).get('queried')}/{(pcov[k] or {}).get('applicable')}, "
+                f"failed {(pcov[k] or {}).get('failed')})" for k in sorted(pcov)))
+            for k in sorted(pcov):
+                p = pcov[k] or {}
+                if p.get("state") in ("failed", "partial", "not_configured") or (p.get("failed") or 0) > 0:
+                    dq.append(f"TI provider {p.get('label') or k}: {p.get('state')} "
+                              f"({p.get('failed') or 0} failed, {p.get('not_configured') or 0} not configured)")
+        else:
+            fixed.append("Provider coverage: not recorded in this TI result")
+        gaps, more_gaps = _brief_list(bundle.get("intelligence_gaps"), BRIEF_LIST_LIMITS["gaps"])
+        fixed.append("Intelligence gaps: " + ("; ".join(map(str, gaps)) + (f" (+{more_gaps} more)" if more_gaps else "")
+                                             if gaps else "none recorded"))
+        not_enriched = [i for i in indicators if isinstance(i, dict) and i.get("status") != "enriched"]
+        if not_enriched:
+            counts: dict = {}
+            for i in not_enriched:
+                key = f"{i.get('status')}/{i.get('status_category') or 'unspecified'}"
+                counts[key] = counts.get(key, 0) + 1
+            examples = [str(i.get("value")) for i in not_enriched[:BRIEF_LIST_LIMITS["not_enriched_examples"]]]
+            more = len(not_enriched) - len(examples)
+            fixed.append("NOT enriched: " + ", ".join(f"{n} {k}" for k, n in sorted(counts.items()))
+                         + f" -- e.g. {', '.join(examples)}" + (f" (+{more} more)" if more else ""))
+            skipped = sum(1 for i in not_enriched if i.get("status") == "skipped")
+            if skipped:
+                dq.append(f"TI: {skipped} eligible indicator(s) were NOT looked up -- absence of TI "
+                          "findings for them is not evidence they are benign")
+        enriched = sorted((i for i in indicators if isinstance(i, dict) and i.get("status") == "enriched"),
+                          key=_ti_indicator_rank)
+        indicator_lines = [_ti_indicator_line(i) for i in enriched[:BRIEF_LIST_LIMITS["indicators"]]]
+        extra = len(enriched) - len(indicator_lines)
+        header = (f"Enriched indicators ({len(enriched)}, highest provider evidence first):"
+                  if enriched else "Enriched indicators: none")
+    else:
+        fixed.append("TI contract: legacy (indicator roles/origins and coverage were not recorded)")
+        indicator_lines = _legacy_ti_indicator_lines(bundle)
+        extra = max(0, len(indicator_lines) - BRIEF_LIST_LIMITS["indicators"])
+        indicator_lines = indicator_lines[:BRIEF_LIST_LIMITS["indicators"]]
+        header = f"Legacy TI indicators ({len(indicator_lines) + extra}):" if indicator_lines else \
+            "Legacy TI indicators: none recorded"
+        more_label = "legacy TI indicators"
+        dq.append("TI: legacy result -- looked-up vs not-looked-up indicators cannot be "
+                  "distinguished; absence of findings is not evidence of benign")
+    warnings, more_w = _brief_list(ti.get("warnings"), BRIEF_LIST_LIMITS["warnings"])
+    fixed.append("TI warnings: " + ("; ".join(map(str, warnings)) + (f" (+{more_w} more)" if more_w else "")
+                                    if warnings else "none recorded"))
+    if warnings:
+        dq.append(f"TI reported {len(ti.get('warnings') or [])} warning(s) (see THREAT INTELLIGENCE)")
+    if ti.get("recommended_next_action"):
+        fixed.append(f"TI recommended next action: {ti['recommended_next_action']}")
+    fixed.append(header)
+
+    # Pack the per-indicator lines into the remaining TI budget.
+    used = len("[THREAT INTELLIGENCE]") + sum(len(_brief_clip(l)) + 1 for l in fixed)
+    remaining = BRIEF_SECTION_BUDGETS["THREAT INTELLIGENCE"] - used - 8
+    packed = _pack_lines([_brief_clip(l) for l in indicator_lines], max(0, remaining), more_label)
+    if extra:
+        if packed and packed[-1].startswith("(+"):
+            n = int(packed[-1][2:].split(" ", 1)[0]) + extra
+            packed[-1] = f"(+{n} more {more_label})"
+        else:
+            packed.append(f"(+{extra} more {more_label})")
+    return fixed + packed, dq
+
+
+def build_investigation_context_brief(triage_result: dict, incident: dict, alert: dict, entities: dict,
+                                      *, threat_intel_result: dict | None = None,
+                                      parsing_result: dict | None = None,
+                                      supplement: dict | None = None) -> str:
+    """Deterministic, bounded Investigation Context Brief (see section
+    comment above). Pure: same inputs -> same text."""
+    payload = triage_result.get("metakeys_payload") or {}
+    ticket = triage_result.get("ticket") or {}
+    details = alert.get("incident_details") or {}
+    classification = alert.get("classification") or {}
+    endpoint = alert.get("endpoint_indicators") or {}
+    email = alert.get("email_artifacts") or {}
+    raw_alerts = incident.get("alerts") if isinstance(incident.get("alerts"), list) else None
+    sections = []
+
+    # 1. CASE
+    case_lines = [f"Case ID (Investigation subject): {alert.get('incident_id')}",
+                  f"Title: {details.get('title') or 'not provided'}",
+                  f"Incident time: {details.get('timestamp') or 'not provided'}"]
+    nw = []
+    for label, key in (("risk score", "riskScore"), ("priority", "priority"),
+                       ("created", "created"), ("sources", "sources")):
+        value = incident.get(key)
+        if value not in (None, "", [], {}):
+            nw.append(f"{label} {', '.join(map(str, value)) if isinstance(value, list) else value}")
+    alert_count = incident.get("alertCount") if incident.get("alertCount") is not None else \
+        (len(raw_alerts) if raw_alerts is not None else None)
+    if alert_count is not None:
+        nw.append(f"alerts {alert_count}")
+    case_lines.append("NetWitness: " + ("; ".join(nw) if nw else "no incident metadata available"))
+    sections.append(_brief_section("CASE", case_lines))
+
+    # 2. TRIAGE
+    rr = ticket.get("risk_rating") if isinstance(ticket.get("risk_rating"), dict) else {}
+    triage_lines = [
+        f"Triage level: {ticket.get('classification') or 'not provided'} "
+        "(Triage classification -- not the NetWitness severity)",
+        f"Category: {ticket.get('incident_category') or 'not provided'}",
+    ]
+    if rr:
+        triage_lines.append(
+            f"Risk dimensions: initiation {rr.get('likelihood_initiation')}, occurrence "
+            f"{rr.get('likelihood_occurrence')}, adverse impact {rr.get('likelihood_adverse_impact')}, "
+            f"overall {rr.get('overall_risk')}")
+        if rr.get("rationale"):
+            triage_lines.append(f"Risk rationale: {rr['rationale']}")
+    mitre = details.get("mitre_att&ck") or {}
+    triage_lines.append(f"MITRE (Triage): tactic {mitre.get('tactic') or 'not provided'}; "
+                        f"technique {mitre.get('technique') or 'not provided'}")
+    if ticket.get("summary"):
+        triage_lines.append(f"Triage interpretation (Triage agent's assessment, not a factual "
+                            f"incident description): {ticket['summary']}")
+    if payload.get("ioc_summary"):
+        triage_lines.append(f"Triage IOC checklist findings: {payload['ioc_summary']}")
+    if classification.get("source_risk_score") is not None:
+        triage_lines.append(f"NetWitness source risk score: {classification['source_risk_score']}")
+    sections.append(_brief_section("TRIAGE", triage_lines))
+
+    # 3. ENTITIES & TELEMETRY
+    L = BRIEF_LIST_LIMITS
+    ent_lines = [
+        _brief_entity_line("Source IPs", entities.get("source_ips") or {}, L["ips"]),
+        _brief_entity_line("Destination IPs", entities.get("destination_ips") or {}, L["ips"]),
+        _brief_entity_line("Users", entities.get("users") or {}, L["users"]),
+        _brief_entity_line("Endpoint hosts", entities.get("hosts") or {}, L["hosts"]),
+        _brief_entity_line("Domains (role not asserted)", entities.get("domains") or {}, L["domains"]),
+        _brief_entity_line("File hashes", entities.get("hashes") or {}, L["hashes"]),
+        _brief_entity_line("Files", entities.get("files") or {}, L["files"]),
+        _brief_entity_line("Processes", entities.get("processes") or {}, L["processes"]),
+    ]
+    procs = endpoint.get("processes") or {}
+    cmds = procs.get("command_line")
+    cmds = cmds if isinstance(cmds, list) else ([cmds] if cmds else [])
+    shown_cmds, more_cmds = _brief_list(cmds, L["command_lines"])
+    for c in shown_cmds:
+        ent_lines.append(f"Command line: {_brief_clip(c, 240)}")
+    if more_cmds:
+        ent_lines.append(f"(+{more_cmds} more command lines)")
+    lineage = procs.get("lineage") or []
+    if lineage:
+        ent_lines.append("Process lineage: " + "; ".join(
+            f"{e.get('parent')} -> {e.get('child')}" for e in lineage[:4] if isinstance(e, dict))
+            + (f" (+{len(lineage) - 4} more)" if len(lineage) > 4 else ""))
+    parsed = (parsing_result or {}).get("processed_alert") or {}
+    ps = parsed.get("powershell_analysis") if isinstance(parsed, dict) else None
+    if isinstance(ps, dict) and ps.get("decode_status") not in (None, "", "not_found", "not_detected"):
+        ps_iocs = ps.get("extracted_iocs") if isinstance(ps.get("extracted_iocs"), dict) else {}
+        ioc_text = "; ".join(f"{k}: {', '.join(map(str, v[:5]))}" + (f" (+{len(v) - 5})" if len(v) > 5 else "")
+                             for k, v in sorted(ps_iocs.items()) if isinstance(v, list) and v)
+        ent_lines.append(f"Decoded PowerShell [Parsing]: status {ps.get('decode_status')}; "
+                         f"{ps.get('decoded_command_summary') or ''}"
+                         + (f"; extracted IOCs -- {ioc_text}" if ioc_text else ""))
+    net = alert.get("network_indicators") or {}
+    src, dst = net.get("source") or {}, net.get("destination") or {}
+    net_parts = [f"{label} {value}" for label, value in (
+        ("source port", src.get("port")), ("source MAC", src.get("mac_address")),
+        ("destination port", dst.get("port")), ("service", dst.get("service")),
+        ("destination domain", dst.get("domain"))) if value not in (None, "")]
+    if net_parts:
+        ent_lines.append("Network detail [Triage metakeys / NetWitness alert metadata]: " + "; ".join(net_parts))
+    if endpoint.get("operating_system"):
+        ent_lines.append(f"Operating system: {endpoint['operating_system']}")
+    files_detail = endpoint.get("files") or {}
+    if files_detail.get("filepath"):
+        ent_lines.append(f"File path: {files_detail['filepath']}")
+    for label, key in (("Email sender", "sender"), ("Email recipient", "recipient"), ("Email subject", "subject")):
+        if email.get(key):
+            ent_lines.append(f"{label}: {email[key]}")
+    ent_lines = [line for line in ent_lines if line]
+    if not ent_lines:
+        ent_lines = ["No entities were recorded by Parsing, Triage or the NetWitness alert metadata."]
+    else:
+        ent_lines.insert(0, BRIEF_ORIGIN_LEGEND)
+    ent_lines.append(f"NetWitness alerts listed after this brief: {len(alert.get('alerts') or [])}")
+    sections.append(_brief_section("ENTITIES & TELEMETRY", ent_lines))
+
+    # 4. THREAT INTELLIGENCE
+    ti_lines, ti_dq = _brief_ti_section(threat_intel_result)
+    sections.append(_brief_section("THREAT INTELLIGENCE", ti_lines))
+
+    # 5. DATA QUALITY / LIMITATIONS
+    dq_lines = []
+    if not incident or not (incident.get("id") or incident.get("incidentId")):
+        dq_lines.append("Raw incident record UNAVAILABLE for this run -- context is built from "
+                        "stage results only; NetWitness alert details could not be obtained.")
+    else:
+        avail = _data_availability(incident)
+        if avail.get("warnings"):
+            dq_lines.extend(avail["warnings"])
+        elif avail.get("incident_source") == "sqlite_slim":
+            dq_lines.append("NetWitness alerts: stored slim copy only (alert details stripped).")
+        elif raw_alerts is None:
+            dq_lines.append("NetWitness alerts: not attached to the incident record (fetch status not recorded).")
+    if not parsing_result:
+        dq_lines.append("Parsing result UNAVAILABLE -- normalised telemetry could not be obtained.")
+    else:
+        conf = parsing_result.get("parser_confidence")
+        if conf:
+            dq_lines.append(f"Parser confidence: {conf}")
+        pw, more_pw = _brief_list(parsing_result.get("warnings"), L["parsing_warnings"])
+        if pw:
+            dq_lines.append("Parsing warnings: " + "; ".join(map(str, pw)) + (f" (+{more_pw} more)" if more_pw else ""))
+        mf, more_mf = _brief_list(parsing_result.get("missing_important_fields"), L["missing_fields"])
+        if mf:
+            dq_lines.append("Parsing missing fields (not present in telemetry): " + ", ".join(map(str, mf))
+                            + (f" (+{more_mf} more)" if more_mf else ""))
+    dq_lines.extend(ti_dq)
+    if not dq_lines:
+        dq_lines.append("No data-quality limitations were recorded by the upstream stages.")
+    sections.append(_brief_section("DATA QUALITY / LIMITATIONS", dq_lines))
+
+    # 6. DEEP-DIVE ANSWERS (feedback pass only; reserved budget)
+    if supplement:
+        findings = supplement.get("gap_findings") if isinstance(supplement.get("gap_findings"), dict) else {}
+        conf = supplement.get("confidence_per_gap") if isinstance(supplement.get("confidence_per_gap"), dict) else {}
+        queries = supplement.get("actionable_queries") if isinstance(supplement.get("actionable_queries"), dict) else {}
+        gaps = [str(g) for g in (supplement.get("requested_gaps") or [])]
+        gaps += [g for g in findings if g not in gaps]
+        dd_lines = [f"Feedback pass {supplement.get('feedback_pass') or '?'}: {len(gaps)} evidence gap(s) "
+                    "re-examined against the raw incident by the Triage deep-dive"]
+        for gap in gaps[:L["deep_dive_gaps"]]:
+            line = f"- Gap: {_brief_clip(gap, 120)} -> ({conf.get(gap) or 'n/a'}) {_brief_clip(findings.get(gap) or 'no finding returned', 200)}"
+            if queries.get(gap):
+                line += f" | collect via: {_brief_clip(queries[gap], 120)}"
+            dd_lines.append(line)
+        if len(gaps) > L["deep_dive_gaps"]:
+            dd_lines.append(f"(+{len(gaps) - L['deep_dive_gaps']} more gaps)")
+        extracted = supplement.get("extracted_values") if isinstance(supplement.get("extracted_values"), dict) else {}
+        if extracted:
+            dd_lines.append("Deep-dive extracted values: " + "; ".join(
+                f"{k}={extracted[k]}" for k in sorted(extracted)[:8]))
+        if supplement.get("deep_dive_summary"):
+            dd_lines.append(f"Deep-dive summary: {supplement['deep_dive_summary']}")
+        suggested = [f"{k} {supplement[k]}" for k in ("classification", "mitre_tactic", "incident_category")
+                     if supplement.get(k) and str(supplement[k]).strip().lower() not in ("null", "none")]
+        if suggested:
+            dd_lines.append("Deep-dive suggestions (NOT applied; analyst to review): " + "; ".join(suggested))
+        sections.append(_brief_section("DEEP-DIVE ANSWERS (feedback pass)", dd_lines))
+
+    return "\n".join([INVESTIGATION_BRIEF_HEADER, *sections, INVESTIGATION_BRIEF_FOOTER])
+
+
 # [FYP-FUNCTION] `build_investigation_alert` — constructs build investigation alert output for the next workflow orchestration and state consumer or analyst-facing view.
 # [FYP-INPUT] Parameters: `triage_result`, `incident`, `supplement`, `threat_intel_result`, `parsing_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
@@ -1522,10 +2197,14 @@ def build_investigation_alert(triage_result: dict, incident: dict,
             return [{"parent": parents[i], "child": children[i]} for i in range(len(children))]
         return []
 
-    src_ip = _first(_mk("ip.src"), incident.get("source_ip"), (ctx["source_ips"] or [None])[0])
-    dst_ip = _first(_mk("ip.dst"), incident.get("destination_ip"), (ctx["destination_ips"] or [None])[0])
-    hostname = _first(_mk("host.name"), incident.get("hostname"), (ctx["hosts"] or [None])[0])
-    user = _first(_mk("user.name"), incident.get("username"), (ctx["users"] or [None])[0])
+    # Case-level entities with provenance (Phase 2A): genuine multi-valued
+    # evidence is kept; the scalar fields below are the first value of each
+    # list in the documented source precedence (backward compatible).
+    entities = _collect_case_entities(payload, incident, parsing_result, ctx)
+    src_ip = next(iter(entities["source_ips"]), None)
+    dst_ip = next(iter(entities["destination_ips"]), None)
+    hostname = next(iter(entities["hosts"]), None)        # never a DNS name
+    user = next(iter(entities["users"]), None)
 
     # [FYP-FUNCTION] `_cmdlines` — implements the cmdlines operation used by the surrounding workflow orchestration and state workflow.
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
@@ -1572,34 +2251,17 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     cmds = _cmdlines()
     cmd_val = cmds[0] if len(cmds) == 1 else (cmds if len(cmds) > 1 else None)
 
-    # Extract all sub-alerts belonging to this incident if multiple exist
+    # Every NetWitness alert of this incident, each with ONLY its own fields
+    # (Phase 2A: no fabricated id/title/"Medium" severity, no case-level
+    # user/host/IP inheritance -- see _sub_alert_entry()).
     sub_alerts = []
     raw_alerts_list = incident.get("alerts") or incident.get("events") or []
     if isinstance(raw_alerts_list, list):
-        for idx, sub in enumerate(raw_alerts_list):
+        for sub in raw_alerts_list:
             if isinstance(sub, dict):
-                sub_id = sub.get("id") or sub.get("alert_id") or f"alert_{idx+1}"
-                sub_title = sub.get("title") or sub.get("name") or sub.get("signature") or sub.get("type") or "Security Alert"
-                sub_ts = _to_iso_timestamp(sub.get("created") or sub.get("receivedTime") or sub.get("timestamp"))
-                sub_sev = sub.get("severity") or sub.get("priority") or "Medium"
-                sub_user = sub.get("userName") or sub.get("user") or user
-                sub_host = sub.get("hostSummary") or sub.get("hostname") or sub.get("host") or hostname
-                sub_src_ip = sub.get("sourceIp") or sub.get("src_ip") or src_ip
-                sub_dst_ip = sub.get("destinationIp") or sub.get("dst_ip") or dst_ip
-                sub_desc = sub.get("detail") or sub.get("description") or sub.get("summary") or ""
-                
-                sub_entry = {
-                    "alert_id": str(sub_id),
-                    "title": str(sub_title),
-                    "timestamp": sub_ts,
-                    "severity": str(sub_sev),
-                    "user": sub_user,
-                    "hostname": sub_host,
-                    "source_ip": sub_src_ip,
-                    "destination_ip": sub_dst_ip,
-                    "description": sub_desc,
-                }
-                sub_alerts.append(prune_empty(sub_entry))
+                sub_entry = _sub_alert_entry(sub)
+                if sub_entry:
+                    sub_alerts.append(sub_entry)
 
     raw_alert = {
         "incident_id": payload.get("incident_id") or ticket.get("incident_id"),
@@ -1630,32 +2292,42 @@ def build_investigation_alert(triage_result: dict, incident: dict,
             },
         },
         "network_indicators": {
+            # Phase 2A: no "hostname" here -- the affected endpoint's hostname
+            # is not evidence that it was the connection's SOURCE host.
             "source": {
                 "ip_address": src_ip,
+                "ip_addresses": list(entities["source_ips"]),
                 "port": _first(_mk("port.src")),
                 "mac_address": _first(_amlist("MacAddress")),
-                "hostname": hostname,
             },
             "destination": {
                 "ip_address": dst_ip,
+                "ip_addresses": list(entities["destination_ips"]),
                 "port": _first(_mk("port.dst"), _mk("tcp.dstport")),
                 "service": _first(_mk("service"), _mk("network.service")),
                 "domain": _mk("domain"),
             },
+            # DNS names observed for the case, role not asserted (a contacted
+            # domain is not necessarily the destination of every connection).
+            "observed_domains": list(entities["domains"]),
         },
         "endpoint_indicators": {
             "user": user,
+            "users": list(entities["users"]),
             "hostname": hostname,
+            "hostnames": list(entities["hosts"]),
             "operating_system": _first(_mk("os.version"), (ctx["operating_systems"] or [None])[0]),
             "processes": {
-                "process_name": _first(_mklist("process.name")),
+                "process_name": next(iter(entities["processes"]), None),
+                "process_names": list(entities["processes"]),
                 "command_line": cmd_val,
                 "lineage": _process_lineage(),
             },
             "files": {
-                "filename": _first(_mklist("file.name", "filename")),
+                "filename": next(iter(entities["files"]), None),
+                "filenames": list(entities["files"]),
                 "filepath": _first(_mklist("file.path")),
-                "hashes": _mklist("file.hash", "checksum", "checksumSha256", "checksumSha1", "checksumMd5", "sha256", "md5"),
+                "hashes": list(entities["hashes"]),
             },
         },
         "email_artifacts": {
@@ -1677,6 +2349,14 @@ def build_investigation_alert(triage_result: dict, incident: dict,
             "enrichment_risk_reasons": threat_intel_result.get("enrichment_risk_reasons"),
         } if threat_intel_result else {}),
     }
+
+    # Phase 2B: the bounded Investigation Context Brief, rendered first by
+    # ingest_pipeline. The structured keys above stay in the queued JSON
+    # (metadata, correlation, sidecar) unchanged.
+    raw_alert["investigation_context_brief"] = build_investigation_context_brief(
+        triage_result, incident, prune_empty(raw_alert), entities,
+        threat_intel_result=threat_intel_result, parsing_result=parsing_result,
+        supplement=supplement)
 
     return prune_empty(raw_alert)
 
@@ -1968,7 +2648,10 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
             tri_for_rerun, incident,
             supplement={"requested_gaps": gaps, **supp,
                         "feedback_pass": pass_no},
-            threat_intel_result=threat_intel_result)
+            threat_intel_result=threat_intel_result,
+            # Phase 2A: the feedback pass keeps the same canonical Parsing
+            # evidence as pass 1 (it was previously dropped here).
+            parsing_result=parsing_result)
         _emit("second_pass_start",
               f"Re-investigating with the triage supplement (pass {pass_no + 1})")
         inv2 = run_investigation(inc_id, timeout=timeout, line_cb=line_cb,
@@ -2122,43 +2805,57 @@ def reconcile_incident_severity(incident_id: str, unc: str, final_severity: str)
             _log("RECONCILE", f"pipeline.db annotate failed for {unc}: {e}")
 
 
+# Filesystem mtime tolerance when judging whether an Investigation artefact was
+# written by THIS run -- the same 1s slack run_investigation() has always
+# applied to incident_data.json.
+_INVESTIGATION_FRESHNESS_SLACK_SECONDS = 1.0
+# Written by agents/investigation/main.py::write_investigation_run_manifest()
+# whenever the workflow supplies INVESTIGATION_RUN_NONCE.
+INVESTIGATION_RUN_MANIFEST = "investigation_run_manifest.json"
+
+
+def _written_this_run(path: Path, started: float) -> bool:
+    """True when `path` exists and was (re)written at or after this run's
+    subprocess start (minus mtime-granularity slack)."""
+    try:
+        return path.stat().st_mtime >= started - _INVESTIGATION_FRESHNESS_SLACK_SECONDS
+    except OSError:
+        return False
+
+
 def _load_structured_investigation_analysis(
-    target: Path, cluster_ids: list[str]
-) -> tuple[InvestigationAgentOutput | None, str]:
-    """[FYP-FUNCTION] Phase 3 structured-JSON read path.
+    target: Path, case_id: str, started: float
+) -> tuple[InvestigationAgentOutput | None, str, str]:
+    """[FYP-FUNCTION] Structured-JSON read path, with canonical case identity (C1).
 
-    Attempts to load `target/investigation_analysis.json` (written by
-    agents/investigation/main.py's write_investigation_analysis_json(), see
-    Phase 2) and validate it against the canonical Phase 1
-    InvestigationAgentOutput contract. The file is accepted only if it
-    exists, is valid JSON, passes Pydantic validation, AND its own
-    incident_id is a member of `cluster_ids` -- the same
-    incident_data.json-derived alert-cluster identity already established by
-    run_investigation()'s existing folder-selection/freshness logic for
-    `target` (mirrors that check rather than requiring exact equality with
-    the originally-requested incident_id, since a correlated/merged incident's
-    FinalIncidentAnalysis.incident_id may legitimately be a different member
-    of the same cluster -- e.g. the "seed" alert of a multi-alert group).
+    Loads `target/investigation_analysis.json` (written by
+    agents/investigation/main.py's write_investigation_analysis_json()) and
+    validates it against the canonical InvestigationAgentOutput contract.
 
-    Returns (validated_output, "structured_json") when every check passes,
-    or (None, "markdown_fallback") otherwise. Never raises: every failure
-    mode (missing file, malformed JSON, Pydantic validation error, identity
-    mismatch) is logged -- each with its own distinct diagnostic message
-    (Phase 6A; previously "missing" and "malformed" shared one "missing or
-    unreadable" message, since both routed through the same _read_json()
-    None-on-any-exception helper) -- and treated as "fall back to Markdown
-    reconstruction" so an otherwise-usable investigation run is never failed
-    merely because the new structured artifact is absent or unusable during
-    this migration. On success, also logs a concise confirmation that the
-    structured path was used (Phase 6A observability; purely additive, does
-    not affect control flow or return value).
+    Returns (validated_output, status, detail) where status is:
+      - "ok": written by this run, contract-valid, and its incident_id is
+        EXACTLY the workflow case `case_id`;
+      - "unavailable": missing, not written by this run (stale), malformed,
+        or contract-invalid -- a format/availability problem, for which the
+        caller may still use a fresh, identity-verified Markdown report;
+      - "mismatch": a valid analysis whose canonical incident_id is another
+        case. A data-integrity failure: the caller must NOT fall back to
+        Markdown from the same folder.
+
+    Membership of `case_id` in the folder's alert cluster is evidence, not
+    identity, and is deliberately not sufficient here. Never raises.
     """
     json_path = target / "investigation_analysis.json"
     if not json_path.exists():
         _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
                               f"does not exist, falling back to Markdown "
                               f"reconstruction")
-        return None, "markdown_fallback"
+        return None, "unavailable", "investigation_analysis.json does not exist"
+    if not _written_this_run(json_path, started):
+        _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
+                              f"was not written by this run (stale), falling "
+                              f"back to Markdown reconstruction")
+        return None, "unavailable", "investigation_analysis.json is stale"
     try:
         raw_text = json_path.read_text(encoding="utf-8")
         raw = json.loads(raw_text) if raw_text.strip() else None
@@ -2166,31 +2863,104 @@ def _load_structured_investigation_analysis(
         _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
                               f"is malformed or unreadable JSON, falling "
                               f"back to Markdown reconstruction: {exc}")
-        return None, "markdown_fallback"
+        return None, "unavailable", "investigation_analysis.json is malformed"
     if not isinstance(raw, dict):
         _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
                               f"is malformed or unreadable JSON (did not "
                               f"contain a JSON object), falling back to "
                               f"Markdown reconstruction")
-        return None, "markdown_fallback"
+        return None, "unavailable", "investigation_analysis.json is not a JSON object"
     try:
         agent_output = InvestigationAgentOutput.model_validate(raw)
     except Exception as exc:
         _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
                               f"failed contract validation, falling back to "
                               f"Markdown reconstruction: {exc}")
-        return None, "markdown_fallback"
-    if agent_output.incident_id not in cluster_ids:
-        _log("INVESTIGATION", f"{target.name}: investigation_analysis.json "
-                              f"incident_id {agent_output.incident_id!r} is not "
-                              f"a member of this folder's alert cluster "
-                              f"{cluster_ids}, falling back to Markdown "
-                              f"reconstruction")
-        return None, "markdown_fallback"
+        return None, "unavailable", "investigation_analysis.json failed contract validation"
+    if str(agent_output.incident_id) != str(case_id):
+        detail = (f"investigation_analysis.incident_id is {agent_output.incident_id!r} "
+                  f"but the workflow case is {str(case_id)!r}")
+        _log("INVESTIGATION", f"{target.name}: REJECTED -- {detail}")
+        return None, "mismatch", detail
     _log("INVESTIGATION", f"{target.name}: using validated structured "
                           f"investigation_analysis.json (investigation_source="
                           f"structured_json)")
-    return agent_output, "structured_json"
+    return agent_output, "ok", ""
+
+
+def _check_investigation_run_manifest(target: Path, case_id: str,
+                                      run_nonce: str) -> tuple[str, str, str]:
+    """Strongest freshness/identity proof the agent provides: a manifest
+    binding this subprocess invocation's nonce, its subject and the SHA-256
+    of every report it wrote. Returns (status, kind, detail) with status
+    "absent" (older agent / fake -- mtime freshness still applies), "ok", or
+    "rejected" (kind: "stale" | "mismatch" | "tampered")."""
+    path = target / INVESTIGATION_RUN_MANIFEST
+    if not path.exists():
+        return "absent", "", ""
+    manifest = _read_json(path, None)
+    if not isinstance(manifest, dict):
+        return "rejected", "tampered", f"{INVESTIGATION_RUN_MANIFEST} is unreadable"
+    if manifest.get("run_nonce") != run_nonce:
+        return "rejected", "stale", (f"{INVESTIGATION_RUN_MANIFEST} belongs to a "
+                                     "different Investigation run")
+    if str(manifest.get("subject_id") or "") != str(case_id):
+        return "rejected", "mismatch", (f"run manifest subject is "
+                                        f"{manifest.get('subject_id')!r} but the "
+                                        f"workflow case is {str(case_id)!r}")
+    for name, digest in (manifest.get("files") or {}).items():
+        try:
+            actual = hashlib.sha256((target / str(name)).read_bytes()).hexdigest()
+        except OSError:
+            actual = None
+        if actual != digest:
+            return "rejected", "tampered", f"{name} does not match the run manifest"
+    return "ok", "", ""
+
+
+def _evaluate_investigation_candidate(target: Path, case_id: str, started: float,
+                                      run_nonce: str) -> dict:
+    """Decide whether one Incident-* folder written by this run carries an
+    Investigation output whose canonical identity is the workflow case.
+    Returns {"valid", "kind" ("ok"|"mismatch"|"stale"|"tampered"|
+    "unverifiable"), "detail", "agent_output", "source", "narrative"}."""
+    def _invalid(kind: str, detail: str) -> dict:
+        return {"valid": False, "kind": kind, "detail": detail,
+                "agent_output": None, "source": None, "narrative": ""}
+
+    manifest_status, manifest_kind, manifest_detail = _check_investigation_run_manifest(
+        target, case_id, run_nonce)
+    if manifest_status == "rejected":
+        return _invalid(manifest_kind, manifest_detail)
+
+    md_path = target / "final_analysis_report.md"
+    md_fresh = _written_this_run(md_path, started)
+    narrative = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
+    header_id = wss.investigation_report_subject(narrative) if md_fresh else None
+
+    agent_output, status, detail = _load_structured_investigation_analysis(
+        target, case_id, started)
+    if status == "mismatch":
+        return _invalid("mismatch", detail)
+    if header_id is not None and header_id != str(case_id):
+        return _invalid("mismatch", f"Investigation report header id is {header_id!r} "
+                                    f"but the workflow case is {str(case_id)!r}")
+    if status == "ok":
+        # A stale report from an earlier run is never presented as this run's.
+        return {"valid": True, "kind": "ok", "detail": "", "agent_output": agent_output,
+                "source": "structured_json", "narrative": narrative if md_fresh else ""}
+
+    # Structured output genuinely unavailable -> Markdown fallback, only for a
+    # report written by THIS run whose canonical header is exactly the case.
+    if not narrative:
+        return _invalid("unverifiable", f"{detail}; no Investigation report was written")
+    if not md_fresh:
+        return _invalid("stale", f"{detail}; final_analysis_report.md was not written by this run")
+    if header_id is None:
+        return _invalid("unverifiable", f"{detail}; final_analysis_report.md has no canonical "
+                                        "'INVESTIGATION SUMMARY: <case>' header")
+    return {"valid": True, "kind": "ok", "detail": "", "agent_output": None,
+            "source": "markdown_fallback", "narrative": narrative}
 
 
 def run_investigation(incident_id: str, timeout: int = 600,
@@ -2222,11 +2992,13 @@ def run_investigation(incident_id: str, timeout: int = 600,
     call, no last_error update — see run_investigation_stage).
 
     Args:
-        incident_id: the alert id this investigation was launched for — used
-            to identify, among the (possibly several) Incident-* folders the
-            subprocess may have touched, the one that actually absorbed
-            THIS alert (matched against incident_data.json's raw_alerts ids,
-            filtered to folders new-or-touched since `started`).
+        incident_id: the workflow case this investigation was launched for —
+            its canonical identity. Sent to the agent as
+            INVESTIGATION_SUBJECT_ID; the accepted output's canonical id
+            (structured incident_id, else this run's report header) must
+            equal it exactly. Cluster membership (incident_data.json
+            raw_alerts) only selects candidate folders written by this run;
+            exactly one candidate with a matching identity is accepted.
         timeout: seconds before the subprocess is killed (default 600s).
         line_cb: optional per-line callback streaming the child's stdout/
             stderr live (agent board log tail); forces the streaming
@@ -2250,13 +3022,17 @@ def run_investigation(incident_id: str, timeout: int = 600,
     [FYP-USED-BY]: investigate_with_feedback() (both the first pass and any
     automatic re-run pass — see the module's [FYP-RERUN] feedback loop).
     """
-    before = {p.name for p in (INV_DIR / "incident_reports").glob("Incident-*")}
     started = time.time()
+    # Binds every artefact this subprocess writes to THIS invocation (see
+    # _check_investigation_run_manifest()).
+    run_nonce = uuid.uuid4().hex
 
     _env = {**_openai_compat_env(), "OPENAI_SEED": _llm_seed(),
-            # One investigation = one incident: correlation matches against a
-            # DIFFERENT incident are recorded as similar_to, never merged.
-            "INVESTIGATION_SINGLE_INCIDENT": "1",
+            # Canonical case identity (C1): the agent may correlate/merge this
+            # case with historical incidents for evidence, but the analysis
+            # it writes must identify THIS workflow case as its subject.
+            "INVESTIGATION_SUBJECT_ID": str(incident_id),
+            "INVESTIGATION_RUN_NONCE": run_nonce,
             # Single-alert incidents are the norm now — never fall back to the
             # zero-LLM heuristic report; always run the real Pass1/Pass2
             # analysis (quality is prioritized over marginal token cost).
@@ -2282,34 +3058,59 @@ def run_investigation(incident_id: str, timeout: int = 600,
                     "incident_folder": None, "summary": "", "severity": "",
                     "indicators": [], "narrative_report": ""}
 
+    # Result selection (C1). A candidate is an Incident-* correlation folder
+    # whose incident_data.json was written by THIS run and lists this case
+    # among its clustered alerts (evidence membership). It is VALID only if
+    # its Investigation output's canonical identity is exactly this case.
+    # Exactly one valid candidate is accepted; zero or several fail -- the old
+    # "first sorted folder containing the case" rule is gone.
+    case_id = str(incident_id)
     reports_dir = INV_DIR / "incident_reports"
-    target: Path | None = None
+    candidates: list[tuple[Path, dict]] = []
     for folder in sorted(reports_dir.glob("Incident-*")):
         data_file = folder / "incident_data.json"
-        data = _read_json(data_file, {})
-        raw_ids = [str(a.get("id")) for a in (data.get("raw_alerts") or [])]
         # MERGE into an existing incident rewrites incident_data.json without
         # changing the folder, so freshness is judged on the data file itself.
-        is_new_or_touched = (folder.name not in before
-                             or (data_file.exists()
-                                 and data_file.stat().st_mtime >= started - 1))
-        if str(incident_id) in raw_ids and is_new_or_touched:
-            target = folder
-            break
+        if not _written_this_run(data_file, started):
+            continue
+        data = _read_json(data_file, {})
+        raw_ids = {str(a.get("id")) for a in (data.get("raw_alerts") or [])
+                   if isinstance(a, dict)}
+        if case_id in raw_ids:
+            candidates.append((folder, data))
 
-    if target is None:
+    if not candidates:
         result["error"] = (run.get("stderr") or "").strip()[-1500:] or \
                           "Investigation run produced no incident folder for this alert."
         return result
 
-    data = _read_json(target / "incident_data.json", {})
+    evaluations = [(folder, data, _evaluate_investigation_candidate(
+        folder, case_id, started, run_nonce)) for folder, data in candidates]
+    valid = [item for item in evaluations if item[2]["valid"]]
+    if len(valid) != 1:
+        if valid:
+            error = (f"investigation_output_ambiguous: {len(valid)} correlation folders "
+                     f"({', '.join(f.name for f, _, _ in valid)}) each hold a valid "
+                     f"Investigation output for {case_id}; refusing to choose one")
+        else:
+            mismatches = [(f, e) for f, _, e in evaluations if e["kind"] == "mismatch"]
+            reasons = "; ".join(f"{f.name}: {e['detail']}" for f, e in (
+                mismatches or [(f, e) for f, _, e in evaluations]))
+            error = (f"investigation_identity_mismatch: {reasons}" if mismatches
+                     else f"investigation_output_unverifiable: {reasons}")
+        _log("INVESTIGATION", f"REJECTED output for {case_id} -- {error}")
+        result["error"] = error
+        return result
+
+    target, data, chosen = valid[0]
+    narrative = chosen["narrative"]
     md_path = target / "final_analysis_report.md"
-    narrative = md_path.read_text(encoding="utf-8") if md_path.exists() else ""
 
     meta = data.get("metadata") or {}
     sev = str(meta.get("severity") or "")
     if sev.lower() in ("low", "medium", "high", "critical"):
         sev = sev.capitalize()
+    # Correlated evidence membership (never identity).
     cluster_ids = sorted({str(a.get("id")) for a in (data.get("raw_alerts") or [])
                           if a.get("id")})
     summary = data.get("summary_text") or ""
@@ -2321,16 +3122,11 @@ def run_investigation(incident_id: str, timeout: int = 600,
                    f"{', '.join(cluster_ids)} — this run was triggered by "
                    f"{incident_id}.]\n\n" + summary)
 
-    # Phase 3 (canonical Investigation Result contract migration): prefer the
-    # structured investigation_analysis.json (Phase 2) over Markdown
-    # reconstruction whenever it validates against the canonical
-    # InvestigationAgentOutput contract and belongs to this incident's alert
-    # cluster. Markdown parsing remains the fallback for every failure mode
-    # (missing/malformed/invalid/identity-mismatched file) so an otherwise
-    # usable investigation is never failed merely because the new artifact
-    # is unavailable during this migration.
-    agent_output, investigation_source = _load_structured_investigation_analysis(
-        target, cluster_ids)
+    # Prefer the structured, identity-verified investigation_analysis.json;
+    # Markdown reconstruction is used only when structured output was
+    # genuinely unavailable AND this run's report header names this case.
+    agent_output = chosen["agent_output"]
+    investigation_source = chosen["source"]
 
     if agent_output is not None:
         recommended_containment = list(agent_output.recommended_containment)
@@ -2364,7 +3160,8 @@ def run_investigation(incident_id: str, timeout: int = 600,
         "artifacts": {
             "incident_folder": str(target),
             "incident_data": str(target / "incident_data.json"),
-            "report_markdown": str(md_path) if md_path.exists() else None,
+            # Never point at a report left over from an earlier run.
+            "report_markdown": str(md_path) if _written_this_run(md_path, started) else None,
         },
         # Canonical envelope marker (Phase 3) -- NOT the orchestration/
         # approval "workflow stage status" tracked by state_store (that
@@ -3692,6 +4489,18 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
             parsing_result=parsing_result,
             feedback_cb=lambda ev, d: _log("FEEDBACK", f"{ev}: {d}"),
             watchdog_cb=lambda: renew_global_lock(_INVESTIGATION_LOCK, worker_id))
+        # C1 persisted-result boundary: never save (or offer for approval) an
+        # Investigation result that asserts another case's identity. The
+        # foreign analysis itself is not persisted; only the failure is.
+        if inv_result.get("status") not in {"failed", "lock_lost"}:
+            identity_problem = wss.investigation_identity_problem(incident_id, inv_result)
+            if identity_problem:
+                _log("INVESTIGATION", f"REJECTED result for {incident_id} -- {identity_problem}")
+                inv_result = {"agent": "Investigation Agent", "incident_id": str(incident_id),
+                              "status": "failed",
+                              "error": f"investigation_identity_mismatch: {identity_problem}",
+                              "incident_folder": inv_result.get("incident_folder"),
+                              "cluster_alert_ids": inv_result.get("cluster_alert_ids") or []}
         if inv_result.get("status") not in {"failed", "lock_lost"}:
             inv_result.setdefault("alert_count", alert_count)
             inv_result.setdefault("triage_classification", triage_cls)
@@ -3886,6 +4695,11 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
         state = wss.get_state(incident_id)
         triage_result = json.loads(state.get("triage_result_json") or "{}")
         investigation_result = json.loads(state.get("investigation_result_json") or "{}")
+        # C1 defence in depth: Reporting never starts from (or hands off)
+        # another case's Investigation result -- fails the attempt instead.
+        identity_problem = wss.investigation_identity_problem(incident_id, investigation_result)
+        if identity_problem:
+            raise RuntimeError(f"investigation identity check failed: {identity_problem}")
         threat_intel_result = json.loads(state.get("threat_intel_result_json") or "{}")
         incident = load_raw_incident_for_run(incident_id, run_id) or {}
         ticket = triage_result.get("ticket") or {}

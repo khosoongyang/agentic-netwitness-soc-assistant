@@ -205,11 +205,13 @@ def test_narrative_serialization_contains_recognizable_ti_labels():
                                          threat_intel_result=ti_result)
     document = ingest_pipeline.serialize_json_to_narrative(alert)
 
+    # Canonical audit Phase 2B: TI now reaches the narrative through the
+    # bounded Investigation Context Brief (its TI section embeds the compact
+    # TI summary block) instead of generic "enrichment risk ..." key prose.
     doc_lower = document.lower()
-    assert "enrichment risk score" in doc_lower
-    assert "enrichment risk level" in doc_lower
-    assert "enrichment risk reasons" in doc_lower
-    assert "high" in doc_lower  # the enrichment_risk_level value itself
+    assert "risk score: 80" in doc_lower
+    assert "risk level: high" in doc_lower
+    assert "risk reasons:" in doc_lower
     # The actual reason text (not just the label) is present, not summarised away.
     assert "abuseipdb abuse confidence score is high for 203.0.113.9" in doc_lower
 
@@ -243,19 +245,18 @@ def test_truncation_baseline_small_alert_ti_fields_survive(tmp_path):
     assert len(document) <= 12000 + len(" [TRUNCATED]")
     assert "[TRUNCATED]" not in document
     doc_lower = document.lower()
-    assert "enrichment risk level" in doc_lower
-    assert "enrichment risk score" in doc_lower
+    assert "risk level: high" in doc_lower      # via the Phase 2B context brief
+    assert "risk score: 80" in doc_lower
 
 
-def test_truncation_baseline_large_correlated_alert_pushes_ti_past_boundary(tmp_path):
-    """B. CURRENT WEAKNESS, captured as baseline (not fixed here): a large
-    set of correlated sub-alerts is rendered before the generic
-    key-by-key serialization pass (which is where enrichment_risk_* sorts
-    alphabetically), so enough correlated alerts push TI's risk fields past
-    the 12,000-character truncation cutoff entirely. This mirrors the
-    mechanism confirmed against this repo's own real historical
-    Investigation fixtures during the Phase 4 audit (e.g. INC-52825,
-    INC-51772, INC-50573)."""
+def test_truncation_large_correlated_alert_no_longer_pushes_ti_past_boundary(tmp_path):
+    """B. FORMERLY a captured weakness (Phase 4): a large set of correlated
+    sub-alerts rendered before the generic key-by-key pass pushed TI's risk
+    fields past the 12,000-character cutoff (INC-52825, INC-51772,
+    INC-50573). Canonical audit Phase 2B fixed it: the bounded Investigation
+    Context Brief -- which carries TI risk level/score/reasons -- is
+    rendered BEFORE the sub-alerts, so the sub-alert tail is what gets cut,
+    never TI."""
     ti_result = _real_threat_intel_result()
     alert = wf.build_investigation_alert(_triage_result_kwargs(), _incident_kwargs(),
                                          threat_intel_result=ti_result)
@@ -271,11 +272,12 @@ def test_truncation_baseline_large_correlated_alert_pushes_ti_past_boundary(tmp_
     assert document.endswith("[TRUNCATED]")
     assert len(document) == 12000 + len(" [TRUNCATED]")
     doc_lower = document.lower()
-    # The demonstrated weakness: TI's risk verdict is gone from what
-    # Investigation's LLM-facing document actually contains.
-    assert "enrichment risk level" not in doc_lower
-    assert "enrichment risk score" not in doc_lower
-    assert "enrichment risk reasons" not in doc_lower
+    # Fixed: TI's risk verdict survives in what Investigation's LLM-facing
+    # document actually contains, ahead of the truncated sub-alert tail.
+    assert "risk level: high" in doc_lower
+    assert "risk score: 80" in doc_lower
+    assert "virustotal reported 5 malicious detection(s) for ip 203.0.113.9." in doc_lower
+    assert doc_lower.index("=== end investigation context brief ===") < doc_lower.index("correlated alert(s)")
 
 
 def test_truncation_baseline_moderate_correlation_still_survives(tmp_path):
@@ -293,19 +295,20 @@ def test_truncation_baseline_moderate_correlation_still_survives(tmp_path):
     document = ingested["document"]
 
     assert "[TRUNCATED]" not in document
-    assert "enrichment risk level" in document.lower()
+    assert "risk level: high" in document.lower()
 
 
 # =============================================================================
 # Section 5 -- Provider-detail volume baseline.
 # =============================================================================
 
-def test_provider_bundle_detail_is_materially_larger_than_compact_ti_fields():
-    """Structural point (no arbitrary percentage asserted): serializing the
-    full threat_intelligence_enrichment provider bundle (VirusTotal +
-    AbuseIPDB + AlienVault OTX raw lookup results) produces materially more
-    narrative text than serializing just the compact
-    enrichment_risk_score/level/reasons decision fields alone."""
+def test_provider_bundle_is_materially_larger_and_kept_out_of_the_narrative():
+    """Structural point (no arbitrary percentage asserted): the full
+    threat_intelligence_enrichment provider bundle (VirusTotal + AbuseIPDB +
+    AlienVault OTX raw lookup results) is materially larger than the
+    compact enrichment_risk_score/level/reasons decision fields -- which is
+    why canonical audit Phase 2B keeps the raw bundle OUT of the
+    LLM-facing narrative (it stays in the queued JSON / persisted results)."""
     provider_bundle = {
         "iocs": {"possible_file_name": "invoice.exe", "file_hash": "a" * 64,
                  "ip_indicators": ["203.0.113.1", "203.0.113.2", "203.0.113.3"],
@@ -355,11 +358,14 @@ def test_provider_bundle_detail_is_materially_larger_than_compact_ti_fields():
     compact_doc = ingest_pipeline.serialize_json_to_narrative(compact_fields_alert)
     provider_doc = ingest_pipeline.serialize_json_to_narrative(provider_alert)
 
-    assert len(provider_doc) > len(compact_doc)
     # Not a fixed percentage, just "materially larger" -- at least several
-    # times the size, which is what makes it the dominant contributor to
-    # truncation pressure once both are present in the same document.
-    assert len(provider_doc) > len(compact_doc) * 3
+    # times the size, which is what made it the dominant contributor to
+    # truncation pressure when it was rendered.
+    assert len(json.dumps(provider_bundle)) > len(compact_doc) * 3
+    # Phase 2B: none of the raw provider detail reaches the model narrative.
+    for raw in ("Some Hosting Provider LLC", "Botnet C2 Tracker", "Example Registrar Inc.", "203.0.113.2"):
+        assert raw not in provider_doc
+    assert provider_doc == "Incident INC-1001 details are as follows: The incident id is INC-1001."
 
 
 # =============================================================================
@@ -413,8 +419,9 @@ def test_CURRENT_BASELINE_single_alert_standalone_severity_ignores_high_ti_risk(
     alert_path = tmp_path / "single_alert.json"
     alert_path.write_text(json.dumps(alert))
     ingested = ingest_pipeline.process_log_file(str(alert_path))
-    # TI content IS present in the queued alert Investigation ingested...
-    assert "enrichment risk level" in ingested["document"].lower()
+    # TI content IS present in the queued alert Investigation ingested
+    # (via the Phase 2B context brief)...
+    assert "risk level: high" in ingested["document"].lower()
     # ...but the standalone deterministic path's severity input is Triage's
     # signal only -- confirmed below by main.py's own metadata key.
     assert ingested["metadata"]["severity"] == "LOW"

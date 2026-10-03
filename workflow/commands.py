@@ -371,6 +371,8 @@ def approve_stage(
             result = approve_reporting_candidate(
                 str(case_id), run_id, analyst=analyst.strip(), comments=comments
             )
+    except wss.InvestigationIdentityError as exc:
+        raise WorkflowCommandError("INVESTIGATION_IDENTITY_MISMATCH", str(exc)) from exc
     except wss.ApprovalConflictError as exc:
         decisions = [
             item for item in wss.get_approval_history(str(case_id), run_id)
@@ -464,6 +466,14 @@ def _live_lease(state: dict[str, Any]) -> bool:
     return False
 
 
+def _investigation_identity_problem(state: dict[str, Any]) -> str | None:
+    try:
+        result = json.loads(state.get("investigation_result_json") or "null")
+    except (TypeError, ValueError):
+        return None
+    return wss.investigation_identity_problem(str(state.get("id") or ""), result)
+
+
 def available_actions(state: dict[str, Any]) -> dict[str, Any]:
     """Describe controls conservatively; canonical transitions still recheck."""
     workflow_busy = state.get("workflow_status") == "Processing"
@@ -545,6 +555,16 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
             if pending_reviewed_set is None:
                 approve_enabled = False
                 approve_reason = "Submit the reviewed report set for approval first (all four reports must be Reviewed)."
+        if stage in {"investigation", "reporting"} and awaiting:
+            # C1: never offer Approve for an Investigation result (or a report
+            # built on one) whose canonical identity is another case. Reject
+            # and Re-run stay available; the transitions re-check this too.
+            identity_problem = _investigation_identity_problem(state)
+            if identity_problem:
+                approve_enabled = False
+                approve_reason = (
+                    f"Investigation identity mismatch: {identity_problem}. "
+                    "Reject or re-run Investigation for this case.")
         if stage in APPROVAL_STAGES and (awaiting or status == "Awaiting Approval"):
             stage_actions.extend((
                 {

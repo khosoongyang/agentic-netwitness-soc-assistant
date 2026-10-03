@@ -21,8 +21,10 @@
 # =============================================================================
 
 import os
+import re
 import sys
 import shutil
+import hashlib
 import argparse
 import json
 import threading
@@ -116,12 +118,73 @@ def get_or_create_incident_folder() -> tuple[str, str]:
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def find_file_by_incident_id(incident_id: str) -> str:
-    """Finds the raw alert JSON file in the unread queue by incident ID."""
-    files = [f for f in os.listdir(UNREAD_ALERTS_FOLDER) if f.endswith('.json')]
+    """Finds the raw alert JSON file in the unread queue by incident ID.
+
+    Exact match on the file's id prefix ("<id>.json" or "<id>_*.json", using
+    the workflow handoff's filesystem-safe spelling too) -- never a substring
+    match, which let "INC-5302" claim "INC-53027_alert.json" and move another
+    case's queued alert into this case's correlation folder."""
+    wanted = {str(incident_id).lower(),
+              re.sub(r"[^A-Za-z0-9_-]", "_", str(incident_id)).lower()}
+    files = sorted(f for f in os.listdir(UNREAD_ALERTS_FOLDER) if f.endswith('.json'))
     for f in files:
-        if incident_id.lower() in f.lower():
+        stem = os.path.splitext(f)[0].lower()
+        if any(stem == w or stem.startswith(w + "_") for w in wanted):
             return os.path.join(UNREAD_ALERTS_FOLDER, f)
     return None
+
+
+def merge_alert_into_cluster(raw_alerts: List[dict], alert_log: dict) -> List[dict]:
+    """Merge one alert into a correlation cluster's alert list.
+
+    Exactly one entry per alert id: when the same case is re-introduced (a
+    rerun, or the evidence-gap feedback pass carrying the triage deep-dive
+    supplement), the NEWEST copy replaces the earlier one(s) in place of the
+    first occurrence; every other (historical/correlated) alert is kept
+    untouched and in order. Returns a new list; the input is not mutated."""
+    alert_id = alert_log.get("id")
+    merged: List[dict] = []
+    placed = False
+    for existing in raw_alerts:
+        if isinstance(existing, dict) and existing.get("id") == alert_id:
+            if not placed:
+                merged.append(alert_log)
+                placed = True
+            continue
+        merged.append(existing)
+    if not placed:
+        merged.append(alert_log)
+    return merged
+
+
+def resolve_investigation_subject(current_alerts: List[dict], subject_id):
+    """The workflow case this run investigates (INVESTIGATION_SUBJECT_ID),
+    when it is part of this alert group; None means "no workflow subject"
+    (standalone CLI use keeps the legacy first-alert identity)."""
+    if not subject_id:
+        return None
+    for alert in current_alerts:
+        if str(alert.get("id")) == str(subject_id):
+            return alert.get("id")
+    return None
+
+
+def write_investigation_run_manifest(dest_folder: str, report) -> None:
+    """Binds this run's reports to the workflow invocation that requested
+    them: the run nonce, the canonical subject, and the SHA-256 of each
+    report file. Only written when the workflow supplied
+    INVESTIGATION_RUN_NONCE (workflow/engine.py verifies it)."""
+    nonce = os.getenv("INVESTIGATION_RUN_NONCE", "").strip()
+    if not nonce:
+        return
+    files = {}
+    for name in ("investigation_analysis.json", "final_analysis_report.md"):
+        path = os.path.join(dest_folder, name)
+        if os.path.exists(path):
+            with open(path, "rb") as fh:
+                files[name] = hashlib.sha256(fh.read()).hexdigest()
+    with open(os.path.join(dest_folder, "investigation_run_manifest.json"), "w", encoding="utf-8") as f:
+        json.dump({"run_nonce": nonce, "subject_id": report.incident_id, "files": files}, f, indent=2)
 
 # [FYP-FUNCTION] `write_markdown_report` — persists or updates write markdown report state used by the surrounding investigation workflow.
 # [FYP-INPUT] Parameters: `dest_folder`, `incident_num_id`, `report`; values come from its direct caller, route, UI event, fixture, or stage handoff.
@@ -533,7 +596,11 @@ async def main_async():
     args = parser.parse_args()
     
     orchestrator.log_info("Initializing SOC Incident Response Pipeline...")
-    
+
+    # Canonical identity of this run's analysis (the workflow case being
+    # investigated). Correlated/merged cluster members remain evidence only.
+    investigation_subject_id = os.getenv("INVESTIGATION_SUBJECT_ID", "").strip() or None
+
     # 1. Bulk Ingestion Step
     unread_files = sorted([f for f in os.listdir(UNREAD_ALERTS_FOLDER) if f.endswith('.json')])
     if not unread_files:
@@ -629,7 +696,9 @@ async def main_async():
             else:
                 is_new = False
                 orchestrator.log_success(f"Confirmed Match. Merging alert {alert_log['id']} into Incident {inst_id}")
-                incident.raw_alerts.append(alert_log)
+                # One entry per alert id; a re-introduced case (rerun /
+                # feedback pass) replaces its earlier copy -- newest wins.
+                incident.raw_alerts = merge_alert_into_cluster(incident.raw_alerts, alert_log)
                 current_alerts = list(incident.raw_alerts)
         else:
             # NEW_CLUSTER or STANDALONE
@@ -762,8 +831,10 @@ async def main_async():
                 local_res = generate_local_standalone_report(current_alerts[0], playbook_path, inst_id)
                 report = local_res["report"]
             else:
+                subject_id = resolve_investigation_subject(current_alerts, investigation_subject_id)
                 # 1. Pass 1 (Lightweight trace & pivot extraction)
-                p1_res = await orchestrator.analyze_alert_group_p1(current_alerts, playbook_path)
+                p1_res = await orchestrator.analyze_alert_group_p1(
+                    current_alerts, playbook_path, subject_id=subject_id)
                 p1_trace = p1_res["execution_trace"]
                 suggested_pivots = p1_res["suggested_pivots"]
                 
@@ -799,7 +870,8 @@ async def main_async():
                                 orchestrator.log_success(f"Dynamic retrieval matched alert {alert_id} (RRF: {score:.4f})")
                                 
                 # 3. Pass 2 (Always compile final report for dynamic/cluster incidents)
-                report = await orchestrator.compile_final_report(current_alerts, playbook_path, p1_trace)
+                report = await orchestrator.compile_final_report(
+                    current_alerts, playbook_path, p1_trace, subject_id=subject_id)
                 
             return (inst_id, incident, current_alerts, report)
 
@@ -836,6 +908,7 @@ async def main_async():
             await engine.sync_update_incident(incident)
             write_markdown_report(dest_dir, inst_id, report)
             write_investigation_analysis_json(dest_dir, report)
+            write_investigation_run_manifest(dest_dir, report)
         
     # Stop background realtime sync daemon
     stop_background_sync(sync_service, sync_thread, sync_loop)

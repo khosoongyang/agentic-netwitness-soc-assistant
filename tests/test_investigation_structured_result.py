@@ -377,20 +377,22 @@ def test_missing_json_falls_back_to_markdown(inv_dir, monkeypatch):
     ]
 
 
-def test_incident_id_mismatch_falls_back_safely(inv_dir, monkeypatch):
+def test_incident_id_mismatch_fails_the_investigation(inv_dir, monkeypatch):
     """The structured JSON is otherwise perfectly valid, but its incident_id
-    isn't a member of this folder's alert cluster (e.g. a stale artifact from
-    a different incident) -- must fall back, not raise, not misattribute."""
+    is another case. Canonical audit C1: an identity mismatch is a
+    data-integrity failure, NOT a formatting problem -- the Investigation
+    fails, and no Markdown fallback from the same folder is attempted (it
+    used to fall back here). Must not raise, must not misattribute."""
     monkeypatch.setattr(sw, "_run_subprocess", _fake_run_subprocess(
         structured=_valid_structured_payload(incident_id="SOME-OTHER-ALERT")))
 
     result = sw.run_investigation(ALERT_ID)
 
-    assert result["workflow"]["investigation_source"] == "markdown_fallback"
+    assert result["status"] == "failed"
+    assert "SOME-OTHER-ALERT" in result["error"]
     assert "investigation_analysis" not in result
-    assert result["recommended_containment"] == [
-        "Block sender domain (markdown)", "Force password reset (markdown)"
-    ]
+    assert "workflow" not in result
+    assert "recommended_containment" not in result
 
 
 # =============================================================================
@@ -451,15 +453,19 @@ def test_completed_limited_when_subprocess_unsuccessful_with_structured_json(inv
     assert result["workflow"]["investigation_source"] == "structured_json"
 
 
-def test_completed_limited_when_markdown_missing_without_structured_json(inv_dir, monkeypatch):
+def test_failed_when_neither_structured_json_nor_markdown_was_written(inv_dir, monkeypatch):
+    """Canonical audit C1: with no structured analysis and no report, this
+    run produced no output whose identity can be verified as the case, so
+    there is zero valid candidate -> the Investigation fails (it used to be
+    accepted as completed_limited with cluster-level summary text)."""
     monkeypatch.setattr(sw, "_run_subprocess", _fake_run_subprocess(
         markdown="", structured=None))
 
     result = sw.run_investigation(ALERT_ID)
 
-    assert result["status"] == "completed_limited"
-    assert result["missing_evidence"] == ["Final analysis report was not generated."]
-    assert result["workflow"]["investigation_source"] == "markdown_fallback"
+    assert result["status"] == "failed"
+    assert "investigation_output_unverifiable" in result["error"]
+    assert "workflow" not in result
 
 
 def test_completed_status_unaffected_by_structured_json(inv_dir, monkeypatch):

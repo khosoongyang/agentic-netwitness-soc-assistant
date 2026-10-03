@@ -1,0 +1,5263 @@
+{
+  "incident_id": "INC-52854",
+  "classification": {
+    "alert_type": "Policy violations",
+    "severity": "MEDIUM",
+    "triage_risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Medium",
+      "overall_risk": "Medium",
+      "rationale": "The alert has a moderate risk score (69) with unknown external traffic to 111.223.64.83 and geographic anomaly indicators, but no decodable PowerShell or confirmed malware/exploit execution, so initiation, occurrence, and impact are all best rated as medium."
+    },
+    "source_risk_score": 69
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+    "timestamp": "2025-07-14T12:17:18+00:00",
+    "description": "The alert shows suspicious network activity from internal host 192.168.10.201 to external IP 111.223.64.83, with geographic and unknown-traffic anomalies but no evidence of PowerShell execution or encoded commands. Risk score and telemetry indicate investigation is warranted, but there are no clear signs of active compromise or immediate destructive behavior.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.201",
+      "hostname": "BETHANYCHUCHU"
+    },
+    "destination": {
+      "ip_address": "20.42.65.93"
+    }
+  },
+  "endpoint_indicators": {
+    "hostname": "BETHANYCHUCHU"
+  },
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: High\nRisk Score: 160\nRisk Reasons:\n- VirusTotal reported 2 malicious detection(s) for IP 8.8.4.4.\n- VirusTotal reported 1 malicious detection(s) for IP 199.232.210.172.\n- VirusTotal reported 1 suspicious detection(s) for IP 199.232.210.172.\n- AlienVault OTX found 50 related pulse(s) for 8.8.4.4.\n- AlienVault OTX found 1 related pulse(s) for 4.145.79.80.\n- AlienVault OTX found 13 related pulse(s) for 20.189.173.2.\n- AlienVault OTX found 1 related pulse(s) for 4.145.79.82.\n- AlienVault OTX found 50 related pulse(s) for 199.232.210.172.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "ip_indicators": [
+        "111.223.64.83",
+        "8.8.4.4",
+        "4.145.79.80",
+        "20.189.173.2",
+        "101.33.26.185",
+        "8.8.8.8",
+        "4.145.79.82",
+        "96.7.102.164",
+        "199.232.210.172",
+        "40.70.76.27"
+      ],
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      },
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "111.223.64.83",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 55,
+          "undetected": 36,
+          "reputation": 0,
+          "country": "SG",
+          "as_owner": "StarHub Ltd",
+          "asn": 4657,
+          "network": "111.223.64.0/18",
+          "last_analysis_date": 1790931623,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "detecting_engine_count": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "8.8.4.4",
+          "malicious": 2,
+          "suspicious": 0,
+          "harmless": 55,
+          "undetected": 34,
+          "reputation": 180,
+          "country": "US",
+          "as_owner": "Google LLC",
+          "asn": 15169,
+          "network": "8.8.4.0/24",
+          "last_analysis_date": 1791022066,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 32,
+            "malicious": 6
+          },
+          "top_detections": [
+            {
+              "engine": "alphaMountain.ai",
+              "category": "malicious",
+              "result": "phishing"
+            },
+            {
+              "engine": "Chong Lua Dao",
+              "category": "malicious",
+              "result": "malicious"
+            }
+          ],
+          "detecting_engine_count": 2
+        },
+        {
+          "status": "completed",
+          "indicator": "4.145.79.80",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 55,
+          "undetected": 36,
+          "reputation": 0,
+          "country": "SG",
+          "as_owner": "Microsoft Corporation",
+          "asn": 8075,
+          "network": "4.144.0.0/12",
+          "last_analysis_date": 1790742572,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "detecting_engine_count": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "20.189.173.2",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 55,
+          "undetected": 36,
+          "reputation": 2,
+          "country": "US",
+          "as_owner": "Microsoft Corporation",
+          "asn": 8075,
+          "network": "20.184.0.0/13",
+          "last_analysis_date": 1790093814,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 3,
+            "malicious": 1
+          },
+          "detecting_engine_count": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "101.33.26.185",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 55,
+          "undetected": 36,
+          "reputation": 0,
+          "country": "SG",
+          "as_owner": "ACE",
+          "asn": 139341,
+          "network": "101.33.24.0/22",
+          "last_analysis_date": 1786751271,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "detecting_engine_count": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 53,
+          "undetected": 38,
+          "reputation": 562,
+          "country": "US",
+          "as_owner": "Google LLC",
+          "asn": 15169,
+          "network": "8.8.8.0/24",
+          "last_analysis_date": 1791006214,
+          "timeout": 0,
+          "tags": [
+            "suspicious-udp"
+          ],
+          "community_votes": {
+            "harmless": 295,
+            "malicious": 59
+          },
+          "detecting_engine_count": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "4.145.79.82",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 55,
+          "undetected": 36,
+          "reputation": 0,
+          "country": "SG",
+          "as_owner": "Microsoft Corporation",
+          "asn": 8075,
+          "network": "4.144.0.0/12",
+          "last_analysis_date": 1789682451,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "detecting_engine_count": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "96.7.102.164",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 57,
+          "undetected": 34,
+          "reputation": 0,
+          "country": "HK",
+          "as_owner": "Akamai Technologies, Inc.",
+          "asn": 16625,
+          "network": "96.7.96.0/20",
+          "last_analysis_date": 1742355933,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "detecting_engine_count": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "199.232.210.172",
+          "malicious": 1,
+          "suspicious": 1,
+          "harmless": 54,
+          "undetected": 35,
+          "reputation": 11,
+          "country": "US",
+          "as_owner": "Fastly, Inc.",
+          "asn": 54113,
+          "network": "199.232.0.0/16",
+          "last_analysis_date": 1791017243,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 8,
+            "malicious": 25
+          },
+          "top_detections": [
+            {
+              "engine": "CRDF",
+              "category": "malicious",
+              "result": "malicious"
+            },
+            {
+              "engine": "URLQuery",
+              "category": "suspicious",
+              "result": "suspicious"
+            }
+          ],
+          "detecting_engine_count": 2
+        },
+        {
+          "status": "completed",
+          "indicator": "40.70.76.27",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 56,
+          "undetected": 35,
+          "reputation": 0,
+          "country": "US",
+          "as_owner": "Microsoft Corporation",
+          "asn": 8075,
+          "network": "40.68.0.0/14",
+          "last_analysis_date": 1789195925,
+          "timeout": 0,
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "detecting_engine_count": 0
+        }
+      ]
+    },
+    "abuseipdb": {
+      "ip_results": [
+        {
+          "status": "completed",
+          "indicator": "111.223.64.83",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "country_code": "SG",
+          "isp": "StarHub Internet Pte Ltd",
+          "domain": "starhub.com",
+          "usage_type": "Fixed Line ISP",
+          "is_tor": false,
+          "is_whitelisted": false,
+          "hostnames": [
+            "111.223.64-83.unknown.starhub.net.sg"
+          ],
+          "num_distinct_users": 0,
+          "reports_considered": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "8.8.4.4",
+          "abuse_confidence_score": 0,
+          "total_reports": 52,
+          "country_code": "US",
+          "isp": "Google LLC",
+          "domain": "google.com",
+          "usage_type": "Content Delivery Network",
+          "last_reported_at": "2026-10-02T01:23:11+00:00",
+          "is_tor": false,
+          "is_whitelisted": true,
+          "hostnames": [
+            "dns.google"
+          ],
+          "num_distinct_users": 24,
+          "reports_considered": 52,
+          "report_categories": [
+            {
+              "id": 14,
+              "name": "Port Scan",
+              "count": 27
+            },
+            {
+              "id": 15,
+              "name": "Hacking",
+              "count": 24
+            },
+            {
+              "id": 18,
+              "name": "Brute-Force",
+              "count": 14
+            },
+            {
+              "id": 21,
+              "name": "Web App Attack",
+              "count": 7
+            },
+            {
+              "id": 20,
+              "name": "Exploited Host",
+              "count": 5
+            },
+            {
+              "id": 19,
+              "name": "Bad Web Bot",
+              "count": 4
+            }
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "4.145.79.80",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "country_code": "SG",
+          "isp": "Microsoft Corporation",
+          "domain": "microsoft.com",
+          "usage_type": "Data Center/Web Hosting/Transit",
+          "last_reported_at": "2026-01-29T13:08:27+00:00",
+          "is_tor": false,
+          "is_whitelisted": false,
+          "num_distinct_users": 0,
+          "reports_considered": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "20.189.173.2",
+          "abuse_confidence_score": 0,
+          "total_reports": 3,
+          "country_code": "US",
+          "isp": "Microsoft Corporation",
+          "domain": "microsoft.com",
+          "usage_type": "Data Center/Web Hosting/Transit",
+          "last_reported_at": "2026-07-07T09:40:09+00:00",
+          "is_tor": false,
+          "is_whitelisted": false,
+          "num_distinct_users": 2,
+          "reports_considered": 3,
+          "report_categories": [
+            {
+              "id": 14,
+              "name": "Port Scan",
+              "count": 3
+            }
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "101.33.26.185",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "country_code": "SG",
+          "isp": "ACEVILLE PTE.LTD.",
+          "domain": "tencent.com",
+          "usage_type": "Data Center/Web Hosting/Transit",
+          "is_tor": false,
+          "is_whitelisted": false,
+          "num_distinct_users": 0,
+          "reports_considered": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "abuse_confidence_score": 0,
+          "total_reports": 223,
+          "country_code": "US",
+          "isp": "Google LLC",
+          "domain": "google.com",
+          "usage_type": "Content Delivery Network",
+          "last_reported_at": "2026-10-02T19:00:09+00:00",
+          "is_tor": false,
+          "is_whitelisted": true,
+          "hostnames": [
+            "dns.google"
+          ],
+          "num_distinct_users": 91,
+          "reports_considered": 100,
+          "report_categories": [
+            {
+              "id": 14,
+              "name": "Port Scan",
+              "count": 61
+            },
+            {
+              "id": 15,
+              "name": "Hacking",
+              "count": 31
+            },
+            {
+              "id": 18,
+              "name": "Brute-Force",
+              "count": 22
+            },
+            {
+              "id": 21,
+              "name": "Web App Attack",
+              "count": 10
+            },
+            {
+              "id": 20,
+              "name": "Exploited Host",
+              "count": 7
+            },
+            {
+              "id": 19,
+              "name": "Bad Web Bot",
+              "count": 6
+            }
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "4.145.79.82",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "country_code": "SG",
+          "isp": "Microsoft Corporation",
+          "domain": "microsoft.com",
+          "usage_type": "Data Center/Web Hosting/Transit",
+          "last_reported_at": "2026-05-18T15:00:58+00:00",
+          "is_tor": false,
+          "is_whitelisted": false,
+          "num_distinct_users": 0,
+          "reports_considered": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "96.7.102.164",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "country_code": "HK",
+          "isp": "Akamai Technologies, Inc.",
+          "domain": "akamai.com",
+          "usage_type": "Data Center/Web Hosting/Transit",
+          "is_tor": false,
+          "is_whitelisted": false,
+          "hostnames": [
+            "a96-7-102-164.deploy.static.akamaitechnologies.com"
+          ],
+          "num_distinct_users": 0,
+          "reports_considered": 0
+        },
+        {
+          "status": "completed",
+          "indicator": "199.232.210.172",
+          "abuse_confidence_score": 0,
+          "total_reports": 63,
+          "country_code": "US",
+          "isp": "Fastly, Inc.",
+          "domain": "fastly.com",
+          "usage_type": "Content Delivery Network",
+          "last_reported_at": "2026-10-01T14:20:25+00:00",
+          "is_tor": false,
+          "is_whitelisted": true,
+          "num_distinct_users": 13,
+          "reports_considered": 63,
+          "report_categories": [
+            {
+              "id": 15,
+              "name": "Hacking",
+              "count": 47
+            },
+            {
+              "id": 7,
+              "name": "Phishing",
+              "count": 29
+            },
+            {
+              "id": 14,
+              "name": "Port Scan",
+              "count": 14
+            },
+            {
+              "id": 20,
+              "name": "Exploited Host",
+              "count": 11
+            },
+            {
+              "id": 21,
+              "name": "Web App Attack",
+              "count": 2
+            },
+            {
+              "id": 4,
+              "name": "DDoS Attack",
+              "count": 2
+            }
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "40.70.76.27",
+          "abuse_confidence_score": 0,
+          "total_reports": 0,
+          "country_code": "US",
+          "isp": "Microsoft Corporation",
+          "domain": "microsoft.com",
+          "usage_type": "Data Center/Web Hosting/Transit",
+          "last_reported_at": "2025-07-21T00:12:24+00:00",
+          "is_tor": false,
+          "is_whitelisted": false,
+          "num_distinct_users": 0,
+          "reports_considered": 0
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "111.223.64.83",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "country_name": "Singapore",
+          "asn": "AS4657 starhub ltd"
+        },
+        {
+          "status": "completed",
+          "indicator": "8.8.4.4",
+          "indicator_type": "IPv4",
+          "pulse_count": 50,
+          "related_pulses": [
+            "Honeypot Data – T-Pot - Sydney, Australia - September 2026",
+            "interesting",
+            "IOC Records Provided by @NextRayAI",
+            "Log in · TaskBounty",
+            "CnC.MiraiBotnet.Monster & Scan.MiraiBotnet.Monster (DOD Network Information Center)"
+          ],
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "pulses": [
+            {
+              "name": "Honeypot Data – T-Pot - Sydney, Australia - September 2026",
+              "created": "2026-09-01T00:30:05.559000",
+              "modified": "2026-10-03T10:53:56.215000",
+              "tags": [
+                "tpot",
+                "honeypot",
+                "sensor-tagged",
+                "cowrie",
+                "suricata"
+              ],
+              "tlp": "green"
+            },
+            {
+              "name": "interesting",
+              "created": "2026-08-29T06:48:04.954000",
+              "modified": "2026-10-03T00:11:01.758000",
+              "tlp": "white"
+            },
+            {
+              "name": "IOC Records Provided by @NextRayAI",
+              "created": "2022-10-11T13:14:18.676000",
+              "modified": "2026-10-03T00:05:31.894000",
+              "tags": [
+                "Nextray",
+                "cyber security",
+                "ioc",
+                "phishing",
+                "malicious"
+              ],
+              "tlp": "white"
+            },
+            {
+              "name": "Log in · TaskBounty",
+              "created": "2026-10-02T21:01:58.712000",
+              "modified": "2026-10-02T21:01:58.712000",
+              "tags": [
+                "ipv4",
+                "dns lookup",
+                "url https",
+                "tls sni",
+                "anna"
+              ],
+              "malware_families": [
+                "Tags",
+                "Worm:Win32/AutoRun!atmn",
+                "HackTool:Win32/AutoKMS.E!MSR"
+              ],
+              "attack_ids": [
+                "T1045",
+                "T1060",
+                "T1056",
+                "T1003",
+                "T1057",
+                "T1059",
+                "T1071",
+                "T1204"
+              ],
+              "tlp": "green"
+            },
+            {
+              "name": "CnC.MiraiBotnet.Monster & Scan.MiraiBotnet.Monster (DOD Network Information Center)",
+              "created": "2026-09-28T06:44:45.735000",
+              "modified": "2026-09-28T06:44:45.735000",
+              "tags": [
+                "unix mirai",
+                "matches rule",
+                "intel",
+                "otx logo",
+                "av detections"
+              ],
+              "malware_families": [
+                "Unix Mirai",
+                "Unix.Dropper.Mirai-7464847-0",
+                "Trojan.Gafgyt/Mirai",
+                "DOD",
+                "Unix.Trojan.Mirai-10028515-0"
+              ],
+              "attack_ids": [
+                "T1056"
+              ],
+              "tlp": "green"
+            }
+          ],
+          "pulse_tags": [
+            "malicious",
+            "next",
+            "file type",
+            "date",
+            "sha256",
+            "united",
+            "file size",
+            "defense evasion",
+            "mitre attack",
+            "urls"
+          ],
+          "malware_families": [
+            "Tags",
+            "Worm:Win32/AutoRun!atmn",
+            "HackTool:Win32/AutoKMS.E!MSR",
+            "Unix Mirai",
+            "Unix.Dropper.Mirai-7464847-0",
+            "Trojan.Gafgyt/Mirai",
+            "DOD",
+            "Unix.Trojan.Mirai-10028515-0",
+            "Unix.Dropper.Mirai-7138850-0",
+            "TrojanDownloader:Linux/ShWg.YB!MTB"
+          ],
+          "adversaries": [
+            "TrojanSpy"
+          ],
+          "attack_ids": [
+            "T1045",
+            "T1060",
+            "T1056",
+            "T1003",
+            "T1057",
+            "T1059",
+            "T1071",
+            "T1204",
+            "T1480",
+            "T1539",
+            "T1553",
+            "T1562",
+            "T1566",
+            "T1568",
+            "T1583"
+          ],
+          "latest_pulse_modified": "2026-10-03T10:53:56.215000",
+          "country_name": "United States of America",
+          "asn": "AS15169 google llc"
+        },
+        {
+          "status": "completed",
+          "indicator": "4.145.79.80",
+          "indicator_type": "IPv4",
+          "pulse_count": 1,
+          "related_pulses": [
+            "DShield Public Data Feed - 2025-08-25"
+          ],
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "pulses": [
+            {
+              "name": "DShield Public Data Feed - 2025-08-25",
+              "created": "2025-08-25T09:32:18.934000",
+              "modified": "2025-09-24T09:02:51.006000",
+              "tags": [
+                "timeout",
+                "nxdomain",
+                "us none",
+                "block list"
+              ],
+              "tlp": "white"
+            }
+          ],
+          "pulse_tags": [
+            "timeout",
+            "nxdomain",
+            "us none",
+            "block list",
+            "pgp sign",
+            "columns",
+            "network",
+            "china mobile",
+            "hong kong"
+          ],
+          "latest_pulse_modified": "2025-09-24T09:02:51.006000",
+          "country_name": "United States of America",
+          "asn": "AS8075 microsoft corporation"
+        },
+        {
+          "status": "completed",
+          "indicator": "20.189.173.2",
+          "indicator_type": "IPv4",
+          "pulse_count": 13,
+          "related_pulses": [
+            "CAPE Sandbox",
+            "CREDIT: Q.VASHTI, Clone [\"Enemy of the State: Order in the Court] clone from cellphone seperate",
+            "Enemy of the State: Order in the Court • Part 3 - Rogue Domain Controller | Gh0stRAT",
+            "CREDIT: Q.VASHTI, Clone [\"Enemy of the State: Order in the Court • Part 3 - Rogue Domain Controller | Gh0stRAT'] credit, Q.VASHTI",
+            "Medicaid Mirai Botnet | United Healthcare Mirai Botnet"
+          ],
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "pulses": [
+            {
+              "name": "CAPE Sandbox",
+              "created": "2026-06-06T08:28:49.897000",
+              "modified": "2026-07-06T08:04:33.868000",
+              "tags": [
+                "json internet",
+                "json text",
+                "ascii text"
+              ],
+              "attack_ids": [
+                "T1033",
+                "T1055",
+                "T1071",
+                "T1082",
+                "T1496",
+                "T1542",
+                "T1564",
+                "T1027"
+              ],
+              "tlp": "green"
+            },
+            {
+              "name": "CREDIT: Q.VASHTI, Clone [\"Enemy of the State: Order in the Court] clone from cellphone seperate",
+              "created": "2026-05-02T11:03:46.995000",
+              "modified": "2026-06-01T14:10:27.494000",
+              "tags": [
+                "united kingdom",
+                "united",
+                "spain",
+                "denmark",
+                "report spam"
+              ],
+              "malware_families": [
+                "Win.Trojan.Generic-9908275-0",
+                "Trojan:Win32/Scar.MR!MTB",
+                "Trojan:Win32/Zbot",
+                "TrojanDownloader:Win32/Nemucod",
+                "TrojanDownloader:Win32/VB.IL"
+              ],
+              "attack_ids": [
+                "T1045",
+                "T1053",
+                "T1055",
+                "T1057",
+                "T1060",
+                "T1063",
+                "T1069",
+                "T1071"
+              ],
+              "tlp": "green"
+            },
+            {
+              "name": "Enemy of the State: Order in the Court • Part 3 - Rogue Domain Controller | Gh0stRAT",
+              "created": "2026-05-02T00:59:29.794000",
+              "modified": "2026-05-31T23:06:32.419000",
+              "tags": [
+                "united kingdom",
+                "united",
+                "spain",
+                "denmark",
+                "report spam"
+              ],
+              "malware_families": [
+                "Win.Trojan.Generic-9908275-0",
+                "Trojan:Win32/Scar.MR!MTB",
+                "Trojan:Win32/Zbot",
+                "TrojanDownloader:Win32/Nemucod",
+                "TrojanDownloader:Win32/VB.IL"
+              ],
+              "attack_ids": [
+                "T1045",
+                "T1053",
+                "T1055",
+                "T1057",
+                "T1060",
+                "T1063",
+                "T1069",
+                "T1071"
+              ],
+              "tlp": "green"
+            },
+            {
+              "name": "CREDIT: Q.VASHTI, Clone [\"Enemy of the State: Order in the Court • Part 3 - Rogue Domain Controller | Gh0stRAT'] credit, Q.VASHTI",
+              "created": "2026-05-02T11:00:48.440000",
+              "modified": "2026-05-31T23:06:32.419000",
+              "tags": [
+                "united kingdom",
+                "united",
+                "spain",
+                "denmark",
+                "report spam"
+              ],
+              "malware_families": [
+                "Win.Trojan.Generic-9908275-0",
+                "Trojan:Win32/Scar.MR!MTB",
+                "Trojan:Win32/Zbot",
+                "TrojanDownloader:Win32/Nemucod",
+                "TrojanDownloader:Win32/VB.IL"
+              ],
+              "attack_ids": [
+                "T1045",
+                "T1053",
+                "T1055",
+                "T1057",
+                "T1060",
+                "T1063",
+                "T1069",
+                "T1071"
+              ],
+              "tlp": "green"
+            },
+            {
+              "name": "Medicaid Mirai Botnet | United Healthcare Mirai Botnet",
+              "created": "2025-08-16T18:18:18.657000",
+              "modified": "2025-09-15T16:04:47.043000",
+              "tags": [
+                "url https",
+                "search",
+                "type indicator",
+                "role title",
+                "added active"
+              ],
+              "malware_families": [
+                "Trojan:Win32/Zombie.A",
+                "Win.Packed.Generic-9967832-0",
+                "Custom Malware",
+                "Trojan:Win32/Daws",
+                "ELF:Mirai-ATI"
+              ],
+              "attack_ids": [
+                "T1053",
+                "T1055",
+                "T1082",
+                "T1119",
+                "T1129",
+                "T1143",
+                "T1027",
+                "T1057"
+              ],
+              "tlp": "white"
+            }
+          ],
+          "pulse_tags": [
+            "ascii text",
+            "august",
+            "local",
+            "tulach",
+            "click",
+            "contacted",
+            "united",
+            "ipv4",
+            "port",
+            "high"
+          ],
+          "malware_families": [
+            "Win.Trojan.Generic-9908275-0",
+            "Trojan:Win32/Scar.MR!MTB",
+            "Trojan:Win32/Zbot",
+            "TrojanDownloader:Win32/Nemucod",
+            "TrojanDownloader:Win32/VB.IL",
+            "TrojanDownloader:Win32/Inbat.H",
+            "Trojan:Win32/Gupboot.B",
+            "Win.Malware.Jaik-9968280-0",
+            "Trojan:Win32/Glupteba.MT!MTB",
+            "TrojanDownloader:Win32/Upatre"
+          ],
+          "attack_ids": [
+            "T1033",
+            "T1055",
+            "T1071",
+            "T1082",
+            "T1496",
+            "T1542",
+            "T1564",
+            "T1027",
+            "T1064",
+            "T1095",
+            "T1574",
+            "T1045",
+            "T1053",
+            "T1057",
+            "T1060"
+          ],
+          "latest_pulse_modified": "2026-07-06T08:04:33.868000",
+          "country_name": "United States of America",
+          "asn": "AS8075 microsoft corporation"
+        },
+        {
+          "status": "completed",
+          "indicator": "101.33.26.185",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "country_name": "Singapore",
+          "asn": "AS132203 tencent building  kejizhongyi avenue"
+        },
+        {
+          "status": "completed",
+          "indicator": "8.8.8.8",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "country_name": "United States of America",
+          "asn": "AS15169 google llc"
+        },
+        {
+          "status": "completed",
+          "indicator": "4.145.79.82",
+          "indicator_type": "IPv4",
+          "pulse_count": 1,
+          "related_pulses": [
+            "DShield Public Data Feed - 2025-08-25"
+          ],
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "pulses": [
+            {
+              "name": "DShield Public Data Feed - 2025-08-25",
+              "created": "2025-08-25T09:32:18.934000",
+              "modified": "2025-09-24T09:02:51.006000",
+              "tags": [
+                "timeout",
+                "nxdomain",
+                "us none",
+                "block list"
+              ],
+              "tlp": "white"
+            }
+          ],
+          "pulse_tags": [
+            "timeout",
+            "nxdomain",
+            "us none",
+            "block list",
+            "pgp sign",
+            "columns",
+            "network",
+            "china mobile",
+            "hong kong"
+          ],
+          "latest_pulse_modified": "2025-09-24T09:02:51.006000",
+          "country_name": "United States of America",
+          "asn": "AS8075 microsoft corporation"
+        },
+        {
+          "status": "completed",
+          "indicator": "96.7.102.164",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "country_name": "Hong Kong",
+          "asn": "AS16625 akamai technologies  inc."
+        },
+        {
+          "status": "completed",
+          "indicator": "199.232.210.172",
+          "indicator_type": "IPv4",
+          "pulse_count": 50,
+          "related_pulses": [
+            "Honeypot Data – T-Pot - Sydney, Australia - September 2026",
+            "The United Nations of the Cloud; an Example.",
+            "The United Nations of the Cloud; an Example.",
+            "The United Nations of the Cloud; an Example.",
+            "interesting"
+          ],
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "pulses": [
+            {
+              "name": "Honeypot Data – T-Pot - Sydney, Australia - September 2026",
+              "created": "2026-09-01T00:30:05.559000",
+              "modified": "2026-10-03T10:53:56.215000",
+              "tags": [
+                "tpot",
+                "honeypot",
+                "sensor-tagged",
+                "cowrie",
+                "suricata"
+              ],
+              "tlp": "green"
+            },
+            {
+              "name": "The United Nations of the Cloud; an Example.",
+              "created": "2026-07-25T08:34:04.473000",
+              "modified": "2026-10-03T09:01:38.661000",
+              "tags": [
+                "corporation",
+                "icon cloud",
+                "tags explore",
+                "ipinfo",
+                "ip address"
+              ],
+              "tlp": "white"
+            },
+            {
+              "name": "The United Nations of the Cloud; an Example.",
+              "created": "2026-07-25T08:34:08.151000",
+              "modified": "2026-10-03T09:01:37.239000",
+              "tags": [
+                "corporation",
+                "icon cloud",
+                "tags explore",
+                "ipinfo",
+                "ip address"
+              ],
+              "tlp": "white"
+            },
+            {
+              "name": "The United Nations of the Cloud; an Example.",
+              "created": "2026-07-25T08:34:06.974000",
+              "modified": "2026-10-03T09:01:36.219000",
+              "tags": [
+                "corporation",
+                "icon cloud",
+                "tags explore",
+                "ipinfo",
+                "ip address"
+              ],
+              "tlp": "white"
+            },
+            {
+              "name": "interesting",
+              "created": "2026-08-29T06:48:04.954000",
+              "modified": "2026-10-03T00:11:01.758000",
+              "tlp": "white"
+            }
+          ],
+          "pulse_tags": [
+            "urls",
+            "next",
+            "malicious",
+            "accept",
+            "t1055 process",
+            "defense evasion",
+            "file type",
+            "date",
+            "title",
+            "sha256"
+          ],
+          "malware_families": [
+            "APT 10",
+            "OneLouder",
+            "Andromeda",
+            "Sality",
+            "KoobFace",
+            "Bayrob",
+            "Nivdort Checkin",
+            "Win.Malware.Installcore-6950365-0",
+            "Trojan:Win32/SmokeLoader",
+            "Win.Malware.Midie-6847893-0"
+          ],
+          "adversaries": [
+            "APT 10",
+            "Folders"
+          ],
+          "attack_ids": [
+            "T1102",
+            "T1566",
+            "T1140",
+            "T1027",
+            "T1056",
+            "T1057",
+            "T1071",
+            "T1105",
+            "T1480",
+            "T1553",
+            "T1568",
+            "T1583",
+            "T1590",
+            "T1113",
+            "T1129"
+          ],
+          "latest_pulse_modified": "2026-10-03T10:53:56.215000",
+          "country_name": "United States of America",
+          "asn": "AS54113 fastly"
+        },
+        {
+          "status": "completed",
+          "indicator": "40.70.76.27",
+          "indicator_type": "IPv4",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "geo",
+            "reputation",
+            "url_list",
+            "passive_dns",
+            "malware",
+            "nids_list",
+            "http_scans"
+          ],
+          "country_name": "United States of America",
+          "asn": "AS8075 microsoft corporation"
+        }
+      ]
+    },
+    "notes": [
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ],
+    "indicators": [
+      {
+        "value": "111.223.64.83",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Alert field",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 55,
+            "undetected": 36,
+            "reputation": 0,
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-10-02T09:00:23+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 0,
+            "num_distinct_users": 0,
+            "is_tor": false,
+            "is_whitelisted": false,
+            "reports_considered": 0
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "SG",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS4657",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "StarHub Ltd",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "111.223.64.0/18",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "StarHub Internet Pte Ltd",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Fixed Line ISP",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "starhub.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "hostnames",
+            "label": "Hostnames",
+            "value": "111.223.64-83.unknown.starhub.net.sg",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-02T09:00:23+00:00",
+            "source": "VirusTotal"
+          }
+        ]
+      },
+      {
+        "value": "8.8.4.4",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 2,
+            "suspicious": 0,
+            "harmless": 55,
+            "undetected": 34,
+            "reputation": 180,
+            "community_votes": {
+              "harmless": 32,
+              "malicious": 6
+            },
+            "top_detections": [
+              {
+                "engine": "alphaMountain.ai",
+                "category": "malicious",
+                "result": "phishing"
+              },
+              {
+                "engine": "Chong Lua Dao",
+                "category": "malicious",
+                "result": "malicious"
+              }
+            ],
+            "detecting_engine_count": 2,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-10-03T10:07:46+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 52,
+            "num_distinct_users": 24,
+            "last_reported_at": "2026-10-02T01:23:11+00:00",
+            "is_tor": false,
+            "is_whitelisted": true,
+            "report_categories": [
+              {
+                "id": 14,
+                "name": "Port Scan",
+                "count": 27
+              },
+              {
+                "id": 15,
+                "name": "Hacking",
+                "count": 24
+              },
+              {
+                "id": 18,
+                "name": "Brute-Force",
+                "count": 14
+              },
+              {
+                "id": 21,
+                "name": "Web App Attack",
+                "count": 7
+              },
+              {
+                "id": 20,
+                "name": "Exploited Host",
+                "count": 5
+              },
+              {
+                "id": 19,
+                "name": "Bad Web Bot",
+                "count": 4
+              }
+            ],
+            "reports_considered": 52
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 50,
+            "related_pulses": [
+              "Honeypot Data – T-Pot - Sydney, Australia - September 2026",
+              "interesting",
+              "IOC Records Provided by @NextRayAI",
+              "Log in · TaskBounty",
+              "CnC.MiraiBotnet.Monster & Scan.MiraiBotnet.Monster (DOD Network Information Center)"
+            ],
+            "pulses": [
+              {
+                "name": "Honeypot Data – T-Pot - Sydney, Australia - September 2026",
+                "created": "2026-09-01T00:30:05.559000",
+                "modified": "2026-10-03T10:53:56.215000",
+                "tags": [
+                  "tpot",
+                  "honeypot",
+                  "sensor-tagged",
+                  "cowrie",
+                  "suricata"
+                ],
+                "tlp": "green"
+              },
+              {
+                "name": "interesting",
+                "created": "2026-08-29T06:48:04.954000",
+                "modified": "2026-10-03T00:11:01.758000",
+                "tlp": "white"
+              },
+              {
+                "name": "IOC Records Provided by @NextRayAI",
+                "created": "2022-10-11T13:14:18.676000",
+                "modified": "2026-10-03T00:05:31.894000",
+                "tags": [
+                  "Nextray",
+                  "cyber security",
+                  "ioc",
+                  "phishing",
+                  "malicious"
+                ],
+                "tlp": "white"
+              },
+              {
+                "name": "Log in · TaskBounty",
+                "created": "2026-10-02T21:01:58.712000",
+                "modified": "2026-10-02T21:01:58.712000",
+                "tags": [
+                  "ipv4",
+                  "dns lookup",
+                  "url https",
+                  "tls sni",
+                  "anna"
+                ],
+                "malware_families": [
+                  "Tags",
+                  "Worm:Win32/AutoRun!atmn",
+                  "HackTool:Win32/AutoKMS.E!MSR"
+                ],
+                "attack_ids": [
+                  "T1045",
+                  "T1060",
+                  "T1056",
+                  "T1003",
+                  "T1057",
+                  "T1059",
+                  "T1071",
+                  "T1204"
+                ],
+                "tlp": "green"
+              },
+              {
+                "name": "CnC.MiraiBotnet.Monster & Scan.MiraiBotnet.Monster (DOD Network Information Center)",
+                "created": "2026-09-28T06:44:45.735000",
+                "modified": "2026-09-28T06:44:45.735000",
+                "tags": [
+                  "unix mirai",
+                  "matches rule",
+                  "intel",
+                  "otx logo",
+                  "av detections"
+                ],
+                "malware_families": [
+                  "Unix Mirai",
+                  "Unix.Dropper.Mirai-7464847-0",
+                  "Trojan.Gafgyt/Mirai",
+                  "DOD",
+                  "Unix.Trojan.Mirai-10028515-0"
+                ],
+                "attack_ids": [
+                  "T1056"
+                ],
+                "tlp": "green"
+              }
+            ],
+            "pulse_tags": [
+              "malicious",
+              "next",
+              "file type",
+              "date",
+              "sha256",
+              "united",
+              "file size",
+              "defense evasion",
+              "mitre attack",
+              "urls"
+            ],
+            "malware_families": [
+              "Tags",
+              "Worm:Win32/AutoRun!atmn",
+              "HackTool:Win32/AutoKMS.E!MSR",
+              "Unix Mirai",
+              "Unix.Dropper.Mirai-7464847-0",
+              "Trojan.Gafgyt/Mirai",
+              "DOD",
+              "Unix.Trojan.Mirai-10028515-0",
+              "Unix.Dropper.Mirai-7138850-0",
+              "TrojanDownloader:Linux/ShWg.YB!MTB"
+            ],
+            "adversaries": [
+              "TrojanSpy"
+            ],
+            "attack_ids": [
+              "T1045",
+              "T1060",
+              "T1056",
+              "T1003",
+              "T1057",
+              "T1059",
+              "T1071",
+              "T1204",
+              "T1480",
+              "T1539",
+              "T1553",
+              "T1562",
+              "T1566",
+              "T1568",
+              "T1583"
+            ],
+            "latest_pulse_modified": "2026-10-03T10:53:56.215000"
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "US",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS15169",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "Google LLC",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "8.8.4.0/24",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "Google LLC",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Content Delivery Network",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "google.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "hostnames",
+            "label": "Hostnames",
+            "value": "dns.google",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "Yes",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-03T10:07:46+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last AbuseIPDB report",
+            "value": "2026-10-02T01:23:11+00:00",
+            "source": "AbuseIPDB"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2026-10-03T10:53:56.215000",
+            "source": "AlienVault OTX"
+          }
+        ]
+      },
+      {
+        "value": "4.145.79.80",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 55,
+            "undetected": 36,
+            "reputation": 0,
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-09-30T04:29:32+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 0,
+            "num_distinct_users": 0,
+            "last_reported_at": "2026-01-29T13:08:27+00:00",
+            "is_tor": false,
+            "is_whitelisted": false,
+            "reports_considered": 0
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 1,
+            "related_pulses": [
+              "DShield Public Data Feed - 2025-08-25"
+            ],
+            "pulses": [
+              {
+                "name": "DShield Public Data Feed - 2025-08-25",
+                "created": "2025-08-25T09:32:18.934000",
+                "modified": "2025-09-24T09:02:51.006000",
+                "tags": [
+                  "timeout",
+                  "nxdomain",
+                  "us none",
+                  "block list"
+                ],
+                "tlp": "white"
+              }
+            ],
+            "pulse_tags": [
+              "timeout",
+              "nxdomain",
+              "us none",
+              "block list",
+              "pgp sign",
+              "columns",
+              "network",
+              "china mobile",
+              "hong kong"
+            ],
+            "latest_pulse_modified": "2025-09-24T09:02:51.006000"
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "SG",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS8075",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "Microsoft Corporation",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "4.144.0.0/12",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "Microsoft Corporation",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Data Center/Web Hosting/Transit",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "microsoft.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-09-30T04:29:32+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last AbuseIPDB report",
+            "value": "2026-01-29T13:08:27+00:00",
+            "source": "AbuseIPDB"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2025-09-24T09:02:51.006000",
+            "source": "AlienVault OTX"
+          }
+        ]
+      },
+      {
+        "value": "20.189.173.2",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 55,
+            "undetected": 36,
+            "reputation": 2,
+            "community_votes": {
+              "harmless": 3,
+              "malicious": 1
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-09-22T16:16:54+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 3,
+            "num_distinct_users": 2,
+            "last_reported_at": "2026-07-07T09:40:09+00:00",
+            "is_tor": false,
+            "is_whitelisted": false,
+            "report_categories": [
+              {
+                "id": 14,
+                "name": "Port Scan",
+                "count": 3
+              }
+            ],
+            "reports_considered": 3
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 13,
+            "related_pulses": [
+              "CAPE Sandbox",
+              "CREDIT: Q.VASHTI, Clone [\"Enemy of the State: Order in the Court] clone from cellphone seperate",
+              "Enemy of the State: Order in the Court • Part 3 - Rogue Domain Controller | Gh0stRAT",
+              "CREDIT: Q.VASHTI, Clone [\"Enemy of the State: Order in the Court • Part 3 - Rogue Domain Controller | Gh0stRAT'] credit, Q.VASHTI",
+              "Medicaid Mirai Botnet | United Healthcare Mirai Botnet"
+            ],
+            "pulses": [
+              {
+                "name": "CAPE Sandbox",
+                "created": "2026-06-06T08:28:49.897000",
+                "modified": "2026-07-06T08:04:33.868000",
+                "tags": [
+                  "json internet",
+                  "json text",
+                  "ascii text"
+                ],
+                "attack_ids": [
+                  "T1033",
+                  "T1055",
+                  "T1071",
+                  "T1082",
+                  "T1496",
+                  "T1542",
+                  "T1564",
+                  "T1027"
+                ],
+                "tlp": "green"
+              },
+              {
+                "name": "CREDIT: Q.VASHTI, Clone [\"Enemy of the State: Order in the Court] clone from cellphone seperate",
+                "created": "2026-05-02T11:03:46.995000",
+                "modified": "2026-06-01T14:10:27.494000",
+                "tags": [
+                  "united kingdom",
+                  "united",
+                  "spain",
+                  "denmark",
+                  "report spam"
+                ],
+                "malware_families": [
+                  "Win.Trojan.Generic-9908275-0",
+                  "Trojan:Win32/Scar.MR!MTB",
+                  "Trojan:Win32/Zbot",
+                  "TrojanDownloader:Win32/Nemucod",
+                  "TrojanDownloader:Win32/VB.IL"
+                ],
+                "attack_ids": [
+                  "T1045",
+                  "T1053",
+                  "T1055",
+                  "T1057",
+                  "T1060",
+                  "T1063",
+                  "T1069",
+                  "T1071"
+                ],
+                "tlp": "green"
+              },
+              {
+                "name": "Enemy of the State: Order in the Court • Part 3 - Rogue Domain Controller | Gh0stRAT",
+                "created": "2026-05-02T00:59:29.794000",
+                "modified": "2026-05-31T23:06:32.419000",
+                "tags": [
+                  "united kingdom",
+                  "united",
+                  "spain",
+                  "denmark",
+                  "report spam"
+                ],
+                "malware_families": [
+                  "Win.Trojan.Generic-9908275-0",
+                  "Trojan:Win32/Scar.MR!MTB",
+                  "Trojan:Win32/Zbot",
+                  "TrojanDownloader:Win32/Nemucod",
+                  "TrojanDownloader:Win32/VB.IL"
+                ],
+                "attack_ids": [
+                  "T1045",
+                  "T1053",
+                  "T1055",
+                  "T1057",
+                  "T1060",
+                  "T1063",
+                  "T1069",
+                  "T1071"
+                ],
+                "tlp": "green"
+              },
+              {
+                "name": "CREDIT: Q.VASHTI, Clone [\"Enemy of the State: Order in the Court • Part 3 - Rogue Domain Controller | Gh0stRAT'] credit, Q.VASHTI",
+                "created": "2026-05-02T11:00:48.440000",
+                "modified": "2026-05-31T23:06:32.419000",
+                "tags": [
+                  "united kingdom",
+                  "united",
+                  "spain",
+                  "denmark",
+                  "report spam"
+                ],
+                "malware_families": [
+                  "Win.Trojan.Generic-9908275-0",
+                  "Trojan:Win32/Scar.MR!MTB",
+                  "Trojan:Win32/Zbot",
+                  "TrojanDownloader:Win32/Nemucod",
+                  "TrojanDownloader:Win32/VB.IL"
+                ],
+                "attack_ids": [
+                  "T1045",
+                  "T1053",
+                  "T1055",
+                  "T1057",
+                  "T1060",
+                  "T1063",
+                  "T1069",
+                  "T1071"
+                ],
+                "tlp": "green"
+              },
+              {
+                "name": "Medicaid Mirai Botnet | United Healthcare Mirai Botnet",
+                "created": "2025-08-16T18:18:18.657000",
+                "modified": "2025-09-15T16:04:47.043000",
+                "tags": [
+                  "url https",
+                  "search",
+                  "type indicator",
+                  "role title",
+                  "added active"
+                ],
+                "malware_families": [
+                  "Trojan:Win32/Zombie.A",
+                  "Win.Packed.Generic-9967832-0",
+                  "Custom Malware",
+                  "Trojan:Win32/Daws",
+                  "ELF:Mirai-ATI"
+                ],
+                "attack_ids": [
+                  "T1053",
+                  "T1055",
+                  "T1082",
+                  "T1119",
+                  "T1129",
+                  "T1143",
+                  "T1027",
+                  "T1057"
+                ],
+                "tlp": "white"
+              }
+            ],
+            "pulse_tags": [
+              "ascii text",
+              "august",
+              "local",
+              "tulach",
+              "click",
+              "contacted",
+              "united",
+              "ipv4",
+              "port",
+              "high"
+            ],
+            "malware_families": [
+              "Win.Trojan.Generic-9908275-0",
+              "Trojan:Win32/Scar.MR!MTB",
+              "Trojan:Win32/Zbot",
+              "TrojanDownloader:Win32/Nemucod",
+              "TrojanDownloader:Win32/VB.IL",
+              "TrojanDownloader:Win32/Inbat.H",
+              "Trojan:Win32/Gupboot.B",
+              "Win.Malware.Jaik-9968280-0",
+              "Trojan:Win32/Glupteba.MT!MTB",
+              "TrojanDownloader:Win32/Upatre"
+            ],
+            "attack_ids": [
+              "T1033",
+              "T1055",
+              "T1071",
+              "T1082",
+              "T1496",
+              "T1542",
+              "T1564",
+              "T1027",
+              "T1064",
+              "T1095",
+              "T1574",
+              "T1045",
+              "T1053",
+              "T1057",
+              "T1060"
+            ],
+            "latest_pulse_modified": "2026-07-06T08:04:33.868000"
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "US",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS8075",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "Microsoft Corporation",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "20.184.0.0/13",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "Microsoft Corporation",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Data Center/Web Hosting/Transit",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "microsoft.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-09-22T16:16:54+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last AbuseIPDB report",
+            "value": "2026-07-07T09:40:09+00:00",
+            "source": "AbuseIPDB"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2026-07-06T08:04:33.868000",
+            "source": "AlienVault OTX"
+          }
+        ]
+      },
+      {
+        "value": "101.33.26.185",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 55,
+            "undetected": 36,
+            "reputation": 0,
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-08-14T23:47:51+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 0,
+            "num_distinct_users": 0,
+            "is_tor": false,
+            "is_whitelisted": false,
+            "reports_considered": 0
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "SG",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS139341",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "ACE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "101.33.24.0/22",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "ACEVILLE PTE.LTD.",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Data Center/Web Hosting/Transit",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "tencent.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-08-14T23:47:51+00:00",
+            "source": "VirusTotal"
+          }
+        ]
+      },
+      {
+        "value": "8.8.8.8",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 53,
+            "undetected": 38,
+            "reputation": 562,
+            "tags": [
+              "suspicious-udp"
+            ],
+            "community_votes": {
+              "harmless": 295,
+              "malicious": 59
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-10-03T05:43:34+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 223,
+            "num_distinct_users": 91,
+            "last_reported_at": "2026-10-02T19:00:09+00:00",
+            "is_tor": false,
+            "is_whitelisted": true,
+            "report_categories": [
+              {
+                "id": 14,
+                "name": "Port Scan",
+                "count": 61
+              },
+              {
+                "id": 15,
+                "name": "Hacking",
+                "count": 31
+              },
+              {
+                "id": 18,
+                "name": "Brute-Force",
+                "count": 22
+              },
+              {
+                "id": 21,
+                "name": "Web App Attack",
+                "count": 10
+              },
+              {
+                "id": 20,
+                "name": "Exploited Host",
+                "count": 7
+              },
+              {
+                "id": 19,
+                "name": "Bad Web Bot",
+                "count": 6
+              }
+            ],
+            "reports_considered": 100
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "US",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS15169",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "Google LLC",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "8.8.8.0/24",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "Google LLC",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Content Delivery Network",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "google.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "hostnames",
+            "label": "Hostnames",
+            "value": "dns.google",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "Yes",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-03T05:43:34+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last AbuseIPDB report",
+            "value": "2026-10-02T19:00:09+00:00",
+            "source": "AbuseIPDB"
+          }
+        ]
+      },
+      {
+        "value": "4.145.79.82",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 55,
+            "undetected": 36,
+            "reputation": 0,
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-09-17T22:00:51+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 0,
+            "num_distinct_users": 0,
+            "last_reported_at": "2026-05-18T15:00:58+00:00",
+            "is_tor": false,
+            "is_whitelisted": false,
+            "reports_considered": 0
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 1,
+            "related_pulses": [
+              "DShield Public Data Feed - 2025-08-25"
+            ],
+            "pulses": [
+              {
+                "name": "DShield Public Data Feed - 2025-08-25",
+                "created": "2025-08-25T09:32:18.934000",
+                "modified": "2025-09-24T09:02:51.006000",
+                "tags": [
+                  "timeout",
+                  "nxdomain",
+                  "us none",
+                  "block list"
+                ],
+                "tlp": "white"
+              }
+            ],
+            "pulse_tags": [
+              "timeout",
+              "nxdomain",
+              "us none",
+              "block list",
+              "pgp sign",
+              "columns",
+              "network",
+              "china mobile",
+              "hong kong"
+            ],
+            "latest_pulse_modified": "2025-09-24T09:02:51.006000"
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "SG",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS8075",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "Microsoft Corporation",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "4.144.0.0/12",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "Microsoft Corporation",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Data Center/Web Hosting/Transit",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "microsoft.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-09-17T22:00:51+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last AbuseIPDB report",
+            "value": "2026-05-18T15:00:58+00:00",
+            "source": "AbuseIPDB"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2025-09-24T09:02:51.006000",
+            "source": "AlienVault OTX"
+          }
+        ]
+      },
+      {
+        "value": "96.7.102.164",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 57,
+            "undetected": 34,
+            "reputation": 0,
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2025-03-19T03:45:33+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 0,
+            "num_distinct_users": 0,
+            "is_tor": false,
+            "is_whitelisted": false,
+            "reports_considered": 0
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "HK",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS16625",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "Akamai Technologies, Inc.",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "96.7.96.0/20",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "Akamai Technologies, Inc.",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Data Center/Web Hosting/Transit",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "akamai.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "hostnames",
+            "label": "Hostnames",
+            "value": "a96-7-102-164.deploy.static.akamaitechnologies.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2025-03-19T03:45:33+00:00",
+            "source": "VirusTotal"
+          }
+        ]
+      },
+      {
+        "value": "199.232.210.172",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 1,
+            "suspicious": 1,
+            "harmless": 54,
+            "undetected": 35,
+            "reputation": 11,
+            "community_votes": {
+              "harmless": 8,
+              "malicious": 25
+            },
+            "top_detections": [
+              {
+                "engine": "CRDF",
+                "category": "malicious",
+                "result": "malicious"
+              },
+              {
+                "engine": "URLQuery",
+                "category": "suspicious",
+                "result": "suspicious"
+              }
+            ],
+            "detecting_engine_count": 2,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-10-03T08:47:23+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 63,
+            "num_distinct_users": 13,
+            "last_reported_at": "2026-10-01T14:20:25+00:00",
+            "is_tor": false,
+            "is_whitelisted": true,
+            "report_categories": [
+              {
+                "id": 15,
+                "name": "Hacking",
+                "count": 47
+              },
+              {
+                "id": 7,
+                "name": "Phishing",
+                "count": 29
+              },
+              {
+                "id": 14,
+                "name": "Port Scan",
+                "count": 14
+              },
+              {
+                "id": 20,
+                "name": "Exploited Host",
+                "count": 11
+              },
+              {
+                "id": 21,
+                "name": "Web App Attack",
+                "count": 2
+              },
+              {
+                "id": 4,
+                "name": "DDoS Attack",
+                "count": 2
+              }
+            ],
+            "reports_considered": 63
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 50,
+            "related_pulses": [
+              "Honeypot Data – T-Pot - Sydney, Australia - September 2026",
+              "The United Nations of the Cloud; an Example.",
+              "The United Nations of the Cloud; an Example.",
+              "The United Nations of the Cloud; an Example.",
+              "interesting"
+            ],
+            "pulses": [
+              {
+                "name": "Honeypot Data – T-Pot - Sydney, Australia - September 2026",
+                "created": "2026-09-01T00:30:05.559000",
+                "modified": "2026-10-03T10:53:56.215000",
+                "tags": [
+                  "tpot",
+                  "honeypot",
+                  "sensor-tagged",
+                  "cowrie",
+                  "suricata"
+                ],
+                "tlp": "green"
+              },
+              {
+                "name": "The United Nations of the Cloud; an Example.",
+                "created": "2026-07-25T08:34:04.473000",
+                "modified": "2026-10-03T09:01:38.661000",
+                "tags": [
+                  "corporation",
+                  "icon cloud",
+                  "tags explore",
+                  "ipinfo",
+                  "ip address"
+                ],
+                "tlp": "white"
+              },
+              {
+                "name": "The United Nations of the Cloud; an Example.",
+                "created": "2026-07-25T08:34:08.151000",
+                "modified": "2026-10-03T09:01:37.239000",
+                "tags": [
+                  "corporation",
+                  "icon cloud",
+                  "tags explore",
+                  "ipinfo",
+                  "ip address"
+                ],
+                "tlp": "white"
+              },
+              {
+                "name": "The United Nations of the Cloud; an Example.",
+                "created": "2026-07-25T08:34:06.974000",
+                "modified": "2026-10-03T09:01:36.219000",
+                "tags": [
+                  "corporation",
+                  "icon cloud",
+                  "tags explore",
+                  "ipinfo",
+                  "ip address"
+                ],
+                "tlp": "white"
+              },
+              {
+                "name": "interesting",
+                "created": "2026-08-29T06:48:04.954000",
+                "modified": "2026-10-03T00:11:01.758000",
+                "tlp": "white"
+              }
+            ],
+            "pulse_tags": [
+              "urls",
+              "next",
+              "malicious",
+              "accept",
+              "t1055 process",
+              "defense evasion",
+              "file type",
+              "date",
+              "title",
+              "sha256"
+            ],
+            "malware_families": [
+              "APT 10",
+              "OneLouder",
+              "Andromeda",
+              "Sality",
+              "KoobFace",
+              "Bayrob",
+              "Nivdort Checkin",
+              "Win.Malware.Installcore-6950365-0",
+              "Trojan:Win32/SmokeLoader",
+              "Win.Malware.Midie-6847893-0"
+            ],
+            "adversaries": [
+              "APT 10",
+              "Folders"
+            ],
+            "attack_ids": [
+              "T1102",
+              "T1566",
+              "T1140",
+              "T1027",
+              "T1056",
+              "T1057",
+              "T1071",
+              "T1105",
+              "T1480",
+              "T1553",
+              "T1568",
+              "T1583",
+              "T1590",
+              "T1113",
+              "T1129"
+            ],
+            "latest_pulse_modified": "2026-10-03T10:53:56.215000"
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "US",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS54113",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "Fastly, Inc.",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "199.232.0.0/16",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "Fastly, Inc.",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Content Delivery Network",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "fastly.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "Yes",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-03T08:47:23+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last AbuseIPDB report",
+            "value": "2026-10-01T14:20:25+00:00",
+            "source": "AbuseIPDB"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2026-10-03T10:53:56.215000",
+            "source": "AlienVault OTX"
+          }
+        ]
+      },
+      {
+        "value": "40.70.76.27",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 3,
+        "providers_answered": 3,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 56,
+            "undetected": 35,
+            "reputation": 0,
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 91,
+            "last_analysed_at": "2026-09-12T06:52:05+00:00"
+          },
+          "abuseipdb": {
+            "status": "completed",
+            "abuse_confidence_score": 0,
+            "total_reports": 0,
+            "num_distinct_users": 0,
+            "last_reported_at": "2025-07-21T00:12:24+00:00",
+            "is_tor": false,
+            "is_whitelisted": false,
+            "reports_considered": 0
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "country",
+            "label": "Country",
+            "value": "US",
+            "sources": [
+              "VirusTotal",
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "asn",
+            "label": "ASN",
+            "value": "AS8075",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "as_owner",
+            "label": "AS owner",
+            "value": "Microsoft Corporation",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "network",
+            "label": "Network",
+            "value": "40.68.0.0/14",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "isp",
+            "label": "ISP",
+            "value": "Microsoft Corporation",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "usage_type",
+            "label": "Usage type",
+            "value": "Data Center/Web Hosting/Transit",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "domain",
+            "label": "Associated domain",
+            "value": "microsoft.com",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_tor",
+            "label": "Tor exit node",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          },
+          {
+            "field": "is_whitelisted",
+            "label": "AbuseIPDB allow-listed",
+            "value": "No",
+            "sources": [
+              "AbuseIPDB"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-09-12T06:52:05+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last AbuseIPDB report",
+            "value": "2025-07-21T00:12:24+00:00",
+            "source": "AbuseIPDB"
+          }
+        ]
+      },
+      {
+        "value": "40.126.35.144",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "13.35.37.85",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.52.64.201",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "40.74.79.222",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "13.69.116.108",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.3.187.198",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.205.209.215",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "13.85.23.206",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "204.79.197.222",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "101.33.26.246",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.182.143.213",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.182.143.212",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.44.220.42",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.189.173.13",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.189.173.11",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "172.169.87.222",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.46.155.200",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.46.155.201",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "13.95.31.18",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "40.74.78.229",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.206.181.167",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "150.171.69.254",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.231.230.148",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "101.33.26.139",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.189.173.24",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.123.128.14",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "124.155.222.152",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "131.253.33.254",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "150.171.27.10",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.189.173.25",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "150.171.27.12",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "150.171.27.11",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "51.105.71.137",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.231.186.36",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "204.79.197.203",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "101.33.26.9",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "13.107.6.156",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.168.117.174",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.44.239.154",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.168.117.175",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "13.69.109.130",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.210.96.161",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.178.17.2",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.168.117.170",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.140.118.28",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "109.61.38.38",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.46.155.146",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "40.74.98.195",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.46.155.142",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "124.155.222.83",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.205.210.56",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "163.181.164.170",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "43.175.139.86",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.205.210.58",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.206.182.58",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "124.155.222.17",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.205.208.8",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "124.155.222.178",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "13.107.42.16",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.206.182.56",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.46.155.132",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.46.155.133",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.175.245.232",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.139.252.32",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.168.117.168",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "124.155.222.26",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.249.177.218",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.123.129.14",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.42.65.88",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "124.155.222.24",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "150.171.28.12",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "43.175.138.227",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "199.232.214.172",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.168.112.66",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.183.205.142",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "52.168.112.67",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.42.73.24",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "203.116.175.105",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.58.144.239",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "20.42.65.93",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "23.50.87.128",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "163.181.164.169",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "42.99.140.145",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "40.69.42.241",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "skipped",
+        "status_category": "limit",
+        "status_reason": "Enrichment limit reached — at most 10 IP address indicators are looked up per run (TI_MAX_INDICATORS_PER_TYPE)",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.10.201",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Alert field",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "fe80::9706:3f55:e752:75ca",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "link_local",
+        "status_reason": "Link-local address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.20.201",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.10.207",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "fe80::f747:13c9:cf0e:da39",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "link_local",
+        "status_reason": "Link-local address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "::1",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "loopback",
+        "status_reason": "Loopback address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "127.0.0.1",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "loopback",
+        "status_reason": "Loopback address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.20.255",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "239.255.255.250",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "multicast",
+        "status_reason": "Multicast address — group/local traffic, not a public host",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "ff02::c",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "multicast",
+        "status_reason": "Multicast address — group/local traffic, not a public host",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.20.16",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "ff02::fb",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "multicast",
+        "status_reason": "Multicast address — group/local traffic, not a public host",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.10.205",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "224.0.0.251",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "multicast",
+        "status_reason": "Multicast address — group/local traffic, not a public host",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "ff02::1:2",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "multicast",
+        "status_reason": "Multicast address — group/local traffic, not a public host",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.10.14",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.10.255",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      }
+    ],
+    "coverage": {
+      "extracted": 111,
+      "eligible": 94,
+      "enriched": 10,
+      "excluded": 17,
+      "skipped": 84,
+      "skipped_by_limit": 84,
+      "provider_requests": 30,
+      "limit_per_type": 10,
+      "by_type": {
+        "ip": {
+          "extracted": 111,
+          "enriched": 10,
+          "excluded": 17,
+          "skipped": 84
+        }
+      }
+    },
+    "provider_coverage": {
+      "virustotal": {
+        "label": "VirusTotal",
+        "configured": true,
+        "state": "available",
+        "applicable": 10,
+        "queried": 10,
+        "returned_data": 10,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      },
+      "abuseipdb": {
+        "label": "AbuseIPDB",
+        "configured": true,
+        "state": "available",
+        "applicable": 10,
+        "queried": 10,
+        "returned_data": 10,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      },
+      "otx": {
+        "label": "AlienVault OTX",
+        "configured": true,
+        "state": "available",
+        "applicable": 10,
+        "queried": 10,
+        "returned_data": 10,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      }
+    },
+    "intelligence_gaps": [
+      "84 eligible indicator(s) skipped — the enrichment limit of 10 per indicator type was reached (TI_MAX_INDICATORS_PER_TYPE)."
+    ]
+  },
+  "enrichment_risk_score": 160,
+  "enrichment_risk_level": "High",
+  "enrichment_risk_reasons": [
+    "VirusTotal reported 2 malicious detection(s) for IP 8.8.4.4.",
+    "VirusTotal reported 1 malicious detection(s) for IP 199.232.210.172.",
+    "VirusTotal reported 1 suspicious detection(s) for IP 199.232.210.172.",
+    "AlienVault OTX found 50 related pulse(s) for 8.8.4.4.",
+    "AlienVault OTX found 1 related pulse(s) for 4.145.79.80.",
+    "AlienVault OTX found 13 related pulse(s) for 20.189.173.2.",
+    "AlienVault OTX found 1 related pulse(s) for 4.145.79.82.",
+    "AlienVault OTX found 50 related pulse(s) for 199.232.210.172."
+  ]
+}

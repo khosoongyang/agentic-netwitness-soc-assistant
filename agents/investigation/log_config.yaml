@@ -39,9 +39,11 @@ mappings:
       - "authentication_details.attempted_target_user"
       - "log_indicators.target_user"
       - "exposed_credentials.username"
+      - "endpoint_indicators.user"
     hostname:
       - "log_indicators.computer_name"
       - "endpoint_indicators.host"
+      - "endpoint_indicators.hostname"
       - "network_indicators.source.hostname"
     timestamp:
       - "incident_details.timestamp"
@@ -50,9 +52,11 @@ mappings:
       - "log_indicators.target_user"
       - "authentication_details.attempted_target_user"
       - "exposed_credentials.username"
+      - "endpoint_indicators.user"
     hostname:
       - "log_indicators.computer_name"
       - "endpoint_indicators.host"
+      - "endpoint_indicators.hostname"
       - "network_indicators.source.hostname"
     timestamp:
       - "incident_details.timestamp"
@@ -61,9 +65,11 @@ mappings:
       - "log_indicators.target_user"
       - "authentication_details.attempted_target_user"
       - "exposed_credentials.username"
+      - "endpoint_indicators.user"
     hostname:
       - "log_indicators.computer_name"
       - "endpoint_indicators.host"
+      - "endpoint_indicators.hostname"
       - "network_indicators.source_host"
       - "network_indicators.source.hostname"
     timestamp:
@@ -73,8 +79,10 @@ mappings:
       - "exposed_credentials.username"
       - "log_indicators.target_user"
       - "authentication_details.attempted_target_user"
+      - "endpoint_indicators.user"
     hostname:
       - "endpoint_indicators.host"
+      - "endpoint_indicators.hostname"
       - "log_indicators.computer_name"
       - "network_indicators.source.hostname"
     timestamp:
@@ -84,9 +92,11 @@ mappings:
       - "log_indicators.target_user"
       - "authentication_details.attempted_target_user"
       - "exposed_credentials.username"
+      - "endpoint_indicators.user"
     hostname:
       - "log_indicators.computer_name"
       - "endpoint_indicators.host"
+      - "endpoint_indicators.hostname"
       - "network_indicators.source_host"
       - "network_indicators.source.hostname"
     timestamp:

@@ -238,6 +238,54 @@ def scan_indicators(flat_string: str) -> dict:
 # [FYP-CALLS] Calls: `append`, `enumerate`, `get`, `isinstance`, `join`, `len`, `recurse`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
+_NOT_PROVIDED = "not provided"
+
+# Top-level queued-alert keys never re-rendered by the generic recursion:
+# alerts / the TI summary / the brief are rendered explicitly above it, and the
+# raw Threat Intelligence provider bundle (threat_intelligence_enrichment) is
+# kept OUT of the model narrative (canonical audit Phase 2B) -- it stays in the
+# queued JSON and every persisted result, only the LLM-facing prose omits it.
+_NARRATIVE_SKIP_KEYS = frozenset({"alerts", "raw_alerts", "threat_intelligence_summary",
+                                  "investigation_context_brief", "threat_intelligence_enrichment"})
+# Structured keys whose content the Investigation Context Brief already
+# carries (bounded, labelled, with provenance) -- not duplicated when present.
+_BRIEF_COVERED_KEYS = frozenset({"classification", "email_artifacts", "endpoint_indicators",
+                                 "enrichment_risk_level", "enrichment_risk_reasons",
+                                 "enrichment_risk_score", "incident_details", "incident_id",
+                                 "network_indicators", "triage_deep_dive"})
+
+
+def _alert_values(alt: dict, list_key: str, *scalar_keys: str) -> str:
+    """An alert's own values for one field: the workflow handoff's list key
+    (Phase 2A) or legacy scalar keys. Absent -> "not provided" (never a
+    plausible default and never a case-level value)."""
+    values = alt.get(list_key)
+    if not isinstance(values, list):
+        values = [alt.get(k) for k in scalar_keys]
+    values = [str(v) for v in values if v not in (None, "", [], {})]
+    return ", ".join(dict.fromkeys(values)) or _NOT_PROVIDED
+
+
+def _render_sub_alert(idx: int, alt: dict) -> str:
+    aid = alt.get("alert_id") or alt.get("id")
+    atitle = alt.get("title") or alt.get("name") or _NOT_PROVIDED
+    ats = alt.get("timestamp") or alt.get("created") or _NOT_PROVIDED
+    asev = alt.get("severity")
+    asev = _NOT_PROVIDED if asev in (None, "") else asev
+    parts = [f"Alert #{idx}" + (f" ({aid})" if aid else ""),
+             f"- '{atitle}' at [{ats}], NetWitness severity: {asev}",
+             f", User: {_alert_values(alt, 'users', 'user', 'userName')}",
+             f", Host: {_alert_values(alt, 'hostnames', 'hostname')}",
+             f", SrcIP: {_alert_values(alt, 'source_ips', 'source_ip', 'sourceIp')}",
+             f", DstIP: {_alert_values(alt, 'destination_ips', 'destination_ip', 'destinationIp')}"]
+    if alt.get("domains"):
+        parts.append(f", Domains: {_alert_values(alt, 'domains')}")
+    if alt.get("connection_summary"):
+        parts.append(f", Connection: {alt['connection_summary']}")
+    adesc = alt.get("description") or alt.get("detail") or ""
+    return (" ".join(parts[:2]) + "".join(parts[2:]) + f". Detail: {adesc}").strip()
+
+
 def serialize_json_to_narrative(data: dict) -> str:
     """Recursively serializes JSON fields into structural narrative sentences."""
     lines = []
@@ -253,8 +301,19 @@ def serialize_json_to_narrative(data: dict) -> str:
     # truncation cutoff. Positioning the bounded TI block here, ahead of any
     # unbounded content, makes its survival deterministic regardless of
     # incident size — it no longer depends on generic key-sort order.
+    #
+    # Canonical audit Phase 2B: when the workflow supplies the bounded
+    # Investigation Context Brief (workflow/engine.py::
+    # build_investigation_context_brief()), it is rendered here FIRST instead
+    # -- it already embeds that same TI summary block plus the canonical
+    # Triage / entity / TI coverage / data-quality / deep-dive sections, all
+    # within fixed per-section budgets, so nothing verbose can displace it.
+    brief = data.get("investigation_context_brief")
+    has_brief = isinstance(brief, str) and bool(brief.strip())
     ti_summary = data.get("threat_intelligence_summary")
-    if isinstance(ti_summary, str) and ti_summary.strip():
+    if has_brief:
+        lines.append(brief)
+    elif isinstance(ti_summary, str) and ti_summary.strip():
         lines.append(ti_summary)
 
     alerts_list = data.get("alerts") or data.get("raw_alerts")
@@ -262,18 +321,7 @@ def serialize_json_to_narrative(data: dict) -> str:
         lines.append(f"Incident {incident_id} contains {len(alerts_list)} correlated alert(s):")
         for idx, alt in enumerate(alerts_list, 1):
             if isinstance(alt, dict):
-                aid = alt.get("alert_id") or alt.get("id") or f"A-{idx}"
-                atitle = alt.get("title") or alt.get("name") or "Security Event"
-                ats = alt.get("timestamp") or alt.get("created") or "Unknown Time"
-                asev = alt.get("severity") or "Medium"
-                auser = alt.get("user") or alt.get("userName") or "Unknown"
-                ahost = alt.get("hostname") or alt.get("hostSummary") or "Unknown"
-                asrc = alt.get("source_ip") or alt.get("sourceIp") or "Unknown"
-                adst = alt.get("destination_ip") or alt.get("destinationIp") or "Unknown"
-                adesc = alt.get("description") or alt.get("detail") or ""
-                lines.append(
-                    f"Alert #{idx} ({aid}) - '{atitle}' at [{ats}], Severity: {asev}, User: {auser}, Host: {ahost}, SrcIP: {asrc}, DstIP: {adst}. Detail: {adesc}".strip()
-                )
+                lines.append(_render_sub_alert(idx, alt))
     
     # [FYP-FUNCTION] `recurse` — implements the recurse operation used by the surrounding investigation workflow.
     # [FYP-INPUT] Parameters: `d`, `parent_key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
@@ -283,12 +331,14 @@ def serialize_json_to_narrative(data: dict) -> str:
     # [FYP-CALLS] Calls: `append`, `isinstance`, `items`, `join`, `recurse`, `replace`, `sorted`, `str`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
+    skip_top_level = set(_NARRATIVE_SKIP_KEYS)
+    if has_brief:
+        skip_top_level |= _BRIEF_COVERED_KEYS
+
     def recurse(d, parent_key=""):
         for k, v in sorted(d.items()):
-            if k in ("alerts", "raw_alerts"):
-                continue  # Explicitly handled as sub-alerts above
-            if k == "threat_intelligence_summary":
-                continue  # Explicitly handled ahead of the correlated-alerts block above
+            if not parent_key and k in skip_top_level:
+                continue  # rendered above / covered by the brief / kept out of the model narrative
             full_key = f"{parent_key} {k}".strip().replace("_", " ")
             if isinstance(v, dict):
                 recurse(v, full_key)

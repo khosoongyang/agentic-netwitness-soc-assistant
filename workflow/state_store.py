@@ -107,6 +107,7 @@ correlation — a different subsystem with no concept of workflow status.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -191,6 +192,65 @@ class ApprovalConflictError(RuntimeError):
     exception with a message showing both what was expected and what the
     row actually contained. Two analysts (or a double-click) racing on the
     same action can only have one of them succeed; the other gets this."""
+
+
+class InvestigationIdentityError(ApprovalConflictError):
+    """Raised when a persisted Investigation result's canonical identity is
+    not the workflow case being acted on (canonical audit finding C1).
+    Subclass of ApprovalConflictError so every existing approval caller
+    still treats it as a refused transition."""
+
+
+# Canonical Investigation identity (C1). For workflow case C, every identity
+# an Investigation result asserts must be C: result.incident_id,
+# result.investigated_for, investigation_analysis.incident_id and the
+# Investigation report header id. incident_folder (the agent's correlation
+# workspace, e.g. "Incident-001") and cluster_alert_ids (correlated evidence
+# membership) are deliberately NOT identity and are never checked here.
+_INVESTIGATION_REPORT_HEADER_RE = re.compile(
+    r"^# INVESTIGATION SUMMARY: (.+?) \([^()\n]*\)[ \t]*$", re.MULTILINE)
+
+
+def investigation_report_subject(markdown: str | None) -> str | None:
+    """The canonical id in the agent's own report header
+    (agents/investigation/main.py::write_markdown_report() writes
+    "# INVESTIGATION SUMMARY: <incident_id> (<incident folder>)"), or None
+    when the report has no such header."""
+    match = _INVESTIGATION_REPORT_HEADER_RE.search(str(markdown or ""))
+    return match.group(1).strip() if match else None
+
+
+def investigation_identity_problem(case_id: str, result: dict | None) -> str | None:
+    """Return a human-readable reason when `result` asserts an Investigation
+    identity other than `case_id`, else None.
+
+    Only identity CONFLICTS are reported. A missing result, or a result
+    carrying no identity at all, is an upstream readiness question and is
+    left to the existing workflow preconditions; run_investigation() itself
+    never produces a result whose identity it could not positively verify."""
+    if not isinstance(result, dict) or not result:
+        return None
+    case_id = str(case_id)
+    claims = [("investigation_result.incident_id", result.get("incident_id")),
+              ("investigation_result.investigated_for", result.get("investigated_for"))]
+    analysis = result.get("investigation_analysis")
+    if isinstance(analysis, dict):
+        claims.append(("investigation_analysis.incident_id", analysis.get("incident_id")))
+    claims.append(("Investigation report header",
+                   investigation_report_subject(result.get("narrative_report"))))
+    for label, value in claims:
+        if value not in (None, "") and str(value) != case_id:
+            return (f"{label} is {str(value)!r} but the workflow case is {case_id!r} "
+                    "— this Investigation result belongs to another case")
+    return None
+
+
+def _investigation_identity_problem_from_row(row) -> str | None:
+    try:
+        result = json.loads(row["investigation_result_json"] or "null")
+    except (TypeError, ValueError):
+        return None
+    return investigation_identity_problem(row["id"], result)
 
 
 def db_connect() -> sqlite3.Connection:
@@ -1006,7 +1066,8 @@ _APPROVAL_STAGE_ATTEMPT_COLUMN = {
 def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
                              sets: dict, approval_stage: str, decision: str,
                              analyst: str, comments: str = "",
-                             metadata: dict | None = None) -> dict:
+                             metadata: dict | None = None,
+                             precheck=None) -> dict:
     """[FYP-FUNCTION] Atomic Approve/Reject Compare-and-Swap Engine
     [FYP-APPROVAL] [FYP-DECISION] [FYP-STATE] [FYP-EVALUATOR]
     This IS the exact approval-state-transition function every gate is built
@@ -1074,6 +1135,8 @@ def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
             raise ApprovalConflictError(
                 f"{approval_stage} {decision}: expected {expect}, got {got}"
                 if row else f"incident {incident_id!r} has no workflow state")
+        if precheck is not None:
+            precheck(row)   # raises to refuse; nothing has been written yet
         now = datetime.now(timezone.utc).isoformat()
         full_sets = dict(sets)
         full_sets["workflow_updated_at"] = now
@@ -1205,7 +1268,18 @@ def approve_investigation(incident_id: str, run_id: str, *, approved_by: str,
     reporting_status "Pending" and workflow_status "Awaiting Action",
     exactly like approve_triage(). It never starts Reporting; the
     analyst must explicitly click that stage's own Start Process button
-    (see begin_stage())."""
+    (see begin_stage()).
+
+    Refuses (InvestigationIdentityError, nothing written) when the persisted
+    Investigation result asserts a canonical identity other than this case
+    (C1) — checked inside the same transaction as the decision."""
+    def _require_case_identity(row) -> None:
+        problem = _investigation_identity_problem_from_row(row)
+        if problem:
+            raise InvestigationIdentityError(
+                f"Investigation approval refused: {problem}. Reject or re-run "
+                "Investigation for this case.")
+
     return _atomic_stage_transition(
         incident_id, run_id,
         expect={"run_id": run_id, "workflow_status": "Awaiting Approval",
@@ -1214,7 +1288,7 @@ def approve_investigation(incident_id: str, run_id: str, *, approved_by: str,
         sets={"investigation_status": "Approved", "reporting_status": "Pending",
              "workflow_status": "Awaiting Action", "approval_stage": None},
         approval_stage="investigation", decision="approved",
-        analyst=approved_by, comments=comments)
+        analyst=approved_by, comments=comments, precheck=_require_case_identity)
 
 
 def reject_investigation(incident_id: str, run_id: str, *, rejected_by: str,
@@ -1305,7 +1379,17 @@ def commit_reporting_approval(incident_id: str, run_id: str, *,
     the caller's validation pass and this call (i.e. a concurrent
     rerun_stage() raced it) — the DB-state half of "approval must bind to
     the exact reviewed set"; the filesystem/hash half is
-    reporting_approval.py's own job."""
+    reporting_approval.py's own job.
+
+    Also refuses (InvestigationIdentityError) when the Investigation result
+    the report was built on belongs to another case (C1)."""
+    def _require_case_identity(row) -> None:
+        problem = _investigation_identity_problem_from_row(row)
+        if problem:
+            raise InvestigationIdentityError(
+                f"Reporting approval refused: {problem}. Re-run Investigation "
+                "for this case before approving a report.")
+
     return _atomic_stage_transition(
         incident_id, run_id,
         expect={"run_id": run_id, "workflow_status": "Awaiting Approval",
@@ -1315,7 +1399,8 @@ def commit_reporting_approval(incident_id: str, run_id: str, *,
         sets={"reporting_status": "Approved", "workflow_status": "Complete",
              "approval_stage": None},
         approval_stage="reporting", decision="approved",
-        analyst=approved_by, comments=comments, metadata=metadata)
+        analyst=approved_by, comments=comments, metadata=metadata,
+        precheck=_require_case_identity)
 
 
 def reject_reporting(incident_id: str, run_id: str, *, rejected_by: str,

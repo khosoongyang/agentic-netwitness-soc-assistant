@@ -59,7 +59,7 @@ FAKE_MAIN = textwrap.dedent(r'''
     files = sorted(glob.glob(os.path.join("triaged_alerts", "*.json")))
     with open(os.path.join(here, "observed.jsonl"), "a", encoding="utf-8") as fh:
         fh.write(json.dumps({"run": run, "argv": sys.argv[1:], "cwd_name": os.path.basename(here),
-                             "env": {k: os.environ.get(k) for k in ("INVESTIGATION_SINGLE_INCIDENT",
+                             "env": {k: os.environ.get(k) for k in ("INVESTIGATION_SUBJECT_ID",
                                      "INVESTIGATION_FORCE_LLM", "OPENAI_SEED", "PYTHONUNBUFFERED")},
                              "alerts": [json.load(open(f, encoding="utf-8")) for f in files]}) + "\n")
 
@@ -116,8 +116,10 @@ FAKE_MAIN = textwrap.dedent(r'''
                                "triage": {"ticket_unc": "#00042A"}}]},
               open(os.path.join(folder, "incident_data.json"), "w", encoding="utf-8"))
     table = "\n".join(f"| `{s}` | {i} | {st} |" for s, i, st in steps)
+    # Real main.py::write_markdown_report() header (canonical case + folder).
     open(os.path.join(folder, "final_analysis_report.md"), "w", encoding="utf-8").write(
-        "# Final analysis\n\n| Step | Instruction | Status |\n|---|---|---|\n" + table + "\n")
+        f"# INVESTIGATION SUMMARY: {inc} (Incident-001)\n\n"
+        "| Step | Instruction | Status |\n|---|---|---|\n" + table + "\n")
     if MODE != "no_json":
         json.dump({"incident_id": inc, "severity": severity, "confidence": confidence,
                    "execution_trace": [{"step_id": s, "instruction": i, "status": st,

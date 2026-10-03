@@ -1190,7 +1190,25 @@ def orchestrate_incident(seed_alert_path: str, playbook_path: str) -> dict:
         "report": final_report
     }
 
-async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: str) -> dict:
+def _resolve_subject_id(correlated_alerts: List[dict], subject_id: Optional[str] = None):
+    """Canonical identity (subject) of an analysis over `correlated_alerts`.
+
+    With `subject_id` (the workflow case being investigated, supplied via
+    INVESTIGATION_SUBJECT_ID) the analysis is ABOUT that case even when the
+    correlation engine merged it into an older cluster: the other alerts
+    are correlated evidence, not identity. Returns that member's own id
+    value (so an isolated case's model request is byte-identical to the
+    legacy one). Without a subject, or when the subject is not part of this
+    alert group, keeps the legacy behaviour: the first alert in the group."""
+    if subject_id is not None:
+        for alert in correlated_alerts:
+            if str(alert.get("id")) == str(subject_id):
+                return alert["id"]
+    return correlated_alerts[0]["id"]
+
+
+async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: str,
+                                 subject_id: Optional[str] = None) -> dict:
     """
     [FYP-FUNCTION] Pass 1 of the async two-pass pipeline: a single
     consolidated structured-output LLM call (get_chain_p1()) that evaluates
@@ -1228,9 +1246,8 @@ async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: s
         playbook_dict = yaml.safe_load(f)
         
     playbook_name = playbook_dict.get("name", "Unknown Playbook")
-    seed_alert = correlated_alerts[0]
-    seed_id = seed_alert["id"]
-    
+    seed_id = _resolve_subject_id(correlated_alerts, subject_id)
+
     steps_desc = []
     for step_id, step_data in sorted(playbook_dict.get("steps", {}).items()):
         steps_desc.append(f"Step '{step_id}': {step_data.get('instructions')}")
@@ -1280,7 +1297,8 @@ async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: s
             "suggested_pivots": []
         }
 
-async def compile_final_report(correlated_alerts: List[dict], playbook_path: str, p1_trace: List[MilestoneExecution]) -> FinalIncidentAnalysis:
+async def compile_final_report(correlated_alerts: List[dict], playbook_path: str, p1_trace: List[MilestoneExecution],
+                               subject_id: Optional[str] = None) -> FinalIncidentAnalysis:
     """
     [FYP-FUNCTION] [FYP-EVALUATOR] Pass 2 of the async two-pass pipeline —
     the production-path counterpart to generate_final_analysis(). Called by
@@ -1321,9 +1339,8 @@ async def compile_final_report(correlated_alerts: List[dict], playbook_path: str
         playbook_dict = yaml.safe_load(f)
         
     playbook_name = playbook_dict.get("name", "Unknown Playbook")
-    seed_alert = correlated_alerts[0]
-    seed_id = seed_alert["id"]
-    
+    seed_id = _resolve_subject_id(correlated_alerts, subject_id)
+
     timeline_str = build_timeline_text(correlated_alerts)
     log_info(f"[LLM CALL] Pass 2: Re-evaluating playbook and compiling final report for {seed_id}...")
     
@@ -1360,7 +1377,15 @@ async def compile_final_report(correlated_alerts: List[dict], playbook_path: str
             "trace": trace_json,
             "policies": policies_context
         })
-        
+
+        # The analysis subject is assigned by code, not echoed by the model:
+        # with an explicit workflow subject, the canonical incident_id is
+        # always that case (correlated cluster members stay evidence).
+        if subject_id is not None and str(final_report.incident_id) != str(seed_id):
+            log_warning(f"Pass 2 returned incident_id {final_report.incident_id!r}; "
+                        f"canonical investigation subject is {seed_id!r}")
+            final_report.incident_id = seed_id
+
         compliance = run_policy_compliance_rules(
             incident_id=seed_id,
             severity=final_report.severity,

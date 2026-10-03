@@ -230,6 +230,18 @@ def approve_reporting_candidate(incident_id: str, run_id: str, *, analyst: str,
             f"approval_stage={state.get('approval_stage')!r}, "
             f"reporting_status={state.get('reporting_status')!r})")
 
+    # C1: a report built on another case's Investigation result is never
+    # approvable, whatever its manifest says.
+    try:
+        investigation_result = json.loads(state.get("investigation_result_json") or "null")
+    except (TypeError, ValueError):
+        investigation_result = None
+    identity_problem = wss.investigation_identity_problem(incident_id, investigation_result)
+    if identity_problem:
+        raise wss.InvestigationIdentityError(
+            f"Reporting approval refused: {identity_problem}. Re-run Investigation "
+            "for this case before approving a report.")
+
     reporting_attempt = int(state.get("reporting_attempt") or 1)
     reporting_result_json = state.get("reporting_result_json") or "{}"
     try:

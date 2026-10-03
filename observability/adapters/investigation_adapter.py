@@ -288,7 +288,10 @@ def _(r, m): r._emit(child=False, source="rule", event_type="playbook_selection"
 
 @_t(r"^Confirmed Match\. Merging alert (\S+) into Incident (\S+)")
 def _(r, m): r._emit(child=True, source="system", event_type="incident_formation", status="completed",
-                     title=f"Alert merged into existing incident {m.group(2)}")
+                     # The agent's "Incident-NNN" is a correlation workspace,
+                     # not the workflow case: the case stays the subject.
+                     title=f"Alert added to existing correlation cluster {m.group(2)}",
+                     detail=f"Investigation subject remains {m.group(1)}")
 
 
 @_t(r"^Forming (.+?) -> (\S+)$")
@@ -866,26 +869,38 @@ def _tee_lines(call: dict, original: Any):
     return observed_line_cb
 
 
-def _structured_after(call: dict, token: Any, result: Any) -> None:
+def _candidate_after(call: dict, token: Any, result: Any) -> None:
+    """One event per correlation-folder candidate the workflow evaluated
+    (engine._evaluate_investigation_candidate). The workflow case never
+    changes: a candidate is either accepted FOR this case or rejected."""
     scope = _scope()
-    if scope is None or not isinstance(result, tuple) or len(result) != 2:
+    if scope is None or not isinstance(result, dict):
         return
-    output, source = result
-    if source == "structured_json" and output is not None:
+    folder = Path(str(call.get("target") or "")).name
+    if result.get("valid") and result.get("source") == "structured_json":
         emit(source="system", event_type="result_source", status="completed",
              title="Structured Investigation result validated",
              detail="investigation_analysis.json matched the Investigation result contract.",
              metadata=_group(scope))
         return
-    try:
-        present = (Path(call.get("target")) / "investigation_analysis.json").exists()
-    except Exception:
-        present = None
-    emit(source="system", event_type="result_source", status="warning",
-         title="Structured Investigation result unavailable — result reconstructed from the Markdown report",
-         detail=("investigation_analysis.json was present but rejected (malformed, invalid or for another incident)."
-                 if present else "investigation_analysis.json was not written by the agent."),
-         metadata={**_group(scope), "fallback": True})
+    if result.get("valid"):
+        try:
+            present = (Path(call.get("target")) / "investigation_analysis.json").exists()
+        except Exception:
+            present = None
+        emit(source="system", event_type="result_source", status="warning",
+             title="Structured Investigation result unavailable — result reconstructed from the Markdown report",
+             detail=("investigation_analysis.json was present but rejected (malformed, invalid or stale)."
+                     if present else "investigation_analysis.json was not written by the agent."),
+             metadata={**_group(scope), "fallback": True})
+        return
+    if result.get("kind") == "mismatch":
+        title = "Investigation output rejected — it identifies a different case"
+    else:
+        title = "Investigation output rejected — it could not be verified for this case"
+    emit(source="system", event_type="result_source", status="failed", title=title,
+         detail=sanitize_text(f"{folder}: {result.get('detail') or ''}", max_len=300),
+         metadata={**_group(scope), "identity_check": result.get("kind"), "correlation_folder": folder})
 
 
 def _divergence_after(call: dict, token: Any, result: Any) -> None:
@@ -1055,8 +1070,9 @@ def install(patcher: Patcher) -> None:
     patcher.wrap(Target(engine, "_run_subprocess_streaming",
                         ("cmd", "cwd", "timeout", "extra_env", "line_cb", "watchdog_cb", "watchdog_interval")),
                  Hooks(tee_callback=("line_cb", _tee_lines)))
-    patcher.wrap(Target(engine, "_load_structured_investigation_analysis", ("target", "cluster_ids")),
-                 Hooks(after=_structured_after))
+    patcher.wrap(Target(engine, "_evaluate_investigation_candidate",
+                        ("target", "case_id", "started", "run_nonce")),
+                 Hooks(after=_candidate_after))
     patcher.wrap(Target(engine, "_annotate_severity_divergence", ("inv", "triage_classification")),
                  Hooks(after=_divergence_after))
     patcher.wrap(Target(engine, "reconcile_incident_severity", ("incident_id", "unc", "final_severity")),

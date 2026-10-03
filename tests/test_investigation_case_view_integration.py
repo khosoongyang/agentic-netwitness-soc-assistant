@@ -145,8 +145,11 @@ def test_refreshed_existing_folder_reports_the_current_runs_severity(inv_dir, mo
             "summary_text": "Fresh merged summary.",
             "indicators": [],
         }), encoding="utf-8")
+        # Real agents/investigation/main.py header format (it always names
+        # the canonical case and the correlation folder).
         (folder_path / "final_analysis_report.md").write_text(
-            "# INVESTIGATION SUMMARY\n**Final Severity:** Critical\n", encoding="utf-8")
+            f"# INVESTIGATION SUMMARY: {ALERT_ID} ({folder_name})\n"
+            "**Final Severity:** Critical\n", encoding="utf-8")
         return {"started_at": "now", "returncode": 0, "success": True, "stdout": "", "stderr": ""}
 
     monkeypatch.setattr(sw, "_run_subprocess", _fake)
