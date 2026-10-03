@@ -2747,10 +2747,13 @@ def _confirmed_facts_block(state: dict, stages: list[dict]) -> dict:
         # rather than kept as always-null placeholders.
         tri = _json_or_empty(state.get("triage_result_json"))
         ticket = tri.get("ticket") or {}
+        risk_rating = ticket.get("risk_rating") or {}
         facts["triage"] = {
             "label": "confirmed",
             "classification": ticket.get("classification"),
             "summary": _cap_text(ticket.get("summary")),
+            "risk_rationale": _cap_text(risk_rating.get("rationale")),
+            "methodology_note": "Triage classified this based on alert metakeys and heuristics without querying live external threat feeds (which occurs in Threat Intel stage).",
             "recommended_actions": _cap_list(ticket.get("recommended_actions")),
         }
     else:
