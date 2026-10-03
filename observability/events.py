@@ -39,6 +39,7 @@ ORIGINS = frozenset({
     "wrapper",             # pass-through wrapper around a real function call
     "langchain_callback",  # LangChain callback fired by the real model call
     "state_transition",    # wrapped workflow-state write (claim/complete/approve)
+    "subprocess_log",      # a known, structured line printed by an agent subprocess
 })
 
 

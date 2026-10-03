@@ -257,12 +257,23 @@ def _threat_intel_targets():
     return recorded
 
 
+def _investigation_targets():
+    from observability.adapters import investigation_adapter
+
+    patcher = Patcher()
+    recorded: list[Target] = []
+    patcher.wrap = lambda target, hooks: recorded.append(target) or True  # type: ignore[assignment]
+    investigation_adapter.install(patcher)
+    return recorded
+
+
 def test_install_wraps_every_target_and_uninstall_restores_original_objects(tmp_path):
     from observability.instrument import HOOKS_ATTR, resolve_owner
 
-    all_targets = _parsing_targets() + _triage_targets() + _threat_intel_targets()
+    all_targets = (_parsing_targets() + _triage_targets() + _threat_intel_targets()
+                   + _investigation_targets())
     targets = list({t.label: t for t in all_targets}.values())
-    assert len(targets) == 47  # shared points (claim/complete/loaders/requests/model call) once each
+    assert len(targets) == 61  # shared points (claim/complete/requests/summary/model call) once each
     originals = {t.label: getattr(resolve_owner(t), t.attr) for t in targets}
     try:
         state = observability.install(str(tmp_path / "activity.db"))
@@ -305,6 +316,36 @@ def test_shared_wrapper_calls_the_original_exactly_once_for_all_hook_sets():
         assert patcher.restore() == [] and module.fn is original
     finally:
         sys.modules.pop(module.__name__, None)
+
+
+def test_tee_callback_observes_and_still_calls_the_original_callback():
+    received, observed = [], []
+
+    def original(lines, line_cb=None, other=None):
+        for line in lines:
+            if line_cb:
+                line_cb(line)
+        return other
+
+    sentinel = object()
+    caller_cb = received.append
+
+    def factory(call, original_cb):
+        def tee(line):
+            observed.append(line)
+            if original_cb is not None:
+                original_cb(line)
+        return tee
+
+    wrapper = make_wrapper(original, Hooks(tee_callback=("line_cb", factory)))
+    assert wrapper(["a", "b"], line_cb=caller_cb, other=sentinel) is sentinel
+    assert observed == ["a", "b"] and received == ["a", "b"]
+    observed.clear()
+    assert wrapper(["c"], other=sentinel) is sentinel  # no caller callback: only observed
+    assert observed == ["c"]
+    # A factory that declines leaves the call exactly as it was.
+    passthrough = make_wrapper(original, Hooks(tee_callback=("line_cb", lambda call, cb: None)))
+    assert passthrough(["d"], line_cb=caller_cb) is None and received[-1] == "d"
 
 
 def test_signature_mismatch_skips_the_wrapper_instead_of_guessing():

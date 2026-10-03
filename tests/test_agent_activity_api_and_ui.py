@@ -137,9 +137,21 @@ def test_workspace_replaces_the_generic_triage_message_with_the_activity_panel()
     for kept in ("triageAssessment(ticket)", "triageSummarySection(ticket, result)",
                  'data-triage-view="ticket"'):
         assert kept in WORKSPACE
-    # Stages without Agent Activity yet keep their existing messages.
-    assert 'loadingState("Running Investigation…")' in WORKSPACE
     assert "destroyStageActivity();" in WORKSPACE
+
+
+def test_workspace_replaces_the_generic_investigation_message_and_keeps_its_tabs():
+    assert 'loadingState("Running Investigation…")' not in WORKSPACE
+    assert ('mountStageActivity(root.querySelector("#investigation-agent-activity"), caseId, stage, '
+            'workflow, { live: true })') in WORKSPACE
+    # Resume stays available for an interrupted run; the tabs stay unchanged.
+    assert 'action.type === "resume" && action.enabled' in WORKSPACE
+    assert '<section id="investigation-agent-activity"></section>${nav}' in WORKSPACE
+    for kept in ('["overview", "Overview", investigationOverviewTab]', '["mitre", "MITRE ATT&CK", investigationMitreTab]'):
+        assert kept in WORKSPACE
+    # Generic renderer additions are data-driven, not stage-specific.
+    assert "metadata?.group" in COMPONENT and "metadata?.fallback" in COMPONENT
+    assert 'block.type === "log"' in COMPONENT and "Investigation" not in COMPONENT
 
 
 def test_workspace_replaces_the_hardcoded_provider_message_for_threat_intel():

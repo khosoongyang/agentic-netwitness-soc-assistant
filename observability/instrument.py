@@ -69,6 +69,13 @@ class Hooks:
     after: Callable[[dict, Any, Any], None] | None = None          # (call, token, result)
     error: Callable[[dict, Any, BaseException], None] | None = None  # (call, token, exc)
     cleanup: Callable[[dict, Any], None] | None = None              # always, in finally
+    # The ONE argument-level intervention, used only for the subprocess
+    # line-reader (approved mechanism): (parameter_name, factory). factory
+    # (call, original_value) returns a callback that observes and then calls
+    # the original value (if any), or None to leave the argument untouched.
+    # Only callback parameters the callee already invokes inside its own
+    # try/except may be used this way.
+    tee_callback: tuple[str, Callable[[dict, Any], Any]] | None = None
 
 
 def _bind(signature: inspect.Signature | None, args: tuple, kwargs: dict) -> dict:
@@ -115,12 +122,25 @@ def make_wrapper(original: Callable, hooks: Hooks | list[Hooks]) -> Callable:
                         if callable(closer):
                             closers.append(closer)
         tokens: list[Any] = [None] * len(active)
+        call_args, call_kwargs = args, kwargs
+        for hooks_ in active:
+            if hooks_.tee_callback is None or signature is None:
+                continue
+            name, factory = hooks_.tee_callback
+            replacement = _guard(factory, call, call.get(name))
+            if callable(replacement):
+                try:
+                    bound = signature.bind(*call_args, **call_kwargs)
+                    bound.arguments[name] = replacement
+                    call_args, call_kwargs = bound.args, bound.kwargs
+                except Exception:
+                    call_args, call_kwargs = args, kwargs
         try:
             for index, hooks_ in enumerate(active):
                 if hooks_.before is not None:
                     tokens[index] = _guard(hooks_.before, call)
             try:
-                result = original(*args, **kwargs)
+                result = original(*call_args, **call_kwargs)
             except BaseException as exc:
                 for hooks_, token in zip(active, tokens):
                     if hooks_.error is not None:

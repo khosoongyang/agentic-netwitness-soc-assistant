@@ -79,6 +79,10 @@ function renderBlock(block) {
   if (block.type === "note") {
     return `<p class="activity-note">${escapeHTML(block.text)}</p>`;
   }
+  if (block.type === "log") {
+    // Unclassified agent output, already sanitised server-side; collapsed by default.
+    return `<details class="activity-log"><summary>${escapeHTML(block.label || "Raw log")}</summary><pre>${escapeHTML((block.lines || []).join("\n"))}</pre></details>`;
+  }
   return "";
 }
 
@@ -164,6 +168,7 @@ export function mountAgentActivity(container, {
 
     const attempts = new Set(rows.map((event) => event.stage_attempt).filter((value) => value != null));
     let lastAttempt = null;
+    let lastGroup = null;
     let hasUnresolved = false;
     const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 32;
 
@@ -172,7 +177,15 @@ export function mountAgentActivity(container, {
       if (attempts.size > 1 && event.stage_attempt != null && event.stage_attempt !== lastAttempt) {
         lastAttempt = event.stage_attempt;
         prefix = `<li class="agent-activity-attempt">Attempt ${escapeHTML(event.stage_attempt)}</li>`;
+        lastGroup = null;
       }
+      // Backend-declared grouping (e.g. separate agent runs within one
+      // attempt). Purely a heading; event order is unchanged.
+      const group = event.metadata?.group || null;
+      if (group && group !== lastGroup) {
+        prefix += `<li class="agent-activity-attempt agent-activity-group">${escapeHTML(group)}</li>`;
+      }
+      if (group) lastGroup = group;
       const latest = event.span_id ? latestBySpan.get(event.span_id) : event;
       const resolved = latest !== event;
       const pending = (event.status === "running" || event.status === "waiting") && !resolved;
@@ -204,7 +217,8 @@ export function mountAgentActivity(container, {
       const detailsHTML = ownBlocks + childBlocks;
       const isOpen = expanded.has(event.event_id);
       const toggleLabel = event.source === "ai" ? "View AI output" : "View details";
-      const postStage = event.metadata?.post_stage ? `<span class="activity-pill">Post-stage</span>` : "";
+      const postStage = (event.metadata?.post_stage ? `<span class="activity-pill">Post-stage</span>` : "")
+        + (event.metadata?.fallback ? `<span class="activity-pill activity-pill-fallback">Fallback</span>` : "");
 
       return `${prefix}<li class="agent-activity-row status-${escapeHTML(event.status)}${resolved ? " resolved" : ""}">
         <time datetime="${escapeHTML(event.timestamp)}">${escapeHTML(clockTime(event.timestamp))}</time>

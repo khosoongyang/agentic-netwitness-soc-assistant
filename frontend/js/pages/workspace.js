@@ -2109,8 +2109,8 @@ const _INVESTIGATION_SUBTABS = [
 // Reporting button (stageActionButtons()). The action bar sits after the
 // sub-tab body, so switching tabs never moves or re-renders it.
 //
-// While Processing, only progress is shown (same loadingState() panel as
-// renderThreatIntelStage()) — no sub-tabs, since `workspace` may still carry
+// While Processing, only the live Agent Activity panel is shown (as in
+// renderThreatIntelStage())— no sub-tabs, since `workspace` may still carry
 // a previous run's result during a re-run. The backend attaches a `resume`
 // action to every Processing stage but enables it only when the worker lease
 // has lapsed (workflow/commands.py::available_actions()), so Resume is shown
@@ -2121,16 +2121,23 @@ function renderInvestigationStage(root, stage, caseId, lastError, onAction, onNa
     const resumable = { ...stage, actions: (stage.actions || []).filter((action) => action.type === "resume" && action.enabled) };
     root.innerHTML = `
       ${header}
-      ${loadingState("Running Investigation…")}
+      <section id="investigation-agent-activity"></section>
       ${stageActionButtons(resumable, workflow, { footer: true })}
       <div id="action-status" aria-live="polite"></div>
     `;
+    mountStageActivity(root.querySelector("#investigation-agent-activity"), caseId, stage, workflow, { live: true });
     bindStageActions(root, stage, workflow, onAction, onNavigate);
     return;
   }
   const nav = `<div class="subtab-bar" role="tablist">${_INVESTIGATION_SUBTABS.map(([key, label]) => `<button type="button" class="subtab-button" data-subtab="${key}" role="tab">${escapeHTML(label)}</button>`).join("")}</div>`;
   const actions = `${stageActionButtons(stage, workflow, { footer: true })}<div id="action-status" aria-live="polite"></div>`;
-  root.innerHTML = `${header}${nav}<div id="investigation-subtab-body"></div>${actions}`;
+  root.innerHTML = `${header}<section id="investigation-agent-activity"></section>${nav}<div id="investigation-subtab-body"></div>${actions}`;
+  // Full trace stays available above the unchanged Investigation tabs;
+  // expanded while the result awaits the analyst's decision.
+  if (stage.state !== "not_started" && stage.state !== "locked") {
+    mountStageActivity(root.querySelector("#investigation-agent-activity"), caseId, stage, workflow,
+      { collapsed: stage.state !== "awaiting_approval" });
+  }
   bindStageActions(root, stage, workflow, onAction, onNavigate);
   const body = root.querySelector("#investigation-subtab-body");
   const buttons = [...root.querySelectorAll("[data-subtab]")];
