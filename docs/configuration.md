@@ -14,6 +14,22 @@ All variables are optional unless noted. Set them in `.env` (copy from
 | `OPENAI_API_KEY` | Enables all AI-assisted features (triage classification text, investigation reasoning, reporting narrative, Ask Aegis). Triage requires it: without a key (or with a placeholder) the Triage stage fails fast with `LLM_NOT_CONFIGURED` and makes no network call; Ask Aegis reports itself unavailable. | Yes for Triage (offline: mock triage mode) | unset | `sk-...` |
 | `OPENAI_MODEL` | Model name for chat/completions calls. | No | `gpt-4o-mini` | `gpt-4o-mini` |
 | `OPENAI_SEED` | Fixed sampling seed, for more reproducible model output. | No | unset (non-deterministic) | `42` |
+| `TRIAGE_JSON_MODE` | `always` / `never` overrides JSON-mode detection (on for OpenAI / Azure OpenAI hosts, off for other providers). | No | auto | `never` |
+
+## Triage evidence and review
+
+See [`triage-review.md`](triage-review.md) and [`triage-evaluation.md`](triage-evaluation.md).
+
+| Variable | Purpose | Required | Default | Example |
+|---|---|---|---|---|
+| `AEGIS_LOLBAS_PATH` | LOLBAS dataset cache used for abused-tool enrichment (`python scripts/update_lolbas.py` downloads it with a `.meta.json` sidecar). A cache whose bytes no longer match the sidecar sha256 is rejected, and enrichment is then reported as unknown, never as safe. | No | `runtime/threat_data/lolbas.json` | `/data/lolbas.json` |
+| `AEGIS_TICKET_DB` | Triage ticket / result-cache SQLite file (evaluation scripts point it at a temp copy). | No | `soc_db/soc_tickets.db` | `/tmp/tickets.db` |
+
+Triage separates **severity** (`ticket.classification`) from **disposition**
+(`true_positive` / `false_positive` / `benign_expected` / `needs_info`, set by
+code guards over an evidence packet). An analyst's structured review
+(`triage_reviews` table) is the canonical verdict downstream; suppressions are
+only proposals until a second human approves them (`suppression_proposals`).
 
 ## Threat-intelligence providers
 

@@ -107,7 +107,7 @@ summary. Both are git-ignored.
 | canaries / `failures` | Malicious canaries closed as `false_positive` or `benign_expected` in any run. | **Empty.** Any entry means the thresholds are broken. |
 | `acceptable_hit_rate` | Share of labelled runs whose disposition is in `disposition_acceptable`. Also split **by label source**. | Read it per source. Only `lab_ground_truth`, `public_dataset` and `mentor_reviewed` are independent evidence. |
 | `consistency_rate` / `inconsistent_cases` | Cases where all repeats agree. | High. Inconsistent cases are where the model is guessing. |
-| `needs_info_rate` | Share of runs ending in `needs_info`. | Expect it to be high today: business context (`context.*`) is not integrated, so `benign_expected` is unreachable by design. |
+| `needs_info_rate` | Share of runs ending in `needs_info`. | Expect it to be high: business context (`context.*`) is not integrated, so `benign_expected` is only reachable when an analyst note (or an approved suppression match) is cited (Step 3). |
 | `proposed_disposition_distribution` vs `disposition_distribution` | What the model proposed vs what survived the guards. | The gap shows how often the guards had to step in. |
 | `guard_actions_frequency` | Which guard rules fired (`a_missing_mandatory_evidence`, `b_strong_signal_floor`, ...). | Frequent `b_strong_signal_floor` on benign proposals means the model is being fooled by mimicry. |
 | `citation_errors_frequency` | `unknown_path` (invented evidence) and `missing_status` (citing unknowns). | Should trend to 0 for a good model and prompt. |

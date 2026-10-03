@@ -36,8 +36,13 @@ Every incident moves through five stages, in order:
 
 1. **Parsing & Normalisation** - turns a raw NetWitness alert into a
    normalised, structured record.
-2. **Triage** - an LLM-assisted classification, risk score and MITRE
-   ATT&CK tagging. **Requires analyst approval** before continuing.
+2. **Triage** - evidence-first: a measured baseline, raw-alert and LOLBAS
+   signals form an evidence packet; the LLM proposes cited hypotheses and a
+   disposition (true positive / false positive / benign-expected /
+   needs-info), which code guards check. Severity, risk score and MITRE
+   tagging stay separate from the disposition. **Requires analyst approval**,
+   optionally with a structured review whose verdict becomes canonical
+   downstream (see [`docs/triage-review.md`](docs/triage-review.md)).
 3. **Threat Intelligence Enrichment** - looks up IOCs (VirusTotal,
    AbuseIPDB, AlienVault OTX where configured).
 4. **Investigation** - correlates evidence, maps to MITRE ATT&CK, and
@@ -149,6 +154,8 @@ Aegis reports itself unavailable. Offline runs use the mock triage mode
 | `runtime/uploads/` | Uploaded incident files, server-generated filenames (gitignored) |
 | `agents/reporting/outputs/` | Per-run reporting-agent artifacts and generated reports (gitignored) |
 | `outputs/` | Static parsing fixtures used by tests/demos (tracked) |
+| `runtime/threat_data/` | LOLBAS dataset cache + sha256 sidecar (`scripts/update_lolbas.py`, gitignored) |
+| `runtime/eval_reports/`, `runtime/tuning_backlog/` | Triage evaluation, metrics and tuning-backlog outputs (gitignored) |
 
 See [`docs/configuration.md`](docs/configuration.md) for how to point any
 of these somewhere else, and **Demo data** below for what's actually inside

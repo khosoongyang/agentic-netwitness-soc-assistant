@@ -79,6 +79,15 @@ history and returns the case to analyst review rather than silently
 retrying. `reporting` rejection works the same way but at the section
 level as well as the whole-report level (see **Report approval** below).
 
+**Triage review**: approving or rejecting Triage may carry a structured
+review (analyst disposition, evidence checked, justification; see
+[`triage-review.md`](triage-review.md)). It is written to `triage_reviews` in
+the same transaction as the approval (`in_tx` hook), so the CAS semantics
+above are unchanged. The analyst's disposition then travels downstream as
+`triage_review` and is what reports, the final verdict and Ask Aegis show.
+"Reject and re-triage with this note" reruns Triage with the note as
+`context.analyst_note`. Ask Aegis never re-runs triage itself.
+
 **Downstream invalidation**: rerunning an earlier stage invalidates
 whatever downstream results existed for the prior attempt, since they were
 computed from data the rerun is about to replace - the (now-orphaned)

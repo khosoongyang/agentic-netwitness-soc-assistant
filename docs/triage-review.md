@@ -51,6 +51,10 @@ The prompt delimits it as `<analyst_provided_context>"..."</analyst_provided_con
 (delimiter text inside the note is defanged). A **valid cite** to it counts as
 context evidence for guard rules b/c - the only way `benign_expected` is reachable
 in this step, because confirmed-benign requires a human-attested fact.
+The note does **not** lower uncertainty: `uncertainty` measures how complete
+the machine-measured evidence is (`guards.CORE_EVIDENCE`), and a human claim must
+not be reflected back to the reviewer as AI confidence (audit T-18, a deliberate
+choice).
 `TRIAGE_PROMPT_VERSION` = `2026-10-audit-prompt-hardening` (was `2026-10-step3-analyst-note-suppression` before the audit T-08 delimiter hardening).
 
 ## 4. Scripts
@@ -73,6 +77,9 @@ AI-final (= how often the guards intervene), plus override rate, needs_info rate
 per-disposition counts and the blind_first revision-after-reveal rate. With
 `n < 30` every report carries the small-sample caveat; a degenerate case (both
 raters used a single identical label) is flagged instead of silently reported.
+Only the **latest decision per (incident, run)** is counted: a reject followed
+by a re-triage and an approve is one decision (`n_superseded_decisions` reports
+how many earlier same-run decisions were excluded; audit T-20).
 
 ## 6. Manual QA checklist (UI)
 

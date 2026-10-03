@@ -51,9 +51,11 @@ Guard rules (a disposition can only be moved TO "needs_info"):
                                       detection.* cite
   e) supporting hypothesis uncited -> needs_info
 
-Rule (c) makes benign_expected unreachable while context.* is a placeholder.
-That is intended: "confirmed-benign" requires evidence; "assumed-benign" is
-not acceptable.
+Rule (c) means benign_expected needs measured context evidence: before
+Step 3 every context.* leaf was a placeholder, so it was unreachable. Since
+Step 3 a cited context.analyst_note (or an approved suppression match, rule c
+only) can satisfy it. That is intended: "confirmed-benign" requires
+evidence; "assumed-benign" is not acceptable.
 
 [FYP-TRIAGE-STEP3] Context evidence that now counts for rules b / c:
   * context.analyst_note -- a human-attested fact attached to a re-run. A
@@ -112,6 +114,12 @@ MANDATORY_EVIDENCE: tuple[tuple[str, str, Callable[[dict], bool], str], ...] = (
 
 # Core (non-mandatory) evidence that completes the picture. Uncertainty is
 # the share of MANDATORY paths + these that have status "measured".
+# [AUDIT T-18] Decision: context.analyst_note and context.suppression_match
+# are deliberately NOT here. Uncertainty describes how complete the
+# MACHINE-measured evidence is; a human-attested note can make
+# benign_expected reachable (guard rules b/c) but must not also make the AI's
+# verdict look more certain, or the reviewer would see their own claim
+# reflected back as confidence. Pinned by tests/test_triage_guard_decisions.py.
 CORE_EVIDENCE: tuple[str, ...] = (
     "detection.ruleId",
     "detection.riskScore",

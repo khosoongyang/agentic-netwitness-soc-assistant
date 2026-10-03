@@ -90,6 +90,14 @@ fallback logic - Phase 9's OpenAI-infrastructure audit deliberately did
   `parsing-normalisation-codes/` was removed in Phase 9 after confirming
   zero consumers).
 - **`agents/triage/`** - `soc_triage_agent.py`, LangChain `ChatOpenAI`-backed.
+  Evidence-first: `baseline.py` (measured prior from incident history),
+  `raw_alerts.py`, `lolbas.py`, `evidence_packet.py` (every fact as
+  `{value, status, source}`), then three LLM calls whose cited hypotheses are
+  checked by `guards.py` (disposition guards, uncertainty). Step 3 adds
+  `review.py` (structured analyst review, `canonical_disposition()` used by
+  every downstream consumer), `suppression.py`, `feedback.py` and
+  `metrics.py`. `agents/` never imports `workflow/` or Flask; the review and
+  suppression tables live in `workflow/review_store.py`.
 - **`agents/threat_intelligence/`** - `threat_intel.py`, provider lookups
   live directly in this stage module (not yet split into a separate
   `integrations/threat_intel/` provider layer - deferred, not required by
