@@ -42,6 +42,19 @@ and whether it was actually observed. The packet makes that explicit:
 The ``context`` section (asset / change / confirmed-benign history) is an
 always-missing placeholder in this step, so "benign_expected" cannot be
 evidenced yet -- intended: confirmed-benign requires evidence.
+
+[FYP-TRIAGE-STEP3] Two human-attested context leaves were added:
+  context.analyst_note       -- a note the analyst attached to a Triage
+                                re-run ("measured", source "analyst <name> @
+                                <iso time>"). The ONLY way benign_expected
+                                becomes reachable this step: confirmed-benign
+                                requires a human-attested fact.
+  context.suppression_match  -- an APPROVED, unexpired, scope-matching
+                                suppression proposal (agents/triage/
+                                suppression.py). It never satisfies the
+                                strong-signal floor (adversarial mimicry).
+Both are "missing" unless supplied, so a packet built without them is
+unchanged in meaning.
 """
 
 from __future__ import annotations
@@ -58,6 +71,9 @@ from .raw_alerts import build_raw_alerts_section
 # [FYP-TRIAGE-STEP2] abused-tool (LOLBAS) enrichment + masquerade check
 # (adversarial mimicry: attackers use signed built-in Windows tools).
 from .lolbas import build_lolbas_signal, build_masquerade_signal, signature_abused_tool_hits
+from .lolbas import floor_labels as _abused_tool_floor_labels
+# [FYP-TRIAGE-STEP3] scoped suppression matching (pure; no I/O).
+from .suppression import match_suppressions, suppression_match_leaf
 # The Pydantic models live in the dependency-light contract module so the
 # persisted result and the packet builder can never drift apart.
 from .triage_result import EvidenceLeaf, EvidencePacket, EvidenceStatus
@@ -77,6 +93,8 @@ _MATCH_SAMPLES_PER_LABEL = 5
 _MATCH_CONTEXT_CHARS = 30
 
 _PLACEHOLDER_SOURCE = "not yet integrated (Triage Step 1 placeholder)"
+_ANALYST_NOTE_MAX_CHARS = 2000
+_NO_ANALYST_NOTE_SOURCE = "no analyst note attached to this Triage run"
 
 
 # =============================================================================
@@ -316,11 +334,39 @@ def _rule_signals(incident: dict, parsed_context: dict | None) -> dict:
     return out
 
 
-def _context() -> dict:
+def _analyst_note_leaf(analyst_note: dict | str | None) -> dict:
+    """[FYP-TRIAGE-STEP3] context.analyst_note: status "measured" (a
+    human-attested statement is an observed fact about what the analyst
+    knows), source "analyst <name> @ <iso time>"."""
+    if isinstance(analyst_note, str):
+        analyst_note = {"note": analyst_note}
+    if not isinstance(analyst_note, dict):
+        return _missing(_NO_ANALYST_NOTE_SOURCE)
+    note = str(analyst_note.get("note") or "").strip()
+    if not note:
+        return _missing(_NO_ANALYST_NOTE_SOURCE)
+    who = str(analyst_note.get("analyst") or "unknown").strip() or "unknown"
+    when = str(analyst_note.get("created_at") or "unknown time").strip()
+    return _leaf(note[:_ANALYST_NOTE_MAX_CHARS], "measured", f"analyst {who} @ {when}")
+
+
+def _packet_strong_signals(rule_signals: dict, partial_packet: dict) -> list[str]:
+    """Same set as guards.strong_rule_signals() (that module imports this
+    one, so the rule is restated here rather than imported)."""
+    labels = {label for label, leaf in (rule_signals or {}).items()
+              if label in STRONG_SIGNAL_LABELS and isinstance(leaf, dict)
+              and leaf.get("status") != "missing"}
+    return sorted(labels | set(_abused_tool_floor_labels(partial_packet)))
+
+
+def _context(analyst_note: dict | str | None = None,
+             suppression_leaf: dict | None = None) -> dict:
     return {
         "asset_context": _missing(_PLACEHOLDER_SOURCE),
         "change_context": _missing(_PLACEHOLDER_SOURCE),
         "confirmed_benign_history": _missing(_PLACEHOLDER_SOURCE),
+        "analyst_note": _analyst_note_leaf(analyst_note),
+        "suppression_match": suppression_leaf or suppression_match_leaf([], []),
     }
 
 
@@ -330,13 +376,20 @@ def _context() -> dict:
 
 def build_evidence_packet(incident: dict, parsed_context: dict | None,
                           baseline: dict | None,
-                          data_availability: dict | None = None) -> dict:
+                          data_availability: dict | None = None,
+                          analyst_note: dict | str | None = None,
+                          suppressions: list[dict] | None = None) -> dict:
     """[FYP-FUNCTION] [FYP-EVALUATOR] Assemble and validate the evidence packet.
 
     ``data_availability`` ([FYP-TRIAGE-STEP2]) is the fetch-outcome record
     ingestion stamped next to the raw incident (workflow/engine.py::
     _data_availability). ``None`` means UNKNOWN: the raw_alerts.available
     leaf is then "missing", so the alert cannot be closed as benign.
+
+    ``analyst_note`` ([FYP-TRIAGE-STEP3]) = {note, analyst, created_at} from
+    a Triage re-run; ``suppressions`` = suppression_proposals rows (any
+    status -- only approved, unexpired, scope-matching ones count). Both are
+    supplied by workflow/ (agents/ never reads the DB for them).
 
     Returns a JSON-safe dict (``EvidencePacket.model_dump(mode="json")``)."""
     incident = incident if isinstance(incident, dict) else {}
@@ -349,8 +402,13 @@ def build_evidence_packet(incident: dict, parsed_context: dict | None,
                                                strong_labels=STRONG_SIGNAL_LABELS,
                                                abused_tool_hits_fn=signature_abused_tool_hits),
         "rule_signals": _rule_signals(incident, parsed_context),
-        "context": _context(),
     }
+    suppression_leaf = None
+    if suppressions:
+        matches = match_suppressions(packet, suppressions)
+        suppression_leaf = suppression_match_leaf(
+            matches, _packet_strong_signals(packet["rule_signals"], packet) if matches else [])
+    packet["context"] = _context(analyst_note, suppression_leaf)
     return EvidencePacket.model_validate(packet).model_dump(mode="json")
 
 
@@ -394,6 +452,13 @@ _RAW_ALERTS_RENDER_CHARS = 600
 
 
 def _render_value(path: str, value: Any) -> str:
+    if path == "context.analyst_note":
+        return render_analyst_note(value)
+    if path == "context.suppression_match" and isinstance(value, dict):
+        return _short({"suppression_ids": [m.get("suppression_id") for m in value.get("matches") or []],
+                       "scope": [(m.get("scope")) for m in value.get("matches") or []][:3],
+                       "ignored_for_guards": value.get("ignored_for_guards"),
+                       "ignored_reason": value.get("ignored_reason")}, 600)
     if path.startswith("raw_alerts.") and isinstance(value, dict) and "items" in value:
         if path == "raw_alerts.signatures":
             return _short({"note": value.get("note"),
@@ -406,6 +471,20 @@ def _render_value(path: str, value: Any) -> str:
     if path.startswith("raw_alerts."):
         return _short(value, _RAW_ALERTS_RENDER_CHARS)
     return _short(value)
+
+
+# [FYP-TRIAGE-STEP3] The analyst note is human-provided context, NOT incident
+# data and NOT an instruction: it is delimited so the model can tell it
+# apart from both, and any delimiter text inside the note is defanged.
+ANALYST_CONTEXT_OPEN = "<analyst_provided_context>"
+ANALYST_CONTEXT_CLOSE = "</analyst_provided_context>"
+_ANALYST_TAG_RE = re.compile(r"<\s*/?\s*analyst_provided_context\s*>", re.IGNORECASE)
+
+
+def render_analyst_note(value: Any) -> str:
+    text = _ANALYST_TAG_RE.sub("[removed-delimiter]", str(value or ""))
+    text = text.replace("\r", " ").replace("\n", " ")
+    return f"{ANALYST_CONTEXT_OPEN}{json.dumps(text, ensure_ascii=False)}{ANALYST_CONTEXT_CLOSE}"
 
 
 def _compact_abused_tool(value: Any) -> Any:

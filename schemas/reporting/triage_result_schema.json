@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "triage_result_schema.json",
-  "$comment": "Documentation/reference schema only -- NOT wired into runtime jsonschema validation (see agents/triage/triage_result.py for the canonical, enforced Pydantic contract; this file is generated from that module's model_json_schema() output, field-for-field, not hand-invented). Generated 2026-09 during Triage Result migration Phase 5B from TriageAgentSuccessOutput and TriageAgentErrorOutput in agents/triage/triage_result.py -- the canonical shape of agents.triage.soc_triage_agent.TriageAgent.triage()'s real return value (fresh or cache-served). Does NOT model deep_triage_supplement()'s output, alert_triage.py's pre-ingest verdict, or workflow/engine.py's flattened Reporting handoff -- see that module's docstring for why each is a separate concern. Regenerated 2026-09 for Triage upgrade Step 1 ([FYP-TRIAGE-STEP1]): additive evidence_packet/assessment top-level fields and ticket.disposition/uncertainty, plus their nested Evidence*/Triage* definitions, from the same model_json_schema() output. Regenerated 2026-10 for Triage upgrade Step 2 ([FYP-TRIAGE-STEP2]): additive, required evidence_packet.raw_alerts (EvidenceRawAlerts definition, raw-alert fetch status + digest) from the same model_json_schema() output; rule_signals.lolbas is an ordinary EvidenceLeaf under the existing keyed map.",
+  "$comment": "Documentation/reference schema only -- NOT wired into runtime jsonschema validation (see agents/triage/triage_result.py for the canonical, enforced Pydantic contract; this file is generated from that module's model_json_schema() output, field-for-field, not hand-invented). Generated 2026-09 during Triage Result migration Phase 5B from TriageAgentSuccessOutput and TriageAgentErrorOutput in agents/triage/triage_result.py -- the canonical shape of agents.triage.soc_triage_agent.TriageAgent.triage()'s real return value (fresh or cache-served). Does NOT model deep_triage_supplement()'s output, alert_triage.py's pre-ingest verdict, or workflow/engine.py's flattened Reporting handoff -- see that module's docstring for why each is a separate concern. Regenerated 2026-09 for Triage upgrade Step 1 ([FYP-TRIAGE-STEP1]): additive evidence_packet/assessment top-level fields and ticket.disposition/uncertainty, plus their nested Evidence*/Triage* definitions, from the same model_json_schema() output. Regenerated 2026-10 for Triage upgrade Step 2 ([FYP-TRIAGE-STEP2]): additive, required evidence_packet.raw_alerts (EvidenceRawAlerts definition, raw-alert fetch status + digest) from the same model_json_schema() output; rule_signals.lolbas is an ordinary EvidenceLeaf under the existing keyed map. Regenerated 2026-10 for Triage upgrade Step 3 ([FYP-TRIAGE-STEP3]): additive, required evidence_packet.context.analyst_note and context.suppression_match (EvidenceContext definition) from the same model_json_schema() output.",
   "description": "A validated TriageAgent.triage() return is exactly one of: TriageAgentSuccessOutput (successful run, error=null) or TriageAgentErrorOutput (exception branch, error=<message>). See `oneOf` below.",
   "oneOf": [
     {
@@ -384,7 +384,7 @@
     },
     "EvidenceContext": {
       "additionalProperties": false,
-      "description": "Business context. Always status \"missing\" in Step 1 (placeholders\nfilled by later steps) -- so benign_expected is unreachable by design.",
+      "description": "Business context. Always status \"missing\" in Step 1 (placeholders\nfilled by later steps) -- so benign_expected is unreachable by design.\n\n[FYP-TRIAGE-STEP3] analyst_note (a note attached to a Triage re-run,\n\"measured\", source \"analyst <name> @ <iso time>\") and suppression_match\n(an approved, unexpired, scope-matching suppression proposal) are the\ntwo human-attested context leaves; both are \"missing\" unless present.\nRequired, like raw_alerts in Step 2: a packet without them cannot be\ntold apart from one where they were never looked up.",
       "properties": {
         "asset_context": {
           "$ref": "#/$defs/EvidenceLeaf"
@@ -394,12 +394,20 @@
         },
         "confirmed_benign_history": {
           "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "analyst_note": {
+          "$ref": "#/$defs/EvidenceLeaf"
+        },
+        "suppression_match": {
+          "$ref": "#/$defs/EvidenceLeaf"
         }
       },
       "required": [
         "asset_context",
         "change_context",
-        "confirmed_benign_history"
+        "confirmed_benign_history",
+        "analyst_note",
+        "suppression_match"
       ],
       "title": "EvidenceContext",
       "type": "object"

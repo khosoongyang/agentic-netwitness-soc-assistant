@@ -54,6 +54,17 @@ Guard rules (a disposition can only be moved TO "needs_info"):
 Rule (c) makes benign_expected unreachable while context.* is a placeholder.
 That is intended: "confirmed-benign" requires evidence; "assumed-benign" is
 not acceptable.
+
+[FYP-TRIAGE-STEP3] Context evidence that now counts for rules b / c:
+  * context.analyst_note -- a human-attested fact attached to a re-run. A
+    valid cite to it is context evidence (rules b and c), which is the
+    ONLY way benign_expected is reachable this step. The verdict still
+    goes to a human reviewer (Tier 3).
+  * context.suppression_match -- an approved, unexpired suppression. It
+    can satisfy rule c, but it can NEVER satisfy rule b (the strong-signal
+    floor): if strong rule signals / strong LOLBAS hits / path_mismatch are
+    present the match is ignored for guard purposes (adversarial mimicry:
+    an attacker can look exactly like the expected maintenance job).
 """
 
 from __future__ import annotations
@@ -127,6 +138,9 @@ _CLAIM_SLOTS: tuple[tuple[str, str], ...] = (
     ("malicious", "evidence_for"), ("malicious", "evidence_against"),
     ("benign", "evidence_for"), ("benign", "evidence_against"),
 )
+
+SUPPRESSION_MATCH_PATH = "context.suppression_match"
+ANALYST_NOTE_PATH = "context.analyst_note"
 
 
 # =============================================================================
@@ -353,6 +367,31 @@ def _primary_support(assessment: dict, packet: dict, disposition: str) -> list[s
     return _valid_cites(packet, claims)
 
 
+def suppression_ignored_for_guards(packet: dict) -> bool:
+    """True when a suppression match exists but strong signals are present
+    (the packet builder marks it; re-checked here so a hand-built packet
+    cannot bypass the floor)."""
+    leaf = get_leaf(packet, SUPPRESSION_MATCH_PATH)
+    if not leaf or leaf.get("status") == "missing":
+        return False
+    value = leaf.get("value") if isinstance(leaf.get("value"), dict) else {}
+    return bool(value.get("ignored_for_guards")) or bool(strong_rule_signals(packet))
+
+
+def _context_cites(packet: dict, support: list[str], *, for_floor: bool) -> list[str]:
+    """context.* cites that count as context evidence. A suppression match
+    never counts toward the strong-signal floor (rule b) and does not count
+    at all when it is ignored for guards."""
+    out = []
+    for p in support:
+        if not p.startswith("context."):
+            continue
+        if p == SUPPRESSION_MATCH_PATH and (for_floor or suppression_ignored_for_guards(packet)):
+            continue
+        out.append(p)
+    return out
+
+
 def apply_guards(assessment: dict, packet: dict) -> dict:
     """[FYP-FUNCTION] [FYP-EVALUATOR] Apply guard rules a..e in order.
 
@@ -385,15 +424,16 @@ def apply_guards(assessment: dict, packet: dict) -> dict:
     if disposition in _BENIGN_SIDE:
         strong = strong_rule_signals(packet)
         support = _supporting_cites(out, packet, disposition)
-        if strong and not any(p.startswith("context.") for p in support):
+        if strong and not _context_cites(packet, support, for_floor=True):
             override("b_strong_signal_floor",
                      f"strong rule signal(s) {', '.join(strong)} present and no "
-                     "non-missing context.* evidence was cited to explain them")
+                     "non-missing context.* evidence was cited to explain them "
+                     "(a suppression match never satisfies this floor)")
 
     # c) benign_expected requires context evidence
     if disposition == "benign_expected":
         support = _supporting_cites(out, packet, disposition)
-        if not any(p.startswith("context.") for p in support):
+        if not _context_cites(packet, support, for_floor=False):
             override("c_benign_expected_requires_context",
                      "benign_expected needs >= 1 valid context.* citation "
                      "(confirmed-benign requires evidence; assumed-benign is not allowed)")
@@ -477,6 +517,7 @@ __all__ = [
     "verify_citations",
     "missing_mandatory_evidence",
     "strong_rule_signals",
+    "suppression_ignored_for_guards",
     "apply_guards",
     "evidence_completeness",
     "compute_uncertainty",

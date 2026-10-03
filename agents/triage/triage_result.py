@@ -150,13 +150,22 @@ class EvidenceBaseline(BaseModel):
 
 class EvidenceContext(BaseModel):
     """Business context. Always status "missing" in Step 1 (placeholders
-    filled by later steps) -- so benign_expected is unreachable by design."""
+    filled by later steps) -- so benign_expected is unreachable by design.
+
+    [FYP-TRIAGE-STEP3] analyst_note (a note attached to a Triage re-run,
+    "measured", source "analyst <name> @ <iso time>") and suppression_match
+    (an approved, unexpired, scope-matching suppression proposal) are the
+    two human-attested context leaves; both are "missing" unless present.
+    Required, like raw_alerts in Step 2: a packet without them cannot be
+    told apart from one where they were never looked up."""
 
     model_config = ConfigDict(extra="forbid")
 
     asset_context: EvidenceLeaf
     change_context: EvidenceLeaf
     confirmed_benign_history: EvidenceLeaf
+    analyst_note: EvidenceLeaf
+    suppression_match: EvidenceLeaf
 
 
 class EvidenceRawAlerts(BaseModel):
