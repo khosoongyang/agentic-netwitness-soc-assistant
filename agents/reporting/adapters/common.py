@@ -31,7 +31,7 @@
 #
 # Workflow position: Support/glue layer under soc_reporting_agent/adapters/,
 #   sitting beneath the adapter entry points (run_parser_normalisation.py,
-#   run_reporting.py) that soc_workflow.py subprocess-invokes for the
+#   run_reporting.py) that workflow/engine.py subprocess-invokes for the
 #   Parsing & Normalisation and Reporting pipeline stages.
 #
 # [FYP-USED-BY] Imported by:
@@ -86,7 +86,7 @@ for d in (INPUTS_DIR, OUTPUTS_DIR, LOGS_DIR, RUNTIME_DIR):
 
 # Load soc_reporting_agent/.env (API keys, LLM/DB settings) without
 # overriding any values the process environment already sets — lets
-# soc_workflow.py's explicit extra_env take precedence over the file.
+# workflow/engine.py's explicit extra_env take precedence over the file.
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
 

@@ -41,7 +41,7 @@
 #   save_report_edit(), discard_report_edit() and export_report() via the
 #   shared block editor — confirmed via grep around app.py's "Open & Edit"
 #   ticket UI).
-# Calls [FYP-CALLS]: workflow_state_store (wss — report_edits table
+# Calls [FYP-CALLS]: workflow.state_store (wss — report_edits table
 #   read/write, activity log), report_editing.STATUS_TONES (re-exported
 #   status-pill vocabulary, shared with the Reports tab),
 #   reporting.editable_reports.render_blocks_to_docx/render_blocks_to_pdf

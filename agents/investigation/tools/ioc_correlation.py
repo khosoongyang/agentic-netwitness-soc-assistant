@@ -25,7 +25,7 @@
 # Workflow position: runs during/after Triage, alongside or before Threat
 #   Intelligence Enrichment — internal corroboration, not external lookup.
 # Called by [FYP-USED-BY]: verify via grep before demoing — check
-#   soc_workflow.py and app.py for `ioc_correlation.correlate_iocs`.
+#   workflow/engine.py and app.py for `ioc_correlation.correlate_iocs`.
 # Calls [FYP-CALLS]: sqlite3 against soc_db/soc_incidents.db,
 #   soc_db/soc_pipeline.db, soc_db/soc_tickets.db (all read-only).
 # Key evaluator search terms: correlate_iocs, _confidence, ubiquity guard,
@@ -655,7 +655,7 @@ def format_correlation(corr: dict) -> str:
     repo-wide grep for `format_correlation(` at the time of writing found no
     caller outside this module's own docstring "Usage" example (module
     docstring, top of file); external callers (diamond_model.py,
-    reporting_sop.py, skills_sidecar.py, soc_workflow.py, triage_verdict.py)
+    reporting_sop.py, skills_sidecar.py, workflow/engine.py, triage_verdict.py)
     all consume correlate_iocs()'s returned dict directly rather than this
     formatter, so treat this as an available-but-unwired convenience
     renderer rather than a proven part of the live request path."""

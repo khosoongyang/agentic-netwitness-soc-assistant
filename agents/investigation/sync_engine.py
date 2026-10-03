@@ -281,7 +281,7 @@ class FileIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `base_folder`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `set`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -468,7 +468,7 @@ class SQLiteIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `close`, `commit`, `connect`, `cursor`, `execute`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -673,7 +673,7 @@ class ChromaIncidentVectorStore(BaseVectorIndex):
     # [FYP-INPUT] Parameters: `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `OpenAIEmbeddingFunction`, `PersistentClient`, `get`, `open_persistent_collection`, `warning`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -810,7 +810,7 @@ class InMemoryMockVectorIndex(BaseVectorIndex):
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -890,7 +890,7 @@ class IncidentSyncManager:
     # [FYP-INPUT] Parameters: `repository`, `vector_index`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1089,7 +1089,7 @@ class RealtimeSyncService:
     # [FYP-INPUT] Parameters: `base_folder`, `db_path`, `interval`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1120,7 +1120,7 @@ class RealtimeSyncService:
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_workflow.py:resume_after_triage_approval, soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include workflow/engine.py:resume_after_triage_approval, workflow/engine.py:run_investigation_stage, workflow/engine.py:run_reporting_stage; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `cancel`, `info`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

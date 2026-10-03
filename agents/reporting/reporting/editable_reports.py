@@ -57,7 +57,7 @@
 #
 # WORKFLOW POSITION
 #   Reporting stage (last stage in the pipeline, after Triage and
-#   Investigation -- see soc_workflow.py's stage_labels: parsing -> triage ->
+#   Investigation -- see workflow/engine.py's stage_labels: parsing -> triage ->
 #   threat_intel -> investigation -> reporting). This module is the
 #   analyst-editing/export layer that sits downstream of report generation
 #   (reporting_agent.py -> context_builder.py -> export_context_enhancer.py
@@ -2033,7 +2033,7 @@ def candidate_manifest_path(output_dir: Path, incident_id: str) -> Path:
     """[FYP-FUNCTION] [FYP-EXPORT] Path to the immutable
     candidate_manifest.json for an incident (see finalize_candidate_manifest()
     for how it is produced, and reporting_approval.py /
-    workflow_state_store.py for how it is consumed downstream)."""
+    workflow/state_store.py for how it is consumed downstream)."""
     return incident_report_dir(output_dir, incident_id) / "candidate_manifest.json"
 
 

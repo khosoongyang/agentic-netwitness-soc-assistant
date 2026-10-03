@@ -140,7 +140,7 @@ def _keyword_scan(texts: list[str]) -> tuple[list[tuple[str, str, str]], list[st
 # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_mitre, eval_harness.py:_c_tactic, final_verdict.py:_mitre_confirmation; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_mitre, eval_harness.py:_c_tactic, final_verdict.py:_mitre_confirmation; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_as_str_list`, `_has_native_mitre`, `_keyword_scan`, `fromkeys`, `get`, `list`, `str`, `title`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

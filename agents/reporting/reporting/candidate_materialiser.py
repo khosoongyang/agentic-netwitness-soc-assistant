@@ -16,7 +16,7 @@ This module is pure filesystem/hash work, mirroring
 editable_reports.finalize_candidate_manifest() closely on purpose so the two
 manifests stay structurally interchangeable. It never touches the database —
 the caller (agents/reporting/report_editing.py::submit_for_approval())
-registers the result in workflow_state_store's report_sets table.
+registers the result in workflow.state_store's report_sets table.
 """
 
 from __future__ import annotations

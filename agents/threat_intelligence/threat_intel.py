@@ -48,7 +48,7 @@ confidence, or caching system — each stage run performs its own fresh lookups.
 #   - [FYP-PROCESS][FYP-DECISION] Case-level enrichment risk scoring —
 #     calculate_enrichment_risk() turns the raw provider results into a
 #     single enrichment_risk_score/level/reasons verdict.
-#   - [FYP-USED-BY soc_workflow.py] Dashboard integration adapter —
+#   - [FYP-USED-BY workflow/engine.py] Dashboard integration adapter —
 #     flatten_alert_for_enrichment(), _build_flat_alert(),
 #     run_threat_intel_for_dashboard() reshape the richer parser/triage
 #     output into the simple alert dict this module was originally written
@@ -88,12 +88,12 @@ confidence, or caching system — each stage run performs its own fresh lookups.
 #   via the workflow API, not via this field).
 #
 # Called by:
-#   - soc_workflow.py: run_threat_intel() dynamically imports this module,
+#   - workflow/engine.py: run_threat_intel() dynamically imports this module,
 #     calls _build_flat_alert() then run_threat_intel_for_dashboard().
 #   - Standalone: `python threat_intel.py` runs main() directly.
 #   - No direct caller confidently identified for the module-level
 #     enrich_alert()/extract_iocs() functions outside this file and its own
-#     main()/run_threat_intel_for_dashboard() — soc_workflow.py only calls
+#     main()/run_threat_intel_for_dashboard() — workflow/engine.py only calls
 #     the dashboard-facing entry points listed above.
 #
 # Calls:
@@ -1145,7 +1145,7 @@ def flatten_alert_for_enrichment(alert: Dict[str, Any]) -> Dict[str, Any]:
 # [FYP-INPUT] Parameters: `incident`, `triage_result`, `normalised_alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_threat_intel; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_threat_intel; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first_am`, `dict`, `get`, `is_available`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

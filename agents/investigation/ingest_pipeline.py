@@ -4,7 +4,7 @@
 # =============================================================================
 # File: soc_investigation_agent_revised/ingest_pipeline.py
 # Purpose: [FYP-PROCESS] Raw-log normalization layer — turns a single raw
-#   alert JSON file (as handed off by soc_workflow.py's
+#   alert JSON file (as handed off by workflow/engine.py's
 #   handoff_to_investigation() into triaged_alerts/) into the standard
 #   in-memory alert dict shape ({"id", "document", "metadata", ["alerts"]})
 #   used everywhere else in this subsystem: ChromaDB ingestion

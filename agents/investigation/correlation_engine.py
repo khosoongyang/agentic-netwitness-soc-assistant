@@ -72,7 +72,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `base_folder`, `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `ChromaIncidentVectorStore`, `FileIncidentRepository`, `IncidentSyncManager`, `load_active_incidents`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

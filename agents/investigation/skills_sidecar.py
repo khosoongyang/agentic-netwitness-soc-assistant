@@ -621,7 +621,7 @@ def _build_narrative(diamond, verdict, corr, mitigation, sop=None, compliance=No
 # [FYP-INPUT] Parameters: `incident`, `triage_result`, `investigation_result`, `ti_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_sidecar, skills_sidecar.py:<module>, soc_workflow.py:handoff_to_reporting; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_sidecar, skills_sidecar.py:<module>, workflow/engine.py:handoff_to_reporting; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_assets_from_skills`, `_build_narrative`, `_collect_asset`, `_collect_compliance`, `_collect_correlation`, `_collect_diamond`, `_collect_final_verdict`, `_collect_mitigation`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -715,7 +715,7 @@ def _merge_lists(existing: Any, extra: list, key=lambda x: str(x).strip().lower(
 # [FYP-INPUT] Parameters: `investigation_result`, `bundle`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include skills_sidecar.py:<module>, soc_workflow.py:handoff_to_reporting; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include skills_sidecar.py:<module>, workflow/engine.py:handoff_to_reporting; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_as_list`, `_merge_lists`, `dict`, `get`, `isinstance`, `lower`, `str`, `strip`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

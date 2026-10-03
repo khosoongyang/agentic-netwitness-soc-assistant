@@ -25,12 +25,12 @@ reporting_approval.py — the ONLY caller of
 workflow_state_store.commit_reporting_approval(), and the sole place that
 validates a Reporting candidate set before approving it.
 
-Layering (see workflow_state_store.py's own module docstring for the
-symmetric statement from its side): workflow_state_store.py is a pure
+Layering (see workflow/state_store.py's own module docstring for the
+symmetric statement from its side): workflow/state_store.py is a pure
 database layer — SQLite schema, atomic compare-and-swap, approval-history
 insertion, workflow-state transitions — and must never touch the
 filesystem. This module is where filesystem/hash/DOCX/PDF/manifest
-validation actually happens; it calls into workflow_state_store only once
+validation actually happens; it calls into workflow.state_store only once
 it has already fully validated the candidate set, handing over
 already-computed metadata for a pure DB write. app.py's Reporting tab
 calls approve_reporting_candidate() directly — never

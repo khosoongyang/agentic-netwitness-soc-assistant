@@ -1,7 +1,7 @@
 """Thin command adapter over Aegis's existing workflow implementation.
 
 No transition rules are implemented by Flask or JavaScript. Commands call
-the existing atomic transitions in ``workflow_state_store`` and the existing
+the existing atomic transitions in ``workflow.state_store`` and the existing
 workers in ``soc_workflow``. Background threads are only an in-process
 execution adapter.
 """

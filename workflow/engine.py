@@ -3,7 +3,7 @@
 # [FYP-FILE] FILE OVERVIEW
 # =============================================================================
 # File:
-#   soc_workflow.py
+#   workflow/engine.py
 #
 # Purpose:
 #   THE ORCHESTRATION ENGINE for the Aegis SOC platform. This is a headless,
@@ -15,7 +15,7 @@
 #   imports functions from this module directly and invokes them through the
 #   durable, human-gated flow; this file itself
 #   also exposes a `main()` CLI entry point that runs the whole chain
-#   headlessly (`python soc_workflow.py --incident-file ...`).
+#   headlessly (`python -m workflow.engine --incident-file ...`).
 #
 # Main functionalities:
 #   1. Stage routing: run_stage_chain() executes whichever stage the
@@ -52,7 +52,7 @@
 #   Sits BETWEEN the UI (app.py) and the four stage subsystems. app.py calls
 #   into this module's functions on each analyst-triggered stage action; this
 #   module does not itself gate on human approval or lock stages in the UI
-#   sense — see workflow_state_store.py / app.py session state for that.
+#   sense — see workflow/state_store.py / app.py session state for that.
 #
 # Called by:
 #   workflow/commands.py, via the durable stage-chain entry points
@@ -64,11 +64,11 @@
 # Calls:
 #   soc_triage_agent (TriageAgent, OpenAILLMConfig), soc_investigation_agent_revised/
 #   (via subprocess/file-queue), soc_reporting_agent/ (via its own adapter),
-#   workflow_state_store.py (wss), workflow_validation.py (wv), nw_alerts.py
+#   workflow/state_store.py (wss), workflow_validation.py (wv), nw_alerts.py
 #   (_merge_alert_digest), soc_db/soc_pipeline.db (sqlite3).
 #
 # Important dependencies:
-#   workflow_state_store, workflow_validation, nw_alerts — all repo-root
+#   workflow.state_store, workflow_validation, nw_alerts — all repo-root
 #   siblings documented separately.
 #
 # Important side effects:
@@ -86,7 +86,7 @@
 #   [FYP-FLOW], [FYP-DECISION], [FYP-RERUN], [FYP-STAGE-LOCK]
 # =============================================================================
 
-soc_workflow.py — SOC multi-agent workflow orchestrator
+workflow/engine.py — SOC multi-agent workflow orchestrator
 ========================================================
 Code-driven "puppet master" connecting four stages:
 
@@ -118,9 +118,9 @@ six stage tables that app.py renders in its Pipeline DB tab:
 
 Usage (headless)
 ----------------
-  python soc_workflow.py --incident-file demo/sample_incident.json
-  python soc_workflow.py --incident-file demo/sample_incident.json --mock-triage
-  python soc_workflow.py --incident-file demo/sample_incident.json --skip-investigation
+  python -m workflow.engine --incident-file demo/sample_incident.json
+  python -m workflow.engine --incident-file demo/sample_incident.json --mock-triage
+  python -m workflow.engine --incident-file demo/sample_incident.json --skip-investigation
 """
 
 from __future__ import annotations
@@ -766,7 +766,7 @@ def load_raw_incident_for_run(incident_id: str, run_id: str) -> dict | None:
 def load_data_availability_for_run(incident_id: str, run_id: str) -> dict | None:
     """[FYP-FUNCTION] Companion to load_raw_incident_for_run() — returns the fetch-outcome
     metadata stamped alongside the incident, or None for a legacy artifact
-    (predating this metadata) or a missing/invalid one. case_view.py must
+    (predating this metadata) or a missing/invalid one. backend/services/case_view_service.py must
     treat None the same as "unavailable / assume incomplete", never as
     "assume complete"."""
     state = wss.get_state(incident_id)
@@ -810,7 +810,7 @@ def load_parsing_result_for_run(incident_id: str, run_id: str) -> dict | None:
 # ══════════════════════════════════════════════════════════════════════════════
 # The pure database transactions (claim_stage, renew_stage_lease,
 # release_stage_lease, complete_stage, the global execution lock functions,
-# StageClaimError/GlobalLockBusyError) now live in workflow_state_store.py —
+# StageClaimError/GlobalLockBusyError) now live in workflow/state_store.py —
 # that module owns the schema and every atomic transaction; this module owns
 # worker EXECUTION: the background renewal thread, subprocess invocation,
 # and stage chaining. A stage function must atomically CLAIM its stage (no
@@ -870,7 +870,7 @@ class LeaseRenewer:
     # [FYP-INPUT] Parameters: `incident_id`, `run_id`, `worker_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `Event`, `Thread`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -888,7 +888,7 @@ class LeaseRenewer:
     # [FYP-INPUT] Parameters: `lock_name`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include workflow/engine.py:run_investigation_stage, workflow/engine.py:run_reporting_stage; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -928,7 +928,7 @@ class LeaseRenewer:
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_workflow.py:resume_after_triage_approval, soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include workflow/engine.py:resume_after_triage_approval, workflow/engine.py:run_investigation_stage, workflow/engine.py:run_reporting_stage; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `join`, `set`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1345,7 +1345,7 @@ def _flatten_dict(d, prefix: str = "") -> dict:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:_mk, soc_workflow.py:handoff_to_reporting; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:_mk, workflow/engine.py:handoff_to_reporting; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1360,7 +1360,7 @@ def _scalar(value):
 # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert, soc_workflow.py:handoff_to_reporting; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:build_investigation_alert, workflow/engine.py:handoff_to_reporting; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_add`, `_flatten_dict`, `append`, `findall`, `get`, `group`, `keys`, `lower`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1433,7 +1433,7 @@ def _harvest_incident_context(incident: dict) -> dict:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:build_investigation_alert; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `float`, `fromisoformat`, `isinstance`, `isoformat`, `replace`, `str`, `strip`, `sub`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1462,7 +1462,7 @@ def _to_iso_timestamp(value) -> str:
 # [FYP-INPUT] Parameters: `d`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert, soc_workflow.py:prune_empty; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:build_investigation_alert, workflow/engine.py:prune_empty; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `items`, `prune_empty`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1554,7 +1554,7 @@ def build_investigation_threat_intel_context(threat_intel_result: dict | None) -
 # [FYP-INPUT] Parameters: `triage_result`, `incident`, `supplement`, `threat_intel_result`, `parsing_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_playbook, soc_workflow.py:handoff_to_investigation; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_playbook, workflow/engine.py:handoff_to_investigation; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_amlist`, `_cmdlines`, `_first`, `_harvest_incident_context`, `_mk`, `_mklist`, `_process_lineage`, `_to_iso_timestamp`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1572,7 +1572,7 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     # [FYP-INPUT] Parameters: `key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include workflow/engine.py:build_investigation_alert; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_scalar`, `get`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1585,7 +1585,7 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     # [FYP-INPUT] Parameters: `*keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_workflow.py:_cmdlines, soc_workflow.py:_process_lineage, soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include workflow/engine.py:_cmdlines, workflow/engine.py:_process_lineage, workflow/engine.py:build_investigation_alert; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `fromkeys`, `get`, `isinstance`, `list`, `str`, `strip`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1603,7 +1603,7 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     # [FYP-INPUT] Parameters: `*keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_workflow.py:_cmdlines, soc_workflow.py:_process_lineage, soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include workflow/engine.py:_cmdlines, workflow/engine.py:_process_lineage, workflow/engine.py:build_investigation_alert; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `fromkeys`, `get`, `isinstance`, `list`, `str`, `strip`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1621,7 +1621,7 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include workflow/engine.py:build_investigation_alert; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_amlist`, `_mklist`, `append`, `len`, `range`, `replace`, `split`, `str`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1651,7 +1651,7 @@ def build_investigation_alert(triage_result: dict, incident: dict,
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_workflow.py:build_investigation_alert; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include workflow/engine.py:build_investigation_alert; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_amlist`, `_mklist`, `add`, `append`, `get`, `isinstance`, `set`, `str`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1999,7 +1999,7 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
     # [FYP-INPUT] Parameters: `event`, `detail`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, soc_triage_agent/soc_triage_agent.py:_call, soc_triage_agent/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, agents/triage/soc_triage_agent.py:_call, agents/triage/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `feedback_cb`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -2136,7 +2136,7 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
 # [FYP-INPUT] Parameters: `inv`, `triage_classification`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_investigation; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_investigation; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `capitalize`, `get`, `lower`, `rstrip`, `str`, `strip`, `upper`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2806,7 +2806,7 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
 # [FYP-INPUT] Parameters: `exports`, `run_stamp`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_reporting; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_reporting; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `copy2`, `dict`, `get`, `mkdir`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -2953,7 +2953,7 @@ def run_reporting(ticket_id: str, timeout: int = 900,
 # [FYP-INPUT] Parameters: `incident_id`, `timeout`, `reporting_output_dir`, `run_id`, `reporting_stage_attempt`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_reporting; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_reporting; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `_log`, `_run_subprocess`, `append`, `bool`, `exists`, `get`, `len`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -3019,7 +3019,7 @@ def export_report_documents(incident_id: str | None, timeout: int = 180, *,
 # [FYP-INPUT] Parameters: `incident`, `host`, `token`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_until_triage_approval; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_until_triage_approval; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_log`, `_merge_alert_digest`, `dict`, `get`, `get_comprehensive_incident_payload`, `isinstance`, `items`, `len`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -3085,11 +3085,11 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
 
     [FYP-ERROR] [FYP-FALLBACK]: any Parsing or Triage exception/non-
     "completed" status is caught, recorded into ctx["errors"], the relevant
-    workflow_state_store statuses are set to "Failed"/"Blocked", and the
+    workflow.state_store statuses are set to "Failed"/"Blocked", and the
     function returns EARLY with that partial ctx — it never raises those
     stage errors upward. The IOC correlation snapshot is explicitly
     best-effort/non-fatal: a failure there is logged and recorded as
-    status="Failed" in workflow_state_store, but Triage still proceeds to
+    status="Failed" in workflow.state_store, but Triage still proceeds to
     "Awaiting Approval" normally.
 
     Raises workflow_state_store.WorkflowAlreadyRunningError if a run is
@@ -3122,7 +3122,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     [FYP-CALLS]: pipeline_db_init(), enrich_incident_with_apiretrieval_fetch(),
     run_parsing(), run_triage()/mock_triage_result(), generate_triage_ai_summary(),
     pipeline_insert() (x3: alerts_to_triage, initial_ticket, workflow_runs),
-    workflow_state_store (wss.*), workflow_validation (wv.*), ioc_correlation.
+    workflow.state_store (wss.*), workflow_validation (wv.*), ioc_correlation.
     [FYP-USED-BY]: app.py, imported as `wf_run_until_triage_approval`
     (only non-underscore-prefixed alias used directly, per the module's
     dead-import cleanup note above).
@@ -3154,7 +3154,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     # Alongside it, stamp REAL fetch-outcome metadata (not merely
     # bool(incident.get("alerts"))) — an empty-but-successfully-fetched
     # alert list is genuinely different from a fetch that failed or was
-    # never attempted, and case_view.py must be able to tell them apart
+    # never attempted, and backend/services/case_view_service.py must be able to tell them apart
     # (see _data_availability()).
     # [FYP-TRIAGE-STEP2] Computed once and reused for Triage below, so the
     # combined path triages on exactly the fetch outcome it persisted.
@@ -3177,7 +3177,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     # [FYP-INPUT] Parameters: `event`, `label`, `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, soc_triage_agent/soc_triage_agent.py:_call, soc_triage_agent/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, agents/triage/soc_triage_agent.py:_call, agents/triage/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `progress_fn`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -4298,7 +4298,7 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
 
     Returns:
         None always — outcomes are observable only via
-        workflow_state_store's persisted status columns (this function is
+        workflow.state_store's persisted status columns (this function is
         fire-and-forget from the caller's point of view).
 
     [FYP-CALLS]: run_triage_stage(), resume_after_triage_approval(), run_investigation_stage(),
@@ -4357,13 +4357,13 @@ def run_stage_chain(incident_id: str, run_id: str) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# [FYP-SECTION] 9.  CLI  [FYP-ENTRY-POINT] main() — `python soc_workflow.py --incident-file ...`
+# [FYP-SECTION] 9.  CLI  [FYP-ENTRY-POINT] main() — `python -m workflow.engine --incident-file ...`
 # ══════════════════════════════════════════════════════════════════════════════
 
 def main() -> int:
     """
     [FYP-FUNCTION] [FYP-ENTRY-POINT] Headless CLI Entry Point
-    [FYP-EVALUATOR]: `python soc_workflow.py --incident-file demo/sample_incident.json`
+    [FYP-EVALUATOR]: `python -m workflow.engine --incident-file demo/sample_incident.json`
     — the standalone, no-UI way to exercise Parsing -> Triage without
     launching app.py at all. Useful for a quick evaluator smoke test or for
     CI-style regression checks against a canned incident file.
@@ -4480,5 +4480,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    # [FYP-ENTRY-POINT]: `python soc_workflow.py --incident-file ...`
+    # [FYP-ENTRY-POINT]: `python -m workflow.engine --incident-file ...`
     raise SystemExit(main())

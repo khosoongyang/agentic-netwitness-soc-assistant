@@ -14,7 +14,7 @@
 #   stage (Triage, Investigation, Reporting) can rely on.
 #
 # Rule-based, NOT LLM-based:
-#   Per soc_workflow.py's own module header ("0. Parsing ... in-process
+#   Per workflow/engine.py's own module header ("0. Parsing ... in-process
 #   (regex/rule-based, no LLM for the extraction itself)"), everything in
 #   this file is deterministic Python: dictionary lookups (FIELD_ALIASES),
 #   regular expressions (EMAIL_RE, FILE_RE, HASH_RE, IP_RE), string/date
@@ -51,12 +51,12 @@
 #     (kept separate for analyst-facing cleanliness vs debug traceability).
 #
 # Workflow position:
-#   Stage 0 of soc_workflow.py's 4-stage pipeline (Parsing -> Triage ->
+#   Stage 0 of workflow/engine.py's 4-stage pipeline (Parsing -> Triage ->
 #   Investigation -> Reporting). Parsing output (processed_alert) is passed
 #   forward as `parsed_context` into the Triage stage.
 #
 # Called by (confirmed via `grep -rn "parser_normaliser" .`):
-#   - soc_workflow.py, function run_parsing() (~line 693): imports
+#   - workflow/engine.py, function run_parsing() (~line 693): imports
 #     run_parser_normalisation_for_dashboard from this module and invokes it
 #     for the in-process dashboard/orchestrator pipeline.
 #   - soc_reporting_agent/adapters/run_parser_normalisation.py: CLI/subprocess
@@ -3122,7 +3122,7 @@ def build_agent_friendly_processed_alert(normalised_alert: Dict[str, Any]) -> Di
 # [FYP-INPUT] Parameters: `raw_alert`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_workflow.py:run_parsing; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, workflow/engine.py:run_parsing; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `build_agent_friendly_processed_alert`, `build_standard_alert`, `get`, `isoformat`, `len`, `make_json_safe`, `now`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

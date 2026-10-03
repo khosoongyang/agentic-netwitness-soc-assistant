@@ -458,9 +458,9 @@ def _investigation_recommended_containment_actions(narrative_report: str) -> lis
 
 # Column-header aliases for the MITRE ATT&CK table mitre_mapper.
 # generate_markdown_table() writes (orchestrator.FinalIncidentAnalysis.
-# mitre_mappings / mitre_mapper.MitreTTPMapping). Mirrors case_view.py's own
+# mitre_mappings / mitre_mapper.MitreTTPMapping). Mirrors backend/services/case_view_service.py's own
 # _MITRE_HEADER_ALIASES so the reporting handoff parses the identical table
-# the Investigation stage's own MITRE ATT&CK tab reads — case_view.py cannot
+# the Investigation stage's own MITRE ATT&CK tab reads — backend/services/case_view_service.py cannot
 # be imported here (it imports this module), so the small deterministic
 # parser is intentionally duplicated rather than shared.
 _MITRE_HEADER_ALIASES = {
@@ -600,7 +600,7 @@ def _render_stage_progress_plain(
     """[FYP-FUNCTION] [FYP-STATE] Timestamped stage progress from the durable workflow ledger.
     Reconstructs a plain-text, deduplicated timeline (started/completed/
     approved/rejected) for one stage by filtering `activity` (the workflow
-    ledger's event log — see workflow_state_store.py) down to events for
+    ledger's event log — see workflow/state_store.py) down to events for
     this stage's aliases, then synthesises a synthetic "started" line from
     worker_started_at and a synthetic terminal line from the stage's status
     column when the ledger itself has no explicit matching event yet — so

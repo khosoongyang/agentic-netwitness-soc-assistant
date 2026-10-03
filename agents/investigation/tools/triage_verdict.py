@@ -30,7 +30,7 @@
 #   (asset_criticality.py, ioc_correlation.py, threat_intel.py). Consumed by
 #   the Map/Overview panel and reused by final_verdict.py as the triage-time
 #   baseline it refines with investigation-side substantiation.
-# Called by [FYP-USED-BY]: case_view.py (`from triage_verdict import
+# Called by [FYP-USED-BY]: backend/services/case_view_service.py (`from triage_verdict import
 #   aggregate_verdict`, Overview builder), app.py (`_build_case_findings`
 #   Key Findings builder and the Map panel's Unified Verdict card — both
 #   confirmed via grep), eval_harness.py (`_c_verdict` regression check),
@@ -285,7 +285,7 @@ def aggregate_verdict(incident: dict, triage_result: dict | None = None,
          names of signals that errored or were never supplied.
 
     Callers should pass triage_result/ti_result/investigation_result
-    whenever those stages have actually persisted a result (case_view.py's
+    whenever those stages have actually persisted a result (backend/services/case_view_service.py's
     Overview builder always does) — calling this bare (incident only) is
     what caused the Overview's old "Base Severity" finding to silently fall
     back to the raw incident's own priority/severity field instead of ever
@@ -294,7 +294,7 @@ def aggregate_verdict(incident: dict, triage_result: dict | None = None,
     Returns {"available": False, "reason": ...} instead of a verdict when
     NW_DISABLE_TRIAGE_VERDICT is set — see the file header kill switch.
 
-    [FYP-USED-BY]: case_view.py, app.py, eval_harness.py, skills_sidecar.py,
+    [FYP-USED-BY]: backend/services/case_view_service.py, app.py, eval_harness.py, skills_sidecar.py,
     final_verdict.py._triage_base() (see file header for full detail)."""
     if os.environ.get("NW_DISABLE_TRIAGE_VERDICT"):
         return {"available": False, "reason": "disabled via NW_DISABLE_TRIAGE_VERDICT"}

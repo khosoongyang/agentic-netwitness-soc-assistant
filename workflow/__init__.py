@@ -1,6 +1,6 @@
 """Canonical Aegis workflow adapters.
 
-The durable state machine remains in :mod:`workflow_state_store`; this
+The durable state machine remains in :mod:`workflow.state_store`; this
 package only exposes application-facing command adapters.
 """
 

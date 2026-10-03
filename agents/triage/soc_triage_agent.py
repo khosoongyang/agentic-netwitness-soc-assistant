@@ -2,7 +2,7 @@
 # [FYP-FILE] FILE OVERVIEW
 # Important dependencies: __future__, dataclasses, datetime, hashlib, json, langchain_core, langchain_openai, os.
 # =============================================================================
-# File: soc_triage_agent/soc_triage_agent.py
+# File: agents/triage/soc_triage_agent.py
 # Purpose: This module performs LLM-assisted SOC triage, tool routing, ticket construction, and chatbot responses.
 # Main functionality: OpenAILLMConfig, _provider_supports_json_mode, build_llm, _normalize_mitre_tactic, _normalize_mitre_technique, _ticket_db_init.
 # Inputs: Function parameters, configured environment values, persisted artifacts,
@@ -93,7 +93,7 @@ _ASSESSMENT_KEYS = ("proposed_disposition", "disposition", "hypotheses",
 
 # [FYP-CLASS] `OpenAILLMConfig` — owns OpenAILLMConfig state or behaviour for the triage component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include app.py:get_openai_cfg, soc_triage_agent/soc_triage_agent.py:__init__, soc_triage_agent/soc_triage_agent.py:deep_triage_supplement.
+# [FYP-USED-BY] Static constructor/type references include app.py:get_openai_cfg, agents/triage/soc_triage_agent.py:__init__, agents/triage/soc_triage_agent.py:deep_triage_supplement.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -131,7 +131,7 @@ class OpenAILLMConfig:
 # [FYP-INPUT] Parameters: `base_url`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:__init__, soc_triage_agent/soc_triage_agent.py:deep_triage_supplement; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:__init__, agents/triage/soc_triage_agent.py:deep_triage_supplement; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `lower`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -177,7 +177,7 @@ def _llm_key_configured(key: str | None) -> bool:
 # [FYP-INPUT] Parameters: `cfg`, `json_mode`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:__init__, soc_triage_agent/soc_triage_agent.py:deep_triage_supplement, soc_triage_agent/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:__init__, agents/triage/soc_triage_agent.py:deep_triage_supplement, agents/triage/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `ChatOpenAI`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -373,7 +373,7 @@ MITRE_TACTICS = [
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `lower`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -392,7 +392,7 @@ def _normalize_mitre_tactic(value) -> str:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `join`, `lower`, `split`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -427,7 +427,7 @@ _TICKET_LOCK = threading.Lock()
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:<module>; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:<module>; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `commit`, `connect`, `execute`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -467,7 +467,7 @@ def _ticket_db_init() -> None:
 # [FYP-INPUT] Parameters: `s`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_next_unc; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_next_unc; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `chr`, `join`, `len`, `list`, `ord`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -487,7 +487,7 @@ def _increment_suffix(s: str) -> str:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_increment_suffix`, `commit`, `connect`, `execute`, `fetchone`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -513,7 +513,7 @@ def _next_unc() -> str:
 # [FYP-INPUT] Parameters: `unc`, `incident_id`, `severity`, `payload`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `commit`, `connect`, `dumps`, `execute`, `isoformat`, `str`, `now(timezone.utc)`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -548,7 +548,7 @@ def _store_ticket(unc: str, incident_id: str, severity: str, payload: dict) -> N
 # [FYP-INPUT] Parameters: `incident`, `parsed_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dumps`, `encode`, `get`, `hexdigest`, `isinstance`, `len`, `sha256`, `sorted`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -633,7 +633,7 @@ def _incident_fingerprint(incident: dict, parsed_context: dict | None = None,
 # [FYP-INPUT] Parameters: `fingerprint`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `connect`, `execute`, `fetchone`, `loads`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -653,7 +653,7 @@ def _cache_get(fingerprint: str) -> dict | None:
 # [FYP-INPUT] Parameters: `fingerprint`, `incident_id`, `result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `commit`, `connect`, `dumps`, `execute`, `isoformat`, `str`, `now(timezone.utc)`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -681,7 +681,7 @@ _ticket_db_init()
 # [FYP-INPUT] Parameters: `parsed`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_extract_json; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_extract_json; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `update`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -707,7 +707,7 @@ def _coerce_dict(parsed: Any) -> dict:
 # [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_repair_json, soc_triage_agent/soc_triage_agent.py:_run_cls, soc_triage_agent/soc_triage_agent.py:_run_ioc; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_repair_json, agents/triage/soc_triage_agent.py:_run_cls, agents/triage/soc_triage_agent.py:_run_ioc; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_coerce_dict`, `finditer`, `group`, `list`, `loads`, `range`, `replace`, `reversed`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -752,7 +752,7 @@ _SEV_ORDER    = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 # [FYP-INPUT] Parameters: `value`, `default`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `lower`, `startswith`, `strip`, `sub`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -781,7 +781,7 @@ def _normalize_level(value: str | None, default: str) -> str:
 # [FYP-INPUT] Parameters: `raw_text`, `required_keys`, `llm`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_run_cls, soc_triage_agent/soc_triage_agent.py:_run_ioc, soc_triage_agent/soc_triage_agent.py:_run_risk; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_run_cls, agents/triage/soc_triage_agent.py:_run_ioc, agents/triage/soc_triage_agent.py:_run_risk; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `HumanMessage`, `StrOutputParser`, `SystemMessage`, `_extract_json`, `from_messages`, `invoke`, `join`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -815,12 +815,14 @@ def _repair_json(raw_text: str, required_keys: list[str], llm: ChatOpenAI) -> di
 # [FYP-INPUT] Parameters: `text_chain`, `thinking_container`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_call, soc_triage_agent/soc_triage_agent.py:deep_triage_supplement; dynamic framework calls may add callers.
-# [FYP-CALLS] Calls: `invoke`, `isinstance`, `len`, `markdown`, `str`, `stream`.
-# [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_call, agents/triage/soc_triage_agent.py:deep_triage_supplement; dynamic framework calls may add callers.
+# [FYP-CALLS] Calls: `invoke`.
+# [FYP-ERROR] No local fallback; provider errors propagate to the caller.
 
 def _stream_or_invoke(text_chain, thinking_container=None) -> str:
-    """Invoke the chain; the optional argument remains for API compatibility."""
+    """Invoke the chain. [AUDIT T-22] `thinking_container` is ignored (the
+    old Streamlit streaming UI is gone); it is kept only so existing callers
+    and the TriageAgent / deep_triage_supplement signatures stay compatible."""
     return text_chain.invoke({})
 
 
@@ -930,7 +932,7 @@ def _prompt_signatures(alerts: list,
 # [FYP-INPUT] Parameters: `incident`, `parsed_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_run_cls, soc_triage_agent/soc_triage_agent.py:_run_ioc, soc_triage_agent/soc_triage_agent.py:_run_risk; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_run_cls, agents/triage/soc_triage_agent.py:_run_ioc, agents/triage/soc_triage_agent.py:_run_risk; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `dumps`, `get`, `isinstance`, `items`, `len`, `list`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1149,7 +1151,7 @@ _TIME_FIELDS = [
 # [FYP-INPUT] Parameters: `d`, `prefix`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_extract_incident_time, soc_triage_agent/soc_triage_agent.py:_extract_metakey_values, soc_triage_agent/soc_triage_agent.py:_flatten; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_extract_incident_time, agents/triage/soc_triage_agent.py:_extract_metakey_values, agents/triage/soc_triage_agent.py:_flatten; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_flatten`, `enumerate`, `isinstance`, `items`, `str`, `update`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1171,7 +1173,7 @@ def _flatten(d: Any, prefix: str = "") -> dict:
 # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_flatten`, `get`, `len`, `str`, `strftime`, `strip`, `strptime`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1253,7 +1255,7 @@ _METAKEY_NOISE = {"", "unknown", "none", "null", "n/a", "-", "0.0.0.0",
 # [FYP-INPUT] Parameters: `incident`, `metakeys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_flatten`, `append`, `endswith`, `get`, `isdigit`, `join`, `keys`, `len`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1315,7 +1317,7 @@ def _extract_metakey_values(incident: dict, metakeys: list[str]) -> dict:
 # [FYP-INPUT] Parameters: `raw_items`, `ioc_list`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_run_ioc; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_run_ioc; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_add`, `enumerate`, `findall`, `fullmatch`, `group`, `int`, `isinstance`, `lower`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1385,7 +1387,7 @@ def _resolve_ioc_matches(raw_items: Any, ioc_list: list[dict]) -> list[int]:
 
 # [FYP-CLASS] `TriageAgent` — owns TriageAgent state or behaviour for the triage component.
 # [FYP-PROCESS] Important methods: __init__, _emit, _call, _run_ioc, _run_risk, _run_cls, triage.
-# [FYP-USED-BY] Static constructor/type references include soc_triage_agent/soc_triage_agent.py:soc_triage_chat_respond, soc_workflow.py:run_triage.
+# [FYP-USED-BY] Static constructor/type references include agents/triage/soc_triage_agent.py:soc_triage_chat_respond, workflow/engine.py:run_triage.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -1409,7 +1411,7 @@ class TriageAgent:
     # [FYP-INPUT] Parameters: `cfg`, `progress_fn`, `thinking_container`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `OpenAILLMConfig`, `_provider_supports_json_mode`, `build_llm`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1442,7 +1444,7 @@ class TriageAgent:
     # [FYP-INPUT] Parameters: `event`, `label`, `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, soc_triage_agent/soc_triage_agent.py:_call, soc_triage_agent/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include osquery_investigation.py:format_pack, agents/triage/soc_triage_agent.py:_call, agents/triage/soc_triage_agent.py:_run_cls; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `progress_fn`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1457,7 +1459,7 @@ class TriageAgent:
     # [FYP-INPUT] Parameters: `messages`, `phase_label`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_run_cls, soc_triage_agent/soc_triage_agent.py:_run_ioc, soc_triage_agent/soc_triage_agent.py:_run_risk; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_run_cls, agents/triage/soc_triage_agent.py:_run_ioc, agents/triage/soc_triage_agent.py:_run_risk; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `StrOutputParser`, `_emit`, `_stream_or_invoke`, `from_messages`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1483,7 +1485,7 @@ class TriageAgent:
     # [FYP-INPUT] Parameters: `incident`, `parsed_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `HumanMessage`, `SystemMessage`, `_call`, `_compact_incident`, `_emit`, `_extract_json`, `_repair_json`, `_resolve_ioc_matches`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1494,7 +1496,7 @@ class TriageAgent:
         # [FYP-INPUT] Parameters: `ioc_list`, `offset`; values come from its direct caller, route, UI event, fixture, or stage handoff.
         # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
         # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-        # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:_run_ioc; dynamic framework calls may add callers.
+        # [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:_run_ioc; dynamic framework calls may add callers.
         # [FYP-CALLS] Calls: `enumerate`, `join`.
         # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1625,7 +1627,7 @@ class TriageAgent:
     # [FYP-INPUT] Parameters: `incident`, `ioc_summary`, `parsed_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `HumanMessage`, `SystemMessage`, `_call`, `_compact_incident`, `_emit`, `_extract_json`, `_repair_json`, `get`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1686,7 +1688,7 @@ class TriageAgent:
     # [FYP-INPUT] Parameters: `incident`, `risk_level`, `ioc_summary`, `parsed_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:triage; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:triage; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `HumanMessage`, `SystemMessage`, `_call`, `_compact_incident`, `_emit`, `_extract_json`, `_repair_json`, `dumps`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1755,7 +1757,7 @@ class TriageAgent:
     # [FYP-INPUT] Parameters: `incident`, `force`, `parsed_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:soc_triage_chat_respond, soc_workflow.py:run_triage; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:soc_triage_chat_respond, workflow/engine.py:run_triage; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_cache_get`, `_cache_put`, `_emit`, `_extract_incident_time`, `_extract_metakey_values`, `_incident_fingerprint`, `_next_unc`, `_normalize_level`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1984,7 +1986,7 @@ class TriageAgent:
 # [FYP-INPUT] Parameters: `trace`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include app.py:<module>, soc_triage_agent/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, agents/triage/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `capitalize`, `extend`, `get`, `items`, `join`, `upper`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2045,7 +2047,7 @@ def render_triage_trace(trace: list[dict]) -> str:
 # [FYP-INPUT] Parameters: `ticket`, `include_header`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_run_triage_workflow_with_ui, soc_triage_agent/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, app.py:_run_triage_workflow_with_ui, agents/triage/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `get`, `join`, `upper`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2126,7 +2128,7 @@ _RETRIAGE_VIA_WORKFLOW_MSG = (
 # [FYP-INPUT] Parameters: `llm`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `StrOutputParser`, `SystemMessage`, `from_messages`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2188,7 +2190,7 @@ _STAGE_FACT_LABELS = {
 # [FYP-INPUT] Parameters: `case_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_triage_agent/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/triage/soc_triage_agent.py:soc_triage_chat_respond; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `get`, `isinstance`, `items`, `join`, `len`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2274,7 +2276,7 @@ def _format_case_context_for_prompt(case_context: dict) -> str:
 # [FYP-INPUT] Parameters: `incident`, `gaps`, `cfg`, `thinking_container`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis triage workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:investigate_with_feedback; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:investigate_with_feedback; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `OpenAILLMConfig`, `HumanMessage`, `StrOutputParser`, `SystemMessage`, `_extract_json`, `_provider_supports_json_mode`, `_repair_json`, `_stream_or_invoke`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

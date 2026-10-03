@@ -2,7 +2,7 @@
 # [FYP-FILE] FILE OVERVIEW
 # Important dependencies: __future__, datetime, json, pathlib, sqlite3, uuid.
 # =============================================================================
-# File: workflow_state_store.py  (repo root — ~1,382 lines before this
+# File: workflow/state_store.py  (repo root — ~1,382 lines before this
 #   documentation pass)
 # Purpose: THE single source of truth for per-incident workflow state. Owns
 #   the SQLite `incidents` table schema (every stage-status / approval-status
@@ -15,7 +15,7 @@
 #   spawn a thread, or touch any file other than DB_FILE itself. Stage
 #   EXECUTION (subprocess calls into soc_triage_agent /
 #   soc_investigation_agent_revised / soc_reporting_agent) lives entirely in
-#   soc_workflow.py; this module only records the outcome.
+#   workflow/engine.py; this module only records the outcome.
 # Main functionalities:
 #   1. [FYP-DATABASE] Schema ownership & additive migrations — db_init(),
 #      _ensure_workflow_columns(), _ensure_workflow_approvals_attempt_columns(),
@@ -56,20 +56,20 @@
 #   write.
 # Workflow position: Underlies EVERY stage transition in the Parsing ->
 #   Triage -> Threat Intel -> Investigation -> Reporting pipeline.
-#   soc_workflow.py calls it to record stage progress/results and to
+#   workflow/engine.py calls it to record stage progress/results and to
 #   claim/renew/release stage leases; app.py calls it directly for the
 #   approve/reject/rerun/begin_stage button handlers; reporting_approval.py
 #   and report_editing.py each import it for their own narrower slice
 #   (final Reporting approval, and analyst report edits, respectively).
-# Called by: app.py, soc_workflow.py, reporting_approval.py, report_editing.py,
-#   case_view.py, and several files under tests/ — confirmed via
-#   `grep -rn "import workflow_state_store\|from workflow_state_store"` from
+# Called by: app.py, workflow/engine.py, reporting_approval.py, report_editing.py,
+#   backend/services/case_view_service.py, and several files under tests/ — confirmed via
+#   `grep -rn "import workflow.state_store\|from workflow.state_store"` from
 #   the repo root against the current merge-final-evaluation branch content.
 # Calls: Python stdlib only (sqlite3, json, uuid, datetime, pathlib) — no
 #   import of any other project module, which is what keeps this the
-#   dependency-free base layer soc_workflow.py can safely import without a
-#   circular-import risk (soc_workflow.py imports this; this file must never
-#   import soc_workflow.py back).
+#   dependency-free base layer workflow/engine.py can safely import without a
+#   circular-import risk (workflow/engine.py imports this; this file must never
+#   import workflow/engine.py back).
 # Key evaluator search terms: WorkflowAlreadyRunningError, StaleWriteError,
 #   ApprovalConflictError, StageClaimError, GlobalLockBusyError,
 #   _atomic_stage_transition, approve_triage, approve_investigation,
@@ -79,7 +79,7 @@
 #   worker_lease_expires_at.
 # =============================================================================
 """
-workflow_state_store.py — shared per-incident workflow status persistence.
+workflow/state_store.py — shared per-incident workflow status persistence.
 
 Owns the `incidents` table schema in soc_db/soc_incidents.db (moved here,
 unchanged, from app.py's previous db_init()) plus the workflow-status
@@ -87,18 +87,18 @@ columns added for the Triage approval flow, and (this revision) the full
 Triage -> Threat Intelligence -> Investigation -> Reporting status model,
 the `workflow_approvals` audit table, and the atomic approve/reject
 transitions for all three mandatory-approval gates. Both app.py and
-soc_workflow.py import this module so there is exactly one writer and one
+workflow/engine.py import this module so there is exactly one writer and one
 schema owner.
 
 This module is a PURE database layer: it validates and records state
 transitions, but never runs a workflow stage and never spawns a worker
-thread. soc_workflow.py runs stages (including the stage-claim/lease
+thread. workflow/engine.py runs stages (including the stage-claim/lease
 machinery, which needs its own transactional access and lives there,
 reusing `_tx()` from here). Approving a stage only unlocks the next one
 (leaves it "Pending") — it never starts it; app.py starts the worker
 thread only when the analyst explicitly clicks that next stage's own
 Start Process button (see begin_stage()). Keeping this boundary strict
-avoids a circular import between this module and soc_workflow.py.
+avoids a circular import between this module and workflow/engine.py.
 
 Not related to soc_investigation_agent_revised/sync_engine.py, which
 persists Investigation-stage Incident objects + a Chroma vector index for
@@ -134,13 +134,13 @@ class WorkflowAlreadyRunningError(Exception):
     [FYP-STATE] [FYP-ERROR]
     Raised by start_run() when a workflow is already Processing or Awaiting
     Approval for this incident and cannot be replaced. Carries incident_id
-    and the full current state dict so the caller (app.py / soc_workflow.py)
+    and the full current state dict so the caller (app.py / workflow/engine.py)
     can report exactly what is already running instead of a generic error."""
     # [FYP-FUNCTION] `__init__` — implements the init operation used by the surrounding workflow orchestration and state workflow.
     # [FYP-INPUT] Parameters: `incident_id`, `state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `__init__`, `get`, `super`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -195,7 +195,7 @@ def db_connect() -> sqlite3.Connection:
     Called by: db_init(), get_state(), get_approval_history(),
     get_approved_reporting_sets(), get_activity(), get_report_edit(),
     list_report_edits() (all in this file), and directly by app.py
-    (confirmed via grep, `from workflow_state_store import db_connect`)
+    (confirmed via grep, `from workflow.state_store import db_connect`)
     instead of app.py defining its own connection helper.
     Canonical connection factory — app.py imports this instead of
     defining its own (db_upsert_incidents, db_get_incident, etc. all use it)."""
@@ -241,13 +241,13 @@ def _tx(fn):
     release_stage_lease(), complete_stage(), acquire_global_lock(),
     renew_global_lock(), release_global_lock(), record_activity(),
     upsert_report_edit(), discard_report_edit(). Also reused, via import, by
-    soc_workflow.py's own stage-claim/lease code.
+    workflow/engine.py's own stage-claim/lease code.
     Key decision: this is the ONE shared transaction shape in the whole
     module — no caller writes its own manual conditional
     rollback-then-reraise, which is what keeps every atomic write in this
     file provably all-or-nothing.
     Every guarded write in this module (and, via import, in
-    soc_workflow.py's stage-claim/lease/completion machinery) follows this
+    workflow/engine.py's stage-claim/lease/completion machinery) follows this
     exact shape — BEGIN IMMEDIATE, do work, COMMIT; on ANY exception, roll
     back only if a transaction is actually open, then re-raise. No caller
     does its own manual conditional rollback-then-reraise."""
@@ -280,7 +280,7 @@ def db_init() -> None:
     get_approved_reporting_sets(), get_activity(), get_report_edit(),
     list_report_edits() (every read/entry-point function in this module
     calls db_init() first to guarantee the schema exists) — plus directly by
-    app.py and soc_workflow.py at startup (confirmed via grep).
+    app.py and workflow/engine.py at startup (confirmed via grep).
     Calls: db_connect(), _ensure_workflow_columns(),
     _ensure_workflow_approvals_attempt_columns() (which itself calls
     _ensure_workflow_approvals_metadata_column()).
@@ -414,7 +414,7 @@ def db_init() -> None:
         # editable_reports.finalize_candidate_manifest() publishes it), and
         # every later reviewed-candidate materialisation
         # (status='materialised', then flipped in place to 'approved' by
-        # Phase 7 — see workflow_state_store.py's own module docstring
+        # Phase 7 — see workflow/state_store.py's own module docstring
         # convention of never overwriting an EARLIER row's data). No row is
         # ever deleted or its own past values overwritten; only its own
         # forward-only status/approved_at/approved_by may be filled in once.
@@ -691,7 +691,7 @@ def start_run(incident_id: str, *, allow_retry: bool = False) -> str:
     allow_retry=True, to fully restart Parsing/Triage after an Awaiting
     Approval run is abandoned — see rerun_stage()'s own docstring for why
     Parsing/Triage are NOT handled by rerun_stage() itself).
-    Called by: soc_workflow.py (confirmed via grep,
+    Called by: workflow/engine.py (confirmed via grep,
     `wss.start_run(...)`) when a new workflow run is kicked off or Parsing/
     Triage is retried.
     Calls: db_init(), WorkflowAlreadyRunningError, _tx().
@@ -815,7 +815,7 @@ def _guarded_update(incident_id: str, run_id: str | None, sets: dict) -> None:
 # The next several one-line functions all just forward to _guarded_update()
 # with one or two columns — kept deliberately trivial so the compare-and-swap
 # guard (run_id must match) lives in exactly one place. Called by
-# soc_workflow.py as it progresses each stage (Processing -> Complete/Failed
+# workflow/engine.py as it progresses each stage (Processing -> Complete/Failed
 # is written via complete_stage() instead — these setters are for the
 # lighter-weight interim/status-only writes and for triage's own path, which
 # predates complete_stage()).
@@ -823,7 +823,7 @@ def set_parsing_status(incident_id: str, run_id: str, status: str) -> None:
     """[FYP-FUNCTION] Set Parsing Status
     [FYP-STATE] Params: incident_id, run_id (str), status (str — e.g.
     "Processing"/"Completed"/"Failed", source: the parsing stage runner in
-    soc_workflow.py). Writes incidents.parsing_status. Calls:
+    workflow/engine.py). Writes incidents.parsing_status. Calls:
     _guarded_update()."""
     _guarded_update(incident_id, run_id, {"parsing_status": status})
 
@@ -832,7 +832,7 @@ def set_triage_status(incident_id: str, run_id: str, status: str) -> None:
     """[FYP-FUNCTION] Set Triage Status
     [FYP-STATE] Params: incident_id, run_id (str), status (str — e.g.
     "Processing"/"Awaiting Approval"/"Approved"/"Rejected", source: the
-    triage stage runner in soc_workflow.py). Writes incidents.triage_status.
+    triage stage runner in workflow/engine.py). Writes incidents.triage_status.
     Calls: _guarded_update()."""
     _guarded_update(incident_id, run_id, {"triage_status": status})
 
@@ -843,7 +843,7 @@ def set_workflow_status(incident_id: str, run_id: str, status: str, *,
     [FYP-STATE] [FYP-APPROVAL] Params: incident_id, run_id (str), status
     (str — one of "Processing"/"Awaiting Approval"/"Awaiting Action"/
     "Rejected"/"Complete", source: the calling stage runner in
-    soc_workflow.py), approval_stage (str | None — when given, also writes
+    workflow/engine.py), approval_stage (str | None — when given, also writes
     incidents.approval_stage, e.g. "triage"/"investigation"/"reporting",
     identifying WHICH gate the run is waiting on when status is "Awaiting
     Approval"). Writes incidents.workflow_status (+ approval_stage if
@@ -898,7 +898,7 @@ def save_stage_ai_summary(
     Side effects: UPDATE incidents SET {stage}_result_json=... — merges
     (dict.update) allowed_fields into the CURRENT result JSON read inside
     the SAME transaction, never overwriting the whole result.
-    Called by: soc_workflow.py's AI-summary generation helpers (confirmed
+    Called by: workflow/engine.py's AI-summary generation helpers (confirmed
     via grep, `wss.save_stage_ai_summary(...)`).
     Calls: _tx().
     Error handling: raises ValueError if `stage` doesn't map to a known
@@ -1021,7 +1021,7 @@ def get_state(incident_id: str) -> dict | None:
     column at once), or None if the incident has no row yet.
     Called by: reporting_approval.py (approve_reporting_candidate(),
     resolve_approved_report_file() via get_latest_approved_reporting_set()),
-    app.py, case_view.py, soc_workflow.py — the primary read entry point for
+    app.py, backend/services/case_view_service.py, workflow/engine.py — the primary read entry point for
     "what is this incident's workflow state right now" (confirmed via grep).
     Calls: db_init(), db_connect()."""
     db_init()
@@ -1037,7 +1037,7 @@ def get_approval_history(incident_id: str, run_id: str | None = None) -> list[di
     Params: incident_id (str), run_id (str | None — if given, scopes to one
     run; if None, returns every run's history for this incident).
     Returns: list[dict] of workflow_approvals rows, oldest decided_at first.
-    Called by: case_view.py's activity/history rendering (confirmed via
+    Called by: backend/services/case_view_service.py's activity/history rendering (confirmed via
     grep) to show every approve/reject decision ever made, across every
     stage_attempt of every stage.
     Calls: db_init(), db_connect().
@@ -1513,7 +1513,7 @@ def get_approved_reporting_sets(incident_id: str, run_id: str) -> list[dict]:
     derived from an actual workflow_approvals row (never a
     guessed/reconstructed path), because a stage_attempt number alone
     does not prove which exact candidate manifest an analyst reviewed.
-    Called by: case_view.py (confirmed via grep,
+    Called by: backend/services/case_view_service.py (confirmed via grep,
     `wss.get_approved_reporting_sets(incident_id, run_id)`) to render
     "Previously Approved Packages" — the historical approved sets —
     distinctly from whatever reporting_result_json currently holds (which
@@ -1771,7 +1771,7 @@ def rerun_pending_stage(incident_id: str, run_id: str, stage: str) -> dict:
     `rerun_pending_stage` (the previous UI-only entry point's name) still
     resolves without needing to be renamed everywhere.
     Called by: no confirmed production call site found via grep in app.py/
-    soc_workflow.py/case_view.py as of this documentation pass (only
+    workflow/engine.backend/services/case_view_service.py as of this documentation pass (only
     rerun_stage() itself is called directly there); kept for backward
     compatibility per its own docstring.
     Calls: rerun_stage()."""
@@ -1927,10 +1927,10 @@ def begin_stage(incident_id: str, run_id: str, stage: str) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# STAGE CLAIM / LEASE  (relocated from soc_workflow.py — pure database
+# STAGE CLAIM / LEASE  (relocated from workflow/engine.py — pure database
 # transactions only; no threading, no subprocess/stage execution here. The
 # background renewal THREAD (soc_workflow.LeaseRenewer) still lives in
-# soc_workflow.py, which owns worker execution — it just calls the
+# workflow/engine.py, which owns worker execution — it just calls the
 # renew_stage_lease()/renew_global_lock() functions below on its own
 # heartbeat. This module must never import threading or spawn a thread;
 # see tests/test_investigation_stage.py::test_workflow_state_store_has_no_threading_import.
@@ -1994,7 +1994,7 @@ def claim_stage(incident_id: str, run_id: str, *, stage: str,
     READ from the row's own `{stage}_attempt` column (never incremented
     here; only rerun_stage() ever advances it) so the caller can stamp it
     on whatever result gets persisted via complete_stage().
-    Called by: soc_workflow.py's per-stage runner functions (confirmed via
+    Called by: workflow/engine.py's per-stage runner functions (confirmed via
     grep, `claim_stage(` — run_threat_intel_stage/run_investigation_stage/
     run_reporting_stage-equivalent dispatchers) right after begin_stage()/
     rerun_stage() has flipped the stage to "Processing", and by
@@ -2106,7 +2106,7 @@ def release_stage_lease(incident_id: str, run_id: str, worker_id: str) -> None:
     worker_progress_note=NULL. Deliberately does NOT touch worker_started_at
     or worker_heartbeat_at.
     Returns: None.
-    Called by: soc_workflow.py's per-stage runners, in a `finally` block on
+    Called by: workflow/engine.py's per-stage runners, in a `finally` block on
     EVERY exit path — success, approval-gate reached, failure, superseded
     (confirmed via grep, `release_stage_lease(incident_id, run_id,
     worker_id)`) — so the lease is always released regardless of how the
@@ -2146,7 +2146,7 @@ def release_stage_lease(incident_id: str, run_id: str, worker_id: str) -> None:
 # [FYP-INPUT] Parameters: `incident_id`, `run_id`, `note`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_investigation_stage, workflow/engine.py:run_reporting_stage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_guarded_update`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -2165,7 +2165,7 @@ def set_worker_progress_note(incident_id: str, run_id: str, note: str | None) ->
 # [FYP-INPUT] Parameters: `incident_id`, `run_id`, `worker_id`, `stage`, `result_column`, `result`, `status_updates`, `expected_stage_attempt`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:resume_after_triage_approval, soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:resume_after_triage_approval, workflow/engine.py:run_investigation_stage, workflow/engine.py:run_reporting_stage; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_tx`, `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2265,7 +2265,7 @@ def complete_stage(incident_id: str, run_id: str, worker_id: str, *,
 # [FYP-INPUT] Parameters: `lock_name`, `owner_id`, `incident_id`, `run_id`, `ttl_seconds`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage, tests/test_investigation_stage.py:test_release_global_lock_is_owner_scoped; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_investigation_stage, workflow/engine.py:run_reporting_stage, tests/test_investigation_stage.py:test_release_global_lock_is_owner_scoped; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_tx`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2309,7 +2309,7 @@ def acquire_global_lock(lock_name: str, *, owner_id: str, incident_id: str, run_
 # [FYP-INPUT] Parameters: `lock_name`, `owner_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:_run, soc_workflow.py:run_investigation_stage, tests/test_investigation_stage.py:test_renew_global_lock_fails_after_reassignment; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:_run, workflow/engine.py:run_investigation_stage, tests/test_investigation_stage.py:test_renew_global_lock_fails_after_reassignment; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_tx`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -2349,7 +2349,7 @@ def renew_global_lock(lock_name: str, owner_id: str) -> bool:
 # [FYP-INPUT] Parameters: `lock_name`, `owner_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_investigation_stage, soc_workflow.py:run_reporting_stage, tests/test_investigation_stage.py:test_release_global_lock_is_owner_scoped; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_investigation_stage, workflow/engine.py:run_reporting_stage, tests/test_investigation_stage.py:test_release_global_lock_is_owner_scoped; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_tx`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -2379,7 +2379,7 @@ def release_global_lock(lock_name: str, owner_id: str) -> None:
 # [FYP-INPUT] Parameters: `con`, `incident_id`, `run_id`, `stage`, `action`, `actor`, `comments`, `metadata`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include workflow_state_store.py:_do; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/state_store.py:_do; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dumps`, `execute`, `isoformat`, `now`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2435,7 +2435,7 @@ def record_activity(incident_id: str, run_id: str | None, stage: str | None, act
 # [FYP-INPUT] Parameters: `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include app.py:<module>, case_view.py:build_activity; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, backend/services/case_view_service.py:build_activity; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `db_connect`, `db_init`, `dict`, `execute`, `fetchall`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

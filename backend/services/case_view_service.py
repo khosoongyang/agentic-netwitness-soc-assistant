@@ -3,7 +3,7 @@
 # [FYP-FILE] FILE OVERVIEW
 # Important dependencies: __future__, datetime, incident_map, json, re, soc_workflow, tactic_inference, triage_verdict.
 # =============================================================================
-# File: case_view.py
+# File: backend/services/case_view_service.py
 # Purpose: single backend aggregator for the "My Workspace" case-details
 #   page AND the source of the Ask Aegis chatbot's cross-stage context.
 # Main functionalities:
@@ -15,7 +15,7 @@
 #   2. [FYP-EVALUATOR] build_aegis_context(): THE Ask Aegis chatbot context
 #      builder — cumulative, size-bounded, cross-stage. See its own
 #      [FYP-FUNCTION] docstring further down this file.
-# Inputs: incident_id/run_id, read via workflow_state_store (wss) and
+# Inputs: incident_id/run_id, read via workflow.state_store (wss) and
 #   soc_workflow (sw) — this module is READ-ONLY, it never runs a stage.
 # Outputs: display-ready dicts, each non-trivial value wrapped in a
 #   provenance envelope ({"value", "source_stage", "source_field",
@@ -24,13 +24,13 @@
 #   and by the Ask Aegis chat panel, AFTER stages have produced results —
 #   this module never triggers stage execution itself.
 # Called by [FYP-USED-BY]: app.py (`cv.build_case_view`, `cv.build_aegis_context`).
-# Calls [FYP-CALLS]: workflow_state_store, soc_workflow, incident_map,
+# Calls [FYP-CALLS]: workflow.state_store, soc_workflow, incident_map,
 #   tactic_inference, triage_verdict.
 # Key evaluator search terms: build_aegis_context, build_case_view,
 #   [FYP-LLM], [FYP-RERUN]
 # =============================================================================
 
-case_view.py — single backend aggregator for the case-details page.
+backend/services/case_view_service.py — single backend aggregator for the case-details page.
 
 app.py must render Overview/Output/Timeline/MITRE ATT&CK/Entity Graph/Evidence/
 Activity from ONE call to build_case_view(incident_id, run_id) rather than
@@ -79,7 +79,7 @@ from agents.investigation.tools.triage_verdict import aggregate_verdict
 # [FYP-INPUT] Parameters: `value`, `source_stage`, `source_field`, `incident_id`, `run_id`, `updated_at`, `evidence_status`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_extract_agent_key_findings, case_view.py:build_overview; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_extract_agent_key_findings, backend/services/case_view_service.py:build_overview; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -95,7 +95,7 @@ def _provenance(value: Any, *, source_stage: str, source_field: str,
 # [FYP-INPUT] Parameters: `raw`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_collect_alert_titles, case_view.py:_confirmed_facts_block, case_view.py:_slim_incident_from_state; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_collect_alert_titles, backend/services/case_view_service.py:_confirmed_facts_block, backend/services/case_view_service.py:_slim_incident_from_state; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `loads`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -113,7 +113,7 @@ def _json_or_empty(raw: Any) -> dict:
 # [FYP-INPUT] Parameters: `state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:load_incident_for_case_view; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:load_incident_for_case_view; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_json_or_empty`, `get`, `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -126,7 +126,7 @@ def _slim_incident_from_state(state: dict) -> dict:
 # [FYP-INPUT] Parameters: `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_aegis_context, case_view.py:build_case_view; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_aegis_context, backend/services/case_view_service.py:build_case_view; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_slim_incident_from_state`, `get`, `get_state`, `len`, `load_data_availability_for_run`, `load_raw_incident_for_run`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -170,7 +170,7 @@ _UNIQUE_IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
 # [FYP-INPUT] Parameters: `alert_meta`, `*fields`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_overview; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_overview; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `get`, `match`, `split`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -197,7 +197,7 @@ def _unique_ips(alert_meta: dict, *fields: str) -> list[str]:
 # [FYP-INPUT] Parameters: `inv_result`, `triage_result`, `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_overview; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_overview; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_provenance`, `append`, `get`, `isinstance`, `len`, `lower`, `match`, `splitlines`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -983,7 +983,7 @@ def _build_investigation_key_findings(inv_result: dict | None) -> list[dict]:
 # [FYP-INPUT] Parameters: `incident`, `state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_overview; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_overview; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_json_or_empty`, `append`, `get`, `isinstance`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1257,7 +1257,7 @@ _MITRE_HEADER_ALIASES = {
 # [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_parse_mitre_markdown_table; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_parse_mitre_markdown_table; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `endswith`, `replace`, `split`, `startswith`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1278,7 +1278,7 @@ def _split_table_row(line: str) -> list[str]:
 # [FYP-INPUT] Parameters: `narrative_report`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_mitre, tests/test_investigation_stage.py:test_mitre_markdown_parser_extracts_rows, tests/test_investigation_stage.py:test_mitre_markdown_parser_handles_escaped_pipes; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_mitre, tests/test_investigation_stage.py:test_mitre_markdown_parser_extracts_rows, tests/test_investigation_stage.py:test_mitre_markdown_parser_handles_escaped_pipes; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_split_table_row`, `append`, `enumerate`, `items`, `len`, `lower`, `match`, `set`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1470,7 +1470,7 @@ def build_mitre(state: dict, incident: dict, incident_id: str, run_id: str) -> d
 # [FYP-INPUT] Parameters: `data_availability`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_entity_graph, case_view.py:build_evidence, case_view.py:build_timeline; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_entity_graph, backend/services/case_view_service.py:build_evidence, backend/services/case_view_service.py:build_timeline; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1489,7 +1489,7 @@ def _availability_warning(data_availability: dict) -> str | None:
 # [FYP-INPUT] Parameters: `ts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_timeline; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_timeline; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `float`, `fromtimestamp`, `str`, `strftime`, `strip`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1766,7 +1766,7 @@ def build_evidence(state: dict, incident: dict, incident_id: str, run_id: str,
 # [FYP-INPUT] Parameters: `incident_id`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include app.py:<module>, case_view.py:build_case_view; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include app.py:<module>, backend/services/case_view_service.py:build_case_view; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `get`, `get_activity`, `get_approval_history`, `sort`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1867,7 +1867,7 @@ def _is_hidden_field(name: str) -> bool:
 # [FYP-INPUT] Parameters: `s`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_sanitize_for_display; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_sanitize_for_display; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `sub`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1890,7 +1890,7 @@ def _redact_local_paths(s: str) -> str:
 # [FYP-INPUT] Parameters: `value`, `_seen`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_sanitize_for_display, case_view.py:sanitize_investigation_result_for_display, tests/test_investigation_stage.py:test_sanitize_handles_circular_reference_safely; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_sanitize_for_display, backend/services/case_view_service.py:sanitize_investigation_result_for_display, tests/test_investigation_stage.py:test_sanitize_handles_circular_reference_safely; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_redact_local_paths`, `_sanitize_for_display`, `id`, `isinstance`, `items`, `len`, `search`, `set`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1974,7 +1974,7 @@ def sanitize_investigation_result_for_display(result: dict) -> dict:
 # [FYP-INPUT] Parameters: `raw_path`, `attempt_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_load_candidate_manifest_preview; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_load_candidate_manifest_preview; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `is_absolute`, `is_file`, `resolve`, `startswith`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -2005,7 +2005,7 @@ def _reporting_trusted_path(raw_path: str, *, attempt_dir) -> "Path | None":
 # [FYP-INPUT] Parameters: `incident_id`, `run_id`, `reporting_stage_attempt`, `candidate_manifest_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_reporting; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_reporting; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_reporting_trusted_path`, `append`, `get`, `hexdigest`, `loads`, `read_bytes`, `read_text`, `reporting_attempt_dir`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -2316,7 +2316,7 @@ def _stage_status_summary(state: dict) -> list[dict]:
 # [FYP-INPUT] Parameters: `status_state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_confirmed_facts_block; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_confirmed_facts_block; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2334,7 +2334,7 @@ def _approval_label(status_state: str) -> str:
 # [FYP-INPUT] Parameters: `items`, `n`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_confirmed_facts_block, case_view.py:_flatten_case_summary, case_view.py:_summarize_investigation_for_chat; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_confirmed_facts_block, backend/services/case_view_service.py:_flatten_case_summary, backend/services/case_view_service.py:_summarize_investigation_for_chat; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `list`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2346,7 +2346,7 @@ def _cap_list(items: list, n: int = _MAX_LIST_ITEMS) -> list:
 # [FYP-INPUT] Parameters: `value`, `n`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:_confirmed_facts_block, case_view.py:_summarize_investigation_for_chat, case_view.py:_summarize_reporting_for_chat; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:_confirmed_facts_block, backend/services/case_view_service.py:_summarize_investigation_for_chat, backend/services/case_view_service.py:_summarize_reporting_for_chat; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `len`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2528,7 +2528,7 @@ def _confirmed_facts_block(state: dict, stages: list[dict]) -> dict:
 # [FYP-INPUT] Parameters: `case_context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_aegis_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_aegis_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_cap_list`, `get`, `isinstance`, `items`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2684,7 +2684,7 @@ def build_aegis_context(incident_id: str, run_id: str | None = None,
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include case_view.py:build_aegis_context; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_aegis_context; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `dumps`, `len`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

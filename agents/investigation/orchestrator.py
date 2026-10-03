@@ -35,7 +35,7 @@
 #   point once evidence correlation (correlation_engine.py) has grouped
 #   alerts into an incident.
 # Called by [FYP-USED-BY]: verify via grep — likely main.py and/or
-#   soc_workflow.py's subprocess invocation of this subsystem.
+#   workflow/engine.py's subprocess invocation of this subsystem.
 # Calls [FYP-CALLS]: ingest_pipeline, vector_engine (RAG/ChromaDB),
 #   mitre_mapper (MITRE ATT&CK mapping), policy_engine (compliance
 #   auditing), chroma_compat, langchain_openai.
@@ -344,7 +344,7 @@ class PolicyVectorIndex:
     # [FYP-INPUT] Parameters: `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `OpenAIEmbeddingFunction`, `PersistentClient`, `get`, `log_warning`, `open_persistent_collection`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -661,7 +661,7 @@ def check_milestone_sufficiency(timeline_str: str, instruction: str, step_id: st
 
     This MET/NOT_MET verdict is exactly what ends up in each
     MilestoneExecution row of execution_trace, which is in turn the table
-    soc_workflow.py's detect_evidence_gaps() parses to decide whether an
+    workflow/engine.py's detect_evidence_gaps() parses to decide whether an
     automatic investigation re-run is warranted.
 
     [FYP-USED-BY]: orchestrate_incident() (called once per playbook node,
@@ -981,7 +981,7 @@ def orchestrate_incident(seed_alert_path: str, playbook_path: str) -> dict:
       3. Walk the playbook (YAML at playbook_path) milestone by milestone,
          using check_milestone_sufficiency() to decide whether enough
          evidence has been gathered for each step (MET/NOT_MET/SKIPPED) —
-         this MET/NOT_MET table is exactly what soc_workflow.py's
+         this MET/NOT_MET table is exactly what workflow/engine.py's
          detect_evidence_gaps() later parses to decide on an automatic
          re-run.
       4. generate_final_analysis() [FYP-CALLS] produces the final
@@ -995,7 +995,7 @@ def orchestrate_incident(seed_alert_path: str, playbook_path: str) -> dict:
     Returns: dict — the final incident analysis result.
 
     [FYP-USED-BY]: this subsystem's main.py / the Investigation stage
-    subprocess soc_workflow.py invokes — verify exact call site via grep
+    subprocess workflow/engine.py invokes — verify exact call site via grep
     before demoing.
     """
     # 1. Process Seed Alert
@@ -1312,7 +1312,7 @@ async def compile_final_report(correlated_alerts: List[dict], playbook_path: str
     rather than raising.
 
     [FYP-USED-BY]: main.py's generate_incident_report() closure — this is
-    the actual report-generation call soc_workflow.py's subprocess
+    the actual report-generation call workflow/engine.py's subprocess
     invocation of `python main.py` triggers for any incident with more than
     one correlated alert or external DB relations (see
     generate_local_standalone_report() for the single-alert shortcut).

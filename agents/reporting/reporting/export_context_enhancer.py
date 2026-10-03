@@ -75,7 +75,7 @@
 #
 # WORKFLOW POSITION
 #   Reporting stage (last stage, after Triage and Investigation -- see
-#   soc_workflow.py's stage_labels). Runs between context_builder.build_
+#   workflow/engine.py's stage_labels). Runs between context_builder.build_
 #   context() (raw merge) and reporting.report_renderer.render_reports() /
 #   reporting.template_document_exporter (Jinja2 template rendering to the
 #   four report .txt/.docx/.pdf outputs that editable_reports.py then takes

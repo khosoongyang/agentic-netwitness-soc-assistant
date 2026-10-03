@@ -33,9 +33,9 @@ never calls commit_reporting_approval(). It only reads the same
 already-loaded, already hash-verified structured_content
 (case_view.build_reporting()'s current_attempt) as the AI-generated
 "original", and layers analyst edits on top of it in the separate
-report_edits SQLite table (workflow_state_store.py).
+report_edits SQLite table (workflow/state_store.py).
 
-Regeneration safety needs no hook into soc_workflow.py or
+Regeneration safety needs no hook into workflow/engine.py or
 soc_reporting_agent at all: every Reporting rerun already gets a brand-new
 reporting_attempt_dir()/report_set_id (see soc_workflow.reporting_attempt_dir
 docstring), so "is this saved edit stale?" is simply

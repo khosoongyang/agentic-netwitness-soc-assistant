@@ -51,7 +51,7 @@ class ParsingValidationError(Exception):
 # [FYP-INPUT] Parameters: `incident_id`, `parsing_result`, `skip`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_until_triage_approval; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_until_triage_approval; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `ParsingValidationError`, `get`, `isinstance`, `isoformat`, `now`, `str`.
 # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -118,7 +118,7 @@ MANDATORY_APPROVAL_POLICY = (
 # [FYP-INPUT] Parameters: `incident_id`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_until_triage_approval; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_until_triage_approval; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `isoformat`, `now`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -144,7 +144,7 @@ def mandatory_triage_approval(*, incident_id: str, triage_result: dict) -> dict:
 # [FYP-INPUT] Parameters: `incident`, `inc_id`, `parsing_result`, `validation`, `triage_result`, `gate`, `run_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_workflow.py:run_until_triage_approval; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include workflow/engine.py:run_until_triage_approval; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `next`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

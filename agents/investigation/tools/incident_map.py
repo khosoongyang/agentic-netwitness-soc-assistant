@@ -132,7 +132,7 @@ class _Graph:
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow_state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -254,7 +254,7 @@ def _walk_alert(g: _Graph, inc_node: str, alert: dict, timeline: list[dict]) -> 
 # [FYP-INPUT] Parameters: `incident`, `alerts`, `max_alerts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis SOC analysis support workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include case_view.py:build_entity_graph, case_view.py:build_timeline; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/services/case_view_service.py:build_entity_graph, backend/services/case_view_service.py:build_timeline; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_Graph`, `_classify_value`, `_is_private_ip`, `_walk_alert`, `append`, `edge`, `get`, `group`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
