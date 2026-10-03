@@ -58,6 +58,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from workflow import state_store as wss
@@ -1676,6 +1677,17 @@ _TIMELINE_SUSPECTED_MARKERS = (
 )
 
 
+_INCIDENT_REF_RE = re.compile(r"\b(INC-\w+)\b", re.IGNORECASE)
+
+
+def _extract_event_origin(text: str, fallback: str) -> str:
+    if text:
+        m = _INCIDENT_REF_RE.search(text)
+        if m:
+            return m.group(1).upper()
+    return str(fallback or "—")
+
+
 def _classify_timeline_significance(text: str) -> str:
     lowered = text.lower()
     if any(marker in lowered for marker in _TIMELINE_LIMITATION_MARKERS):
@@ -1687,7 +1699,7 @@ def _classify_timeline_significance(text: str) -> str:
 
 _EVIDENCE_TOKEN_RE = re.compile(
     r"\b(?:"
-    r"(?:\d{1,3}\.){3}\d{1,3}(?::\d+)?"
+    r"(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2}|:\d+)?"
     r"|[a-fA-F0-9]{32,64}"
     r"|[a-zA-Z0-9_\-\.]+\.(?:exe|bat|ps1|dll|vbs|sh|cab|zip|bin)"
     r"|HKLM\\[a-zA-Z0-9_\\]+"
@@ -1723,6 +1735,67 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
     excluded here (they are tracked in build_activity() for the Activity tab).
     """
     items: list[dict] = []
+    seen_events: set[tuple[str, str, str]] = set()
+
+    # Index correlated alerts from incident or disk
+    raw_alerts = incident.get("raw_alerts") or incident.get("alerts") or []
+    if not raw_alerts:
+        for reports_dir in (Path("incident_reports"), Path("agents/investigation/incident_reports")):
+            if reports_dir.is_dir():
+                for inc_dir in reports_dir.iterdir():
+                    if inc_dir.is_dir() and ((inc_dir / f"{incident_id}_alert.json").exists() or inc_dir.name == str(incident_id)):
+                        data_file = inc_dir / "incident_data.json"
+                        if data_file.exists():
+                            try:
+                                data = json.loads(data_file.read_text(encoding="utf-8"))
+                                raw_alerts = data.get("raw_alerts") or []
+                                if raw_alerts:
+                                    break
+                            except Exception:
+                                pass
+
+    alert_index: list[dict] = []
+    for a in raw_alerts:
+        if not isinstance(a, dict):
+            continue
+        aid = a.get("id") or a.get("metadata", {}).get("incident_id") or a.get("incident_id") or a.get("incidentId") or str(incident_id)
+        ts_raw = a.get("metadata", {}).get("timestamp_str") or a.get("metadata", {}).get("timestamp_epoch") or a.get("created") or a.get("timestamp") or a.get("time")
+        ts_fmt = _format_timestamp(ts_raw)
+        tactic = a.get("metadata", {}).get("tactic") or a.get("tactic")
+        tech_raw = a.get("metadata", {}).get("technique") or a.get("technique") or ""
+
+        ips = [ip.strip() for ip in (a.get("metadata", {}).get("ips") or "").split(",") if ip.strip()]
+        for k in ("sourceIp", "destinationIp"):
+            v = a.get(k)
+            if v and isinstance(v, str) and v not in ips:
+                ips.append(v)
+        hashes = [h.strip() for h in (a.get("metadata", {}).get("sha256s") or "").split(",") if h.strip()]
+        if a.get("fileHash") and a.get("fileHash") not in hashes:
+            hashes.append(a.get("fileHash"))
+
+        ev_tokens = []
+        for k in ("sourceIp", "destinationIp", "userName", "processName", "fileName", "fileHash"):
+            v = a.get(k)
+            if v and isinstance(v, str) and v not in ev_tokens:
+                ev_tokens.append(v)
+        for ip in ips:
+            if ip not in ev_tokens:
+                ev_tokens.append(ip)
+        for h in hashes:
+            if h not in ev_tokens:
+                ev_tokens.append(h)
+
+        doc = a.get("document", "")
+        m_title = re.search(r"incident details title is ([^.]+)\.", doc)
+        title = m_title.group(1).strip() if m_title else (a.get("title") or a.get("name") or a.get("signature_id") or "Security Alert")
+        m_desc = re.search(r"incident details description is ([^.]+)\.", doc)
+        desc = m_desc.group(1).strip() if m_desc else (a.get("description") or f"Observed alert: {title}")
+
+        alert_index.append({
+            "id": str(aid), "ts": ts_fmt, "tactic": tactic, "tech": tech_raw,
+            "ips": ips, "hashes": hashes, "title": str(title), "desc": str(desc),
+            "evidence": ev_tokens,
+        })
 
     # 1. Primary: Reconstruct from Investigation Agent findings (if investigation completed/persisted)
     inv_result = _json_or_empty(state.get("investigation_result_json")) or state.get("investigation_result") or {}
@@ -1756,12 +1829,37 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                 tech_name = str(m.get("technique_name") or "").strip()
                 tech_id = str(m.get("technique_id") or "").strip()
 
-                ts_match = _INCIDENT_TIMESTAMP_RE.search(evidence_str)
-                if ts_match:
-                    current_ts = _format_timestamp(ts_match.group(1))
+                ts_raw = m.get("timestamp") or m.get("time") or m.get("created")
+                if ts_raw:
+                    current_ts = _format_timestamp(ts_raw)
+                else:
+                    ts_match = _INCIDENT_TIMESTAMP_RE.search(evidence_str)
+                    if ts_match:
+                        current_ts = _format_timestamp(ts_match.group(1))
 
                 tokens = _extract_evidence_tokens(evidence_str)
                 significance = _classify_timeline_significance(evidence_str or phase)
+                origin = m.get("event_origin") or m.get("incident_id")
+                if not origin:
+                    ref_match = _INCIDENT_REF_RE.search(f"{evidence_str} {phase}")
+                    if ref_match:
+                        origin = ref_match.group(1).upper()
+                if not origin and current_ts:
+                    for al in alert_index:
+                        if al["ts"] == current_ts:
+                            origin = al["id"]
+                            break
+                if not origin and (tokens or evidence_str):
+                    for al in alert_index:
+                        if (any(ip in evidence_str for ip in al["ips"])
+                                or any(h in evidence_str for h in al["hashes"])
+                                or any(ev and len(ev) > 3 and ev.lower() in evidence_str.lower() for ev in al.get("evidence", []))):
+                            origin = al["id"]
+                            break
+                origin = origin or str(incident_id)
+
+                event_key = (str(origin), str(current_ts or ""), str(phase))
+                seen_events.add(event_key)
 
                 items.append({
                     "timestamp": current_ts,
@@ -1776,7 +1874,8 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                     "significance": significance,
                     "event_type": "attack_chain",
                     "source_stage": "investigation",
-                    "incident_id": str(incident_id),
+                    "incident_id": str(origin),
+                    "event_origin": str(origin),
                     "run_id": run_id,
                 })
 
@@ -1794,6 +1893,10 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                 if not cleaned_event:
                     continue
                 tokens = _extract_evidence_tokens(sent)
+                origin = _extract_event_origin(sent, fallback=str(incident_id))
+                event_key = (str(origin), str(current_ts or ""), cleaned_event)
+                seen_events.add(event_key)
+
                 items.append({
                     "timestamp": current_ts,
                     "phase": f"Attack Sequence #{idx}",
@@ -1807,53 +1910,41 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                     "significance": _classify_timeline_significance(sent),
                     "event_type": "attack_chain",
                     "source_stage": "investigation",
-                    "incident_id": str(incident_id),
+                    "incident_id": str(origin),
+                    "event_origin": str(origin),
                     "run_id": run_id,
                 })
 
-    # 2. Alert Telemetry Events (from incident.alerts / raw_alerts)
+    # 2. Fallback: Alert Telemetry Events (from incident.alerts / raw_alerts) only when investigation produced no events
     if not items:
-        alerts = incident.get("alerts") or incident.get("raw_alerts") or []
-        if isinstance(alerts, list) and alerts:
-            for alert in alerts[:50]:
-                if not isinstance(alert, dict):
-                    continue
-                when = alert.get("created") or alert.get("receivedTime") or alert.get("timestamp") or alert.get("time")
-                title = (
-                    alert.get("title") or alert.get("name") or alert.get("signature_id")
-                    or alert.get("type") or alert.get("detail")
-                )
-                if not title and isinstance(alert.get("alertMeta"), dict):
-                    titles = alert["alertMeta"].get("AlertTitles") or []
-                    if titles:
-                        title = titles[0]
-                if not title:
-                    title = "Security Alert Triggered"
-
-                ev_tokens = []
-                for k in ("sourceIp", "destinationIp", "userName", "processName", "fileName", "fileHash"):
-                    v = alert.get(k)
-                    if v and isinstance(v, str):
-                        ev_tokens.append(v)
-
+        if alert_index:
+            for al in alert_index:
+                tech_id, tech_name = None, None
+                if al["tech"]:
+                    tm = re.match(r"^(T\d{4}(?:\.\d{3})?)\s*(?:[-–—:]\s*)?(.*)$", al["tech"])
+                    if tm:
+                        tech_id = tm.group(1)
+                        tech_name = tm.group(2).strip() or None
                 items.append({
-                    "timestamp": _format_timestamp(when),
+                    "timestamp": al["ts"],
                     "phase": "Alert Telemetry",
-                    "event": str(title),
-                    "description": f"Observed alert: {title}",
-                    "observed_evidence": ", ".join(ev_tokens),
-                    "evidence": ev_tokens,
-                    "tactic": None,
-                    "technique_name": None,
-                    "technique_id": None,
+                    "event": al["title"],
+                    "description": al["desc"],
+                    "observed_evidence": ", ".join(al.get("evidence") or (al["ips"] + al["hashes"])),
+                    "evidence": al.get("evidence") or (al["ips"] + al["hashes"]),
+                    "tactic": al["tactic"],
+                    "technique_name": tech_name,
+                    "technique_id": tech_id,
                     "significance": "Confirmed activity",
                     "event_type": "telemetry",
                     "source_stage": "raw_incident",
-                    "incident_id": str(incident_id),
+                    "incident_id": al["id"],
+                    "event_origin": al["id"],
                     "run_id": run_id,
                 })
         elif incident.get("firstAlertTime"):
             title = str(incident.get("title") or incident.get("name") or "Security Incident Detected")
+            origin = _extract_event_origin(title, fallback=str(incident_id))
             items.append({
                 "timestamp": _format_timestamp(incident.get("firstAlertTime")),
                 "phase": "Initial Detection",
@@ -1867,9 +1958,17 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
                 "significance": "Confirmed activity",
                 "event_type": "security",
                 "source_stage": "raw_incident",
-                "incident_id": str(incident_id),
+                "incident_id": str(origin),
+                "event_origin": str(origin),
                 "run_id": run_id,
             })
+
+    # Sort items chronologically
+    def _timeline_sort_key(it: dict):
+        ts = it.get("timestamp")
+        return (0 if ts else 1, str(ts or ""), str(it.get("event_origin") or ""))
+
+    items.sort(key=_timeline_sort_key)
 
     # Availability warning if empty
     availability_note = _availability_warning(data_availability)
@@ -1912,37 +2011,31 @@ def build_timeline(state: dict, incident: dict, incident_id: str, run_id: str,
     return items
 
 
-def build_entity_graph(incident: dict, data_availability: dict) -> dict:
+def build_entity_graph(incident: dict, data_availability: dict,
+                       state: dict | None = None,
+                       incident_id: str | None = None,
+                       run_id: str | None = None) -> dict:
     """
     [FYP-FUNCTION] Entity Graph tab data — nodes/edges/stats from
-    incident_map.build_incident_map(), with one honesty relabel applied on
-    top: an edge whose ONLY evidence is "alertMeta co-occurrence" (e.g.
-    every SourceIp paired with every DestinationIp in the same alert
-    record) is relation "connected_to" from incident_map's own naming, but
-    that is not an observed network connection — merely two values that
-    appeared in the same alert. Relabeled here to "possibly_related" with
-    evidence_status="co_occurrence_only" so the graph UI doesn't imply a
-    confirmed link that was never actually observed. Every other edge is
-    tagged evidence_status "observed" (has real evidence) or "unlabeled"
-    (none recorded) instead.
-
-    [FYP-USED-BY]: internal only — build_case_view() (Entity Graph tab).
-    the frontend renders the returned nodes/edges via its graph view,
-    importing incident_map.to_dot directly (as `_cv_to_dot`) rather than
-    through this module's own `incident_map_to_dot` re-export at the top
-    of this file — that re-export is currently unused, left available for
-    a caller that wants the DOT conversion without importing incident_map
-    separately. Not part of build_aegis_context()'s context (chat has no
-    graph rendering) and no other function here calls build_entity_graph().
+    incident_map.build_incident_map(), with multi-stage enrichment and
+    cross-incident correlation support.
     """
-    imap = build_incident_map(incident)
+    triage_result = _json_or_empty(state.get("triage_result_json")) if state else None
+    threat_intel_result = _json_or_empty(state.get("threat_intel_result_json")) if state else None
+    investigation_result = _json_or_empty(state.get("investigation_result_json")) if state else None
+    ioc_correlation_result = _json_or_empty(state.get("ioc_correlation_result_json")) if state else None
+
+    imap = build_incident_map(
+        incident=incident,
+        triage_result=triage_result,
+        threat_intel_result=threat_intel_result,
+        investigation_result=investigation_result,
+        ioc_correlation_result=ioc_correlation_result,
+    )
     edges = []
     for e in imap.get("edges", []):
         relation = e.get("relation", "")
         evidence = e.get("evidence") or []
-        # Co-occurrence in alertMeta lists (e.g. every SourceIp paired with
-        # every DestinationIp) is NOT an observed connection — relabel it
-        # honestly rather than implying a confirmed network link.
         if relation.startswith("connected_to") and evidence == ["alertMeta co-occurrence"]:
             edges.append({**e, "relation": "possibly_related",
                          "evidence_status": "co_occurrence_only",
@@ -1950,9 +2043,15 @@ def build_entity_graph(incident: dict, data_availability: dict) -> dict:
         else:
             edges.append({**e, "evidence_status": "observed" if evidence else "unlabeled",
                          "provenance": ", ".join(evidence) if evidence else ""})
-    return {"nodes": imap.get("nodes", []), "edges": edges,
-            "stats": imap.get("stats", {}),
-            "data_availability_warning": _availability_warning(data_availability)}
+    return {
+        "nodes": imap.get("nodes", []),
+        "edges": edges,
+        "stats": imap.get("stats", {}),
+        "primary_incident_color": imap.get("primary_incident_color"),
+        "correlated_incidents": imap.get("correlated_incidents", []),
+        "data_availability_warning": _availability_warning(data_availability),
+    }
+
 
 
 def build_evidence(state: dict, incident: dict, incident_id: str, run_id: str,
@@ -2780,10 +2879,13 @@ def _confirmed_facts_block(state: dict, stages: list[dict]) -> dict:
         # rather than kept as always-null placeholders.
         tri = _json_or_empty(state.get("triage_result_json"))
         ticket = tri.get("ticket") or {}
+        risk_rating = ticket.get("risk_rating") or {}
         facts["triage"] = {
             "label": "confirmed",
             "classification": ticket.get("classification"),
             "summary": _cap_text(ticket.get("summary")),
+            "risk_rationale": _cap_text(risk_rating.get("rationale")),
+            "methodology_note": "Triage classified this based on alert metakeys and heuristics without querying live external threat feeds (which occurs in Threat Intel stage).",
             "recommended_actions": _cap_list(ticket.get("recommended_actions")),
         }
     else:
@@ -3070,7 +3172,7 @@ def build_case_view(incident_id: str, run_id: str | None = None) -> dict:
     output = build_output(state)
     reporting = build_reporting(state, incident_id, resolved_run_id)
     timeline = build_timeline(state, incident, incident_id, resolved_run_id, data_availability)
-    entity_graph = build_entity_graph(incident, data_availability)
+    entity_graph = build_entity_graph(incident, data_availability, state=state, incident_id=incident_id, run_id=resolved_run_id)
     evidence = build_evidence(state, incident, incident_id, resolved_run_id, data_availability)
     activity = build_activity(incident_id, resolved_run_id)
 
@@ -3086,9 +3188,12 @@ def build_case_view(incident_id: str, run_id: str | None = None) -> dict:
         "entity_graph": {
             "nodes": entity_graph["nodes"], "edges": entity_graph["edges"],
             "stats": entity_graph.get("stats", {}),
+            "primary_incident_color": entity_graph.get("primary_incident_color"),
+            "correlated_incidents": entity_graph.get("correlated_incidents", []),
             "data_availability_warning": entity_graph.get("data_availability_warning"),
         },
         "evidence": evidence,
         "activity": activity,
         "warnings": [w for w in (data_availability.get("warnings") or [])],
     }
+

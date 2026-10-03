@@ -98,13 +98,11 @@ function stageCards(stages) {
 // produce a verdict/evidence to distil — Parsing is pure normalisation and
 // Reporting consumes prior findings rather than discovering new ones, so
 // neither gets a card at all (see renderWorkflow()'s hideKeyFindings check).
-// Triage is excluded too: its Overview tab already presents the same
-// classification/IOC/risk evidence, so the sidebar only duplicated it and
-// the stage now takes the full width (.workspace-grid.stage-only).
-// Threat Intelligence is not listed: its stage page is itself the
-// per-indicator view (Indicator Overview), so a side panel repeating the
-// same provider facts would only duplicate it and narrow the IOC table.
-const KEY_FINDINGS_STAGES = new Set(["investigation"]);
+// Triage and Investigation present their findings within their Overview tabs,
+// while Threat Intelligence is itself a per-indicator findings view. All three
+// therefore take the full width (.workspace-grid.stage-only) without a
+// duplicate sidebar.
+const KEY_FINDINGS_STAGES = new Set();
 
 function escapeRegExp(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -117,22 +115,51 @@ function escapeRegExp(value) {
 // detects a general SHAPE (IP, hash, path, port, …), never a specific
 // hardcoded example value.
 const EVIDENCE_PATTERNS = [
+  // Full URLs
   /https?:\/\/[^\s"'<>)]+/g,
-  /[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]+/g,
+  
+  // Full ISO timestamps with timezone offset (+/-HH:MM or Z)
+  /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b/gi,
+
+  // Full command invocations with arguments/flags/quoted paths:
+  // e.g., cmd.exe /c "C:\...", powershell.exe -ExecutionPolicy Bypass, sc.exe start wuauserv,
+  //       Upfc.exe /launchtype periodic /cv ..., sihclient.exe /cv ...
+  /\b[\w-]+\.(?:exe|bat|ps1|cmd|sh)\b(?:\s+(?:(?:"[^"\\]*(?:\\.[^"\\]*)*")|(?:'[^'\\]*(?:\\.[^'\\]*)*')|(?:[-/][\w.:/-]+(?:\s+(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|[A-Za-z]:\\[^\s,;"]+|HK[A-Z0-9_\\]+|(?!on\b|in\b|with\b|by\b|and\b|to\b|for\b|at\b|from\b|of\b|the\b|a\b|an\b|was\b|is\b|were\b|activity\b)[\w.-]+))?)|(?:ADD|DELETE|QUERY|CREATE|STOP|START|CONFIG|install-manifest|uninstall-manifest|runasservice|periodic)\b(?:\s+(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|HK[A-Z0-9_\\]+|[A-Za-z]:\\[^\s,;"]+|(?!on\b|in\b|with\b|by\b|and\b|to\b|for\b|at\b|from\b|of\b|the\b|a\b|an\b|was\b|is\b|were\b|activity\b)[\w.-]+))*))+/gi,
+
+  // Standalone command arguments / switches with values (e.g. -ExecutionPolicy Bypass, /v EnableLUA, /t REG_DWORD, /d 0, /f, /c "...")
+  /(?:^|(?<=\s))(?:[-/][a-zA-Z0-9_:-]+(?:\s+(?:"[^"\\]*(?:\\.[^"\\]*)*"|'[^'\\]*(?:\\.[^'\\]*)*'|[A-Za-z]:\\[^\s,;"]+|HK[A-Z0-9_\\]+|(?!on\b|in\b|with\b|by\b|and\b|to\b|for\b|at\b|from\b|of\b|the\b|a\b|an\b|was\b|is\b|were\b|activity\b)[\w.-]+))?)(?=\s|[.,;:]|$)/g,
+
+  // Windows absolute paths (quoted or unquoted)
+  /(?:"[A-Za-z]:\\[^"]*"|'[A-Za-z]:\\[^']*'|[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n\s]+\\)*[^\\/:*?"<>|\r\n\s]+)/g,
+  
+  // Registry keys
+  /\bHK(?:EY_LOCAL_MACHINE|EY_CURRENT_USER|LM|CU|CR|U|CC)\\[^\s,;"]+/gi,
+  
+  // Hashes (SHA-256, SHA-1, MD5)
   /\b[a-fA-F0-9]{64}\b/g,
   /\b[a-fA-F0-9]{40}\b/g,
   /\b[a-fA-F0-9]{32}\b/g,
+  
+  // IPv6
   /\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g,
-  /\b(?:\d{1,3}\.){3}\d{1,3}\b/g,
-  /(?<=:)\d{2,5}\b/g,
-  /\bport\s+\d{1,5}\b/gi,
+  
+  // IPv4 with optional CIDR subnet or port
+  /\b(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2}|:\d{1,5})?\b/g,
+
+  // Standalone Executables / scripts / binaries
   /\b[\w-]+\.(?:exe|dll|ps1|psm1|bat|cmd|sh|py|js|vbs|hta|scr|msi|jar)\b/gi,
-  // Trailing lookahead: never chip a truncated domain ("starhub.net" out of "starhub.net.sg").
+  
+  // Domains
   /\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|ru|cn|info|biz|xyz|top|club|online|site|dev|co|uk|de|fr|gov|edu|int|mil|app|cloud)\b(?!\.?[\w-])/gi,
+  
+  // Unix paths
   /(?:\/[\w.-]+){2,}/g,
+  
+  // Event IDs / Process IDs
   /\b(?:Event ID|EventID|Process ID|Parent Process ID|PID|PPID)\s*[:#]?\s*\d+\b/gi,
-  /\b\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z?\b/g,
-  /\bHK(?:EY_LOCAL_MACHINE|EY_CURRENT_USER|LM|CU|CR|U|CC)\\[^\s,;]+/gi,
+  
+  // Explicit port
+  /\bport\s+\d{1,5}\b/gi,
 ];
 
 // Highlights evidence values inside `text` as compact chips so an analyst
@@ -212,14 +239,9 @@ function findingMeta(item) {
   return parts.length ? `<div class="finding-meta">${parts.join("")}</div>` : "";
 }
 
-function findings(workspace, stage) {
-  if (!stage || !KEY_FINDINGS_STAGES.has(stage.key)) return "";
-  // While the stage is running, key_findings_by_stage can still hold the
-  // previous run's findings (a re-run leaves the old result persisted until
-  // the new one lands), so it is ignored until the stage leaves Processing.
-  const items = stage.state === "in_progress" ? [] : (workspace?.overview?.key_findings_by_stage?.[stage.key] || []);
-  if (!items.length) return emptyState("No key findings have been distilled for this stage yet.");
-  return `<ul class="data-list findings-list">${items.slice(0, 5).map((item) => {
+function findingsList(items) {
+  if (!items || !items.length) return "";
+  return `<ul class="data-list findings-list">${items.map((item) => {
     const categoryLabel = FINDING_CATEGORY_LABELS[item.category] || "";
     return `<li class="finding-item">
       <div>
@@ -231,6 +253,16 @@ function findings(workspace, stage) {
       ${item.confidence ? `<span>${escapeHTML(item.confidence)}</span>` : ""}
     </li>`;
   }).join("")}</ul>`;
+}
+
+function findings(workspace, stage) {
+  if (!stage) return "";
+  // While the stage is running, key_findings_by_stage can still hold the
+  // previous run's findings (a re-run leaves the old result persisted until
+  // the new one lands), so it is ignored until the stage leaves Processing.
+  const items = stage.state === "in_progress" ? [] : (workspace?.overview?.key_findings_by_stage?.[stage.key] || []);
+  if (!items.length) return emptyState("No key findings have been distilled for this stage yet.");
+  return findingsList(items.slice(0, 5));
 }
 
 // One action bar for every stage (see ../stageContinue.js for the labels and
@@ -1678,8 +1710,17 @@ export function investigationAssessment(result) {
 
 export function investigationOverviewTab(workspace) {
   const ctx = workspace?.overview?.case_context || {};
+  const stageFindings = workspace?.overview?.key_findings_by_stage?.investigation || [];
   const assessment = investigationAssessment(workspace?.output?.investigation_result);
-  if (!Object.keys(ctx).length) return assessment || emptyState("No case overview is available yet.");
+
+  const findingsSection = stageFindings.length ? `
+    <section class="panel" style="margin-top:.75rem">
+      <h3>Key Findings</h3>
+      ${findingsList(stageFindings)}
+    </section>
+  ` : "";
+
+  if (!Object.keys(ctx).length && !findingsSection) return assessment || emptyState("No case overview is available yet.");
   const rows = [
     provenanceRow("NetWitness Severity", ctx.netwitness_severity),
     provenanceRow("Triage Classification", ctx.triage_classification),
@@ -1697,6 +1738,7 @@ export function investigationOverviewTab(workspace) {
   return `<div class="stage-sections">
     ${assessment}
     ${verdict ? `<div class="verdict-section" aria-label="Case-level assessment">${verdict}</div>` : ""}
+    ${findingsSection}
     <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>
   </div>`;
 }
@@ -1790,13 +1832,32 @@ function investigationTimelineTab(workspace) {
     info: "state-locked",
   };
   const rows = items.map((it) => {
-    const time = it.timestamp || "—";
-    const eventText = it.description || it.observed_evidence || it.event || "";
+    const time = it.timestamp ? formatDate(it.timestamp) : "—";
+    const originId = it.event_origin || it.incident_id || "—";
+    const headline = it.event || it.phase || "Security Event";
+    const narrative = it.description || it.observed_evidence || "";
+    const showNarrative = narrative && narrative.trim() !== headline.trim();
+
+    const eventContent = `
+      <div class="timeline-event-body">
+        <strong class="timeline-event-title">${escapeHTML(headline)}</strong>
+        ${showNarrative ? `<p class="timeline-event-narrative">${highlightEvidence(narrative, it.evidence ? { ev: it.evidence } : {})}</p>` : ""}
+      </div>
+    `;
     const typeLabel = it.tactic || it.event_type || "security";
-    const sourceLabel = it.technique_id ? `${it.technique_id}${it.technique_name ? ` (${it.technique_name})` : ""}` : (it.source_stage || "investigation");
-    return `<tr><td class="mono">${escapeHTML(time)}</td><td>${escapeHTML(eventText)}</td><td>${badge(typeLabel, typeTone[typeLabel] || "state-in_progress")}</td><td class="mono">${escapeHTML(sourceLabel)}</td></tr>`;
+    const mitreLabel = it.technique_id
+      ? `<span class="mono">${escapeHTML(it.technique_id)}</span>${it.technique_name ? `<br><small class="muted">${escapeHTML(it.technique_name)}</small>` : ""}`
+      : "—";
+
+    return `<tr>
+      <td class="mono" style="white-space:nowrap">${escapeHTML(time)}</td>
+      <td>${eventContent}</td>
+      <td>${badge(typeLabel, typeTone[typeLabel] || "state-in_progress")}</td>
+      <td>${mitreLabel}</td>
+      <td><span class="origin-tag mono">${escapeHTML(originId)}</span></td>
+    </tr>`;
   }).join("");
-  return `<div class="table-wrap"><table class="case-context-table"><thead><tr><th>Timestamp</th><th>Event</th><th>Type</th><th>Source</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<div class="table-wrap"><table class="case-context-table timeline-table"><thead><tr><th style="min-width:140px">Timestamp</th><th>Event</th><th style="min-width:120px">Type</th><th style="min-width:160px">MITRE ID</th><th style="min-width:110px">Event Origin</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function investigationMitreTab(workspace) {
@@ -1815,25 +1876,37 @@ function investigationMitreTab(workspace) {
 // this module only lays out and renders what the server already computed.
 // Layout is a small Fruchterman-Reingold force simulation run once per
 // mount (deterministic circular starting positions keyed by node order, so
-// re-mounting the same graph reproduces the same layout).
+// Entity Graph — an interactive multi-incident node-link diagram over the
+// nodes/edges derived from backend/services/case_view_service.py::build_entity_graph()
+// and agents/investigation/tools/incident_map.py.
+// Supports:
+//   - Multi-incident color-coded clusters (Primary in Electric Cyan, Correlated in distinct colors)
+//   - Dual layout modes: Force-Directed Nodal Web and Hierarchical Process Tree
+//   - Forensic Inspector Panel with process arguments, threat intel scores, and linked cases
+//   - Bottom entity count summary pills with instant type highlighting
 
 const _ENTITY_TYPE_META = {
-  incident: { color: "#76b7ff", name: "Incident" },
-  host: { color: "#ff7382", name: "Host" },
-  user: { color: "#5ec8ff", name: "User" },
-  ip: { color: "#b9a3ff", name: "IP Address" },
-  domain: { color: "#efba5a", name: "Domain / URL" },
-  process: { color: "#45d49a", name: "Process" },
-  file: { color: "#f2c879", name: "File" },
-  hash: { color: "#9b8dff", name: "Hash" },
-  mitre: { color: "#ff8fc7", name: "MITRE ATT&CK" },
-  entity: { color: "#92a3ba", name: "Entity" },
+  incident: { color: "#38bdf8", name: "Incident", icon: "IN" },
+  host: { color: "#ff7382", name: "Host", icon: "HO" },
+  user: { color: "#5ec8ff", name: "User", icon: "US" },
+  ip: { color: "#b9a3ff", name: "IP Address", icon: "IP" },
+  domain: { color: "#efba5a", name: "Domain / URL", icon: "DM" },
+  process: { color: "#45d49a", name: "Process", icon: "PR" },
+  file: { color: "#f2c879", name: "File", icon: "FL" },
+  hash: { color: "#9b8dff", name: "Hash", icon: "HS" },
+  registry: { color: "#fb923c", name: "Registry", icon: "RG" },
+  email: { color: "#38bdf8", name: "Email", icon: "EM" },
+  mitre: { color: "#ff8fc7", name: "MITRE ATT&CK", icon: "M8" },
+  entity: { color: "#92a3ba", name: "Entity", icon: "ET" },
 };
 function _entityMeta(type) { return _ENTITY_TYPE_META[type] || _ENTITY_TYPE_META.entity; }
-function _entityMonogram(type) { return (type || "??").slice(0, 2).toUpperCase(); }
+function _entityMonogram(type) { return String(_ENTITY_TYPE_META[type]?.icon || (type || "??")).slice(0, 2).toUpperCase(); }
 
-const _GRAPH_W = 960;
-const _GRAPH_H = 560;
+
+
+
+const _GRAPH_W = 1800;
+const _GRAPH_H = 1100;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 function _svgEl(tag, attrs = {}) {
@@ -1842,60 +1915,294 @@ function _svgEl(tag, attrs = {}) {
   return el;
 }
 
-function _computeGraphLayout(nodes, edges) {
+function _calcEdgePath(pv, pu, isCrossIncident = false, edgeIdx = 0) {
+  const dx = pu.x - pv.x;
+  const dy = pu.y - pv.y;
+  const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+  const midX = (pv.x + pu.x) / 2;
+  const midY = (pv.y + pu.y) / 2;
+  
+  // Perpendicular normal vector (-dy, dx)
+  const nx = -dy / dist;
+  const ny = dx / dist;
+
+  // Gentle, organic curvature matching design vision
+  const curveAmp = isCrossIncident ? 40 : ((edgeIdx % 2 === 0 ? 1 : -1) * Math.min(28, dist * 0.14));
+  const ctrlX = midX + nx * curveAmp;
+  const ctrlY = midY + ny * curveAmp;
+
+  // Stagger label position along Bézier curve to prevent label collisions on parallel edges
+  const t = (edgeIdx % 2 === 0) ? 0.42 : 0.58;
+  const oneMinusT = 1 - t;
+  const labelX = oneMinusT * oneMinusT * pv.x + 2 * oneMinusT * t * ctrlX + t * t * pu.x;
+  const labelY = oneMinusT * oneMinusT * pv.y + 2 * oneMinusT * t * ctrlY + t * t * pu.y;
+
+  return {
+    d: `M ${pv.x.toFixed(1)},${pv.y.toFixed(1)} Q ${ctrlX.toFixed(1)},${ctrlY.toFixed(1)} ${pu.x.toFixed(1)},${pu.y.toFixed(1)}`,
+    labelX,
+    labelY,
+  };
+}
+
+function _formatRelationshipDesc(edge, dir, currentNode, otherNode) {
+  const rel = edge.relation || "";
+  const out = dir === "out";
+
+  let action = "";
+  if (rel === "focus_of") {
+    action = out ? "Target / primary focus entity of incident" : "Designates primary investigation focus";
+  } else if (rel === "spawned" || rel === "spawns") {
+    action = out ? "Spawned child execution process" : "Spawned by parent execution process";
+  } else if (rel === "executed" || rel === "executed_on") {
+    action = out ? "Executed on host system" : "Execution environment / Host system";
+  } else if (rel === "communicated_with" || rel === "connected_to") {
+    action = out ? "Established outbound network connection to" : "Received inbound connection from";
+  } else if (rel === "accessed_file" || rel === "has_file" || rel === "has_artifact") {
+    action = out ? "Created or accessed filesystem artifact" : "Filesystem artifact accessed by process";
+  } else if (rel === "modified_registry") {
+    action = out ? "Modified persistence registry key" : "Registry persistence key modified by process";
+  } else if (rel === "associated_with") {
+    action = "Forensically correlated in security telemetry";
+  } else if (rel === "queried_dns" || rel === "queried") {
+    action = out ? "Resolved external domain name via DNS" : "Domain resolved by endpoint";
+  } else if (rel === "logged_in" || rel === "active_on") {
+    action = out ? "User account authenticated session on" : "Active logged in user account";
+  } else if (rel === "matches_hash" || rel === "has_hash") {
+    action = out ? "Cryptographic binary signature" : "Binary matching file hash";
+  } else if (rel === "attributed_to" || rel === "mapped_to" || rel === "exhibits_technique") {
+    action = "Exhibits MITRE ATT&CK technique";
+  } else if (rel === "correlated_indicator") {
+    action = "Correlated pivot indicator across cases";
+  } else {
+    action = rel.replaceAll("_", " ");
+  }
+
+  let evidence = "";
+  const status = edge.evidence_status;
+  if (status === "observed") {
+    evidence = "Directly observed in alert & network/host telemetry";
+  } else if (status === "inferred") {
+    evidence = "Inferred from parent-child behavioral chain";
+  } else if (status === "co_occurrence_only") {
+    evidence = "Correlated via shared temporal & incident context";
+  } else if (status) {
+    evidence = status.replaceAll("_", " ");
+  }
+
+  return { action, evidence };
+}
+
+function _computeForceLayout(nodes, edges, primaryId) {
   const pos = new Map();
   const n = nodes.length;
   if (!n) return pos;
   const cx = _GRAPH_W / 2, cy = _GRAPH_H / 2;
-  const r0 = Math.min(_GRAPH_W, _GRAPH_H) / 2 - 70;
-  nodes.forEach((node, i) => {
-    const angle = (2 * Math.PI * i) / n;
-    pos.set(node.id, { x: cx + r0 * Math.cos(angle), y: cy + r0 * Math.sin(angle) });
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+
+  // Identify child processes vs root processes
+  const childProcessIds = new Set();
+  edges.forEach((e) => {
+    if ((e.relation === "spawned" || e.relation === "spawns") && nodeById.get(e.src)?.type === "process") {
+      childProcessIds.add(e.dst);
+    }
   });
+
+  // 1. Separate primary vs correlated incident nodes
+  const incidentNodes = nodes.filter((node) => node.type === "incident");
+  const incClusterCenters = new Map();
+
+  const primaryIncNode = incidentNodes.find((inc) => inc.id === primaryId) || incidentNodes[0];
+  const correlatedIncNodes = incidentNodes.filter((inc) => inc !== primaryIncNode);
+
+  if (primaryIncNode) {
+    incClusterCenters.set(primaryIncNode.id, { x: 720, y: 420 });
+  }
+  if (primaryId && !incClusterCenters.has(primaryId)) {
+    incClusterCenters.set(primaryId, { x: 720, y: 420 });
+  }
+
+  // Correlated historical incidents arrayed on the western perimeter
+  correlatedIncNodes.forEach((incNode, idx) => {
+    const yStep = (_GRAPH_H - 300) / Math.max(correlatedIncNodes.length, 1);
+    const targetX = 180 + ((idx % 2) * 50);
+    const targetY = 280 + (idx + 0.5) * yStep;
+    incClusterCenters.set(incNode.id, { x: targetX, y: targetY });
+  });
+
+  // Count nodes by category for uniform fan-out
+  const mitreNodes = nodes.filter((node) => node.type === "mitre");
+  const hostNodes = nodes.filter((node) => node.type === "host");
+  const userNodes = nodes.filter((node) => node.type === "user");
+  const rootProcNodes = nodes.filter((node) => node.type === "process" && !childProcessIds.has(node.id));
+  const childProcNodes = nodes.filter((node) => node.type === "process" && childProcessIds.has(node.id));
+  const fileHashRegNodes = nodes.filter((node) => ["file", "hash", "registry"].includes(node.type));
+  const netNodes = nodes.filter((node) => ["ip", "domain"].includes(node.type));
+
+  const targetZones = new Map();
+
+  // Zone 1: MITRE ATT&CK sky ribbon (y ~ 130) across the top
+  mitreNodes.forEach((node, i) => {
+    const xStep = (_GRAPH_W - 550) / Math.max(mitreNodes.length, 1);
+    const targetX = 320 + (i + 0.5) * xStep;
+    const targetY = 130 + ((i % 2) * 35);
+    targetZones.set(node.id, { x: targetX, y: targetY, tier: "mitre", weightY: 0.38, weightX: 0.1 });
+    pos.set(node.id, { x: targetX, y: targetY });
+  });
+
+  // Zone 2: Incident Hubs (Correlated on West, Primary in Mid-Center)
+  incidentNodes.forEach((node) => {
+    const center = incClusterCenters.get(node.id) || { x: 720, y: 420 };
+    targetZones.set(node.id, { x: center.x, y: center.y, tier: "incident", weightY: 0.45, weightX: 0.45 });
+    pos.set(node.id, { x: center.x, y: center.y });
+  });
+
+  // Zone 3: Shared Pivot IPs (Bridge corridor between correlated incidents and primary incident)
+  netNodes.forEach((node, i) => {
+    const isShared = node.props?.is_shared_pivot || (node.incidents && node.incidents.length > 1);
+    if (isShared) {
+      const targetX = 430 + (i * 40);
+      const targetY = 530 + ((i % 2) * 60);
+      targetZones.set(node.id, { x: targetX, y: targetY, tier: "pivot_ip", weightY: 0.35, weightX: 0.35 });
+      pos.set(node.id, { x: targetX, y: targetY });
+    } else {
+      // External C2 / Uncorrelated IPs in Eastern Corridor
+      const targetX = 1520 + ((i % 2) * 110);
+      const targetY = 420 + i * 150;
+      targetZones.set(node.id, { x: targetX, y: targetY, tier: "network", weightY: 0.25, weightX: 0.25 });
+      pos.set(node.id, { x: targetX, y: targetY });
+    }
+  });
+
+  // Zone 4: Hosts & Users (Adjacent to Primary Incident)
+  hostNodes.forEach((node, i) => {
+    const targetX = 890 + i * 140;
+    const targetY = 320 + (i % 2) * 40;
+    targetZones.set(node.id, { x: targetX, y: targetY, tier: "host", weightY: 0.3, weightX: 0.25 });
+    pos.set(node.id, { x: targetX, y: targetY });
+  });
+  userNodes.forEach((node, i) => {
+    const targetX = 890 + i * 120;
+    const targetY = 190 + (i % 2) * 35;
+    targetZones.set(node.id, { x: targetX, y: targetY, tier: "user", weightY: 0.3, weightX: 0.25 });
+    pos.set(node.id, { x: targetX, y: targetY });
+  });
+
+  // Zone 5: Directed Process Tree in East Sector
+  rootProcNodes.forEach((node, i) => {
+    const xStep = 220;
+    const targetX = 1080 + i * xStep;
+    const targetY = 460 + (i % 2) * 40;
+    targetZones.set(node.id, { x: targetX, y: targetY, tier: "root_proc", weightY: 0.25, weightX: 0.15 });
+    pos.set(node.id, { x: targetX, y: targetY });
+  });
+
+  childProcNodes.forEach((node, i) => {
+    const xStep = (_GRAPH_W - 1050) / Math.max(childProcNodes.length, 1);
+    const targetX = 1040 + (i + 0.5) * xStep;
+    const targetY = 740 + ((i % 2) * 45);
+    targetZones.set(node.id, { x: targetX, y: targetY, tier: "child_proc", weightY: 0.22, weightX: 0.1 });
+    pos.set(node.id, { x: targetX, y: targetY });
+  });
+
+  // Files, Hashes & Registry tightly clustered underneath their parent processes
+  fileHashRegNodes.forEach((node, i) => {
+    const xStep = (_GRAPH_W - 1080) / Math.max(fileHashRegNodes.length, 1);
+    const targetX = 1060 + (i + 0.5) * xStep;
+    const targetY = 910 + ((i % 2) * 40);
+    targetZones.set(node.id, { x: targetX, y: targetY, tier: "artifact", weightY: 0.25, weightX: 0.1 });
+    pos.set(node.id, { x: targetX, y: targetY });
+  });
+
+  // Any remaining nodes
+  nodes.forEach((node, i) => {
+    if (!pos.has(node.id)) {
+      const angle = (2 * Math.PI * i) / n;
+      const targetX = cx + Math.cos(angle) * 350;
+      const targetY = cy + Math.sin(angle) * 250;
+      targetZones.set(node.id, { x: targetX, y: targetY, tier: "misc", weightY: 0.1, weightX: 0.1 });
+      pos.set(node.id, { x: targetX, y: targetY });
+    }
+  });
+
   if (n < 2) return pos;
-  const k = Math.sqrt((_GRAPH_W * _GRAPH_H) / n) * 0.85;
-  const iterations = n > 260 ? 40 : n > 100 ? 90 : 220;
-  let temp = _GRAPH_W / 10;
+
+  // Constrained Relaxation with strict collision clearance & tier gravity
+  const k = Math.sqrt((_GRAPH_W * _GRAPH_H) / n) * 1.35;
+  const iterations = 180;
+  let temp = _GRAPH_W / 9;
   const cooling = temp / iterations;
   const disp = new Map();
+
   for (let iter = 0; iter < iterations; iter += 1) {
     nodes.forEach((v) => disp.set(v.id, { x: 0, y: 0 }));
+
+    // Zonal Gravity
+    nodes.forEach((v) => {
+      const p = pos.get(v.id);
+      const zone = targetZones.get(v.id) || { x: cx, y: cy, weightX: 0.08, weightY: 0.08 };
+      const dv = disp.get(v.id);
+      dv.x += (zone.x - p.x) * (zone.weightX || 0.1);
+      dv.y += (zone.y - p.y) * (zone.weightY || 0.1);
+    });
+
+    // Pairwise Repulsion & Strong Collision Clearance (150px min gap)
     for (let i = 0; i < n; i += 1) {
       for (let j = i + 1; j < n; j += 1) {
-        const pv = pos.get(nodes[i].id), pu = pos.get(nodes[j].id);
+        const idA = nodes[i].id, idB = nodes[j].id;
+        const pv = pos.get(idA), pu = pos.get(idB);
         const dx = pv.x - pu.x, dy = pv.y - pu.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-        const force = (k * k) / dist;
-        const ux = dx / dist, uy = dy / dist;
-        const dv = disp.get(nodes[i].id), du = disp.get(nodes[j].id);
-        dv.x += ux * force; dv.y += uy * force;
-        du.x -= ux * force; du.y -= uy * force;
+
+        if (dist < 360) {
+          const isInc = nodes[i].type === "incident" || nodes[j].type === "incident";
+          const isHost = nodes[i].type === "host" || nodes[j].type === "host";
+          const minDist = (isInc || isHost) ? 220 : 150;
+          let force = (k * k) / (dist * dist + 180);
+
+          if (dist < minDist) {
+            const overlap = minDist - dist;
+            force += (overlap * overlap) * 0.48;
+          }
+
+          const ux = dx / dist, uy = dy / dist;
+          const dv = disp.get(idA), du = disp.get(idB);
+          dv.x += ux * force * 14; dv.y += uy * force * 14;
+          du.x -= ux * force * 14; du.y -= uy * force * 14;
+        }
       }
     }
+
+    // Spring forces along connecting edges (with vertical damping to preserve tier levels)
     edges.forEach((e) => {
       const pv = pos.get(e.src), pu = pos.get(e.dst);
       if (!pv || !pu || e.src === e.dst) return;
       const dx = pv.x - pu.x, dy = pv.y - pu.y;
       const dist = Math.sqrt(dx * dx + dy * dy) || 0.01;
-      const force = (dist * dist) / k;
+      const force = (dist * dist) / (k * 2.8);
       const ux = dx / dist, uy = dy / dist;
       const dv = disp.get(e.src), du = disp.get(e.dst);
-      dv.x -= ux * force; dv.y -= uy * force;
-      du.x += ux * force; du.y += uy * force;
+
+      dv.x -= ux * force;
+      dv.y -= uy * force * 0.35;
+      du.x += ux * force;
+      du.y += uy * force * 0.35;
     });
+
+    // Apply displacement
     nodes.forEach((v) => {
       const d = disp.get(v.id);
       const dist = Math.sqrt(d.x * d.x + d.y * d.y) || 0.01;
       const p = pos.get(v.id);
       p.x += (d.x / dist) * Math.min(dist, temp);
       p.y += (d.y / dist) * Math.min(dist, temp);
-      p.x += (cx - p.x) * 0.006;
-      p.y += (cy - p.y) * 0.006;
-      const margin = 50;
+
+      // Boundary soft damping
+      const margin = 85;
       p.x = Math.min(_GRAPH_W - margin, Math.max(margin, p.x));
       p.y = Math.min(_GRAPH_H - margin, Math.max(margin, p.y));
     });
-    temp = Math.max(temp - cooling, 0.5);
+    temp = Math.max(temp - cooling, 0.4);
   }
   return pos;
 }
@@ -1914,25 +2221,60 @@ function investigationEntityGraphTab(workspace) {
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
   if (!nodes.length) return emptyState("No entity graph could be derived for this case yet.");
+
+  const primaryIncId = String(workspace?.incident_id || "");
+  const primaryColor = graph.primary_incident_color || "#38bdf8";
+  const correlatedList = graph.correlated_incidents || [];
   const stats = graph.stats || {};
-  const typeCounts = Object.entries(stats.node_counts || {})
-    .filter(([t]) => t !== "incident")
-    .map(([t, c]) => `${escapeHTML(_entityMeta(t).name)}: ${c}`).join(" · ");
-  const caption = `<p class="mono entity-graph-caption">${edges.length} relationships${typeCounts ? ` · ${typeCounts}` : ""}${stats.evidence_basis ? ` · basis: ${escapeHTML(stats.evidence_basis)}` : ""}</p>`;
+  const nodeCounts = stats.node_counts || {};
+
+  const hostCount = nodeCounts.host || 0;
+  const procCount = nodeCounts.process || 0;
+  const fileCount = nodeCounts.file || 0;
+  const hashCount = nodeCounts.hash || 0;
+  const ipCount = (nodeCounts.ip || 0) + (nodeCounts.domain || 0);
+  const totalIncidents = 1 + correlatedList.length;
+
   const warning = graph.data_availability_warning ? `<p class="notice">${escapeHTML(graph.data_availability_warning)}</p>` : "";
+
+  // Filter chips for incidents
+  const incidentChips = [
+    `<button type="button" class="entity-graph-filter-chip is-active" data-incident="all">All Incidents (${totalIncidents})</button>`,
+    `<button type="button" class="entity-graph-filter-chip" data-incident="${escapeHTML(primaryIncId)}"><span class="entity-graph-filter-dot" style="background:${primaryColor}"></span>${escapeHTML(primaryIncId)} (Primary)</button>`,
+    ...correlatedList.map((rel) => `<button type="button" class="entity-graph-filter-chip" data-incident="${escapeHTML(rel.id)}"><span class="entity-graph-filter-dot" style="background:${rel.color}"></span>${escapeHTML(rel.id)}</button>`)
+  ].join("");
+
   return `<div class="entity-graph-wrap" id="entity-graph-wrap">
     <div class="entity-graph-toolbar">
-      <input type="search" id="entity-graph-search" class="entity-graph-search-input" placeholder="Search entities…" aria-label="Search entities">
+      <input type="search" id="entity-graph-search" class="entity-graph-search-input" placeholder="Search entities (host, process, IP, hash, CVE)…" aria-label="Search entities">
+      
       <div class="entity-graph-toolbar-actions">
         <button type="button" class="action-button" id="entity-graph-fit">Reset View</button>
         <button type="button" class="action-button" id="entity-graph-fullscreen" title="Fullscreen">⤢</button>
       </div>
     </div>
-    ${warning}${caption}
-    <div class="entity-graph-body">
-      <div class="entity-graph-canvas-wrap"><div class="entity-graph-canvas" id="entity-graph-canvas"></div></div>
-      <aside class="entity-graph-details panel" id="entity-graph-details"><h3>Entity Details</h3><p class="notice">Select a node to view its details.</p></aside>
+
+    <div class="entity-graph-filter-bar" id="entity-graph-filter-bar">
+      ${incidentChips}
     </div>
+
+    ${warning}
+
+    <div class="entity-graph-body" id="entity-graph-body">
+      <div class="entity-graph-canvas-wrap"><div class="entity-graph-canvas" id="entity-graph-canvas"></div></div>
+      <aside class="entity-graph-details panel" id="entity-graph-details"></aside>
+    </div>
+
+    <div class="entity-graph-metrics-bar" id="entity-graph-metrics-bar">
+      ${hostCount ? `<span class="entity-graph-metric-pill" data-type="host">💻 <strong>${hostCount}</strong> Host(s)</span>` : ""}
+      <span class="entity-graph-metric-pill" data-type="incident">🛡️ <strong>${totalIncidents}</strong> Incident(s)</span>
+      ${procCount ? `<span class="entity-graph-metric-pill" data-type="process">⚙️ <strong>${procCount}</strong> Process(es)</span>` : ""}
+      ${fileCount ? `<span class="entity-graph-metric-pill" data-type="file">📄 <strong>${fileCount}</strong> File(s)</span>` : ""}
+      ${hashCount ? `<span class="entity-graph-metric-pill" data-type="hash">🔑 <strong>${hashCount}</strong> Hash(es)</span>` : ""}
+      ${ipCount ? `<span class="entity-graph-metric-pill" data-type="ip">🌐 <strong>${ipCount}</strong> C2 / IP / Domain(s)</span>` : ""}
+      <span class="entity-graph-metric-pill" data-type="all">↔️ <strong>${edges.length}</strong> Relationships</span>
+    </div>
+
     <div class="entity-graph-legend" id="entity-graph-legend"></div>
   </div>`;
 }
@@ -1941,24 +2283,41 @@ function mountEntityGraph(container, workspace) {
   const graph = workspace?.entity_graph || {};
   const nodes = graph.nodes || [];
   const edges = graph.edges || [];
+  const primaryIncId = String(workspace?.incident_id || "");
   const wrap = container.querySelector("#entity-graph-wrap");
+  const graphBody = container.querySelector("#entity-graph-body");
   const canvasHost = container.querySelector("#entity-graph-canvas");
   const detailsHost = container.querySelector("#entity-graph-details");
   const legendHost = container.querySelector("#entity-graph-legend");
   const searchInput = container.querySelector("#entity-graph-search");
   const fitButton = container.querySelector("#entity-graph-fit");
   const fullscreenButton = container.querySelector("#entity-graph-fullscreen");
+  const filterBar = container.querySelector("#entity-graph-filter-bar");
+  const metricsBar = container.querySelector("#entity-graph-metrics-bar");
+
   if (!canvasHost || !nodes.length) return;
 
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
-  const pos = _computeGraphLayout(nodes, edges);
+  let activeIncidentFilter = "all";
+  let activeTypeFilter = "all";
+  let selectedId = null;
 
-  const svg = _svgEl("svg", { viewBox: `0 0 ${_GRAPH_W} ${_GRAPH_H}`, class: "entity-graph-svg", role: "img", "aria-label": "Entity relationship graph" });
+  let pos = _computeForceLayout(nodes, edges, primaryIncId);
+
+  const svg = _svgEl("svg", { viewBox: `0 0 ${_GRAPH_W} ${_GRAPH_H}`, class: "entity-graph-svg", role: "img", "aria-label": "Multi-incident relationship graph" });
   const defs = _svgEl("defs");
-  const marker = _svgEl("marker", { id: "entity-graph-arrow", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" });
-  marker.appendChild(_svgEl("path", { d: "M0,0 L10,5 L0,10 z", fill: "#5b7a8f" }));
-  defs.appendChild(marker);
+
+  // Arrow markers for standard and cross-incident connections
+  const markerStd = _svgEl("marker", { id: "arrow-std", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" });
+  markerStd.appendChild(_svgEl("path", { d: "M0,0 L10,5 L0,10 z", fill: "#5b7a8f" }));
+  defs.appendChild(markerStd);
+
+  const markerCross = _svgEl("marker", { id: "arrow-cross", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" });
+  markerCross.appendChild(_svgEl("path", { d: "M0,0 L10,5 L0,10 z", fill: "#f59e0b" }));
+  defs.appendChild(markerCross);
+
   svg.appendChild(defs);
+
   const viewport = _svgEl("g", { class: "entity-graph-viewport" });
   const edgeLayer = _svgEl("g", { class: "entity-graph-edges" });
   const nodeLayer = _svgEl("g", { class: "entity-graph-nodes" });
@@ -1967,69 +2326,207 @@ function mountEntityGraph(container, workspace) {
   svg.appendChild(viewport);
 
   const edgeGroups = [];
-  edges.forEach((e) => {
-    const pv = pos.get(e.src), pu = pos.get(e.dst);
-    if (!pv || !pu) return;
-    const g = _svgEl("g", { class: "entity-graph-edge", "data-src": e.src, "data-dst": e.dst });
-    g.appendChild(_svgEl("line", {
-      x1: pv.x, y1: pv.y, x2: pu.x, y2: pu.y,
-      stroke: e.evidence_status === "co_occurrence_only" ? "#5b6b7a" : "#5b7a8f",
-      "stroke-width": 1.4,
-      "stroke-dasharray": e.evidence_status === "co_occurrence_only" ? "4 3" : "",
-      "marker-end": "url(#entity-graph-arrow)",
-    }));
-    const label = (e.relation || "").replaceAll("_", " ");
-    if (label) {
-      const text = _svgEl("text", { x: (pv.x + pu.x) / 2, y: (pv.y + pu.y) / 2, class: "entity-graph-edge-label", "text-anchor": "middle" });
-      text.textContent = label;
-      g.appendChild(text);
-    }
-    const title = _svgEl("title");
-    title.textContent = `${e.relation}${(e.evidence || []).length ? ` — evidence: ${e.evidence.join(", ")}` : ""}`;
-    g.appendChild(title);
-    edgeLayer.appendChild(g);
-    edgeGroups.push(g);
-  });
-
   const nodeGroups = new Map();
-  nodes.forEach((n) => {
-    const p = pos.get(n.id);
-    if (!p) return;
-    const meta = _entityMeta(n.type);
-    const radius = n.type === "incident" ? 26 : 22;
-    const g = _svgEl("g", { class: "entity-graph-node", "data-id": n.id, transform: `translate(${p.x},${p.y})`, tabindex: "0", role: "button" });
-    g.appendChild(_svgEl("circle", { r: radius, fill: "#0b1422", stroke: meta.color, "stroke-width": 2.5 }));
-    const mono = _svgEl("text", { class: "entity-graph-node-icon", fill: meta.color, "text-anchor": "middle", dy: "0.32em" });
-    mono.textContent = _entityMonogram(n.type);
-    g.appendChild(mono);
-    const label = _svgEl("text", { class: "entity-graph-node-label", y: radius + 14, "text-anchor": "middle" });
-    label.textContent = n.label && n.label.length > 22 ? `${n.label.slice(0, 21)}…` : (n.label || "");
-    g.appendChild(label);
-    const title = _svgEl("title");
-    title.textContent = `${n.label} (${n.type})`;
-    g.appendChild(title);
-    nodeLayer.appendChild(g);
-    nodeGroups.set(n.id, g);
-  });
+
+  function updateConnectedEdges(nodeId) {
+    edgeGroups.forEach((eg, idx) => {
+      const srcId = eg.dataset.src;
+      const dstId = eg.dataset.dst;
+      if (srcId !== nodeId && dstId !== nodeId) return;
+
+      const pv = pos.get(srcId), pu = pos.get(dstId);
+      if (!pv || !pu) return;
+
+      const isCross = eg.classList.contains("is-cross-incident");
+      const pathData = _calcEdgePath(pv, pu, isCross, idx);
+
+      const path = eg.querySelector("path");
+      if (path) {
+        path.setAttribute("d", pathData.d);
+      }
+
+      const label = eg.querySelector("text.entity-graph-edge-label");
+      if (label) {
+        label.setAttribute("x", pathData.labelX);
+        label.setAttribute("y", pathData.labelY);
+      }
+      const bg = eg.querySelector("rect.entity-graph-edge-label-bg");
+      if (bg && label) {
+        try {
+          const bbox = label.getBBox();
+          bg.setAttribute("x", bbox.x - 4);
+          bg.setAttribute("y", bbox.y - 2);
+        } catch {}
+      }
+    });
+  }
+
+  // Relations that should display visible on-canvas text labels (structural hierarchy only)
+  const VISIBLE_LABEL_RELATIONS = new Set([
+    "spawned", "spawns", "injected_into", "modified_registry", "communicates_with"
+  ]);
+
+  function renderGraphElements() {
+    edgeLayer.innerHTML = "";
+    nodeLayer.innerHTML = "";
+    edgeGroups.length = 0;
+    nodeGroups.clear();
+
+    edges.forEach((e, idx) => {
+      const pv = pos.get(e.src), pu = pos.get(e.dst);
+      if (!pv || !pu) return;
+      const g = _svgEl("g", { class: `entity-graph-edge ${e.is_cross_incident ? "is-cross-incident" : ""}`, "data-src": e.src, "data-dst": e.dst });
+      
+      const strokeColor = e.color || (e.is_cross_incident ? "#f59e0b" : e.relation?.includes("spawn") || e.relation?.includes("inject") ? "#ff7382" : e.evidence_status === "co_occurrence_only" ? "#475569" : "#5b7a8f");
+      const pathData = _calcEdgePath(pv, pu, Boolean(e.is_cross_incident), idx);
+
+      g.appendChild(_svgEl("path", {
+        d: pathData.d,
+        stroke: strokeColor,
+        "stroke-width": e.is_cross_incident ? 1.8 : 1.4,
+        "stroke-dasharray": e.is_cross_incident ? "5 3" : e.evidence_status === "co_occurrence_only" ? "4 3" : "",
+        "marker-end": e.is_cross_incident ? "url(#arrow-cross)" : "url(#arrow-std)",
+        fill: "none",
+      }));
+
+      // Only print text labels on-canvas for high-value structural relationships to eliminate overlapping text clutter
+      const shouldShowLabel = VISIBLE_LABEL_RELATIONS.has(e.relation);
+      if (shouldShowLabel) {
+        const label = (e.relation || "").replaceAll("_", " ");
+        const text = _svgEl("text", { x: pathData.labelX, y: pathData.labelY, class: "entity-graph-edge-label", "text-anchor": "middle" });
+        text.textContent = label;
+        g.appendChild(text);
+      }
+
+      const title = _svgEl("title");
+      title.textContent = `${e.relation}${(e.evidence || []).length ? ` — evidence: ${e.evidence.join(", ")}` : ""}`;
+      g.appendChild(title);
+
+      edgeLayer.appendChild(g);
+      edgeGroups.push(g);
+    });
+
+    nodes.forEach((n) => {
+      const p = pos.get(n.id);
+      if (!p) return;
+      const meta = _entityMeta(n.type);
+      const isIncident = n.type === "incident";
+      const isMalicious = n.disposition === "malicious";
+      const isSuspicious = n.disposition === "suspicious";
+      const isShared = n.props?.is_shared_pivot || (n.incidents && n.incidents.length > 1);
+      const nodeColor = n.color || meta.color;
+      const radius = isIncident ? 26 : isShared ? 23 : 19;
+
+      const classes = [
+        "entity-graph-node",
+        isIncident ? "is-incident" : "",
+        isMalicious ? "is-malicious" : "",
+        isSuspicious ? "is-suspicious" : "",
+        isShared ? "is-shared-pivot" : "",
+      ].filter(Boolean).join(" ");
+
+      const g = _svgEl("g", { class: classes, "data-id": n.id, transform: `translate(${p.x},${p.y})`, tabindex: "0", role: "button" });
+
+      // Outer circle / glowing halo
+      g.appendChild(_svgEl("circle", {
+        r: radius,
+        fill: isIncident ? "#0a192f" : "#080f1a",
+        stroke: isMalicious ? "#ef4444" : isSuspicious ? "#f97316" : nodeColor,
+        "stroke-width": isIncident ? 3.5 : isMalicious ? 3.5 : 2.2,
+      }));
+
+      // Monogram icon inside circle
+      const mono = _svgEl("text", { class: "entity-graph-node-icon", fill: isMalicious ? "#ef4444" : isSuspicious ? "#f97316" : nodeColor, "text-anchor": "middle", dy: "0.35em" });
+      mono.textContent = _entityMonogram(n.type);
+      g.appendChild(mono);
+
+      // Label under node
+      const label = _svgEl("text", { class: "entity-graph-node-label", y: radius + 14, "text-anchor": "middle" });
+      const displayLabel = n.label && n.label.length > 24 ? `${n.label.slice(0, 23)}…` : (n.label || "");
+      label.textContent = displayLabel;
+      g.appendChild(label);
+
+      // Tooltip
+      const title = _svgEl("title");
+      const dispTag = (n.disposition && n.disposition !== "unknown") ? ` — [${String(n.disposition).toUpperCase()}]` : "";
+      title.textContent = `${n.label || n.id} (${meta.name})${dispTag} — Click to inspect, drag to reposition`;
+      g.appendChild(title);
+
+      // Interactive Draggable Node Handling
+      let isDraggingNode = false;
+      let startPointerX = 0, startPointerY = 0;
+      let nodeStartX = 0, nodeStartY = 0;
+      let moved = false;
+
+      g.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        isDraggingNode = true;
+        moved = false;
+        startPointerX = e.clientX;
+        startPointerY = e.clientY;
+        const currentPos = pos.get(n.id) || { x: 0, y: 0 };
+        nodeStartX = currentPos.x;
+        nodeStartY = currentPos.y;
+        g.setPointerCapture(e.pointerId);
+        g.classList.add("is-dragging");
+      });
+
+      g.addEventListener("pointermove", (e) => {
+        if (!isDraggingNode) return;
+        const dx = (e.clientX - startPointerX) / scale;
+        const dy = (e.clientY - startPointerY) / scale;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+          moved = true;
+        }
+        const newX = Math.max(35, Math.min(_GRAPH_W - 35, nodeStartX + dx));
+        const newY = Math.max(35, Math.min(_GRAPH_H - 35, nodeStartY + dy));
+        pos.set(n.id, { x: newX, y: newY });
+        g.setAttribute("transform", `translate(${newX},${newY})`);
+        updateConnectedEdges(n.id);
+      });
+
+      const handleEnd = (e) => {
+        if (!isDraggingNode) return;
+        isDraggingNode = false;
+        g.classList.remove("is-dragging");
+        try { g.releasePointerCapture(e.pointerId); } catch {}
+        if (!moved) {
+          selectNode(selectedId === n.id ? null : n.id);
+        }
+      };
+
+      g.addEventListener("pointerup", handleEnd);
+      g.addEventListener("pointercancel", handleEnd);
+
+      g.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectNode(selectedId === n.id ? null : n.id); }
+      });
+
+      nodeLayer.appendChild(g);
+      nodeGroups.set(n.id, g);
+    });
+
+    // Label backing rects
+    edgeLayer.querySelectorAll("text.entity-graph-edge-label").forEach((text) => {
+      try {
+        const bbox = text.getBBox();
+        const rect = _svgEl("rect", { x: bbox.x - 4, y: bbox.y - 2, width: bbox.width + 8, height: bbox.height + 4, class: "entity-graph-edge-label-bg" });
+        text.parentNode.insertBefore(rect, text);
+      } catch { /* hidden tab fallback */ }
+    });
+
+    applyFilters();
+  }
 
   canvasHost.innerHTML = "";
   canvasHost.appendChild(svg);
+  renderGraphElements();
 
-  // Edge label backgrounds need real layout metrics (getBBox), so they're
-  // added only once the <svg> is attached to the document.
-  edgeLayer.querySelectorAll("text.entity-graph-edge-label").forEach((text) => {
-    try {
-      const bbox = text.getBBox();
-      const rect = _svgEl("rect", { x: bbox.x - 3, y: bbox.y - 1, width: bbox.width + 6, height: bbox.height + 2, class: "entity-graph-edge-label-bg" });
-      text.parentNode.insertBefore(rect, text);
-    } catch { /* getBBox can throw on a hidden tab in some browsers; label just renders without a backing rect */ }
-  });
-
-  // Pan (drag background) and zoom (wheel), scoped to this <svg> via
-  // pointer capture so listeners are discarded with the element on remount
-  // instead of accumulating on `window`.
+  // Pan and Zoom
   let scale = 1, tx = 0, ty = 0, dragging = false, dragStartX = 0, dragStartY = 0, startTx = 0, startTy = 0;
   const applyTransform = () => viewport.setAttribute("transform", `translate(${tx},${ty}) scale(${scale})`);
+
   svg.addEventListener("pointerdown", (event) => {
     if (event.target.closest(".entity-graph-node")) return;
     dragging = true; dragStartX = event.clientX; dragStartY = event.clientY; startTx = tx; startTy = ty;
@@ -2045,45 +2542,116 @@ function mountEntityGraph(container, workspace) {
   svg.addEventListener("pointercancel", () => { dragging = false; });
   svg.addEventListener("wheel", (event) => {
     event.preventDefault();
-    scale = Math.min(2.5, Math.max(0.4, scale * (event.deltaY > 0 ? 0.9 : 1.1)));
+    scale = Math.min(2.8, Math.max(0.35, scale * (event.deltaY > 0 ? 0.9 : 1.1)));
     applyTransform();
   }, { passive: false });
 
+  // Deselect on clicking canvas backdrop
+  svg.addEventListener("click", (event) => {
+    if (!event.target.closest(".entity-graph-node")) {
+      selectNode(null);
+    }
+  });
+
   function renderDetails(node) {
     if (!node) {
-      detailsHost.innerHTML = `<h3>Entity Details</h3><p class="notice">Select a node to view its details.</p>`;
+      if (graphBody) graphBody.classList.remove("has-inspector");
+      detailsHost.innerHTML = "";
       return;
     }
+
+    if (graphBody) graphBody.classList.add("has-inspector");
+    const meta = _entityMeta(node.type);
     const props = node.props || {};
-    const propRows = Object.entries(props).map(([k, v]) => `<tr><th scope="row">${escapeHTML(k.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()))}</th><td>${escapeHTML(String(v))}</td></tr>`).join("");
+    const incidents = node.incidents || [];
     const neighbors = _neighborsOf(node.id, edges);
+
+    // Disposition Badge
+    let dispBadge = "";
+    if (node.disposition === "malicious") dispBadge = `<span class="entity-graph-disposition-badge is-malicious">🔴 Malicious</span>`;
+    else if (node.disposition === "suspicious") dispBadge = `<span class="entity-graph-disposition-badge is-suspicious">🟠 Suspicious</span>`;
+    else if (node.disposition === "clean") dispBadge = `<span class="entity-graph-disposition-badge is-clean">🟢 Clean</span>`;
+
+    // Linked Incidents Pills
+    const incPills = incidents.map((incId) => {
+      const isPrimary = incId === primaryIncId;
+      const incMeta = (graph.correlated_incidents || []).find((c) => c.id === incId);
+      const color = isPrimary ? (graph.primary_incident_color || "#38bdf8") : (incMeta?.color || "#f59e0b");
+      return `<button type="button" class="entity-graph-filter-chip is-active" style="padding:0.18rem 0.55rem;font-size:0.72rem;" data-jump-incident="${escapeHTML(incId)}"><span class="entity-graph-filter-dot" style="background:${color}"></span>${escapeHTML(incId)}${isPrimary ? " (Focus Case)" : ""}</button>`;
+    }).join(" ");
+
+    // Attribute Rows
+    const propRows = Object.entries(props)
+      .filter(([k]) => !["is_focus_entity", "is_shared_pivot"].includes(k))
+      .map(([k, v]) => `<tr><th scope="row">${escapeHTML(k.replaceAll("_", " ").replace(/\b\w/g, (c) => c.toUpperCase()))}</th><td class="${k.includes('cmd') || k.includes('hash') || k.includes('id') || k.includes('ip') ? 'mono' : ''}">${escapeHTML(String(v))}</td></tr>`).join("");
+
     const related = neighbors.map(({ id, dir, edge }) => {
       const other = nodeById.get(id);
       if (!other) return "";
+      const otherMeta = _entityMeta(other.type);
       const arrow = dir === "out" ? "→" : "←";
-      return `<li><button type="button" class="entity-graph-related-link" data-id="${escapeHTML(id)}"><span class="entity-graph-mini-icon" style="color:${_entityMeta(other.type).color}">${_entityMonogram(other.type)}</span><span>${escapeHTML(other.label)}</span></button><p class="mono">${arrow} ${escapeHTML((edge.relation || "").replaceAll("_", " "))}${edge.evidence_status ? ` · ${escapeHTML(edge.evidence_status)}` : ""}</p></li>`;
+      const { action, evidence } = _formatRelationshipDesc(edge, dir, node, other);
+
+      return `<li class="entity-graph-related-item">
+        <div class="entity-graph-related-header">
+          <button type="button" class="entity-graph-related-link" data-id="${escapeHTML(id)}">
+            <span class="entity-graph-mini-icon" style="color:${other.color || otherMeta.color}">${_entityMonogram(other.type)}</span>
+            <span class="entity-label-text" title="${escapeHTML(other.label)}">${escapeHTML(other.label)}</span>
+          </button>
+          <span class="mono" style="font-size:0.7rem;color:var(--muted);background:var(--surface);padding:0.1rem 0.4rem;border-radius:0.25rem;border:1px solid var(--border-soft);flex-shrink:0;">${escapeHTML(otherMeta.name)}</span>
+        </div>
+        <div class="entity-graph-rel-desc">
+          <div style="color:var(--accent);font-weight:600;display:flex;align-items:center;gap:0.35rem;">
+            <span>${arrow}</span> <span>${escapeHTML(action)}</span>
+          </div>
+          ${evidence ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.2rem;font-style:italic;">Evidence: ${escapeHTML(evidence)}</div>` : ""}
+        </div>
+      </li>`;
     }).join("");
+
     detailsHost.innerHTML = `
       <div class="entity-graph-details-header">
-        <span class="entity-graph-mini-icon" style="color:${_entityMeta(node.type).color}">${_entityMonogram(node.type)}</span>
-        <div><strong>${escapeHTML(node.label)}</strong><p class="mono">${escapeHTML(node.type)}</p></div>
+        <div style="display:flex;align-items:center;gap:0.75rem;min-width:0;">
+          <span class="entity-graph-mini-icon" style="color:${node.color || meta.color};width:2.2rem;height:2.2rem;font-size:0.8rem;">${_entityMonogram(node.type)}</span>
+          <div style="min-width:0;">
+            <h3 style="margin:0;font-size:1.05rem;word-break:break-all;">${escapeHTML(node.label)}</h3>
+            <div style="display:flex;align-items:center;gap:0.4rem;margin-top:0.25rem;">
+              <span class="mono" style="color:var(--muted);font-size:0.75rem;">${escapeHTML(meta.name)}</span>
+              ${dispBadge}
+            </div>
+          </div>
+        </div>
+        <button type="button" class="entity-graph-close-btn" id="entity-graph-close-inspector" title="Close Inspector" aria-label="Close Inspector">✕</button>
       </div>
+
+      ${incidents.length ? `<div style="margin-bottom:0.9rem;"><strong style="font-size:0.78rem;color:var(--muted);display:block;margin-bottom:0.35rem;">Correlated Incident Scope (${incidents.length})</strong><div style="display:flex;flex-wrap:wrap;gap:0.35rem;">${incPills}</div></div>` : ""}
+
       <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>
-        <tr><th scope="row">Entity Type</th><td>${escapeHTML(_entityMeta(node.type).name)}</td></tr>
-        <tr><th scope="row">Connections</th><td>${neighbors.length}</td></tr>
+        <tr><th scope="row">Entity Type</th><td>${escapeHTML(meta.name)}</td></tr>
+        <tr><th scope="row">Direct Connections</th><td>${neighbors.length}</td></tr>
         ${propRows}
       </tbody></table></div>
-      <h3 style="margin-top:1rem">Related Entities (${neighbors.length})</h3>
-      <ul class="data-list entity-graph-related-list">${related || `<li>${emptyState("No related entities.")}</li>`}</ul>`;
+
+      <h3 style="margin-top:1.1rem;margin-bottom:0.6rem;">Forensic Relationships (${neighbors.length})</h3>
+      <ul class="data-list entity-graph-related-list" style="margin:0;padding:0;list-style:none;">${related || `<li>${emptyState("No related entities.")}</li>`}</ul>`;
+
+    const closeBtn = detailsHost.querySelector("#entity-graph-close-inspector");
+    if (closeBtn) closeBtn.addEventListener("click", () => selectNode(null));
+
     detailsHost.querySelectorAll(".entity-graph-related-link").forEach((btn) => {
       btn.addEventListener("click", () => selectNode(btn.dataset.id));
     });
+    detailsHost.querySelectorAll("[data-jump-incident]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        setIncidentFilter(btn.dataset.jumpIncident);
+      });
+    });
   }
 
-  let selectedId = null;
   function selectNode(id) {
     selectedId = id;
     const isConnected = (nid) => nid === id || edges.some((e) => (e.src === id && e.dst === nid) || (e.dst === id && e.src === nid));
+    
     nodeGroups.forEach((g, nid) => {
       g.classList.toggle("is-selected", nid === id);
       g.classList.toggle("is-dimmed", Boolean(id) && !isConnected(nid));
@@ -2095,39 +2663,96 @@ function mountEntityGraph(container, workspace) {
     });
     renderDetails(id ? nodeById.get(id) : null);
   }
-  nodeGroups.forEach((g, id) => {
-    g.addEventListener("click", () => selectNode(selectedId === id ? null : id));
-    g.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); selectNode(selectedId === id ? null : id); }
+
+  function applyFilters() {
+    const q = (searchInput?.value || "").trim().toLowerCase();
+
+    nodeGroups.forEach((g, id) => {
+      const n = nodeById.get(id);
+      const matchesSearch = !q || (n.label || "").toLowerCase().includes(q) || (n.type || "").toLowerCase().includes(q);
+      
+      let matchesIncident = false;
+      if (activeIncidentFilter === "all") {
+        matchesIncident = true;
+      } else {
+        const incs = n.incidents || [];
+        matchesIncident = incs.includes(activeIncidentFilter) || n.id === activeIncidentFilter || n.label === activeIncidentFilter;
+      }
+      const matchesType = activeTypeFilter === "all" || n.type === activeTypeFilter;
+      
+      const isVisible = matchesSearch && matchesIncident && matchesType;
+      g.classList.toggle("is-filter-hidden", !matchesIncident);
+      g.classList.toggle("is-search-dimmed", !isVisible && matchesIncident);
+      g.classList.remove("is-dimmed");
     });
-  });
 
-  // Default selection: the most-connected node (real degree, not a guess).
-  const degree = new Map(nodes.map((n) => [n.id, 0]));
-  edges.forEach((e) => {
-    degree.set(e.src, (degree.get(e.src) || 0) + 1);
-    degree.set(e.dst, (degree.get(e.dst) || 0) + 1);
-  });
-  const defaultNode = [...nodes].sort((a, b) => (degree.get(b.id) || 0) - (degree.get(a.id) || 0))[0] || null;
-  selectNode(defaultNode ? defaultNode.id : null);
+    edgeGroups.forEach((eg) => {
+      const srcId = eg.dataset.src;
+      const dstId = eg.dataset.dst;
+      const srcNode = nodeById.get(srcId);
+      const dstNode = nodeById.get(dstId);
 
-  if (searchInput) {
-    searchInput.addEventListener("input", () => {
-      const q = searchInput.value.trim().toLowerCase();
-      nodeGroups.forEach((g, id) => {
-        const n = nodeById.get(id);
-        g.classList.toggle("is-search-dimmed", Boolean(q) && !(n.label || "").toLowerCase().includes(q));
-      });
+      if (activeIncidentFilter === "all") {
+        eg.classList.remove("is-filter-hidden");
+      } else {
+        const srcInInc = srcNode?.incidents?.includes(activeIncidentFilter) || srcNode?.id === activeIncidentFilter;
+        const dstInInc = dstNode?.incidents?.includes(activeIncidentFilter) || dstNode?.id === activeIncidentFilter;
+        eg.classList.toggle("is-filter-hidden", !(srcInInc || dstInInc));
+      }
+      eg.classList.remove("is-dimmed");
     });
   }
+
+  function updateFilterChipUI() {
+    filterBar.querySelectorAll(".entity-graph-filter-chip").forEach((chip) => {
+      chip.classList.toggle("is-active", chip.dataset.incident === activeIncidentFilter);
+      chip.classList.toggle("is-inactive", chip.dataset.incident !== activeIncidentFilter && activeIncidentFilter !== "all");
+    });
+  }
+
+  function setIncidentFilter(incId) {
+    activeIncidentFilter = incId;
+    selectedId = null;
+    updateFilterChipUI();
+    applyFilters();
+    renderDetails(null);
+  }
+
+  // Filter chips interaction
+  filterBar.addEventListener("click", (event) => {
+    const chip = event.target.closest(".entity-graph-filter-chip");
+    if (!chip) return;
+    setIncidentFilter(chip.dataset.incident);
+  });
+
+  // Metrics bar pill interaction
+  metricsBar.addEventListener("click", (event) => {
+    const pill = event.target.closest(".entity-graph-metric-pill");
+    if (!pill) return;
+    const type = pill.dataset.type;
+    activeTypeFilter = activeTypeFilter === type ? "all" : type;
+    metricsBar.querySelectorAll(".entity-graph-metric-pill").forEach((p) => {
+      p.classList.toggle("is-active", p.dataset.type === activeTypeFilter && activeTypeFilter !== "all");
+    });
+    applyFilters();
+  });
+
+  if (searchInput) {
+    searchInput.addEventListener("input", applyFilters);
+  }
+
   if (fitButton) {
     fitButton.addEventListener("click", () => {
       scale = 1; tx = 0; ty = 0; applyTransform();
       if (searchInput) searchInput.value = "";
-      nodeGroups.forEach((g) => g.classList.remove("is-search-dimmed"));
-      selectNode(defaultNode ? defaultNode.id : null);
+      setIncidentFilter("all");
+      activeTypeFilter = "all";
+      metricsBar.querySelectorAll(".entity-graph-metric-pill").forEach((p) => p.classList.remove("is-active"));
+      applyFilters();
+      selectNode(null);
     });
   }
+
   if (fullscreenButton && wrap) {
     fullscreenButton.addEventListener("click", () => {
       const isFull = wrap.classList.toggle("is-fullscreen");
@@ -2136,12 +2761,11 @@ function mountEntityGraph(container, workspace) {
     });
   }
 
-  // Legend lists only the entity types actually present in this graph —
-  // never the full type catalogue, so it never implies evidence that
-  // wasn't derived for this case.
+  // Legend
   const presentTypes = [...new Set(nodes.map((n) => n.type))];
   legendHost.innerHTML = "<strong>Legend</strong>" + presentTypes.map((t) => `<span class="entity-graph-legend-item"><span class="entity-graph-mini-icon" style="color:${_entityMeta(t).color}">${_entityMonogram(t)}</span>${escapeHTML(_entityMeta(t).name)}</span>`).join("");
 }
+
 
 function investigationEvidenceTab(workspace) {
   const items = workspace?.evidence || [];
@@ -2161,7 +2785,6 @@ const _INVESTIGATION_SUBTABS = [
   ["overview", "Overview", investigationOverviewTab],
   ["output", "Output", investigationOutputTab],
   ["timeline", "Timeline", investigationTimelineTab],
-  ["mitre", "MITRE ATT&CK", investigationMitreTab],
   ["entity_graph", "Entity Graph", investigationEntityGraphTab, mountEntityGraph],
 ];
 

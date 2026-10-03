@@ -207,3 +207,95 @@ def test_timeline_raw_alerts_fallback_when_investigation_not_run():
     assert "powershell.exe" in timeline[0]["evidence"]
     assert timeline[1]["event"] == "Outbound Connection to Suspicious IP"
     assert "203.0.113.5" in timeline[1]["evidence"]
+
+
+def test_timeline_correlates_multiple_distinct_incident_origins():
+    """Verify that multiple correlated alerts from distinct incident IDs
+    retain their respective incident IDs in event_origin and incident_id."""
+    raw_alerts = [
+        {
+            "id": "INC-50573",
+            "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+            "metadata": {
+                "incident_id": "INC-50573",
+                "timestamp_str": "2025-07-02T10:27:53+00:00",
+                "tactic": "Command and Control",
+                "technique": "T1071.001 Application Layer Protocol: Web Protocols",
+                "ips": "124.155.222.24",
+            },
+        },
+        {
+            "id": "INC-52715",
+            "title": "High Risk Alerts: ESA for 192.168.10.14",
+            "metadata": {
+                "incident_id": "INC-52715",
+                "timestamp_str": "2025-07-14T07:32:02+00:00",
+                "tactic": "Discovery",
+                "technique": "T1016 System Network Configuration Discovery",
+                "ips": "192.168.10.14",
+            },
+        },
+        {
+            "id": "INC-52825",
+            "title": "High Risk Alerts: NetWitness Endpoint for BETHANYCHUCHU",
+            "metadata": {
+                "incident_id": "INC-52825",
+                "timestamp_str": "2025-07-14T11:21:34+00:00",
+                "tactic": "Lateral Movement",
+                "technique": "T1071.001 Application Layer Protocol: Web Protocols",
+                "ips": "4.145.79.81",
+            },
+        },
+    ]
+
+    inv_result = {
+        "incident_id": "INC-52825",
+        "severity": "High",
+        "confidence": "High",
+        "mitre_mappings": [
+            {
+                "timeline_phase": "Initial Command and Control beaconing",
+                "observed_evidence": "Host contacted 124.155.222.24 at 2025-07-02T10:27:53+00:00 via web protocol.",
+                "tactic": "Command and Control",
+                "technique_name": "Application Layer Protocol: Web Protocols",
+                "technique_id": "T1071.001",
+            },
+            {
+                "timeline_phase": "Reconnaissance on subnet via 192.168.10.14",
+                "observed_evidence": "Host 192.168.10.14 initiated discovery traffic at 2025-07-14T07:32:02.",
+                "tactic": "Discovery",
+                "technique_name": "System Network Configuration Discovery",
+                "technique_id": "T1016",
+            },
+            {
+                "timeline_phase": "Lateral Movement and C2 execution",
+                "observed_evidence": "vmtoolsd.exe reached 4.145.79.81 at 2025-07-14T11:21:34+00:00.",
+                "tactic": "Lateral Movement",
+                "technique_name": "Remote Services",
+                "technique_id": "T1021",
+            },
+        ],
+    }
+
+    state = {
+        "incident_id": "Incident-001",
+        "run_id": RUN_ID,
+        "investigation_status": "Approved",
+        "investigation_result_json": json.dumps(inv_result),
+    }
+    incident = {
+        "id": "Incident-001",
+        "raw_alerts": raw_alerts,
+        "firstAlertTime": "2025-07-02T10:27:53.000Z",
+    }
+    data_availability = {"alerts_fetch_succeeded": True}
+
+    timeline = cv.build_timeline(state, incident, "Incident-001", RUN_ID, data_availability)
+
+    # Reconstructed timeline should strictly have the 3 agent chronology events (no raw alert injections)
+    assert len(timeline) == 3
+    origins = [item.get("event_origin") for item in timeline]
+    assert origins == ["INC-50573", "INC-52715", "INC-52825"]
+    assert all(item.get("event_type") == "attack_chain" for item in timeline)
+
+
