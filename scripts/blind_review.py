@@ -68,8 +68,12 @@ def _scrub(node):
 
 
 def sample_reviews(reviews: list[dict], n: int, seed: int, stratify: str | None) -> list[dict]:
+    from agents.triage.metrics import latest_decisions
     rng = random.Random(seed)
-    pool = [r for r in reviews if r.get("evidence_packet")]
+    # [AUDIT T-20] Same rule as the metrics: only the latest decision per
+    # (incident, run) is labelled; a superseded reject is never sampled.
+    pool = [r for r in latest_decisions([r for r in reviews if isinstance(r, dict)])
+            if r.get("evidence_packet")]
     if stratify == "disposition":
         groups: dict[str, list[dict]] = defaultdict(list)
         for r in pool:

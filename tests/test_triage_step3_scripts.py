@@ -153,3 +153,22 @@ def test_metrics_and_backlog_scripts_on_empty_db(tmp_path, monkeypatch):
     etb = _load("export_tuning_backlog")
     out = etb.export(tmp_path / "bl")
     assert out["items"] == 0 and (tmp_path / "bl" / "index.md").is_file()
+
+
+def test_blind_export_samples_only_latest_decision_per_run():
+    """Audit T-20 follow-up: metrics count the latest decision per
+    (incident, run), so the blind export must not ask the mentor to label a
+    superseded reject that the metrics ignore."""
+    br = _load("blind_review")
+    pkt = {"detection": {"ruleId": {"value": "R", "status": "measured", "source": "s"}}}
+    reviews = [
+        {"id": 1, "incident_id": "I-1", "run_id": "r1", "decided_at": "2026-10-01T10:00:00Z",
+         "analyst_disposition": "needs_info", "evidence_packet": pkt},
+        {"id": 2, "incident_id": "I-1", "run_id": "r1", "decided_at": "2026-10-01T11:00:00Z",
+         "analyst_disposition": "benign_expected", "evidence_packet": pkt},
+        {"id": 3, "incident_id": "I-2", "run_id": "r2", "decided_at": "2026-10-01T09:00:00Z",
+         "analyst_disposition": "true_positive", "evidence_packet": pkt},
+    ]
+    for strat in (None, "disposition"):
+        picked = br.sample_reviews(reviews, 30, 7, strat)
+        assert sorted(r["id"] for r in picked) == [2, 3]
