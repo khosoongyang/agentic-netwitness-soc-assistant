@@ -12,17 +12,27 @@ class SettingsError(ValueError):
     pass
 
 
+# [FYP-TRIAGE-STEP3] X6 review mode. "assisted" (default) shows the AI verdict
+# with the review form; "blind_first" hides the AI verdict and hypotheses
+# until the analyst has committed an initial disposition (measures
+# automation bias). Must match agents/triage/review.REVIEW_MODES.
+REVIEW_MODES = ("assisted", "blind_first")
+DEFAULT_REVIEW_MODE = "assisted"
+
+
 class SettingsService:
     def __init__(self) -> None:
         self._lock = threading.RLock()
         self._analyst = ""
         self._developer_mode = False
+        self._review_mode = DEFAULT_REVIEW_MODE
 
     def status(self) -> dict[str, Any]:
         with self._lock:
             return {
                 "analyst_name": self._analyst,
                 "developer_mode": self._developer_mode,
+                "review_mode": self._review_mode,
                 "openai_configured": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
                 "openai_model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini").strip() or "gpt-4o-mini",
                 "storage": {
@@ -38,6 +48,9 @@ class SettingsService:
             raise SettingsError("Analyst name is invalid.")
         if not model or len(model) > 120 or not re.fullmatch(r"[A-Za-z0-9._:-]+", model):
             raise SettingsError("OpenAI model name is invalid.")
+        review_mode = str(values.get("review_mode", self._review_mode) or DEFAULT_REVIEW_MODE).strip()
+        if review_mode not in REVIEW_MODES:
+            raise SettingsError("Review mode must be 'assisted' or 'blind_first'.")
         api_key = values.get("openai_api_key")
         if api_key is not None:
             api_key = str(api_key).strip()
@@ -50,6 +63,7 @@ class SettingsService:
         with self._lock:
             self._analyst = analyst
             self._developer_mode = bool(values.get("developer_mode", self._developer_mode))
+            self._review_mode = review_mode
             os.environ["OPENAI_MODEL"] = model
         return self.status()
 

@@ -395,6 +395,82 @@ def compute_baseline(incident: dict, db_path: Path | None = None) -> dict:
     return result
 
 
+NOISY_PAIRS_DEFAULT_LIMIT = 20
+
+
+def noisy_pairs(db_path: Path | None = None, *, limit: int = NOISY_PAIRS_DEFAULT_LIMIT,
+                as_of: str | None = None) -> dict:
+    """[FYP-FUNCTION] [FYP-TRIAGE-STEP3] Noisy-rules report: the top
+    (detection source, entity) pairs by 30-day and 90-day incident counts.
+
+    READ-ONLY (same mode=ro connection and the same entity / detection-source
+    keys as compute_baseline(); never writes). Windows are measured back from
+    ``as_of`` or, by default, the DB's newest created time (the data may be
+    an offline snapshot, so "now" would make every window empty).
+    detection_source = "createdBy" or "createdBy / ruleId" (the same label
+    agents/triage/suppression.scope_from_packet() produces)."""
+    db = Path(db_path) if db_path is not None else DEFAULT_BASELINE_DB
+    out: dict[str, Any] = {"status": "unknown", "reason": "", "db_source": f"{db.name}:incidents",
+                           "as_of": None, "pairs": []}
+    if not db.is_file():
+        out["reason"] = f"baseline database not found ({db.name})"
+        return out
+    try:
+        con = _connect_read_only(db)
+    except sqlite3.Error as exc:
+        out["reason"] = f"baseline database could not be opened read-only: {exc}"
+        return out
+    try:
+        try:
+            end = as_of or (con.execute("SELECT MAX(created) FROM incidents WHERE created IS NOT NULL "
+                                        "AND created != ''").fetchone() or [None])[0]
+            if not end:
+                out["reason"] = "incidents table is empty"
+                return out
+            end_dt = _parse_time(end)
+            if end_dt is None:
+                out["reason"] = "incidents.created unparseable"
+                return out
+            lo90 = (end_dt - timedelta(days=90)).strftime(_ISO_SECONDS)
+            rows = con.execute(
+                "SELECT title, created, json_extract(raw_json, '$.createdBy'), "
+                "json_extract(raw_json, '$.ruleId') FROM incidents WHERE created >= ? AND created <= ?",
+                (lo90, end_dt.strftime(_ISO_SECONDS) + "~")).fetchall()
+        except sqlite3.Error as exc:
+            out["reason"] = f"noisy-pairs query failed: {exc}"
+            return out
+    finally:
+        con.close()
+    lo30 = (end_dt - timedelta(days=30)).strftime(_ISO_SECONDS)
+    counts: dict[tuple[str, str], dict] = {}
+    for title, created, created_by, rule_id in rows:
+        m = _TITLE_ENTITY_RE.match(str(title or ""))
+        if not m:
+            continue
+        ent, _prefix = _entity_key(m.group(1))
+        cb = _first_str(created_by)
+        if not ent or not cb:
+            continue
+        rid = _first_str(rule_id)
+        source = f"{cb} / {rid}" if rid else cb
+        key = (source, ent)
+        c = counts.setdefault(key, {"detection_source": source, "entity": ent,
+                                    "count_30d": 0, "count_90d": 0, "last_seen": None})
+        created_s = str(created or "")[:19]
+        c["count_90d"] += 1
+        if created_s >= lo30:
+            c["count_30d"] += 1
+        if created_s and (c["last_seen"] is None or created_s > c["last_seen"]):
+            c["last_seen"] = created_s
+    pairs = sorted(counts.values(), key=lambda c: (-c["count_30d"], -c["count_90d"], c["entity"]))
+    for p in pairs:
+        p["known_noisy"] = p["count_30d"] >= KNOWN_NOISY_THRESHOLD_30D
+    out.update({"status": "measured", "as_of": end_dt.strftime(_ISO_SECONDS),
+                "pairs": pairs[:max(1, int(limit))],
+                "reason": f"{len(rows)} incident(s) in the 90 days before {end_dt:%Y-%m-%d}"})
+    return out
+
+
 __all__ = [
     "DEFAULT_BASELINE_DB",
     "BASELINE_WINDOWS_DAYS",
@@ -406,4 +482,5 @@ __all__ = [
     "detection_source",
     "incident_created_time",
     "compute_baseline",
+    "noisy_pairs",
 ]

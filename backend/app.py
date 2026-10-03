@@ -17,6 +17,7 @@ from .routes.netwitness import netwitness_blueprint
 from .routes.reports import reports_blueprint
 from .routes.search import search_blueprint
 from .routes.settings import settings_blueprint
+from .routes.triage_feedback import triage_feedback_blueprint
 from .routes.workflow import workflow_blueprint
 
 
@@ -51,6 +52,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.register_blueprint(settings_blueprint)
     app.register_blueprint(search_blueprint)
     app.register_blueprint(pipeline_blueprint)
+    app.register_blueprint(triage_feedback_blueprint)
     install_error_handlers(app)
 
     @app.get("/")

@@ -68,6 +68,8 @@ runtime/workflow_last_run.json
 # redistributed here) and real/offline eval reports (scripts/eval_triage.py).
 runtime/threat_data/
 runtime/eval_reports/
+# Triage Step 3: rule-tuning backlog ADS stubs (scripts/export_tuning_backlog.py)
+runtime/tuning_backlog/
 
 # NOTE: soc_db/, chroma_db/, *.db, incident_reports/, triaged_alerts/ are
 # intentionally TRACKED — they are the offline demo payload the cloud app
