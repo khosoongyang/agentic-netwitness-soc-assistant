@@ -2,6 +2,8 @@ import { fetchJSON } from "../api.js";
 import { badge, emptyState, errorState, escapeHTML, formatDate, jsonPreview, loadingState, openModal, provenanceValue, severityBadge, stateBadge } from "../ui.js";
 import { TICKET_REPORT_TYPE, mountReportsPanel, openReportInto } from "./reports.js";
 import { bindContinueButton, stageActionModel } from "../stageContinue.js";
+// [FYP-TRIAGE-STEP3] X1 review screen + structured review form (wiring only here).
+import { mountTriageReview, reviewHistoryHTML, scopeFromPacket } from "../components/triageReview.js";
 
 const POLL_INTERVAL_MS = 2000;
 const MAX_POLL_ATTEMPTS = 60;
@@ -859,6 +861,8 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
     }
     root.innerHTML = `
       ${header}
+      <div id="triage-review-mount"></div>
+      <div id="triage-review-history"></div>
       <div class="subtab-bar" role="tablist" aria-label="Triage output view">
         <button type="button" class="subtab-button active" role="tab" id="triage-tab-overview" data-triage-view="overview" aria-selected="true" aria-controls="triage-view-overview">Overview</button>
         <button type="button" class="subtab-button" role="tab" id="triage-tab-ticket" data-triage-view="ticket" aria-selected="false" aria-controls="triage-view-ticket">Triage Ticket</button>
@@ -882,8 +886,37 @@ function renderTriageStage(root, stage, caseId, lastError, onAction, onNavigate,
     };
     viewButtons.forEach((button) => button.addEventListener("click", () => selectView(button.dataset.triageView)));
     if (_triageSelectedView.get(ticketKey) === "ticket") selectView("ticket");
+    mountTriageReviewSection(root, stage, caseId, result, onAction);
   }
   bindStageActions(root, stage, workflow, onAction, onNavigate);
+}
+
+// [FYP-TRIAGE-STEP3] Mounts the review screen ABOVE the ticket view. While
+// Triage awaits approval the structured form REPLACES the window.prompt()
+// approve/reject for Triage only (Investigation/Reporting are unchanged):
+// the generic Approve/Reject buttons for this stage are hidden and the
+// form's own buttons go through onAction("triage-review", ...).
+async function mountTriageReviewSection(root, stage, caseId, result, onAction) {
+  const mount = root.querySelector("#triage-review-mount");
+  if (!mount) return;
+  const awaiting = stage.state === "awaiting_approval";
+  let settings = {};
+  try { settings = await fetchJSON("/api/settings"); } catch (error) { settings = {}; }
+  if (awaiting && result.assessment && result.evidence_packet) {
+    root.querySelectorAll('[data-workflow-action="approve"], [data-workflow-action="reject"]').forEach((b) => { b.hidden = true; });
+  }
+  mountTriageReview(mount, {
+    result,
+    awaitingApproval: awaiting,
+    reviewMode: settings.review_mode || "assisted",
+    defaultScope: scopeFromPacket(result.evidence_packet),
+    onDecision: (kind, review, comments) => onAction("triage-review", stage, { kind, review, comments }),
+  });
+  try {
+    const reviews = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/triage/reviews`);
+    const history = root.querySelector("#triage-review-history");
+    if (history) history.innerHTML = reviewHistoryHTML(reviews.reviews);
+  } catch (error) { /* history is informational only */ }
 }
 
 // -----------------------------------------------------------------------------
@@ -1814,13 +1847,18 @@ async function analystIdentity() {
   return analyst;
 }
 
-async function actionRequest(caseId, action, stage) {
+async function actionRequest(caseId, action, stage, extra = null) {
   const base = `/api/cases/${encodeURIComponent(caseId)}`;
   if (action === "start") return [`${base}/stages/${stage.key}/runs`, {}];
   if (action === "rerun") return [`${base}/stages/${stage.key}/reruns`, {}];
   if (action === "resume") return [`${base}/workflow/resume`, {}];
   const analyst = await analystIdentity();
   if (!analyst) throw new Error("An analyst name is required.");
+  if (action === "triage-review") {
+    // [FYP-TRIAGE-STEP3] structured Triage decision (approval body + review).
+    const decision = extra.kind === "approve" ? "approve" : "reject";
+    return [`${base}/approvals/triage`, { decision, analyst, comments: extra.comments || "", review: extra.review }];
+  }
   if (action === "approve") {
     const comments = window.prompt("Approval comments (optional)", "") ?? "";
     return [`${base}/approvals/${stage.key}`, { decision: "approve", analyst, comments }];
@@ -1831,6 +1869,7 @@ async function actionRequest(caseId, action, stage) {
 }
 
 function requiresConfirmation(action, stage) {
+  if (action === "triage-review") return true;   // the form itself is the confirmation
   if (action === "rerun") {
     return window.confirm(`Re-run ${stage.name}? Canonical downstream invalidation rules will apply.`);
   }
@@ -1925,14 +1964,23 @@ export async function renderWorkspace(root, { navigate, route }) {
       renderWorkflow();
     };
 
-    async function handleAction(action, stage) {
+    async function handleAction(action, stage, extra = null) {
       if (!requiresConfirmation(action, stage)) return;
       const actionStatus = outputRoot.querySelector("#action-status");
       outputRoot.querySelectorAll("[data-workflow-action], [data-continue-stage]").forEach((button) => { button.disabled = true; });
       try {
-        const [path, body] = await actionRequest(caseId, action, stage);
+        const [path, body] = await actionRequest(caseId, action, stage, extra);
         if (actionStatus) actionStatus.innerHTML = `<p class="notice"><span class="spinner"></span>Submitting ${escapeHTML(action)}…</p>`;
         const result = await fetchJSON(path, { method: "POST", body });
+        // [FYP-TRIAGE-STEP3] "Reject and re-triage with this note": after
+        // the rejection is recorded, re-run Triage with the note attached
+        // (context.analyst_note). Never auto-started for a plain reject.
+        if (action === "triage-review" && extra?.kind === "reject-retriage") {
+          const rerun = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/stages/triage/reruns`, {
+            method: "POST", body: { analyst_note: extra.comments, analyst: body.analyst },
+          });
+          if (rerun.run_id) result.run_id = rerun.run_id;
+        }
         // Presentation only: once the backend has accepted a stage's Run
         // (start) action, keep that stage focused so its progress is visible.
         if (action === "start") selectedStageKey = stage.key;
