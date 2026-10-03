@@ -22,6 +22,15 @@
 """Usage:
   python scripts/export_labelling_sheet.py export --n 40 --out labelling_sheet.csv [--seed 7]
   python scripts/export_labelling_sheet.py import labelling_sheet.csv [--out-dir tests/triage_eval/cases]
+  python scripts/export_labelling_sheet.py import-reviews [--workflow-db PATH] [--out-dir ...]
+
+[FYP-TRIAGE-STEP3] import-reviews closes the loop with Step 3 (X6): triage
+reviews whose ANALYST label was confirmed by the mentor's BLIND re-review
+(triage_reviews.label_provenance = 'mentor_agreed', see scripts/
+blind_review.py) become eval cases through the SAME case builder as the
+CSV import (label.source = "mentor_reviewed"). Unconfirmed analyst labels
+are never exported: a human verdict is not ground truth until an
+independent re-review agrees (feedback-loop circularity).
 
 Mentor instructions (also in the CSV header row names):
   label_disposition : true_positive | false_positive | benign_expected | needs_info
@@ -176,6 +185,31 @@ def _incident_from_db(db: Path, incident_id: str) -> dict | None:
     return inc
 
 
+def _write_case(out_dir: Path, iid: str, inc: dict, disp: str, *, labeller: str, date: str,
+                rationale: str, description: str, provenance: dict,
+                data_availability: dict | None = None) -> Path:
+    """Shared case builder for both import paths (CSV sheet and
+    mentor-agreed triage reviews) -- one place defines the case shape."""
+    case = {
+        "name": f"mentor_{iid}",
+        "description": description,
+        "incident": inc,
+        "data_availability": data_availability or {
+            "incident_source": "sqlite_slim", "alerts_fetch_attempted": False,
+            "alerts_fetch_succeeded": False, "alerts_complete": False,
+            "alerts_count": 0, "journal_fetch_succeeded": None,
+            "warnings": ["slim SQLite copy: raw alerts not stored"]},
+        "expected": EXPECTED_BY_LABEL[disp],
+        "label": {"value": disp, "source": "mentor_reviewed", "labeller": labeller,
+                  "date": date or "unknown", "rationale": rationale},
+        **provenance,
+    }
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"mentor_{re.sub(r'[^A-Za-z0-9_.-]', '_', iid)}.json"
+    path.write_text(json.dumps(case, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return path
+
+
 def import_sheet(csv_path: Path, out_dir: Path, db: Path = DEFAULT_DB) -> tuple[list[Path], list[str]]:
     """[FYP-FUNCTION] Labelled CSV -> case files (label.source=mentor_reviewed).
     The incident is the SLIM SQLite copy (no raw alerts), so data_availability
@@ -199,25 +233,50 @@ def import_sheet(csv_path: Path, out_dir: Path, db: Path = DEFAULT_DB) -> tuple[
             if inc is None:
                 problems.append(f"row {i}: incident {iid!r} not found in {db.name}")
                 continue
-            case = {
-                "name": f"mentor_{iid}",
-                "description": f"Mentor-labelled incident from the labelling sheet "
-                               f"(stratum {row.get('stratum')}).",
-                "incident": inc,
-                "data_availability": {"incident_source": "sqlite_slim", "alerts_fetch_attempted": False,
-                                      "alerts_fetch_succeeded": False, "alerts_complete": False,
-                                      "alerts_count": 0, "journal_fetch_succeeded": None,
-                                      "warnings": ["slim SQLite copy: raw alerts not stored"]},
-                "expected": EXPECTED_BY_LABEL[disp],
-                "label": {"value": disp, "source": "mentor_reviewed",
-                          "labeller": row["reviewer"].strip(),
-                          "date": (row.get("review_date") or "").strip() or "unknown",
-                          "rationale": row["label_evidence"].strip()},
-                "labelling_sheet": {"file": csv_path.name, "row": i, "stratum": row.get("stratum")},
-            }
-            path = out_dir / f"mentor_{re.sub(r'[^A-Za-z0-9_.-]', '_', iid)}.json"
-            path.write_text(json.dumps(case, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-            written.append(path)
+            written.append(_write_case(
+                out_dir, iid, inc, disp, labeller=row["reviewer"].strip(),
+                date=(row.get("review_date") or "").strip(),
+                rationale=row["label_evidence"].strip(),
+                description=(f"Mentor-labelled incident from the labelling sheet "
+                             f"(stratum {row.get('stratum')})."),
+                provenance={"labelling_sheet": {"file": csv_path.name, "row": i,
+                                                "stratum": row.get("stratum")}}))
+    return written, problems
+
+
+def import_reviews(workflow_db: Path, out_dir: Path, db: Path = DEFAULT_DB) -> tuple[list[Path], list[str]]:
+    """[FYP-FUNCTION] [FYP-TRIAGE-STEP3] Mentor-AGREED triage reviews -> eval
+    cases. Reads the workflow DB's triage_reviews + blind_reviews (opened
+    read-only); only rows with label_provenance = 'mentor_agreed' qualify
+    (the analyst's and the mentor's blind label match)."""
+    written, problems = [], []
+    if not workflow_db.is_file():
+        return written, [f"workflow DB not found: {workflow_db}"]
+    con = _connect_ro(workflow_db)
+    try:
+        rows = con.execute(
+            "SELECT r.id, r.incident_id, r.analyst_disposition, r.justification, r.analyst, "
+            "b.reviewer, b.evidence_note, b.reviewed_at FROM triage_reviews r "
+            "JOIN blind_reviews b ON b.review_id = r.id AND b.disposition = r.analyst_disposition "
+            "WHERE r.label_provenance = 'mentor_agreed' ORDER BY r.id").fetchall()
+    except sqlite3.Error as exc:
+        return written, [f"review tables unreadable: {exc}"]
+    finally:
+        con.close()
+    for rid, iid, disp, justification, analyst, reviewer, note, reviewed_at in rows:
+        if disp not in DISPOSITIONS:
+            problems.append(f"review {rid}: invalid disposition {disp!r}")
+            continue
+        inc = _incident_from_db(db, iid) if db.is_file() else None
+        if inc is None:
+            problems.append(f"review {rid}: incident {iid!r} not found in {db.name}")
+            continue
+        written.append(_write_case(
+            out_dir, str(iid), inc, disp, labeller=f"{reviewer} (blind) + {analyst} (analyst)",
+            date=str(reviewed_at or "")[:10],
+            rationale=(note or justification or "").strip() or "agreed in blind re-review",
+            description=f"Triage review #{rid}: analyst label confirmed by blind re-review.",
+            provenance={"triage_review": {"review_id": rid, "label_provenance": "mentor_agreed"}}))
     return written, problems
 
 
@@ -233,6 +292,10 @@ def main(argv: list[str] | None = None) -> int:
     i.add_argument("csv", type=Path)
     i.add_argument("--out-dir", type=Path, default=DEFAULT_CASE_DIR)
     i.add_argument("--db", type=Path, default=DEFAULT_DB)
+    r = sub.add_parser("import-reviews")
+    r.add_argument("--workflow-db", type=Path, default=DEFAULT_DB)
+    r.add_argument("--out-dir", type=Path, default=DEFAULT_CASE_DIR)
+    r.add_argument("--db", type=Path, default=DEFAULT_DB)
     args = ap.parse_args(argv)
     if args.cmd == "export":
         rows = export_sheet(args.db, args.n, args.out, args.seed)
@@ -240,7 +303,10 @@ def main(argv: list[str] | None = None) -> int:
         print("[labelling] strata: " + ", ".join(f"{k}={v}" for k, v in
                                                  sorted(Counter(r['stratum'] for r in rows).items())))
         return 0
-    written, problems = import_sheet(args.csv, args.out_dir, args.db)
+    if args.cmd == "import-reviews":
+        written, problems = import_reviews(args.workflow_db, args.out_dir, args.db)
+    else:
+        written, problems = import_sheet(args.csv, args.out_dir, args.db)
     for p in problems:
         print(f"[labelling] SKIPPED {p}", file=sys.stderr)
     print(f"[labelling] wrote {len(written)} case file(s) to {args.out_dir}")
