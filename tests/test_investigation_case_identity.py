@@ -815,20 +815,24 @@ def _run_both_passes(orch, alerts, subject_id):
     return asyncio.run(go())
 
 
-def test_isolated_case_model_requests_are_unchanged(agent, monkeypatch):
-    """subject == the only/first alert -> byte-identical payloads to the
-    legacy (no subject) call."""
+def test_isolated_case_model_requests_differ_only_by_the_labelled_timeline(agent, monkeypatch):
+    """subject == the only alert -> same identity, playbook, trace and
+    policies as the legacy (no subject) call; since Phase 2D the workflow
+    timeline labels the current case explicitly instead of the flat list."""
     alerts = [_alert(CASE, 100, "only evidence")]
     orch, p1, p2 = _patch_chains(agent, monkeypatch)
     legacy = _run_both_passes(orch, alerts, None)
     pinned = _run_both_passes(orch, alerts, CASE)
 
-    assert p1.calls[0] == p1.calls[1]
-    assert p2.calls[0] == p2.calls[1]
+    for calls in (p1.calls, p2.calls):
+        a, b = dict(calls[0]), dict(calls[1])
+        assert a.pop("timeline") == orch.build_timeline_text(alerts)      # legacy CLI path unchanged
+        assert f"[CURRENT CASE: {CASE}] only evidence" in b.pop("timeline")
+        assert a == b
     assert legacy.incident_id == pinned.incident_id == CASE
 
 
-def test_merged_case_prompt_uses_current_subject_and_nothing_else_changes(agent, monkeypatch):
+def test_merged_case_prompt_uses_current_subject_and_labels_correlated_evidence(agent, monkeypatch):
     alerts = [_alert(HIST, 100, "historical"), _alert(CASE, 200, "current")]
     orch, p1, p2 = _patch_chains(agent, monkeypatch)
     legacy = _run_both_passes(orch, alerts, None)
@@ -838,9 +842,14 @@ def test_merged_case_prompt_uses_current_subject_and_nothing_else_changes(agent,
     assert p2.calls[0]["incident_id"] == HIST and p2.calls[1]["incident_id"] == CASE
     for calls in (p1.calls, p2.calls):
         a, b = dict(calls[0]), dict(calls[1])
-        a.pop("incident_id"); b.pop("incident_id")
-        assert a == b                       # timeline, playbook, trace, policies identical
-    assert "historical" in p2.calls[1]["timeline"]       # correlated evidence still sent
+        for d in (a, b):
+            d.pop("incident_id")
+        legacy_timeline, timeline = a.pop("timeline"), b.pop("timeline")
+        assert a == b                       # playbook, trace, policies identical
+        assert legacy_timeline == orch.build_timeline_text(alerts)
+        assert f"[CURRENT CASE: {CASE}] current" in timeline
+        assert f"[CORRELATED CASE: {HIST}]" in timeline and "historical" in timeline   # still sent
+        assert timeline.index(f"[CURRENT CASE: {CASE}]") < timeline.index(f"[CORRELATED CASE: {HIST}]")
     assert legacy.incident_id == HIST and pinned.incident_id == CASE
 
 

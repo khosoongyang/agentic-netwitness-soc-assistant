@@ -145,8 +145,8 @@ def _section(brief: str, title: str) -> str:
 def test_brief_is_rendered_first_in_the_investigation_document():
     doc = ip.serialize_json_to_narrative(_build())
     assert doc.startswith(f"Incident {CASE} details are as follows: {wf.INVESTIGATION_BRIEF_HEADER}")
-    assert doc.index(wf.INVESTIGATION_BRIEF_FOOTER) < doc.find("correlated alert(s)") or \
-        "correlated alert(s)" not in doc
+    assert doc.index(wf.INVESTIGATION_BRIEF_FOOTER) < doc.find("NetWitness sub-alert record(s)") or \
+        "NetWitness sub-alert record(s)" not in doc
 
 
 def test_brief_is_deterministic():

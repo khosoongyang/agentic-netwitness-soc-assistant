@@ -58,6 +58,7 @@ from langchain_core.prompts import ChatPromptTemplate
 import ingest_pipeline
 import vector_engine
 import mitre_mapper
+import timeline_context as case_timeline
 from chroma_compat import open_persistent_collection
 
 load_dotenv()
@@ -871,8 +872,34 @@ def build_timeline_text(correlated_alerts: List[dict]) -> str:
         alert_id = alert["id"]
         doc = alert["document"]
         lines.append(f"[{ts}] Alert Entry #{idx} ({alert_id}): {doc}")
-        
+
     return "\n".join(lines)
+
+
+def build_model_timeline(correlated_alerts: List[dict], subject_id: Optional[str] = None,
+                         timeline_context: Optional[dict] = None, pass_label: str = "") -> str:
+    """The `{timeline}` the Pass 1 / Pass 2 model reads (canonical audit
+    Phase 2D). With a workflow subject that is part of the group: the
+    case-structured, bounded timeline from timeline_context.py (CURRENT CASE
+    first and whole, then labelled, de-duplicated, budgeted CORRELATED
+    HISTORICAL CASES). Without one (standalone CLI use): the legacy flat
+    build_timeline_text(), unchanged. Deterministic consumers that are not
+    the model -- policy retrieval, run_policy_compliance_rules(), the
+    fallback summary -- keep reading build_timeline_text() so policy and
+    risk logic inputs are unchanged."""
+    ids = {str(a.get("id")) for a in correlated_alerts}
+    if subject_id is None or str(subject_id) not in ids:
+        return build_timeline_text(correlated_alerts)
+    ctx = timeline_context or {}
+    text, meta = case_timeline.build_case_timeline(
+        correlated_alerts, subject_id, correlation=ctx.get("correlation"),
+        pivot_ids=ctx.get("pivot_ids") or ())
+    log_info(f"Investigation timeline ({pass_label or 'model'}) for subject {meta['subject_id']}: "
+             f"{meta['correlated_cases']} correlated case(s) as supporting evidence -- "
+             f"{len(meta['full'])} in full, {len(meta['summarised'])} summarised, "
+             f"{len(meta['omitted'])} omitted; {meta['duplicates_collapsed']} identical repeated "
+             f"entries collapsed; {meta['chars']} chars")
+    return text
 
 # --- INFRASTRUCTURE BROADENING ---
 
@@ -1208,7 +1235,8 @@ def _resolve_subject_id(correlated_alerts: List[dict], subject_id: Optional[str]
 
 
 async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: str,
-                                 subject_id: Optional[str] = None) -> dict:
+                                 subject_id: Optional[str] = None,
+                                 timeline_context: Optional[dict] = None) -> dict:
     """
     [FYP-FUNCTION] Pass 1 of the async two-pass pipeline: a single
     consolidated structured-output LLM call (get_chain_p1()) that evaluates
@@ -1252,8 +1280,8 @@ async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: s
     for step_id, step_data in sorted(playbook_dict.get("steps", {}).items()):
         steps_desc.append(f"Step '{step_id}': {step_data.get('instructions')}")
     playbook_steps_str = "\n".join(steps_desc)
-    
-    timeline_str = build_timeline_text(correlated_alerts)
+
+    timeline_str = build_model_timeline(correlated_alerts, subject_id, timeline_context, "Pass 1")
     log_info(f"[LLM CALL] Pass 1: Lightweight Playbook Evaluation & Pivot Extraction for {seed_id}...")
     
     try:
@@ -1298,7 +1326,8 @@ async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: s
         }
 
 async def compile_final_report(correlated_alerts: List[dict], playbook_path: str, p1_trace: List[MilestoneExecution],
-                               subject_id: Optional[str] = None) -> FinalIncidentAnalysis:
+                               subject_id: Optional[str] = None,
+                               timeline_context: Optional[dict] = None) -> FinalIncidentAnalysis:
     """
     [FYP-FUNCTION] [FYP-EVALUATOR] Pass 2 of the async two-pass pipeline —
     the production-path counterpart to generate_final_analysis(). Called by
@@ -1341,7 +1370,10 @@ async def compile_final_report(correlated_alerts: List[dict], playbook_path: str
     playbook_name = playbook_dict.get("name", "Unknown Playbook")
     seed_id = _resolve_subject_id(correlated_alerts, subject_id)
 
+    # Phase 2D: the model reads the case-structured, bounded timeline; policy
+    # retrieval, the compliance rules and the fallback keep the legacy text.
     timeline_str = build_timeline_text(correlated_alerts)
+    model_timeline = build_model_timeline(correlated_alerts, subject_id, timeline_context, "Pass 2")
     log_info(f"[LLM CALL] Pass 2: Re-evaluating playbook and compiling final report for {seed_id}...")
     
     policy_mgr, policy_vector_index = get_policy_manager()
@@ -1373,7 +1405,7 @@ async def compile_final_report(correlated_alerts: List[dict], playbook_path: str
         final_report = await chain_p2.ainvoke({
             "incident_id": seed_id,
             "playbook": playbook_name,
-            "timeline": timeline_str,
+            "timeline": model_timeline,
             "trace": trace_json,
             "policies": policies_context
         })

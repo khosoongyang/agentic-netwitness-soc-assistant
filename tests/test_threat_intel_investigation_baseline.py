@@ -277,7 +277,7 @@ def test_truncation_large_correlated_alert_no_longer_pushes_ti_past_boundary(tmp
     assert "risk level: high" in doc_lower
     assert "risk score: 80" in doc_lower
     assert "virustotal reported 5 malicious detection(s) for ip 203.0.113.9." in doc_lower
-    assert doc_lower.index("=== end investigation context brief ===") < doc_lower.index("correlated alert(s)")
+    assert doc_lower.index("=== end investigation context brief ===") < doc_lower.index("netwitness sub-alert record(s)")
 
 
 def test_truncation_baseline_moderate_correlation_still_survives(tmp_path):

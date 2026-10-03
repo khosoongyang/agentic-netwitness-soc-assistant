@@ -2118,6 +2118,22 @@ def build_investigation_alert(triage_result: dict, incident: dict,
                               threat_intel_result: dict | None = None,
                               parsing_result: dict | None = None) -> dict:
     """Convert triage output into the concise alert-JSON schema matching INC-6125."""
+    alert, _entities = _assemble_investigation_alert(
+        triage_result, incident, supplement=supplement,
+        threat_intel_result=threat_intel_result, parsing_result=parsing_result)
+    return alert
+
+
+def _assemble_investigation_alert(triage_result: dict, incident: dict,
+                                  supplement: dict | None = None,
+                                  threat_intel_result: dict | None = None,
+                                  parsing_result: dict | None = None) -> tuple[dict, dict]:
+    """Body of build_investigation_alert(): returns (alert JSON incl. the
+    Investigation Context Brief, case entities with provenance). Shared by
+    the Investigation handoff and the Phase 2C deep-dive context, so both
+    see the SAME canonical brief from one builder. Kept separate from the
+    public function so building the deep-dive context does not register as
+    an Investigation handoff in Agent Activity."""
     payload = triage_result.get("metakeys_payload", {})
     ticket  = triage_result.get("ticket", {})
     mkv     = payload.get("metakey_values") or {}
@@ -2358,7 +2374,7 @@ def build_investigation_alert(triage_result: dict, incident: dict,
         threat_intel_result=threat_intel_result, parsing_result=parsing_result,
         supplement=supplement)
 
-    return prune_empty(raw_alert)
+    return prune_empty(raw_alert), entities
 
 
 
@@ -2414,6 +2430,512 @@ def handoff_to_investigation(triage_result: dict, incident: dict,
     _write_json(path, alert)
     _log("HANDOFF", f"triage -> investigation: {path.name}")
     return path
+
+
+# [FYP-SECTION] Deep-dive context (canonical audit Phase 2C)
+# -----------------------------------------------------------------------------
+# What the Triage deep-dive (deep_triage_supplement) reads when Investigation
+# reports evidence gaps. It previously read json.dumps(raw_incident,
+# indent=2)[:12000] -- a prefix of pretty-printed JSON (3.5% of INC-52970)
+# with no Parsing, Triage or Threat Intelligence context. It now reads, in
+# priority order:
+#   1. the evidence gaps (rendered first by deep_triage_supplement itself);
+#   2. the SAME Investigation Context Brief Investigation received, from the
+#      same builder (_assemble_investigation_alert ->
+#      build_investigation_context_brief), without a deep-dive answers
+#      section -- one canonical-context implementation, nothing to drift;
+#   3. a deterministic digest of the raw NetWitness evidence the brief does
+#      not carry: raw-evidence availability, gap focus, TI coverage of the
+#      case entities, incident-level NetWitness metadata, and the alerts --
+#      identical alerts collapsed, gap-relevant alerts first, packed whole
+#      into the remaining budget with explicit omission counts.
+# Budget: DEEP_DIVE_CONTEXT_BUDGET characters for 2 + 3 together -- the size
+# of the previous raw cut, deliberately not raised. The brief is bounded by
+# its own section budgets (< ~7.1k); the digest receives the remainder.
+# Omitted material is always counted and labelled; nothing is cut silently.
+DEEP_DIVE_CONTEXT_BUDGET = 12000
+DEEP_DIVE_HEADER = "=== DEEP-DIVE EVIDENCE DIGEST (raw NetWitness fields; deterministic; bounded) ==="
+DEEP_DIVE_FOOTER = "=== END DEEP-DIVE EVIDENCE DIGEST ==="
+DEEP_DIVE_TRUNCATION_MARKER = "[raw evidence section truncated at configured budget]"
+DEEP_DIVE_EVENT_SCAN = 50          # events read per alert (same cap as _sub_alert_entry)
+DEEP_DIVE_VALUES_PER_FIELD = 4
+DEEP_DIVE_LINE_MAX = 360
+DEEP_DIVE_GROUP_MAX = 1100         # one verbose alert group can never crowd out the rest
+DEEP_DIVE_BLOCK_BUDGETS = {"RAW EVIDENCE AVAILABILITY": 900, "GAP FOCUS": 500,
+                           "TI COVERAGE OF CASE ENTITIES": 700,
+                           "INCIDENT METADATA (NetWitness)": 700}
+DEEP_DIVE_NOT_CHECKED_EXAMPLES = 6
+
+# Deterministic gap-topic -> evidence-category mapping (word-prefix keyword
+# match; no model call, no semantic search).
+_DEEP_DIVE_GAP_CATEGORIES = (
+    ("process", ("process", "spawn", "command line", "command-line", "commandline", "cmd",
+                 "powershell", "script", "execut", "parent", "child", "lineage", "binary",
+                 "launch")),
+    ("network", ("lateral", "horizontal", "vertical", "network", "connect", "traffic", "ip",
+                 "port", "dns", "domain", "beacon", "c2", "command and control", "exfiltrat",
+                 "communicat", "destination", "contacted", "remote")),
+    ("file", ("file", "hash", "malware", "payload", "download", "attachment", "sha", "md5",
+              "dropped")),
+    ("user", ("user", "account", "privilege", "escalat", "credential", "logon", "login",
+              "authenticat", "admin")),
+    ("host", ("host", "endpoint", "device", "machine", "workstation", "operating system",
+              "os", "asset")),
+)
+_DEEP_DIVE_GAP_RX = tuple(
+    (cat, re.compile(r"\b(?:" + "|".join(re.escape(k) for k in kws) + ")", re.I))
+    for cat, kws in _DEEP_DIVE_GAP_CATEGORIES)
+_DEEP_DIVE_CATEGORY_ORDER = ("network", "process", "file", "user", "host", "event")
+
+# Raw NetWitness event fields per category, labelled by their real field
+# path. IPs, users, hostnames and domains come from _sub_alert_entry() (the
+# Phase 2A semantics Investigation uses) and are not re-selected here.
+_DEEP_DIVE_EVENT_FIELDS = {
+    "network": ("from", "to", "service_name", "analysis_service", "analysis_session",
+                "destination.device.geolocation.country",
+                "destination.device.geolocation.organization",
+                "destination.device.geolocation.domain", "source.device.geolocation.country",
+                "port_src", "port_dst", "source.device.port", "destination.device.port"),
+    "process": ("source.launch_argument", "destination.launch_argument", "param", "param_src",
+                "param_dst", "cmdline", "command_line", "process", "process_name", "process_vid"),
+    "file": ("source.filename", "source.path", "destination.filename", "destination.path",
+             "directory", "source.file_SHA256", "source.hash", "destination.file_SHA256",
+             "destination.hash", "data.filename", "data.hash", "analysis_file", "registry_key"),
+    "user": ("source.user.email_address", "destination.user.email_address"),
+    "host": ("operating_system", "device_type", "detector.product_name", "detector.ip_address",
+             "alias_ip"),
+    "event": ("type", "action", "category", "description", "attack_tactic", "attack_technique",
+              "context"),
+}
+_DEEP_DIVE_PORT_FIELDS = {"port_src", "port_dst", "source.device.port", "destination.device.port"}
+_DEEP_DIVE_LONG_FIELDS = {"source.launch_argument", "destination.launch_argument", "param",
+                          "param_src", "param_dst", "cmdline", "command_line", "description"}
+_DEEP_DIVE_EMPTY = {"", "unknown", "none", "null", "n/a", "-"}
+# Shorter labels for the longest NetWitness paths (budget); all others are
+# shown under their real field path.
+_DEEP_DIVE_FIELD_LABELS = {
+    "destination.device.geolocation.country": "destination geo country",
+    "destination.device.geolocation.organization": "destination geo org",
+    "destination.device.geolocation.domain": "destination geo domain",
+    "source.device.geolocation.country": "source geo country",
+}
+# alertMeta keys already rendered as case entities by the brief.
+_DEEP_DIVE_ALERT_META_IN_BRIEF = {"SourceIp", "DestinationIp", "User", "AdUser", "Hostname",
+                                  "DnsDomain", "FileHash", "FileName"}
+_DEEP_DIVE_INCIDENT_FIELDS = ("categories", "tactics", "techniques", "summary", "firstAlertTime",
+                              "lastUpdated", "averageAlertRiskScore", "groupBySourceIp",
+                              "groupByDestinationIp")
+_DEEP_DIVE_SEVERITY_WORDS = {"low": 25.0, "medium": 50.0, "high": 75.0, "critical": 100.0}
+
+
+def _dd_block(title: str, lines: list[str], budget: int) -> str:
+    body = [f"[{title}]"] + [_brief_clip(line, DEEP_DIVE_LINE_MAX) for line in lines if line]
+    text = "\n".join(body)
+    if len(text) > budget:
+        marker = f"\n[... {title} truncated at {budget} chars ...]"
+        text = text[:budget - len(marker)].rstrip() + marker
+    return text
+
+
+def _dd_values(node, path: str) -> list[str]:
+    """Scalar values at a dotted NetWitness field path (lists traversed),
+    first-seen order; blanks/placeholders dropped, nothing invented."""
+    current = [node]
+    for part in path.split("."):
+        nxt = []
+        for item in current:
+            if isinstance(item, dict):
+                value = item.get(part)
+                if isinstance(value, list):
+                    nxt.extend(value)
+                elif value is not None:
+                    nxt.append(value)
+        current = nxt
+    out = []
+    for value in current:
+        if isinstance(value, (dict, list)):
+            continue
+        text = str(value).strip()
+        if text and text.lower() not in _DEEP_DIVE_EMPTY:
+            out.append(text)
+    return out
+
+
+def _dd_field(label: str, values, limit: int = DEEP_DIVE_VALUES_PER_FIELD,
+              value_max: int = 120) -> str | None:
+    values = list(dict.fromkeys(str(v) for v in (values or []) if v not in (None, "")))
+    if not values:
+        return None
+    shown = [_brief_clip(v, value_max) for v in values[:limit]]
+    more = len(values) - len(shown)
+    return f"{label}: {', '.join(shown)}" + (f" (+{more})" if more else "")
+
+
+def _dd_scalar_text(value) -> str:
+    if isinstance(value, dict):
+        named = [str(value[k]) for k in ("parent", "name") if value.get(k) not in (None, "")]
+        if named:
+            return "/".join(named)
+        return ", ".join(f"{k}={v}" for k, v in sorted(value.items())
+                         if not isinstance(v, (dict, list)) and v not in (None, ""))
+    return str(value)
+
+
+def _deep_dive_gap_categories(gaps) -> dict:
+    """{category: [gap ids]} in fixed category order."""
+    found: dict = {}
+    for gap in gaps or []:
+        text = str(gap)
+        gap_id = text.split(":", 1)[0].strip()[:40] if ":" in text else _brief_clip(text, 40)
+        for cat, rx in _DEEP_DIVE_GAP_RX:
+            if rx.search(text):
+                found.setdefault(cat, []).append(gap_id)
+    return {cat: found[cat] for cat, _ in _DEEP_DIVE_GAP_CATEGORIES if cat in found}
+
+
+def _deep_dive_alert_digest(sub: dict) -> dict:
+    """One NetWitness alert reduced to its identity plus per-category
+    'field: values' parts (no case-level inheritance, nothing fabricated)."""
+    entry = _sub_alert_entry(sub)
+    alert_obj = sub.get("alert") if isinstance(sub.get("alert"), dict) else {}
+    original = sub.get("originalAlert") if isinstance(sub.get("originalAlert"), dict) else {}
+    events = alert_obj.get("events") or original.get("events") or sub.get("events") or []
+    events = [ev for ev in events if isinstance(ev, dict)] if isinstance(events, list) else []
+    scanned = events[:DEEP_DIVE_EVENT_SCAN]
+    cats: dict = {cat: [] for cat in _DEEP_DIVE_CATEGORY_ORDER}
+    for label, key in (("source IPs", "source_ips"), ("destination IPs", "destination_ips"),
+                       ("domains", "domains")):
+        cats["network"].append(_dd_field(label, entry.get(key)))
+    cats["user"].append(_dd_field("users", entry.get("users")))
+    cats["host"].append(_dd_field("hostnames", entry.get("hostnames")))
+    # "from"/"to" already carry address:port, so the separate port fields and
+    # the alert's host_summary are only shown when they are absent.
+    has_endpoints = any(_dd_values(ev, "from") or _dd_values(ev, "to") for ev in scanned)
+    for cat, paths in _DEEP_DIVE_EVENT_FIELDS.items():
+        for path in paths:
+            if has_endpoints and path in _DEEP_DIVE_PORT_FIELDS:
+                continue
+            values: list = []
+            for ev in scanned:
+                values.extend(_dd_values(ev, path))
+            cats[cat].append(_dd_field(_DEEP_DIVE_FIELD_LABELS.get(path, path), values,
+                                       value_max=240 if path in _DEEP_DIVE_LONG_FIELDS else 120))
+    if not has_endpoints:
+        cats["network"].append(_dd_field("alert.host_summary", [entry.get("connection_summary")]))
+    cats = {cat: [p for p in parts if p] for cat, parts in cats.items()}
+    return {
+        "entry": entry,
+        "categories": {cat: parts for cat, parts in cats.items() if parts},
+        "events_total": len(events),
+        "events_scanned": len(scanned),
+    }
+
+
+def _deep_dive_severity_value(severity) -> float:
+    try:
+        return float(severity)
+    except (TypeError, ValueError):
+        return _DEEP_DIVE_SEVERITY_WORDS.get(str(severity or "").strip().lower(), -1.0)
+
+
+def _deep_dive_alert_groups(raw_alerts: list, gap_cats: dict) -> list[dict]:
+    """Identical alerts (same title/severity/source/types/fields, differing
+    only in id and time) collapse into one group; groups are ranked by gap
+    relevance, then NetWitness severity, then earliest time, then position."""
+    groups: dict = {}
+    for index, sub in enumerate(raw_alerts):
+        if not isinstance(sub, dict):
+            continue
+        digest = _deep_dive_alert_digest(sub)
+        entry = digest["entry"]
+        key = json.dumps([entry.get("title"), entry.get("severity"), entry.get("detection_source"),
+                          entry.get("alert_types"), digest["categories"]], sort_keys=True, default=str)
+        group = groups.get(key)
+        if group is None:
+            group = groups[key] = {"index": index, "digest": digest, "ids": [], "times": [],
+                                   "count": 0, "events_truncated": False}
+        group["count"] += 1
+        if entry.get("alert_id"):
+            group["ids"].append(str(entry["alert_id"]))
+        if entry.get("timestamp"):
+            group["times"].append(str(entry["timestamp"]))
+        if digest["events_total"] > digest["events_scanned"]:
+            group["events_truncated"] = True
+    ordered = list(groups.values())
+    for group in ordered:
+        present = group["digest"]["categories"]
+        group["relevance"] = sum(len(ids) for cat, ids in gap_cats.items() if cat in present)
+
+    def rank(group):
+        times = sorted(group["times"])
+        return (-group["relevance"],
+                -_deep_dive_severity_value(group["digest"]["entry"].get("severity")),
+                times[0] if times else "~", group["index"])
+    return sorted(ordered, key=rank)
+
+
+def _deep_dive_render_group(number: int, group: dict, gap_cats: dict) -> str:
+    entry = group["digest"]["entry"]
+    times = sorted(group["times"])
+    when = (times[0] if len(set(times)) <= 1 else f"{times[0]} .. {times[-1]}") if times else "time not provided"
+    label = f"[A{number}]" + (f" ×{group['count']} identical alerts" if group["count"] > 1 else "")
+    head = [f"\"{entry.get('title') or 'title not provided'}\"",
+            f"NetWitness severity {entry.get('severity') if entry.get('severity') is not None else 'not provided'}",
+            when]
+    if entry.get("detection_source"):
+        head.append(f"source {entry['detection_source']}")
+    if entry.get("alert_types"):
+        head.append("types " + ", ".join(map(str, entry["alert_types"])))
+    if group["ids"]:
+        head.append(f"id {group['ids'][0]}" + (f" (+{len(group['ids']) - 1} more ids)"
+                                               if len(group["ids"]) > 1 else ""))
+    lines = [_brief_clip(f"{label} " + " | ".join(head), DEEP_DIVE_LINE_MAX)]
+    present = group["digest"]["categories"]
+    order = sorted(present, key=lambda cat: (-len(gap_cats.get(cat, [])),
+                                             _DEEP_DIVE_CATEGORY_ORDER.index(cat)))
+    body = ["  " + _brief_clip(f"{cat}: " + "; ".join(present[cat]), DEEP_DIVE_LINE_MAX) for cat in order]
+    if not body:
+        body = ["  (no event-level fields recorded for this alert)"]
+    if group["events_truncated"]:
+        body.append(f"  (fields read from the first {DEEP_DIVE_EVENT_SCAN} events of "
+                    f"{group['digest']['events_total']})")
+    used = len(lines[0])
+    for i, line in enumerate(body):
+        remaining = len(body) - i
+        marker = f"  (+{remaining} more field lines for this alert group omitted at the per-alert budget)"
+        if used + 1 + len(line) + (1 + len(marker) if remaining > 1 else 0) > DEEP_DIVE_GROUP_MAX:
+            lines.append(marker)
+            break
+        lines.append(line)
+        used += 1 + len(line)
+    return "\n".join(lines)
+
+
+def _deep_dive_raw_state(incident: dict, case_id) -> tuple[str, list[str]]:
+    """Explicit raw-evidence state + availability lines. States:
+    raw_incident_unavailable / provider_failed / unverified (slim marker but
+    alerts attached) / unavailable (slim copy) / not_fetched /
+    no_alerts_observed / fetched."""
+    if not incident or not (incident.get("id") or incident.get("incidentId")):
+        return "raw_incident_unavailable", [
+            f"RAW INCIDENT UNAVAILABLE: the raw NetWitness incident record for {case_id} could not "
+            "be loaded for this run. No alert-level fields can be shown; missing fields below are "
+            "NOT evidence of absence. Answer from the canonical stage results above."]
+    avail = _data_availability(incident)
+    alerts = incident.get("alerts")
+    count = len(alerts) if isinstance(alerts, list) else 0
+    if incident.get("alerts_fetch_error"):
+        lines = [f"PROVIDER FAILED: the NetWitness alert fetch failed ({_brief_clip(incident['alerts_fetch_error'], 160)}). "
+                 "Alert-level evidence was NOT obtained; its absence is NOT evidence of absence."]
+        if count:
+            lines.append(f"{count} alert(s) were nonetheless attached and are shown below (may be incomplete).")
+        return "provider_failed", lines
+    if avail.get("incident_source") == "sqlite_slim" and count:
+        # Slim marker present (alerts were stripped from a stored copy at some
+        # point) yet alerts are attached again: shown, completeness unknown.
+        return "unverified", [
+            f"NetWitness alerts: {count} alert(s) attached and shown below, but this incident copy "
+            f"carries the stored-slim marker (_alerts_stripped={incident.get('_alerts_stripped')}) -- "
+            "completeness is NOT verified; missing fields are not evidence of absence."]
+    if avail.get("incident_source") == "sqlite_slim":
+        return "unavailable", [
+            "EVIDENCE UNAVAILABLE: only the stored slim incident copy exists (NetWitness alert "
+            "details were stripped). Alert-level fields cannot be shown; their absence is NOT "
+            "evidence of absence."]
+    if not isinstance(alerts, list):
+        events = incident.get("events")
+        if isinstance(events, list) and events:
+            return "fetched", [f"NetWitness alerts: not attached; {len(events)} incident event(s) are shown below."]
+        return "not_fetched", [
+            "NOT FETCHED: no NetWitness alert fetch was recorded for this incident; only "
+            "incident-level metadata is available. Absence of alert fields is NOT evidence of absence."]
+    if not alerts:
+        return "no_alerts_observed", [
+            "NO EVIDENCE OBSERVED at alert level: the NetWitness alert fetch succeeded and the "
+            "incident has 0 alerts."]
+    return "fetched", [f"NetWitness alerts fetched: {count} alert(s)."]
+
+
+def _deep_dive_ti_coverage(entities: dict, ti: dict | None) -> list[str]:
+    """Cross-check of the case's IP/domain/hash entities (from the shared
+    brief builder) against the TI result: enriched / excluded / skipped /
+    NOT CHECKED (no TI record at all)."""
+    candidates: dict = {}
+    for role, label in (("source_ips", "source IP"), ("destination_ips", "destination IP"),
+                        ("domains", "domain"), ("hashes", "hash")):
+        for value in (entities.get(role) or {}):
+            candidates.setdefault(str(value), [])
+            if label not in candidates[str(value)]:
+                candidates[str(value)].append(label)
+    if not candidates:
+        return ["No IP, domain or hash entities were recorded for this case."]
+    if not ti:
+        return [f"No TI result: all {len(candidates)} case IP/domain/hash indicators are NOT CHECKED "
+                "(not looked up -- NOT evidence of benign)."]
+    bundle = ti.get("threat_intelligence") if isinstance(ti.get("threat_intelligence"), dict) else {}
+    indicators = bundle.get("indicators")
+    status_by_value: dict = {}
+    if isinstance(indicators, list):
+        for ind in indicators:
+            if isinstance(ind, dict) and ind.get("value") not in (None, ""):
+                status_by_value.setdefault(str(ind["value"]).lower(), str(ind.get("status") or "status not recorded"))
+    else:
+        iocs = bundle.get("iocs") if isinstance(bundle.get("iocs"), dict) else {}
+        for key in ("ip_indicators", "domain_indicators", "file_hashes"):
+            for value in iocs.get(key) or []:
+                status_by_value.setdefault(str(value).lower(), "in legacy TI result")
+        if iocs.get("file_hash"):
+            status_by_value.setdefault(str(iocs["file_hash"]).lower(), "in legacy TI result")
+    counts: dict = {}
+    not_checked = []
+    for value, labels in candidates.items():
+        status = status_by_value.get(value.lower())
+        if status is None:
+            not_checked.append(f"{value} ({'/'.join(labels)})")
+            status = "NOT CHECKED"
+        counts[status] = counts.get(status, 0) + 1
+    lines = [f"Case IP/domain/hash indicators vs TI result ({len(candidates)}): "
+             + ", ".join(f"{n} {s}" for s, n in sorted(counts.items()))]
+    if not_checked:
+        shown = not_checked[:DEEP_DIVE_NOT_CHECKED_EXAMPLES]
+        more = len(not_checked) - len(shown)
+        lines.append("NOT CHECKED by TI (no TI record -- NOT evidence of benign): " + "; ".join(shown)
+                     + (f" (+{more} more)" if more else ""))
+    return lines
+
+
+def _deep_dive_incident_metadata(incident: dict) -> list[str]:
+    lines = []
+    for key in _DEEP_DIVE_INCIDENT_FIELDS:
+        value = incident.get(key)
+        if value in (None, "", [], {}):
+            continue
+        values = value if isinstance(value, list) else [value]
+        line = _dd_field(key, [_dd_scalar_text(v) for v in values], limit=5,
+                         value_max=240 if key == "summary" else 120)
+        if line:
+            lines.append(line)
+    meta = incident.get("alertMeta") if isinstance(incident.get("alertMeta"), dict) else {}
+    for key in sorted(meta):
+        if key in _DEEP_DIVE_ALERT_META_IN_BRIEF:
+            continue
+        value = meta[key]
+        values = value if isinstance(value, list) else [value]
+        line = _dd_field(f"alertMeta.{key}", [_dd_scalar_text(v) for v in values if v not in (None, "")], limit=5)
+        if line:
+            lines.append(line)
+    return lines
+
+
+def build_deep_dive_context(triage_result: dict, incident: dict, gaps: list, *,
+                            case_id: str | None = None,
+                            threat_intel_result: dict | None = None,
+                            parsing_result: dict | None = None) -> tuple[str, dict]:
+    """Deterministic, bounded deep-dive input: the shared Investigation
+    Context Brief + the raw-evidence digest (see section comment above).
+    Returns (context text, measurement metadata). Pure: same inputs -> same
+    text. Raises ValueError if the canonical results do not belong to
+    `case_id` (C1: the deep-dive must examine the Investigation subject)."""
+    incident = incident if isinstance(incident, dict) else {}
+    alert, entities = _assemble_investigation_alert(
+        triage_result, incident, threat_intel_result=threat_intel_result,
+        parsing_result=parsing_result)
+    subject = str(case_id or alert.get("incident_id") or "")
+    if case_id is not None:
+        for label, value in (("Triage result", alert.get("incident_id")),
+                             ("raw incident", incident.get("id") or incident.get("incidentId"))):
+            if value not in (None, "") and str(value) != str(case_id):
+                raise ValueError(f"deep-dive context identity mismatch: {label} is for {value}, "
+                                 f"Investigation subject is {case_id}")
+    brief = alert.get("investigation_context_brief") or ""
+    gap_cats = _deep_dive_gap_categories(gaps)
+    raw_state, avail_lines = _deep_dive_raw_state(incident, subject or "this case")
+    raw_alerts = incident.get("alerts") if isinstance(incident.get("alerts"), list) else None
+    if raw_alerts is None and isinstance(incident.get("events"), list):
+        raw_alerts = incident["events"]
+    raw_alerts = raw_alerts or []
+    groups = _deep_dive_alert_groups(raw_alerts, gap_cats) if raw_state != "raw_incident_unavailable" else []
+    alerts_total = sum(g["count"] for g in groups)
+    skipped_entries = len(raw_alerts) - alerts_total
+
+    if groups and gap_cats:
+        for cat in gap_cats:
+            if not any(cat in g["digest"]["categories"] for g in groups):
+                avail_lines.append(
+                    f"NO EVIDENCE OBSERVED for {cat} fields in any of the {alerts_total} alert(s) "
+                    + ("(fields absent from the fetched telemetry, not omitted)." if raw_state == "fetched"
+                       else "(alert set completeness not verified -- not proof of absence)."))
+    if any(g["events_truncated"] for g in groups):
+        avail_lines.append(f"Event fields are read from the first {DEEP_DIVE_EVENT_SCAN} events of each alert.")
+    if skipped_entries:
+        avail_lines.append(f"{skipped_entries} non-structured alert entr(y/ies) could not be read.")
+
+    if gap_cats:
+        focus = ["Evidence categories requested by the gaps (alerts carrying them are listed first): "
+                 + "; ".join(f"{cat} ({', '.join(ids)})" for cat, ids in gap_cats.items())]
+    else:
+        focus = ["No gap matched a field category; alerts are ordered by NetWitness severity, then time."]
+    blocks = [DEEP_DIVE_HEADER,
+              _dd_block("RAW EVIDENCE AVAILABILITY", avail_lines, DEEP_DIVE_BLOCK_BUDGETS["RAW EVIDENCE AVAILABILITY"]),
+              _dd_block("GAP FOCUS", focus, DEEP_DIVE_BLOCK_BUDGETS["GAP FOCUS"]),
+              _dd_block("TI COVERAGE OF CASE ENTITIES", _deep_dive_ti_coverage(entities, threat_intel_result),
+                        DEEP_DIVE_BLOCK_BUDGETS["TI COVERAGE OF CASE ENTITIES"])]
+    meta_lines = _deep_dive_incident_metadata(incident)
+    if meta_lines:
+        blocks.append(_dd_block("INCIDENT METADATA (NetWitness)", meta_lines,
+                                DEEP_DIVE_BLOCK_BUDGETS["INCIDENT METADATA (NetWitness)"]))
+
+    # Pack whole alert groups, in rank order, into what the budget leaves.
+    rendered = [_deep_dive_render_group(i + 1, g, gap_cats) for i, g in enumerate(groups)]
+    fixed_len = len(brief) + 1 + sum(len(b) + 1 for b in blocks) + len(DEEP_DIVE_FOOTER)
+    omitted_reserve = 2 * DEEP_DIVE_LINE_MAX + 120    # summary + omitted-titles lines
+    alert_budget = DEEP_DIVE_CONTEXT_BUDGET - fixed_len - omitted_reserve - len("[NETWITNESS ALERTS]") - 2
+    kept, used = [], 0
+    for block in rendered:
+        if used + len(block) + 1 > alert_budget:
+            break
+        kept.append(block)
+        used += len(block) + 1
+    shown_alerts = sum(g["count"] for g in groups[:len(kept)])
+    omitted_groups = groups[len(kept):]
+    omitted_alerts = alerts_total - shown_alerts
+    if groups:
+        summary = (f"Showing {shown_alerts} of {alerts_total} alerts as {len(kept)} of {len(groups)} "
+                   "distinct alert groups (identical alerts collapsed)")
+        if omitted_alerts:
+            summary += (f" (+{omitted_alerts} more alerts in {len(omitted_groups)} groups OMITTED at the "
+                        "context budget -- not shown, NOT absent)")
+        alert_lines = [summary, *kept]
+        if omitted_groups:
+            titles = [f"{g['digest']['entry'].get('title') or 'title not provided'}"
+                      + (f" ×{g['count']}" if g["count"] > 1 else "") for g in omitted_groups]
+            alert_lines.append(_brief_clip(f"(+{omitted_alerts} more alerts OMITTED at the context budget; "
+                                           f"titles: {'; '.join(titles)})", DEEP_DIVE_LINE_MAX))
+        blocks.append("[NETWITNESS ALERTS]\n" + "\n".join(alert_lines))
+    blocks.append(DEEP_DIVE_FOOTER)
+    digest = "\n".join(blocks)
+
+    budget_exceeded = len(brief) + 1 + len(digest) > DEEP_DIVE_CONTEXT_BUDGET
+    if budget_exceeded:   # safety net only -- the packing above keeps within budget
+        room = max(0, DEEP_DIVE_CONTEXT_BUDGET - len(brief) - 2 - len(DEEP_DIVE_TRUNCATION_MARKER)
+                   - len(DEEP_DIVE_FOOTER) - 1)
+        digest = (digest[:room].rstrip() + "\n" + DEEP_DIVE_TRUNCATION_MARKER + "\n" + DEEP_DIVE_FOOTER)
+    text = brief + "\n" + digest
+    meta = {
+        "budget": DEEP_DIVE_CONTEXT_BUDGET,
+        "context_chars": len(text),
+        "brief_chars": len(brief),
+        "digest_chars": len(digest),
+        "raw_state": raw_state,
+        "alerts_total": alerts_total,
+        "alerts_shown": shown_alerts,
+        "alerts_omitted": omitted_alerts,
+        "alert_groups_total": len(groups),
+        "alert_groups_shown": len(kept),
+        "gap_categories": {cat: list(ids) for cat, ids in gap_cats.items()},
+        "budget_exceeded": budget_exceeded,
+    }
+    return text, meta
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2597,7 +3119,17 @@ def investigate_with_feedback(triage_result: dict, incident: dict,
             _emit("triage_deep_dive_start",
                   f"Triage deep-dive: mining the incident for {gap_ids}")
             from agents.triage import deep_triage_supplement
-            supp = deep_triage_supplement(incident, gaps)
+            # Phase 2C: the deep-dive reads the same canonical brief as
+            # Investigation plus a bounded raw-evidence digest -- not a
+            # prefix of the pretty-printed raw incident.
+            dd_context, dd_meta = build_deep_dive_context(
+                triage_result, incident, gaps, case_id=inc_id,
+                threat_intel_result=threat_intel_result,
+                parsing_result=parsing_result)
+            _log("FEEDBACK", f"deep-dive context {dd_meta['context_chars']}/{dd_meta['budget']} chars; "
+                             f"raw evidence {dd_meta['raw_state']}; alerts shown "
+                             f"{dd_meta['alerts_shown']}/{dd_meta['alerts_total']}")
+            supp = deep_triage_supplement(incident, gaps, investigation_context=dd_context)
             answered = sum(1 for v in (supp.get("gap_findings") or {}).values()
                            if "not present" not in str(v).lower())
             fb["gaps_answered"] = answered

@@ -302,7 +302,9 @@ def test_compact_summary_positioned_before_correlated_alerts_block():
     document = ingest_pipeline.serialize_json_to_narrative(alert)
 
     ti_offset = document.find("=== THREAT INTELLIGENCE SUMMARY ===")
-    correlated_offset = document.find("correlated alert(s)")
+    # Phase 2D renamed the block: these are the case's own NetWitness
+    # sub-alerts, not correlated incidents.
+    correlated_offset = document.find("NetWitness sub-alert record(s)")
     assert ti_offset != -1 and correlated_offset != -1
     assert ti_offset < correlated_offset
 

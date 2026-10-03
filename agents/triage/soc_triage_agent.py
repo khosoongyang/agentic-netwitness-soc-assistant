@@ -1793,7 +1793,8 @@ def _format_case_context_for_prompt(case_context: dict) -> str:
 
 def deep_triage_supplement(incident: dict, gaps: list,
                            cfg: OpenAILLMConfig | None = None,
-                           thinking_container=None) -> dict:
+                           thinking_container=None,
+                           investigation_context: str | None = None) -> dict:
     """Second-pass triage for the investigation feedback loop.
 
     The investigation agent reported specific evidence gaps; this focused
@@ -1805,14 +1806,25 @@ def deep_triage_supplement(incident: dict, gaps: list,
 
     Returns gap_findings, confidence_per_gap, extracted_values, actionable_queries,
     mitre_tactic, classification, incident_category, and deep_dive_summary.
+
+    `investigation_context` (Phase 2C): the workflow passes the bounded,
+    deterministic case context from workflow.engine.build_deep_dive_context()
+    (canonical Investigation Context Brief + raw NetWitness alert digest with
+    explicit omission markers). Without it, the legacy raw-incident prefix is
+    used (standalone callers).
     """
     cfg = cfg or OpenAILLMConfig()
     llm = build_llm(cfg, json_mode=_provider_supports_json_mode(cfg.base_url))
     gap_lines = "\n".join(f"- {str(g)[:200]}" for g in list(gaps)[:8])
 
-    # Use a larger context window for the deep-dive pass — the triage
-    # compact view often strips the exact fields the investigation needs.
-    incident_context = json.dumps(incident, indent=2)[:12000]
+    if investigation_context:
+        context_heading = ("INCIDENT DATA (canonical stage results + bounded raw NetWitness alert "
+                           "digest; omitted items are marked)")
+        incident_context = investigation_context
+    else:
+        # Legacy: a prefix of the pretty-printed raw incident.
+        context_heading = "RAW INCIDENT DATA (FULL CONTEXT)"
+        incident_context = json.dumps(incident, indent=2)[:12000]
 
     messages = [
         SystemMessage(content=(
@@ -1855,7 +1867,7 @@ def deep_triage_supplement(incident: dict, gaps: list,
         )),
         HumanMessage(content=(
             f"EVIDENCE GAPS REPORTED BY INVESTIGATION:\n{gap_lines}\n\n"
-            f"RAW INCIDENT DATA (FULL CONTEXT):\n{incident_context}\n\n"
+            f"{context_heading}:\n{incident_context}\n\n"
             "Answer every gap with forensic reasoning and provide query recommendations. End your response with the JSON object."
         )),
     ]

@@ -203,7 +203,7 @@ def test_parsing_context_survives_the_feedback_pass(monkeypatch):
     monkeypatch.setattr(wf, "run_investigation", lambda *a, **k: next(results))
     import agents.triage as triage_pkg
     monkeypatch.setattr(triage_pkg, "deep_triage_supplement",
-                        lambda inc, gaps: {"gap_findings": {g: "answered" for g in gaps}})
+                        lambda inc, gaps, **kw: {"gap_findings": {g: "answered" for g in gaps}})
     parsing = {"processed_alert": {"command_line": "powershell -enc AAA"}}
 
     wf.investigate_with_feedback(_triage(), {"id": "INC-1001"}, "INC-1001",

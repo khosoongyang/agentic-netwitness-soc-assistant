@@ -310,6 +310,13 @@ def _(r, m): r._emit(child=False, source="rule", event_type="local_report", stat
                      detail=f"{m.group(1)}: standalone alert with no related alerts")
 
 
+@_t(r"^Investigation timeline \((Pass [12])\) for subject (\S+): (\d+) correlated case\(s\) as supporting evidence -- (.*)$")
+def _(r, m): r._emit(child=True, source="system", event_type="correlation", status="info",
+                     # Correlated cases are evidence; the case never changes.
+                     title=f"{m.group(1)} timeline: {m.group(3)} correlated case(s) as supporting evidence",
+                     detail=f"Investigation subject remains {m.group(2)} · {m.group(4)}")
+
+
 @_t(r"^\[LLM CALL\] Pass 1:")
 def _(r, m): r._ai_start("pass1", "AI Pass 1 started — playbook evaluation and pivot extraction")
 
@@ -726,7 +733,12 @@ def _deep_dive_before(call: dict):
     gaps = call.get("gaps") or []
     emit(source="ai", ai_content_kind="assessment", event_type="deep_dive", status="running",
          title="Triage deep-dive supplement started",
-         detail=f"Model asked to answer {len(gaps)} evidence gap(s) from the raw incident", span_id=span)
+         detail=(f"Model asked to answer {len(gaps)} evidence gap(s) from the bounded case context "
+                 f"(canonical stage results + NetWitness alert digest, "
+                 f"{len(call['investigation_context'])} chars)"
+                 if call.get("investigation_context") else
+                 f"Model asked to answer {len(gaps)} evidence gap(s) from the raw incident"),
+         span_id=span)
     return {"span": span, "parent_token": context.set_parent_span(span), "start": time.monotonic()}
 
 
@@ -1078,7 +1090,8 @@ def install(patcher: Patcher) -> None:
     patcher.wrap(Target(engine, "reconcile_incident_severity", ("incident_id", "unc", "final_severity")),
                  Hooks(after=_reconcile_after))
     patcher.wrap(Target(engine, "detect_evidence_gaps", ("inv",)), Hooks(after=_gaps_after))
-    patcher.wrap(Target("agents.triage", "deep_triage_supplement", ("incident", "gaps", "cfg", "thinking_container")),
+    patcher.wrap(Target("agents.triage", "deep_triage_supplement",
+                        ("incident", "gaps", "cfg", "thinking_container", "investigation_context")),
                  Hooks(before=_deep_dive_before, after=_deep_dive_after, error=_deep_dive_error,
                        cleanup=_cleanup_parent))
     patcher.wrap(Target(engine, "generate_stage_ai_summary", ("stage", "stage_result", "model")),

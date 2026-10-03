@@ -399,7 +399,7 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
             
         recommended_actions.append(f"Isolate host '{host}' at IP {ip} immediately from the network to prevent lateral movement.")
         recommended_actions.append(f"Review account credentials and activity for user '{user}'.")
-        recommended_actions.append(f"Conduct detailed forensic review of all {len(sub_alerts)} correlated alerts in this incident sequence.")
+        recommended_actions.append(f"Conduct detailed forensic review of all {len(sub_alerts)} NetWitness sub-alerts of this case.")
     elif "phishing" in alert_type_lower or "spearphishing" in alert_type_lower:
         sender = email_art.get("sender", "Unknown Sender")
         recipient = email_art.get("recipient", "Unknown Recipient")
@@ -635,6 +635,9 @@ async def main_async():
     incident_playbooks = {}
     incident_is_new = {}
     incident_similar_to = {}
+    # inst_id -> {alert id -> how that alert joined the cluster}; read back
+    # for the Investigation subject to label the correlated timeline (2D).
+    incident_correlation = {}
 
     while True:
         # Re-scan current files in triaged_alerts/
@@ -714,6 +717,12 @@ async def main_async():
         if inst_id not in incident_is_new:
             incident_is_new[inst_id] = is_new
         incident_similar_to[inst_id] = similar_to
+        # A MERGE whose target incident could not be loaded became a new
+        # folder above: no merge happened, so no merge is claimed.
+        joined = None if (decision == "MERGE" and is_new) else decision
+        incident_correlation.setdefault(inst_id, {})[str(alert_log["id"])] = {
+            "cluster_id": inst_id, "decision": joined,
+            "score": res.get("score") if joined == "MERGE" else None}
 
         # Sync temporary placeholder state so subsequent alerts can correlate
         indicators_set = set()
@@ -832,9 +841,14 @@ async def main_async():
                 report = local_res["report"]
             else:
                 subject_id = resolve_investigation_subject(current_alerts, investigation_subject_id)
+                # Phase 2D: how the subject joined this cluster, and which
+                # entries pivot retrieval adds, label the model's timeline.
+                timeline_ctx = {"correlation": incident_correlation.get(inst_id, {}).get(str(subject_id)),
+                                "pivot_ids": []}
                 # 1. Pass 1 (Lightweight trace & pivot extraction)
                 p1_res = await orchestrator.analyze_alert_group_p1(
-                    current_alerts, playbook_path, subject_id=subject_id)
+                    current_alerts, playbook_path, subject_id=subject_id,
+                    timeline_context=timeline_ctx)
                 p1_trace = p1_res["execution_trace"]
                 suggested_pivots = p1_res["suggested_pivots"]
                 
@@ -862,6 +876,7 @@ async def main_async():
                         for alert_id, score, doc, meta in extra_fused:
                             if alert_id not in correlated_ids:
                                 correlated_ids.add(alert_id)
+                                timeline_ctx["pivot_ids"].append(str(alert_id))
                                 current_alerts.append({
                                     "id": alert_id,
                                     "document": doc,
@@ -871,7 +886,8 @@ async def main_async():
                                 
                 # 3. Pass 2 (Always compile final report for dynamic/cluster incidents)
                 report = await orchestrator.compile_final_report(
-                    current_alerts, playbook_path, p1_trace, subject_id=subject_id)
+                    current_alerts, playbook_path, p1_trace, subject_id=subject_id,
+                    timeline_context=timeline_ctx)
                 
             return (inst_id, incident, current_alerts, report)
 

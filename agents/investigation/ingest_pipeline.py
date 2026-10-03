@@ -318,7 +318,10 @@ def serialize_json_to_narrative(data: dict) -> str:
 
     alerts_list = data.get("alerts") or data.get("raw_alerts")
     if isinstance(alerts_list, list) and alerts_list:
-        lines.append(f"Incident {incident_id} contains {len(alerts_list)} correlated alert(s):")
+        # This case's OWN NetWitness alerts -- not correlated incidents
+        # (canonical audit Phase 2D terminology; previously "correlated alert(s)").
+        lines.append(f"Incident {incident_id} has {len(alerts_list)} NetWitness sub-alert record(s) "
+                     "(this case's own source alerts):")
         for idx, alt in enumerate(alerts_list, 1):
             if isinstance(alt, dict):
                 lines.append(_render_sub_alert(idx, alt))
