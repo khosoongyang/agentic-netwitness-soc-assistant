@@ -102,13 +102,32 @@ def _rate(num: int, den: int) -> float | None:
     return None if den == 0 else num / den
 
 
+def latest_decisions(reviews: list[dict]) -> list[dict]:
+    """[AUDIT T-20] One decision per (incident_id, run_id): a reject ->
+    re-triage -> approve on the same run is ONE incident decision, so the
+    latest (decided_at, then review id) wins. Rows without both ids are kept
+    as distinct decisions. Input order is preserved for the survivors."""
+    latest: dict[tuple, dict] = {}
+    for r in reviews:
+        if r.get("incident_id") and r.get("run_id"):
+            key = (str(r["incident_id"]), str(r["run_id"]))
+            cur = latest.get(key)
+            rank = (str(r.get("decided_at") or ""), int(r.get("id") or 0))
+            if cur is None or rank >= (str(cur.get("decided_at") or ""), int(cur.get("id") or 0)):
+                latest[key] = r
+    keep = {id(r) for r in latest.values()}
+    return [r for r in reviews
+            if not (r.get("incident_id") and r.get("run_id")) or id(r) in keep]
+
+
 def compute_triage_metrics(reviews: Iterable[dict], blind: Iterable[dict] | None = None,
                            *, mentor: str | None = None) -> dict:
     """[FYP-FUNCTION] [FYP-EVALUATOR] All X6 metrics. `reviews` = one row
     per triage decision with a structured review; `blind` = mentor labels
     (review_id, reviewer, disposition). If several reviewers exist and
     `mentor` is None, the reviewer with the most labels is used."""
-    rv = [r for r in (reviews or []) if isinstance(r, dict) and r.get("analyst_disposition")]
+    all_rv = [r for r in (reviews or []) if isinstance(r, dict) and r.get("analyst_disposition")]
+    rv = latest_decisions(all_rv)
     bl = [b for b in (blind or []) if isinstance(b, dict) and b.get("disposition")]
     if mentor is None and bl:
         mentor = Counter(str(b.get("reviewer")) for b in bl).most_common(1)[0][0]
@@ -161,6 +180,7 @@ def compute_triage_metrics(reviews: Iterable[dict], blind: Iterable[dict] | None
                        "(feedback-loop circularity); agreement with the AI is not accuracy.")
     return {
         "n_reviews": n,
+        "n_superseded_decisions": len(all_rv) - n,
         "n_with_ai_verdict": len(with_ai),
         "n_mentor_labelled": len(with_mentor),
         "mentor": mentor,
@@ -199,7 +219,8 @@ def render_metrics_markdown(m: dict, *, generated_at: str | None = None) -> str:
         lines.append(f"> CAVEAT: {c}")
     lines += ["", f"- Reviews: {m['n_reviews']} (with AI verdict: {m['n_with_ai_verdict']}, "
                   f"mentor-labelled: {m['n_mentor_labelled']}"
-                  f"{', mentor: ' + str(m['mentor']) if m.get('mentor') else ''})",
+                  f"{', mentor: ' + str(m['mentor']) if m.get('mentor') else ''}"
+                  f"{'; superseded same-run decisions excluded: ' + str(m['n_superseded_decisions']) if m.get('n_superseded_decisions') else ''})",
               f"- Override rate (analyst != AI final): {_fmt(m['override_rate'], True)}",
               f"- Guard intervention rate (AI proposed != AI final): "
               f"{_fmt(m['guard_intervention_rate'], True)}",
@@ -240,5 +261,6 @@ __all__ = [
     "cohens_kappa",
     "pair_agreement",
     "compute_triage_metrics",
+    "latest_decisions",
     "render_metrics_markdown",
 ]

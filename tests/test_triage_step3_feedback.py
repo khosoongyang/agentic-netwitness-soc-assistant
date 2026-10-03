@@ -487,3 +487,31 @@ def test_combined_fresh_run_passes_active_suppressions_to_triage(db, monkeypatch
     ctx = engine.run_until_triage_approval({"id": CASE, "title": "ESA for 10.0.0.5"}, allow_retry=True)
     assert captured, ctx
     assert [s["id"] for s in captured.get("suppressions") or []] == [p["id"]]
+
+
+def test_metrics_count_latest_decision_per_incident_run():
+    """Audit T-20: a reject + re-triage + approve on the same (incident, run)
+    is ONE incident decision; agreement/override rates use the latest
+    decision only. Earlier decisions are reported separately. Rows without
+    incident/run ids (legacy, in-memory) stay distinct."""
+    reviews = [
+        {"id": 10, "incident_id": "INC-1", "run_id": "r1", "decided_at": "2026-10-01T10:00:00Z",
+         "decision": "reject", "analyst_disposition": "needs_info", "ai_final_disposition": "true_positive",
+         "ai_proposed_disposition": "true_positive"},
+        {"id": 11, "incident_id": "INC-1", "run_id": "r1", "decided_at": "2026-10-01T11:00:00Z",
+         "decision": "approve", "analyst_disposition": "benign_expected",
+         "ai_final_disposition": "benign_expected", "ai_proposed_disposition": "benign_expected"},
+        {"id": 12, "incident_id": "INC-2", "run_id": "r9", "decided_at": "2026-10-01T09:00:00Z",
+         "decision": "approve", "analyst_disposition": "true_positive",
+         "ai_final_disposition": "true_positive", "ai_proposed_disposition": "true_positive"},
+        {"id": 13, "analyst_disposition": "false_positive", "ai_final_disposition": "true_positive"},
+    ]
+    m = metrics.compute_triage_metrics(reviews, [])
+    assert m["n_reviews"] == 3
+    assert m["n_superseded_decisions"] == 1
+    assert m["override_rate"] == pytest.approx(1 / 3)           # only id 13 overrides
+    assert m["per_disposition"]["needs_info"] == 0              # superseded reject not counted
+    assert m["per_disposition"]["benign_expected"] == 1
+    # same timestamp: the higher review id (inserted later) wins
+    tie = [dict(reviews[0], decided_at="t"), dict(reviews[1], decided_at="t")]
+    assert metrics.compute_triage_metrics(tie, [])["per_disposition"]["benign_expected"] == 1
