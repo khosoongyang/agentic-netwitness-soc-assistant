@@ -168,7 +168,7 @@ def build_thinking_process(*, incident: dict, inc_id: str, parsing_result: dict,
         },
         "triage_agent_selected_because": (
             "Parsing completed and was validated as belonging to this incident; "
-            "TriageAgent.triage() (soc_triage_agent/soc_triage_agent.py) is the "
+            "TriageAgent.triage() (agents/triage/soc_triage_agent.py) is the "
             "sole Triage implementation invoked."),
         "workflow_rule_triggered": (
             "Mandatory-approval policy — Triage always routes to SOC Analyst "

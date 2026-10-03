@@ -34,3 +34,17 @@ def test_engine_usage_points_at_the_runnable_module_form():
     src = (ROOT / "workflow" / "engine.py").read_text(encoding="utf-8")
     assert "python -m workflow.engine --incident-file" in src
     assert "python soc_workflow.py" not in src
+
+
+def test_user_visible_strings_name_no_removed_modules():
+    """Audit T-22 remainder: analyst-facing / error text named modules that
+    no longer exist (soc_workflow.py, workflow_state_store,
+    soc_triage_agent/soc_triage_agent.py)."""
+    from workflow import stage_summaries
+    text = stage_summaries.render_agent_thinking_plain(
+        "reporting", {"report_manifest": {"sections": {"a": 1}}, "report_status": "generated"})
+    assert "soc_workflow" not in text and "Reporting" in text
+    for rel in ("workflow/state_store.py", "workflow/validation.py"):
+        src = (ROOT / rel).read_text(encoding="utf-8")
+        assert 'f"workflow_state_store: stale write refused' not in src
+        assert "(soc_triage_agent/soc_triage_agent.py)" not in src

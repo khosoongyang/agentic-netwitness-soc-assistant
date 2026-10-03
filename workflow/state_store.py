@@ -792,7 +792,7 @@ def _guarded_update(incident_id: str, run_id: str | None, sets: dict) -> None:
             if row is not None and row["run_id"] and row["run_id"] != run_id:
                 con.execute("ROLLBACK")
                 raise StaleWriteError(
-                    f"workflow_state_store: stale write refused for incident "
+                    f"workflow.state_store: stale write refused for incident "
                     f"{incident_id!r} (run_id {run_id!r} != current "
                     f"{row['run_id']!r})")
         sets = dict(sets)

@@ -966,7 +966,7 @@ def render_agent_thinking_plain(
             or "generated"
         )
         paragraphs.append(
-            f"soc_workflow.py handed the approved investigation context to "
+            f"The workflow handed the approved investigation context to "
             f"Reporting, which produced {count} report section(s). Current "
             f"report state: {report_status}."
         )
