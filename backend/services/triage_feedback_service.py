@@ -48,6 +48,13 @@ def _strip_packet(review: dict) -> dict:
     return r
 
 
+def _safe(value: Any) -> Any:
+    """[AUDIT T-02] Same display sanitizer every other stage-result endpoint
+    applies (secret-key redaction, local-path reduction, length caps)."""
+    from .case_view_service import _sanitize_for_display
+    return _sanitize_for_display(value)
+
+
 # ── X1 ───────────────────────────────────────────────────────────────────────
 
 def case_reviews(case_id: str, *, include_packet: bool = False) -> dict[str, Any]:
@@ -55,7 +62,7 @@ def case_reviews(case_id: str, *, include_packet: bool = False) -> dict[str, Any
     reviews = review_store.list_reviews(str(case_id), include_packet=include_packet)
     return {"case_id": str(case_id),
             "run_id": (state or {}).get("run_id"),
-            "reviews": reviews,
+            "reviews": _safe(reviews),
             "count": len(reviews)}
 
 

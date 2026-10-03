@@ -546,3 +546,29 @@ def test_sanitizer_keeps_review_and_new_context_fields():
     assert s["triage_review"]["evidence_checked"] == ["raw_alerts"]
     assert s["assessment"]["hypotheses"] and s["assessment"]["guard_actions"] == []
     assert s["triage_provenance"]["prompt_version"] == "test-pv"
+
+
+def test_reviews_endpoint_sanitizes_packet_snapshot(client):
+    """Audit T-02: GET .../triage/reviews?include_packet=1 must apply the same
+    display sanitizer as every other stage-result endpoint (no local absolute
+    paths, secret-looking keys redacted)."""
+    run_id = wss.start_run(CASE)
+    tri = _triage_result()
+    tri["evidence_packet"]["rule_signals"]["lolbas"]["source"] = (
+        r"LOLBAS (cache C:\Users\alice\secret\lolbas.json, sha256 abc)")
+    tri["evidence_packet"]["detection"]["createdBy"]["source"] = "/home/alice/aegis/x.json"
+    wss._guarded_update(CASE, run_id, {
+        "parsing_status": "Complete", "triage_status": "Awaiting Approval",
+        "workflow_status": "Awaiting Approval", "approval_stage": "triage",
+        "triage_result_json": json.dumps(tri)})
+    commands.approve_stage(CASE, "triage", analyst="Alice", review=_review())
+    with wss.db_connect() as con:   # plant a secret-looking key in the stored snapshot
+        snap = json.loads(con.execute("SELECT evidence_packet_json FROM triage_reviews").fetchone()[0])
+        snap["api_key"] = "sk-SHOULD-NOT-LEAK"
+        con.execute("UPDATE triage_reviews SET evidence_packet_json=?", (json.dumps(snap),))
+        con.commit()
+    body = client.get(f"/api/cases/{CASE}/triage/reviews?include_packet=1").get_data(as_text=True)
+    assert "alice" not in body and "C:\\\\Users" not in body and "/home/" not in body
+    assert "sk-SHOULD-NOT-LEAK" not in body
+    data = json.loads(body)
+    assert data["reviews"][0]["evidence_packet"]["entity"]["value"]["value"] == "10.0.0.5"
