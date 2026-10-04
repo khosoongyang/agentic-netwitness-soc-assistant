@@ -331,7 +331,8 @@ def build_chain_of_custody_note(evidence: list[dict[str, Any]]) -> str:
 # [FYP-CALLS] Calls: `get`, `is_placeholder`, `isinstance`, `lower`, `replace`, `str`, `title`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def build_approval_summary(approval: dict[str, Any], containment: dict[str, Any]) -> dict[str, str]:
+def build_approval_summary(approval: dict[str, Any], containment: dict[str, Any],
+                           approval_context: dict[str, Any] | None = None) -> dict[str, str]:
     approval_status = approval.get("approval_status") if isinstance(approval, dict) else None
     analyst_decision = approval.get("analyst_decision") if isinstance(approval, dict) else None
     approved_by = approval.get("approved_by") if isinstance(approval, dict) else None
@@ -346,15 +347,43 @@ def build_approval_summary(approval: dict[str, Any], containment: dict[str, Any]
     blocking_reason = containment.get("blocking_reason") if isinstance(containment, dict) else None
 
     entries = {}
-    if not is_placeholder(report_generation_status):
+    # Canonical audit Phase 4: the workflow's own Triage / Investigation gate
+    # decisions (approval_context, from workflow_approvals), each attributed
+    # to its gate -- values verbatim, absent ones stated, never invented.
+    for stage, label in (("triage", "Triage approval"), ("investigation", "Investigation approval")):
+        record = (approval_context or {}).get(stage) if isinstance(approval_context, dict) else None
+        if isinstance(record, dict) and record.get("status"):
+            text = f"{label}: {record.get('status')}"
+            if str(record.get("status")).lower() in {"approved", "rejected"}:
+                text += f" by {record.get('actor') or 'Not recorded'}"
+                if record.get("timestamp"):
+                    text += f" at {record.get('timestamp')}"
+                text += f"; comment: {record.get('comment') or 'None recorded'}"
+            entries[stage] = text + "."
+    reporting_gate = (approval_context or {}).get("reporting") if isinstance(approval_context, dict) else None
+    if isinstance(reporting_gate, dict) and reporting_gate.get("status"):
+        # The Report Generation gate's real state ("Pending" is a genuine
+        # status here, not a placeholder): the candidate document is
+        # generated before the final Reporting approval is recorded.
+        gate_status = str(reporting_gate["status"])
+        if gate_status.lower() == "pending":
+            entries["report"] = ("Report generation approval status: Pending -- awaiting final Reporting approval "
+                                 "(the decision is recorded in the workflow audit trail).")
+        else:
+            entries["report"] = (f"Report generation approval status: {gate_status} by "
+                                 f"{reporting_gate.get('actor') or 'Not recorded'}.")
+    elif not is_placeholder(report_generation_status):
         reviewer = report_generation_approved_by if not is_placeholder(report_generation_approved_by) else approved_by
         if not is_placeholder(reviewer):
             entries["report"] = f"Report generation approval status: {str(report_generation_status).title()} by {reviewer}."
         else:
             entries["report"] = f"Report generation approval status: {str(report_generation_status).title()}."
     elif not is_placeholder(approval_status) and not is_placeholder(analyst_decision):
-        reviewer = approved_by if not is_placeholder(approved_by) else "SOC Analyst"
-        entries["report"] = f"Report generation approval status: {str(analyst_decision).title()} by {reviewer}."
+        # Phase 4: no invented "SOC Analyst" reviewer.
+        if not is_placeholder(approved_by):
+            entries["report"] = f"Report generation approval status: {str(analyst_decision).title()} by {approved_by}."
+        else:
+            entries["report"] = f"Report generation approval status: {str(analyst_decision).title()}."
     elif not is_placeholder(approval_status):
         entries["report"] = f"Report generation approval status: {str(approval_status).title()}."
     else:

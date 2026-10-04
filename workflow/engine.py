@@ -3997,6 +3997,13 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
             "threat_intel_status": state_now.get("threat_intel_status"),
             "investigation_status": state_now.get("investigation_status"),
             "reporting_status": state_now.get("reporting_status"),
+            # Phase 4: the CURRENT execution attempt of each gated stage, so
+            # Reporting can bind workflow_approvals rows (approval_history
+            # .json) to the attempt they decided -- an older attempt's
+            # decision must never read as the current one.
+            "triage_attempt": state_now.get("triage_attempt"),
+            "investigation_attempt": state_now.get("investigation_attempt"),
+            "reporting_attempt": state_now.get("reporting_attempt"),
             "execution_started_at": datetime.now(timezone.utc).isoformat(),
         }
         _write_json(inputs / "workflow_metadata.json", workflow_metadata)

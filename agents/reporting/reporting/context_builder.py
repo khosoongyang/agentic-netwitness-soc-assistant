@@ -361,6 +361,7 @@ def _build_appendix_summaries(
     triage_level: Any = None,
     triage_category: Any = None,
     investigation_result_source: Any = None,
+    approval_context: dict[str, Any] | None = None,
 ) -> dict[str, dict[str, str]]:
     """Build compact, always-present appendix summaries for Jinja templates.
 
@@ -445,14 +446,15 @@ def _build_appendix_summaries(
             "Evidence Gaps": _short_value(gaps),
             "Reporting Mode": _short_value(_first(investigation.get("reporting_mode"), default="Not Provided")),
         },
+        # Phase 4: one block per gate, from the canonical approval_context.
         "approval": {
-            "Report Generation Approval Status": _short_value(_first(approval_result.get("approval_status"), approval_result.get("status"), approval_result.get("decision"), default="Not Provided")),
-            "Report Generation Approved By": _short_value(_first(approval_result.get("analyst"), approval_result.get("approved_by"), approval_result.get("reviewed_by"), default="Not Provided")),
+            **_approval_appendix_rows(approval_context or {}),
             "Containment Approval Status": _short_value(_first(approval_result.get("containment_approval_status"), default="Pending analyst approval")),
             "Containment Execution Status": _short_value(_first(approval_result.get("containment_execution_status"), default="Not Contained")),
             "Final Analyst Review Status": _short_value(_first(approval_result.get("final_analyst_review_status"), default="Requires final analyst review")),
             "Reporting Mode": _short_value(_first(approval_result.get("reporting_mode"), default="Not Provided")),
-            "Comments": _short_value(_first(approval_result.get("analyst_comments"), approval_result.get("comments"), default="Not Provided")),
+            # (The un-attributed "Comments" row is gone: each gate's own
+            # comment is shown above, attributed to that gate.)
         },
     }
 
@@ -463,6 +465,157 @@ def _build_appendix_summaries(
 # [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/reporting/template_document_exporter.py:build_report_context, soc_reporting_agent/scripts/test_merged_report_context.py:test_merged_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_build_appendix_summaries`, `_extract_evidence_value`, `_first`, `_get`, `_is_ransomware_case`, `_label`, `_list`, `_normalise_asset`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
+# ── Canonical audit Phase 4: approval propagation ─────────────────────────
+# The ONLY authoritative approval record is the workflow_approvals audit
+# table, handed to Reporting run-scoped as approval_history.json (one row
+# per decision: approval_stage, decision, analyst, comments, decided_at,
+# run_id, stage_attempt, approval_attempt). Stage status labels, the
+# incidents row's approved_by/approved_at/approval_comments (last approval
+# of ANY stage), report text and Agent Activity are never used.
+APPROVAL_NOT_RECORDED = "Not recorded"
+APPROVAL_NO_COMMENT = "None recorded"
+_APPROVAL_STAGES = ("triage", "investigation", "reporting")
+
+
+def _approval_value(value: Any, empty: str) -> Any:
+    """Persisted analyst/comment values pass through verbatim; only a
+    genuinely absent value becomes the explicit `empty` marker."""
+    return value if value not in (None, "") and str(value).strip() != "" else empty
+
+
+def _approval_decision_record(row: dict[str, Any]) -> dict[str, Any]:
+    decision = str(row.get("decision") or "").strip().lower()
+    return {
+        "decision": "Approved" if decision == "approved" else "Rejected" if decision == "rejected" else (row.get("decision") or APPROVAL_NOT_RECORDED),
+        "actor": _approval_value(row.get("analyst"), APPROVAL_NOT_RECORDED),
+        "comment": _approval_value(row.get("comments"), APPROVAL_NO_COMMENT),
+        "timestamp": row.get("decided_at"),
+        "run_id": row.get("run_id"),
+        "stage_attempt": row.get("stage_attempt"),
+        "approval_attempt": row.get("approval_attempt"),
+    }
+
+
+def _approval_stage_record(status: str, current: dict[str, Any] | None, previous: list[dict[str, Any]],
+                           *, run_id: Any, stage_attempt: Any, note: str = "") -> dict[str, Any]:
+    return {
+        "status": status,
+        "actor": current["actor"] if current else APPROVAL_NOT_RECORDED,
+        "comment": current["comment"] if current else APPROVAL_NO_COMMENT,
+        "timestamp": current["timestamp"] if current else None,
+        "run_id": current["run_id"] if current else run_id,
+        "stage_attempt": current["stage_attempt"] if current else stage_attempt,
+        "approval_attempt": current["approval_attempt"] if current else None,
+        "previous_decisions": previous,
+        "note": note,
+    }
+
+
+def _approval_appendix_rows(approval_context: dict[str, Any]) -> dict[str, str]:
+    """Appendix D rows, one labelled block per gate (shared with
+    export_context_enhancer so the appendix and JSON never disagree)."""
+    rows: dict[str, str] = {"Approval Source": str(approval_context.get("source") or APPROVAL_NOT_RECORDED)}
+    for stage, label in (("triage", "Triage Approval"), ("investigation", "Investigation Approval"),
+                         ("reporting", "Report Generation Approval")):
+        record = approval_context.get(stage) or {}
+        rows[f"{label} Status"] = str(record.get("status") or APPROVAL_NOT_RECORDED)
+        rows[f"{label} By"] = str(record.get("actor") or APPROVAL_NOT_RECORDED)
+        rows[f"{label} Comment"] = str(record.get("comment") or APPROVAL_NO_COMMENT)
+        rows[f"{label} Time"] = str(record.get("timestamp") or APPROVAL_NOT_RECORDED)
+        previous = record.get("previous_decisions") or []
+        if previous:
+            rows[f"{label} Earlier Decisions"] = "; ".join(
+                f"{p.get('decision')} by {p.get('actor')} at {p.get('timestamp') or 'time not recorded'}"
+                f" (attempt {p.get('stage_attempt')}): {p.get('comment')}" for p in previous)
+    return rows
+
+
+def _build_approval_context(approval_history: Any, approval_result: dict[str, Any],
+                            workflow_metadata: dict[str, Any], incident_id: Any) -> dict[str, Any]:
+    """Deterministic per-stage approval state for the report.
+
+    * Run/case binding: only rows whose incident_id AND run_id equal this
+      Reporting run's (workflow_metadata) are considered.
+    * Investigation: the current decision must be on the CURRENT
+      investigation_attempt; no row on it -> Pending (an older attempt's
+      decision is never inherited).
+    * Reporting: the document is the candidate generated BEFORE the final
+      gate, so the current Reporting gate is always Pending; every recorded
+      Reporting decision (earlier attempts) is history only.
+    * Triage: newest decision by (approval_attempt, decided_at) -- Triage
+      decisions are always stamped stage_attempt=1 by state_store, so they
+      cannot be bound to a Triage execution attempt (known issue).
+    * Earlier decisions are kept in previous_decisions and never override
+      the current status.
+    * Legacy (no approval_history, only approval_result.json): that record
+      is the Investigation approval it was resolved as -- never Reporting's.
+    """
+    run_id = workflow_metadata.get("run_id")
+    # input_loader yields a list for approval_history.json and {} when the
+    # (optional) file is absent -- only a list means "history available".
+    if isinstance(approval_history, list):
+        rows = [r for r in approval_history if isinstance(r, dict)
+                and str(r.get("incident_id")) == str(incident_id)
+                and (run_id is None or r.get("run_id") == run_id)]
+        source = "workflow_approvals (run-scoped approval_history.json)"
+    else:
+        rows, source = [], None
+
+    def _order(row: dict[str, Any]) -> tuple:
+        return (int(row.get("stage_attempt") or 0), int(row.get("approval_attempt") or 0), str(row.get("decided_at") or ""))
+
+    context: dict[str, Any] = {"source": source or "not available", "case_id": incident_id, "run_id": run_id}
+    if source is None:
+        legacy_gate = str(approval_result.get("approval_gate") or approval_result.get("approval_type") or "").lower()
+        legacy_is_investigation = bool(approval_result) and (not legacy_gate or "investigation" in legacy_gate)
+        for stage in _APPROVAL_STAGES:
+            context[stage] = _approval_stage_record(APPROVAL_NOT_RECORDED, None, [], run_id=run_id, stage_attempt=None,
+                                                    note="Approval history unavailable to Reporting.")
+        if legacy_is_investigation:
+            record = _approval_decision_record({
+                "decision": approval_result.get("decision") or approval_result.get("analyst_decision") or approval_result.get("approval_status") or approval_result.get("status"),
+                "analyst": approval_result.get("analyst") or approval_result.get("approved_by") or approval_result.get("reviewed_by"),
+                "comments": approval_result.get("comments") or approval_result.get("analyst_comments"),
+                "decided_at": approval_result.get("decided_at") or approval_result.get("approved_at"),
+                "run_id": approval_result.get("run_id")})
+            context["investigation"] = _approval_stage_record(
+                record["decision"], record, [], run_id=run_id, stage_attempt=None,
+                note="From legacy approval_result.json (Investigation approval); approval history unavailable.")
+            context["source"] = "legacy approval_result.json"
+        context["reporting"]["status"] = "Pending"
+        context["reporting"]["note"] = ("Awaiting final Reporting approval: this document is the candidate under review; "
+                                        "the decision is recorded in the workflow audit trail.")
+        return context
+
+    for stage in _APPROVAL_STAGES:
+        stage_rows = sorted((r for r in rows if r.get("approval_stage") == stage), key=_order)
+        if stage == "reporting":
+            previous = [_approval_decision_record(r) for r in stage_rows]
+            context[stage] = _approval_stage_record(
+                "Pending", None, previous, run_id=run_id, stage_attempt=workflow_metadata.get("reporting_stage_attempt"),
+                note=("Awaiting final Reporting approval: this document is the candidate under review; "
+                      "the decision is recorded in the workflow audit trail."))
+            continue
+        if stage == "triage":
+            stage_rows = sorted(stage_rows, key=lambda r: (int(r.get("approval_attempt") or 0), str(r.get("decided_at") or "")))
+            current_rows, note = stage_rows[-1:], ("Triage decisions carry no reliable execution attempt; "
+                                                   "the newest decision for this run is shown.")
+            stage_attempt = None
+        else:
+            current_attempt = workflow_metadata.get(f"{stage}_attempt")
+            if current_attempt is None:
+                current_rows, note = stage_rows[-1:], "Current stage attempt not recorded; the newest decision for this run is shown."
+            else:
+                on_attempt = [r for r in stage_rows if int(r.get("stage_attempt") or 0) == int(current_attempt)]
+                current_rows, note = on_attempt[-1:], ""
+            stage_attempt = current_attempt
+        current = _approval_decision_record(current_rows[0]) if current_rows else None
+        previous = [_approval_decision_record(r) for r in stage_rows if not current_rows or r is not current_rows[0]]
+        context[stage] = _approval_stage_record(current["decision"] if current else "Pending", current, previous,
+                                                run_id=run_id, stage_attempt=stage_attempt, note=note)
+    return context
+
 
 def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] | None = None, output_dir: Any = None) -> dict[str, Any]:
     inputs = inputs or {}
@@ -493,7 +646,8 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     if not isinstance(feedback_loop, dict):
         feedback_loop = {}
     threat_intel_result = inputs.get("threat_intel_result") or {}
-    approval_history = inputs.get("approval_history") or []
+    approval_history_input = inputs.get("approval_history")
+    approval_history = approval_history_input if isinstance(approval_history_input, list) else []
     workflow_metadata = inputs.get("workflow_metadata") or {}
     approval_result = inputs.get("investigation_approval_result") or inputs.get("approval_result") or {}
     ticket_context = inputs.get("grouped_incident_context") or inputs.get("ticket_context") or {}
@@ -509,6 +663,13 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # .get("case_id") is left untouched -- auditing Investigation's own
     # fields is out of scope for this phase.
     incident_id = _first(ticket_context.get("incident_id"), workflow_metadata.get("incident_id"), processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), investigation.get("incident_id"), investigation.get("case_id"), threat_intel_result.get("incident_id"), default="unknown")
+    # Phase 4: per-stage approval state from the canonical workflow_approvals
+    # history (see _build_approval_context()).
+    approval_context = _build_approval_context(approval_history_input, approval_result, workflow_metadata, incident_id)
+    reporting_gate = approval_context["reporting"]
+    approval_evidence_ref = ("approval_history.json" if approval_context["source"].startswith("workflow_approvals")
+                             else "approval_result.json" if approval_context["source"].startswith("legacy")
+                             else "no approval record")
     alert_id = _first(processed.get("alert_id"), enriched.get("alert_id"), triage.get("alert_id"), investigation.get("alert_id"), default="UNKNOWN-ALERT")
     title = _first(processed.get("alert_title"), processed.get("alert_name"), enriched.get("alert_title"), enriched.get("alert_name"), enriched.get("case_title"), enriched.get("title"), triage.get("title"), investigation.get("title"), default="Not Provided")
     # Phase 5: prefer the canonical Investigation Agent contract payload
@@ -693,10 +854,14 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     # triage_result.json.
     approval = {
         "approval_required": _first(approval_result.get("approval_required")),
-        "approval_status": _first(approval_result.get("approval_status")),
-        "analyst_decision": _first(approval_result.get("analyst_decision"), approval_result.get("decision")),
-        "analyst_comments": _first(approval_result.get("analyst_comments"), approval_result.get("soc_analyst_comments")),
-        "approved_by": _first(approval_result.get("analyst"), approval_result.get("approved_by"), approval_result.get("reviewed_by")),
+        # Phase 4: the report's own approval is the Report Generation
+        # (Reporting) gate -- Pending in a generated candidate. A legacy
+        # approval_result.json is the Investigation approval and lives in
+        # approval_context["investigation"], never here.
+        "approval_status": reporting_gate["status"],
+        "analyst_decision": reporting_gate["status"],
+        "analyst_comments": reporting_gate["comment"],
+        "approved_by": reporting_gate["actor"],
         "approved_action": _first(approval_result.get("approved_action"), approval_result.get("approved_containment_action")),
     }
     containment = {
@@ -747,7 +912,7 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
     evidence_backed_findings = [
         {"finding_id": "KF-001", "statement": f"The incident classification is {classification}.", "finding": f"The incident classification is {classification}.", "status": "Fact", "confidence": confidence["label"], "evidence_refs": ["investigation_result.json" if classification_source == "Investigation" else "triage_result.json"], "evidence": "investigation_result.json" if classification_source == "Investigation" else "triage_result.json", "interpretation": f"Classification source: {classification_source}" + (" (Triage-owned assessment; Investigation produces no classification)." if classification_source == "Triage" else ".")},
         {"finding_id": "KF-002", "statement": "Affected scope requires validation." if not affected_assets and not affected_users else "Affected scope has available context.", "finding": "Affected scope requires validation." if not affected_assets and not affected_users else "Affected scope has available context.", "status": "Evidence Gap" if not affected_assets and not affected_users else "Fact", "confidence": confidence["label"], "evidence_refs": [], "evidence": "", "interpretation": "Assets and users should be validated against NetWitness and endpoint evidence."},
-        {"finding_id": "KF-003", "statement": f"Approval status is {approval['approval_status']}.", "finding": f"Approval status is {approval['approval_status']}.", "status": "Fact", "confidence": confidence["label"], "evidence_refs": ["approval_result.json"], "evidence": "approval_result.json", "interpretation": "Approval data is recorded only from analyst approval context."},
+        {"finding_id": "KF-003", "statement": f"Report generation approval status is {approval['approval_status']}.", "finding": f"Report generation approval status is {approval['approval_status']}.", "status": "Fact", "confidence": confidence["label"], "evidence_refs": [approval_evidence_ref], "evidence": approval_evidence_ref, "interpretation": f"Approval data comes only from {approval_context['source']}; Triage and Investigation decisions are listed per gate in the approval section."},
     ]
 
     limitations_sentence = (" Investigation completed with evidence gaps, so this report proceeds with limitations and requires SOC analyst validation of missing telemetry." if reporting_mode == "with_limitations" else "")
@@ -880,6 +1045,7 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         triage_level=triage_level,
         triage_category=triage_category,
         investigation_result_source=investigation_result_source,
+        approval_context=approval_context,
     )
 
     return {
@@ -910,11 +1076,13 @@ def build_context(inputs: dict[str, dict[str, Any]] | None, warnings: list[str] 
         "analyst_decision": approval["analyst_decision"],
         "approval": approval,
         "report_generation_approval": {
-            "status": approval["approval_status"],
-            "approved_by": approval["approved_by"],
-            "comments": approval["analyst_comments"],
-            "approval_gate": _first(approval_result.get("approval_gate"), approval_result.get("approval_type"), default=""),
+            "status": reporting_gate["status"],
+            "approved_by": reporting_gate["actor"],
+            "comments": reporting_gate["comment"],
+            "approval_gate": "reporting",
+            "note": reporting_gate["note"],
         },
+        "approval_context": approval_context,
         "final_analyst_review_status": _first(approval_result.get("final_analyst_review_status"), reporting.get("final_analyst_review_status"), default="Requires final analyst review"),
         "containment": containment,
         "alert": alert,

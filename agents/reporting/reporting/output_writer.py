@@ -92,6 +92,9 @@ def build_reporting_result(context: dict[str, Any], generated_reports: dict[str,
         "report_generation_mode": context["report_generation_mode"],
         "validation_status": validation_status,
         "missing_required_fields": context["missing_required_fields"],
+        # Canonical audit Phase 4: the same per-gate approval record the
+        # rendered report uses (Triage / Investigation / Report Generation).
+        "approval_context": context.get("approval_context", {}),
         "recovered_fields": context["recovered_fields"],
         "report_completeness_score": context.get("report_quality_score"),
         "report_completeness_status": completeness_status,

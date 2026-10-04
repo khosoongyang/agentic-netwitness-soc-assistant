@@ -119,6 +119,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from reporting.llm_narrative import enhance_narrative
+from reporting.context_builder import _approval_appendix_rows
 from reporting.compact_renderer import (
     approval_summary_table,
     build_approval_summary,
@@ -1437,42 +1438,33 @@ def normalise_approval(context: dict[str, Any]) -> None:
     containment = context.setdefault("containment", {})
 
     decision = _approval_decision(approval_result)
-    analyst_name = first_present(approval_result.get("analyst"), approval_result.get("approved_by"), approval_result.get("reviewed_by"), default="SOC Analyst")
-
     approval_gate = first_present(approval_result.get("approval_gate"), approval_result.get("approval_type"), default=None)
     recommended_containment = _find_recommended_containment_action(context)
 
-    if decision in {"approved", "approve", "accepted", "accept"}:
-        approval["approval_status"] = "approved"
-        approval["analyst_decision"] = "approved"
-        approval["approved_by"] = analyst_name
-        context["approval_status"] = "approved"
-        context["analyst_decision"] = "approved"
-    elif decision in {"rejected", "reject", "declined", "deny", "denied"}:
-        approval["approval_status"] = "rejected"
-        approval["analyst_decision"] = "rejected"
-        approval["approved_by"] = analyst_name
-        context["approval_status"] = "rejected"
-        context["analyst_decision"] = "rejected"
+    is_containment_approval = any(token in str(approval_gate or "").lower() for token in ("containment", "response_action"))
+
+    # Canonical audit Phase 4: the report's own approval fields are the
+    # Report Generation (Reporting) gate from approval_context -- built from
+    # the run-scoped workflow_approvals history. approval_result.json (the
+    # legacy, Investigation-gate record) no longer feeds them, and nothing is
+    # fabricated: no "SOC Analyst" approver, no generic comment sentence.
+    reporting_gate = get_path(context, "approval_context.reporting") or {}
+    gate_status = str(first_present(reporting_gate.get("status"), default="Pending")).strip().lower()
+    approval["approval_status"] = gate_status
+    approval["analyst_decision"] = gate_status
+    approval["approved_by"] = first_present(reporting_gate.get("actor"), default="Not recorded")
+    approval["analyst_comments"] = first_present(reporting_gate.get("comment"), default="None recorded")
+    context["approval_status"] = gate_status
+    context["analyst_decision"] = gate_status
+    # A containment-gate decision (if a legacy record really is one) still
+    # drives the containment fields below, exactly as before.
+    if is_containment_approval and decision in {"rejected", "reject", "declined", "deny", "denied"}:
         containment["status"] = "rejected"
         containment["execution_status"] = "not_executed"
         context["containment_status"] = "rejected"
-    else:
-        # triage.get("soc_analyst_approval_status") dropped -- Triage does
-        # not perform approval gating; this key has never existed on the
-        # flattened triage_result.json.
-        approval["approval_status"] = first_present(approval.get("approval_status"), default="pending")
-        approval["analyst_decision"] = first_present(approval.get("analyst_decision"), default="pending")
-        approval["approved_by"] = first_present(approval.get("approved_by"), default="")
-        context["approval_status"] = approval["approval_status"]
-        context["analyst_decision"] = approval["analyst_decision"]
 
-    approval["analyst_comments"] = first_present(approval_result.get("comments"), approval_result.get("analyst_comments"), approval.get("analyst_comments"), default="No approval comments supplied.")
-    approval["approval_type"] = first_present(approval_result.get("approval_type"), approval_gate, default="")
+    approval["approval_type"] = "report_generation"
     approval["approved_action"] = first_present(approval_result.get("approved_action"), approval_result.get("approved_containment_action"), default="")
-
-    is_containment_approval = any(token in str(approval_gate or "").lower() for token in ("containment", "response_action"))
-    is_report_approval = any(token in str(approval_gate or "").lower() for token in ("report", "investigation", "evidence_gap"))
 
     final_review_status = first_present(
         approval_result.get("final_analyst_review_status"),
@@ -1485,12 +1477,15 @@ def normalise_approval(context: dict[str, Any]) -> None:
     else:
         context["final_analyst_review_status"] = "Requires final analyst review"
 
-    report_generation_status = approval["approval_status"] if is_report_approval or not is_containment_approval else ""
+    # Report Generation Approval == the Reporting gate only (Phase 4: an
+    # Investigation or evidence-gap approval is never classified as it).
+    report_generation_status = first_present(reporting_gate.get("status"), default="Pending")
     context["report_generation_approval"] = {
         "status": report_generation_status,
-        "approved_by": approval.get("approved_by", ""),
-        "approval_gate": approval_gate or "",
-        "comments": approval.get("analyst_comments", ""),
+        "approved_by": approval.get("approved_by", "Not recorded"),
+        "approval_gate": "reporting",
+        "comments": approval.get("analyst_comments", "None recorded"),
+        "note": reporting_gate.get("note", ""),
     }
     approval["report_generation_approval_status"] = report_generation_status
     approval["report_generation_approved_by"] = approval.get("approved_by", "")
@@ -1817,18 +1812,18 @@ def _apply_field_provenance(context: dict[str, Any], evidence_index: dict[str, l
             ("triage_result", "classification", triage.get("classification")),
             ("approval_result", "classification", approval.get("classification")),
         ],
+        # Phase 4: the report's approval fields are the Report Generation
+        # (Reporting) gate from approval_context -- provenance says so.
         "approval_status": [
-            ("approval_result", "approval_status", approval.get("approval_status")),
-            ("approval_result", "decision", approval.get("decision")),
+            ("approval_context", "reporting.status", get_path(context, "approval_context.reporting.status")),
         ],
         "analyst_decision": [
-            ("approval_result", "analyst_decision", approval.get("analyst_decision")),
-            ("approval_result", "decision", approval.get("decision")),
+            ("approval_context", "reporting.status", get_path(context, "approval_context.reporting.status")),
         ],
         "approved_by": [
-            ("approval_result", "analyst", approval.get("analyst")),
-            ("approval_result", "approved_by", approval.get("approved_by")),
-            ("approval_result", "reviewed_by", approval.get("reviewed_by")),
+            ("approval_context", "reporting.actor",
+             None if get_path(context, "approval_context.reporting.actor") in (None, "Not recorded")
+             else get_path(context, "approval_context.reporting.actor")),
         ],
         "containment_status": [
             ("approval_result", "containment_status", approval.get("containment_status")),
@@ -2439,13 +2434,15 @@ def build_appendix_summaries(context: dict[str, Any]) -> dict[str, Any]:
             "Missing Evidence": ", ".join(str(g.get("gap", g)) for g in gaps) if gaps else "None recorded",
             "Recommended Next Action": first_present(investigation.get("recommended_next_action"), default="No standalone investigation next action supplied."),
         },
+        # Phase 4: one attributed block per gate (Triage / Investigation /
+        # Report Generation) from approval_context; the old un-attributed
+        # "Comments" row (legacy approval_result, default "No approval
+        # comments supplied.") is gone.
         "approval": {
-            "Report Generation Approval Status": get_path(context, "report_generation_approval.status", ""),
-            "Report Generation Approved By": get_path(context, "report_generation_approval.approved_by", ""),
+            **_approval_appendix_rows(context.get("approval_context") or {}),
             "Containment Approval Status": get_path(context, "containment.approval_status", ""),
             "Containment Execution Status": get_path(context, "containment.execution_status", ""),
             "Final Analyst Review Status": context.get("final_analyst_review_status", ""),
-            "Comments": first_present(approval_result.get("comments"), approval_result.get("analyst_comments"), default="No approval comments supplied."),
         },
     }
 
@@ -2621,7 +2618,7 @@ def enhance_export_context(context: dict[str, Any], ticket: dict[str, Any] | Non
         context["chain_of_custody_compact"] = False
     approval = context.get("approval") or {}
     containment = context.get("containment") or {}
-    context["approval_summary"] = build_approval_summary(approval, containment)
+    context["approval_summary"] = build_approval_summary(approval, containment, context.get("approval_context"))
     context["approval_summary_table"] = approval_summary_table(context["approval_summary"])
 
     apply_llm_narrative(context)
