@@ -437,6 +437,12 @@ def extract_iocs(alert: Dict[str, Any]) -> Dict[str, Any]:
 # [FYP-CALLS] Calls: `get`, `getenv`, `json`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
+def hash_lookups_enabled() -> bool:
+    """[AUDIT T-11] AEGIS_TI_HASH_LOOKUPS=off|0|false|no disables sending file
+    hashes to VirusTotal / OTX. Unset (default) keeps today's behaviour."""
+    return os.getenv("AEGIS_TI_HASH_LOOKUPS", "").strip().lower() not in {"off", "0", "false", "no"}
+
+
 def query_virustotal_file_hash(file_hash: str) -> Dict[str, Any]:
     """[FYP-API] VirusTotal — GET /api/v3/files/{hash} (VT_API_KEY). Returns
     the file's last_analysis_stats (malicious/suspicious/harmless/undetected
@@ -933,7 +939,16 @@ def enrich_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
         "notes": notes
     }
 
-    if is_available(file_hash):
+    if is_available(file_hash) and not hash_lookups_enabled():
+        # [AUDIT T-11] opt-out: a hash of an internal file can itself be
+        # sensitive (proprietary build, unreleased tool); never sent when off.
+        threat_intel["virustotal"]["file_hash"] = {
+            "status": "skipped",
+            "reason": "File-hash lookups are disabled (AEGIS_TI_HASH_LOOKUPS=off)."
+        }
+        notes.append("File-hash lookups are disabled by configuration (AEGIS_TI_HASH_LOOKUPS=off); "
+                     "the hash was not sent to VirusTotal or OTX. Reputation is unknown, not clean.")
+    elif is_available(file_hash):
         threat_intel["virustotal"]["file_hash"] = query_virustotal_file_hash(file_hash)
 
         threat_intel["alienvault_otx"]["otx_results"].append(

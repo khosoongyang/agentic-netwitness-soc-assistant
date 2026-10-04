@@ -42,6 +42,15 @@ to "unavailable" for that provider only, not a stage failure.
 | `ABUSEIPDB_API_KEY` | AbuseIPDB reputation lookups |
 | `OTX_API_KEY` | AlienVault OTX pulse lookups |
 
+Internal / non-routable IP addresses (RFC 1918, loopback, link-local incl.
+169.254.169.254, CGNAT 100.64/10, IPv6 ULA / link-local) are never sent to a
+provider. File hashes are sent by default; set `AEGIS_TI_HASH_LOOKUPS=off` to
+stop that (the result is then recorded as skipped, i.e. unknown, not clean).
+
+| Variable | Purpose | Required | Default | Example |
+|---|---|---|---|---|
+| `AEGIS_TI_HASH_LOOKUPS` | `off` / `0` / `false` / `no` stops file hashes being sent to VirusTotal and OTX. | No | on | `off` |
+
 ## NetWitness
 
 Leave the whole section blank to run Aegis in offline/cached-case mode -

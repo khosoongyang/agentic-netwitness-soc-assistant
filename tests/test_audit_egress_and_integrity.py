@@ -110,3 +110,37 @@ def test_lolbas_failure_reason_in_packet_names_no_local_path(tmp_path, variant):
     assert leaf["status"] == "missing"
     assert str(tmp_path) not in leaf["source"] and "lolbas.json" in leaf["source"]
     assert "unknown, not safe" in leaf["source"] or "not found" in leaf["source"]
+
+
+# ── T-11 remainder: opt-out for file-hash lookups ───────────────────────────
+
+def _no_network(*a, **k):
+    raise AssertionError("no provider call may be made for a hash when lookups are off")
+
+
+@pytest.mark.parametrize("value", ["off", "0", "false", "no", "OFF"])
+def test_hash_lookups_can_be_switched_off(monkeypatch, value):
+    monkeypatch.setenv("AEGIS_TI_HASH_LOOKUPS", value)
+    monkeypatch.setattr(threat_intel, "query_virustotal_file_hash", _no_network)
+    calls = []
+    monkeypatch.setattr(threat_intel, "query_otx_indicator",
+                        lambda kind, v: calls.append(kind) or {"status": "skipped"})
+    res = threat_intel.enrich_alert({"file_hash": "a" * 64})["threat_intelligence"]
+    vt = res["virustotal"]["file_hash"]
+    assert vt["status"] == "skipped" and "AEGIS_TI_HASH_LOOKUPS" in vt["reason"]
+    assert "file" not in calls
+    assert any("hash lookups are disabled" in n for n in res["notes"])
+
+
+@pytest.mark.parametrize("value", [None, "", "on", "1"])
+def test_hash_lookups_default_unchanged(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv("AEGIS_TI_HASH_LOOKUPS", raising=False)
+    else:
+        monkeypatch.setenv("AEGIS_TI_HASH_LOOKUPS", value)
+    seen = []
+    monkeypatch.setattr(threat_intel, "query_virustotal_file_hash",
+                        lambda h: seen.append(h) or {"status": "not_found"})
+    monkeypatch.setattr(threat_intel, "query_otx_indicator", lambda kind, v: {"status": "skipped"})
+    threat_intel.enrich_alert({"file_hash": "a" * 64})
+    assert seen == ["a" * 64]
