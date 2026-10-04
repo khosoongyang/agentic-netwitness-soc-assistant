@@ -88,3 +88,25 @@ def test_link_local_ip_is_never_sent_to_providers():
     iocs = threat_intel.extract_iocs({"source_ip": "169.254.169.254", "destination_ip": "100.64.1.1"})
     flat = json.dumps(iocs)
     assert "169.254.169.254" not in flat and "100.64.1.1" not in flat
+
+
+def test_lolbas_source_names_no_local_absolute_path(tmp_path):
+    """Audit T-02 follow-up: the LOLBAS leaf `source` embedded the absolute
+    cache path (e.g. C:\\Users\\<name>\\...). It is stored in review snapshots
+    and printed in the blind-review HTML export, so only the file name is kept."""
+    ds, _ = lolbas.load_lolbas_dataset(_write_cache(tmp_path))
+    assert str(tmp_path) not in ds.source
+    assert "cache lolbas.json" in ds.source and "sha256" in ds.source
+
+
+@pytest.mark.parametrize("variant", ["tampered", "missing"])
+def test_lolbas_failure_reason_in_packet_names_no_local_path(tmp_path, variant):
+    if variant == "tampered":
+        p = _write_cache(tmp_path, sha="0" * 64)
+    else:
+        p = tmp_path / "nope" / "lolbas.json"
+        lolbas._CACHE.clear()
+    leaf = lolbas.build_lolbas_signal({"alerts": []}, dataset_path=p)
+    assert leaf["status"] == "missing"
+    assert str(tmp_path) not in leaf["source"] and "lolbas.json" in leaf["source"]
+    assert "unknown, not safe" in leaf["source"] or "not found" in leaf["source"]

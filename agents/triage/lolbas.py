@@ -324,8 +324,12 @@ class LolbasDataset:
     def source(self) -> str:
         retrieved = self.meta.get("retrieved_at") or "unknown date"
         sha = (self.meta.get("sha256") or "")[:12] or "unknown"
+        # [AUDIT T-02 follow-up] file name only: the absolute cache path
+        # (user profile / repo location) must not reach prompts, stored
+        # review snapshots or the blind-review export.
+        cache_name = Path(self.path).name if self.path else "?"
         return (f"LOLBAS {self.meta.get('source_url') or LOLBAS_SOURCE_URL} "
-                f"(cache {self.path or '?'}, retrieved {retrieved}, sha256 {sha}..., "
+                f"(cache {cache_name}, retrieved {retrieved}, sha256 {sha}..., "
                 f"{len(self.entries)} entries)")
 
 
@@ -343,10 +347,13 @@ def load_lolbas_dataset(path: str | Path | None = None) -> tuple[LolbasDataset |
     """[FYP-FUNCTION] Load (and memoise by mtime) the LOLBAS cache.
     Returns (dataset, "") or (None, reason). Never raises."""
     p = resolve_lolbas_path(path)
+    # [AUDIT T-02 follow-up] reasons become the packet leaf `source`: name
+    # the file, never its absolute location.
+    shown = p.name or "lolbas.json"
     try:
         mtime = p.stat().st_mtime
     except OSError:
-        return None, (f"LOLBAS cache not found at {p} -- run `python scripts/update_lolbas.py` "
+        return None, (f"LOLBAS cache not found at {shown} -- run `python scripts/update_lolbas.py` "
                       "(abused-tool enrichment unavailable: unknown, not safe)")
     key = str(p.resolve())
     cached = _CACHE.get(key)
@@ -356,7 +363,7 @@ def load_lolbas_dataset(path: str | Path | None = None) -> tuple[LolbasDataset |
         raw = p.read_bytes()
         entries = json.loads(raw.decode("utf-8"))
         if not isinstance(entries, list) or not entries:
-            return None, f"LOLBAS cache at {p} is not a non-empty JSON list"
+            return None, f"LOLBAS cache at {shown} is not a non-empty JSON list"
         meta_path = p.with_suffix(".meta.json")
         meta = {}
         if meta_path.exists():
@@ -370,14 +377,14 @@ def load_lolbas_dataset(path: str | Path | None = None) -> tuple[LolbasDataset |
         # a cache that no longer matches what update_lolbas.py fetched fails
         # closed (enrichment unknown, never a silently-trusted dataset).
         if recorded_sha and recorded_sha != actual_sha:
-            return None, (f"LOLBAS cache at {p} does not match its recorded sha256 "
+            return None, (f"LOLBAS cache at {shown} does not match its recorded sha256 "
                           f"({recorded_sha[:12]}... != {actual_sha[:12]}...) -- re-run "
                           "`python scripts/update_lolbas.py` (abused-tool enrichment "
                           "unavailable: unknown, not safe)")
         meta.setdefault("sha256", actual_sha)
         ds = LolbasDataset(entries, meta, str(p))
     except Exception as exc:  # corrupt cache must never crash triage
-        return None, f"LOLBAS cache at {p} could not be read ({type(exc).__name__}: {exc})"
+        return None, f"LOLBAS cache at {shown} could not be read ({type(exc).__name__}: {exc})"
     _CACHE[key] = (mtime, ds)
     return ds, ""
 
