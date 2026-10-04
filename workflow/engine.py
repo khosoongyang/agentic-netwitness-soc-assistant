@@ -3680,8 +3680,6 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
         triage_cls = ticket.get("classification") or state.get("severity") or "UNRATED"
         alert_list = incident.get("alerts") or (incident.get("alertMeta") or {}).get("AlertTitles") or []
         alert_count = max(len(alert_list), 1)
-        progress_note = f"Ingested {alert_count} alert log(s) for incident {incident_id} (classified as {triage_cls}) — Investigation processing..."
-        set_worker_progress_note(incident_id, run_id, progress_note)
 
         _log("INVESTIGATION", f"running investigation agent for {incident_id} ({alert_count} alerts, {triage_cls})…")
         inv_result = investigate_with_feedback(

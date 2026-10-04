@@ -1,0 +1,95 @@
+{
+  "incident_id": "INC-53033",
+  "classification": {
+    "alert_type": "Policy violations",
+    "severity": "MEDIUM",
+    "triage_risk_rating": {
+      "likelihood_initiation": "Medium",
+      "likelihood_occurrence": "Medium",
+      "likelihood_adverse_impact": "Low",
+      "overall_risk": "Medium",
+      "rationale": "Initiation is medium because the alert is high severity with a 70 risk score but only shows internal network activity between 192.168.0.19 and 192.168.0.34, occurrence is medium because this is a single observed event with no volume or recurrence evidence, and adverse impact is low because there is no protocol/port detail, no PowerShell, and no confirmed exfiltration, crash, or endpoint compromise evidence."
+    }
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: ESA for 192.168.0.19",
+    "timestamp": "2026-07-15T09:33:14+00:00",
+    "description": "The alert shows high-risk network activity between two internal IPs, but no supporting evidence of malicious payloads, PowerShell execution, or a known-bad destination was found. With only partial network context and no endpoint or process telemetry, this is best treated as suspicious traffic requiring investigation rather than an active compromise.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.0.19"
+    },
+    "destination": {
+      "ip_address": "192.168.0.34"
+    }
+  },
+  "triage_deep_dive": {
+    "requested_gaps": [
+      "step_2: Was it horizontal or vertical",
+      "step_3: Was any malicious process spawned on the victim's machine?",
+      "step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
+      "step_5: Based on the analysis, determine if further investigation is necessary and the containment steps",
+      "step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System"
+    ],
+    "gap_findings": {
+      "step_2": "not present in incident data. No host-to-host mapping, subnet information, port usage, or source/destination pairs were provided, so horizontal versus vertical movement cannot be determined. If the underlying event was a connection between two systems in the same subnet or across adjacent hosts, that would suggest horizontal movement; if it involved privileged access to a single host/account escalation, that would suggest vertical movement, but neither is evidenced here.",
+      "step_3": "not present in incident data. There are no process names, command lines, parent-child relationships, hashes, or execution telemetry, so no malicious process spawn can be confirmed or ruled out.",
+      "step_4": "not present in incident data. A process tree cannot be analyzed because no process execution telemetry exists in the provided record. Therefore there is no evidence for privilege escalation, lateral movement, or data exfiltration from process ancestry or child-process behavior.",
+      "step_5": "Further investigation is necessary because all key behavioral evidence is missing. Containment cannot be safely tailored from the provided data alone; if this incident is active, apply standard precautionary containment such as isolating the suspected endpoint, preserving volatile evidence, and blocking suspicious accounts or indicators only after collecting supporting telemetry.",
+      "step_1": "not present in incident data. No username, source IP, logon details, computer name, or OS metadata are included in the raw data. These fields must be sourced from authentication, endpoint, or EDR telemetry before attribution can be made."
+    },
+    "confidence_per_gap": {
+      "step_2": "none",
+      "step_3": "none",
+      "step_4": "none",
+      "step_5": "low",
+      "step_1": "none"
+    },
+    "actionable_queries": {
+      "step_2": "Query Windows Security logs for Event ID 4624/4625 and correlate source/destination IPs; if available, inspect firewall, VPN, proxy, or EDR network connection telemetry for same-subnet vs remote-host activity. Use netstat -ano on the endpoint if live response is possible to identify remote connections and directionality.",
+      "step_3": "Query EDR process creation telemetry or Windows Security Event ID 4688 and Sysmon Event ID 1 for suspicious child processes; on the endpoint run Get-Process | Sort-Object CPU -Descending and Get-CimInstance Win32_Process to enumerate running and parented processes, then inspect command lines and hashes.",
+      "step_4": "Pull full process ancestry from EDR (process tree view) and correlate with Sysmon Event IDs 1, 7, 8, 10, and 11; search for signs of PowerShell, rundll32, regsvr32, mshta, wmic, psexec, schtasks, certutil, rar/7zip, or unusual network-enabled child processes. Use Get-WinEvent -LogName Microsoft-Windows-Sysmon/Operational.",
+      "step_5": "If telemetry confirms compromise, isolate the host from the network, disable suspected accounts, preserve memory/disk, and collect triage artifacts. To justify containment, gather authentication and endpoint evidence first: Security 4624/4625/4672/4688, Sysmon 1/3/11, EDR alerts, and DNS/proxy logs for outbound connections.",
+      "step_1": "Query Domain Controller Security logs for Event ID 4624 (successful logon) and 4625 (failed logon) to recover username, source IP, logon type, and workstation name; query host telemetry/EDR for device hostname and OS via system inventory or Windows System Event ID 6005/12/13. If available, run systeminfo or Get-ComputerInfo on the endpoint to retrieve OS version and build."
+    },
+    "deep_dive_summary": "The supplied incident record is empty, so none of the requested user, host, network, or process evidence is available for analysis. Because there is no telemetry to support movement type, process spawning, or process-tree review, the proper next step is targeted collection from Security, Sysmon, and EDR sources before containment decisions are finalized.",
+    "feedback_pass": 1
+  },
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available."
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "skipped",
+        "reason": "No file hash was available."
+      }
+    },
+    "notes": [
+      "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ]
+  },
+  "enrichment_risk_score": 0,
+  "enrichment_risk_level": "Low",
+  "enrichment_risk_reasons": [
+    "No confirmed malicious external intelligence was found, or no usable IOC was available."
+  ]
+}

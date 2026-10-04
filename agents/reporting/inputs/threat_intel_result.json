@@ -1,4 +1,5 @@
 {
-  "enrichment_risk_level": 12345,
-  "garbage": "<object object at 0x000001E1A7DE68E0>"
+  "status": "completed",
+  "risk_level": "high",
+  "iocs": []
 }

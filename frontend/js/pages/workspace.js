@@ -1837,7 +1837,6 @@ function investigationOutputTab(workspace) {
   parts.push(`<p>${result.severity ? severityBadge(result.severity, result.severity_justification) : ""} ${result.confidence ? confidenceBadge(result.confidence, result.confidence_justification) : ""} ${statusBadge(result.status)}</p>`);
   if (output.errors?.length) parts.push(`<p class="notice">${output.errors.map((e) => escapeHTML(e)).join("<br>")}</p>`);
   if (output.last_error) parts.push(`<p class="notice">${escapeHTML(output.last_error)}</p>`);
-  if (output.worker_progress_note) parts.push(`<p class="notice">${escapeHTML(output.worker_progress_note)}</p>`);
   if (output.warnings?.length) {
     parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Evidence Gaps</h3><ul class="data-list">${output.warnings.map((w) => `<li>${escapeHTML(w)}</li>`).join("")}</ul></section>`);
   }
@@ -3087,7 +3086,8 @@ export async function renderWorkspace(root, { navigate, route }) {
         if (result.run_id) {
           await pollRun(result.run_id, (run) => {
             const statusRoot = outputRoot.querySelector("#action-status");
-            if (statusRoot) statusRoot.innerHTML = run.progress?.note ? `<p class="notice">${escapeHTML(run.progress.note)}</p>` : "";
+            const note = run.progress?.note;
+            if (statusRoot) statusRoot.innerHTML = (note && !note.toLowerCase().startsWith("ingested")) ? `<p class="notice">${escapeHTML(note)}</p>` : "";
           });
           await refreshWorkflow();
         }
