@@ -40,6 +40,7 @@ from pathlib import Path
 
 import pytest
 
+import canonical_seed as seed
 from workflow import state_store as wss
 from workflow import engine as sw
 import backend.services.case_view_service as cv
@@ -109,10 +110,15 @@ def _run_to_investigation_processing(incident_id: str = "INC-1") -> str:
     """Fresh run, straight to investigation_status="Processing" — the state
     run_investigation_stage()/claim_stage() require."""
     run_id = wss.start_run(incident_id)
-    wss.save_triage_result(incident_id, run_id, _triage_result(incident_id))
+    # Phase 6: the canonical prerequisites Investigation runs on -- Parsing,
+    # raw incident, an approved run-bound Triage result and a run-bound TI
+    # result -- instead of bare status labels.
+    seed.seed_parsing_and_raw_incident(incident_id, run_id, _incident(incident_id))
+    seed.approve_triage(incident_id, run_id, _triage_result(incident_id))
     wss._guarded_update(incident_id, run_id, {
-        "triage_status": "Approved",
         "threat_intel_status": "Complete",
+        "threat_intel_result_json": json.dumps(
+            seed.threat_intel_result(incident_id, run_id, {"status": "completed"})),
         "investigation_status": "Processing",
         "workflow_status": "Processing",
     })
@@ -529,7 +535,9 @@ def test_get_approval_history_returns_all_decisions_in_order():
 
 def test_investigation_stage_passes_persisted_threat_intel_explicitly(monkeypatch):
     run_id = _run_to_investigation_processing("INC-1")
-    ti_payload = {"status": "completed", "risk_level": "high", "iocs": []}
+    # Phase 6: run_threat_intel() always stamps incident_id + run_id.
+    ti_payload = {"incident_id": "INC-1", "run_id": run_id,
+                  "status": "completed", "risk_level": "high", "iocs": []}
     wss._guarded_update("INC-1", run_id,
                         {"threat_intel_result_json": json.dumps(ti_payload)})
     captured = {}

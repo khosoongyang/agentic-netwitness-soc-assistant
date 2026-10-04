@@ -948,8 +948,23 @@ def _reject_after(call: dict, token: Any, result: Any) -> None:
          metadata={"decision": "reject", "analyst": analyst}, **_ids(incident_id, call.get("run_id"), attempt))
 
 
+# ── Canonical audit Phase 6: the worker's prerequisite (readiness) gate ────
+
+def _readiness_error(call: dict, token: Any, exc: BaseException) -> None:
+    """The stage's canonical prerequisites were refused before the shared
+    workspace, the attempt directory, the handoff or the agent."""
+    if _scope() is None or call.get("stage") != STAGE:
+        return
+    emit(source="rule", event_type="input_validation", status="failed",
+         title="Stage prerequisites are not satisfied", detail=describe_exception(exc))
+    emit(source="decision", event_type="stage_result", status="failed",
+         title="Reporting failed", detail=describe_exception(exc))
+
+
 def install(patcher: Patcher) -> None:
     engine = "workflow.engine"
+    patcher.wrap(Target(engine, "_require_stage_ready", ("incident_id", "stage", "run_id")),
+                 Hooks(error=_readiness_error))
     patcher.wrap(Target(engine, "run_reporting_stage", ("incident_id", "run_id")),
                  Hooks(scope=_stage_scope, error=_stage_error))
     patcher.wrap(Target(engine, "claim_stage",

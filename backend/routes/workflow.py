@@ -27,7 +27,8 @@ def _command(call: Callable[..., dict[str, Any]], *args: Any, **kwargs: Any):
     try:
         return call(*args, **kwargs)
     except commands.WorkflowCommandError as exc:
-        raise APIError(exc.code, exc.message, exc.status_code) from exc
+        raise APIError(exc.code, exc.message, exc.status_code,
+                       getattr(exc, "details", None)) from exc
 
 
 @workflow_blueprint.post("/cases/<case_id>/stages/<stage>/runs")

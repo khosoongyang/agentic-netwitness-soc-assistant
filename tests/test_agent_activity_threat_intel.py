@@ -26,6 +26,7 @@ import requests
 import observability
 from backend import create_app
 from observability.store import query_events
+import canonical_seed as seed
 from workflow import engine
 from workflow import state_store as wss
 
@@ -132,8 +133,10 @@ def env(tmp_path, monkeypatch):
         wss.save_raw_incident_path(CASE, run_id, str(raw))
         wss.save_parsing_result(CASE, run_id, {"run_id": run_id, "status": "completed",
                                                "processed_alert": dict(processed or PROCESSED)})
-        wss.save_triage_result(CASE, run_id, copy.deepcopy(triage or TRIAGE))
-        wss._guarded_update(CASE, run_id, {"parsing_status": "Complete", "triage_status": "Approved",
+        # Phase 6: a run-bound Triage result with a real recorded approval
+        # (not a bare "Approved" label).
+        seed.approve_triage(CASE, run_id, copy.deepcopy(triage or TRIAGE))
+        wss._guarded_update(CASE, run_id, {"parsing_status": "Complete",
                                            "threat_intel_status": "Processing",
                                            "workflow_status": "Processing"})
         return CASE, run_id
@@ -484,18 +487,23 @@ def test_threat_intel_events_are_served_by_history_and_sse(env, activity):
 
 def test_threat_intel_is_isolated_from_parsing_and_triage_events(env, activity):
     _, run_id = env["prepare"]("isolation")
-    commands_events_before = query_events(case_id=CASE, run_id=run_id, path=activity.path)
+    # Phase 6: prepare() records the run's real Triage approval (a Triage-gate
+    # event); isolation is about what the Threat Intelligence run emits.
+    seeded = query_events(case_id=CASE, run_id=run_id, path=activity.path)
+    seeded_ids = {e["sequence"] for e in seeded}
     from workflow import commands
 
     wss._guarded_update(CASE, run_id, {"threat_intel_status": "Pending", "workflow_status": "Awaiting Action"})
     commands.start_stage(CASE, "threat_intel", executor=lambda *args: None)
     engine.resume_after_triage_approval(CASE, run_id)
     assert activity.flush()
-    all_events = query_events(case_id=CASE, run_id=run_id, path=activity.path)
-    assert commands_events_before == [] and {e["stage"] for e in all_events} == {"threat_intel"}
+    all_events = [e for e in query_events(case_id=CASE, run_id=run_id, path=activity.path)
+                  if e["sequence"] not in seeded_ids]
+    assert {e["stage"] for e in seeded} <= {"triage"} and {e["stage"] for e in all_events} == {"threat_intel"}
     assert all_events[0]["title"] == "Threat Intelligence run requested"
     for stage in ("parsing", "triage"):
-        assert query_events(case_id=CASE, run_id=run_id, stage=stage, path=activity.path) == []
+        assert [e for e in query_events(case_id=CASE, run_id=run_id, stage=stage, path=activity.path)
+                if e["sequence"] not in seeded_ids] == []
 
 
 def test_threat_intel_wrap_points_match_their_expected_signatures():
@@ -506,7 +514,8 @@ def test_threat_intel_wrap_points_match_their_expected_signatures():
     patcher = Patcher()
     patcher.wrap = lambda target, hooks: recorded.append(target) or True  # type: ignore[assignment]
     threat_intel_adapter.install(patcher)
-    # 20 original wrap points + select_indicators (IOC-coverage phase).
-    assert len(recorded) == 21
+    # 20 original wrap points + select_indicators (IOC-coverage phase)
+    # + _require_stage_ready (canonical audit Phase 6 readiness gate).
+    assert len(recorded) == 22
     for target in recorded:
         assert actual_params(target) == target.params, target.label

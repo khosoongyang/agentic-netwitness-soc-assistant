@@ -42,6 +42,7 @@ from pathlib import Path
 
 import pytest
 
+import canonical_seed as seed
 from workflow import engine as sw
 from workflow import state_store as wss
 import backend.services.case_view_service as cv
@@ -332,13 +333,18 @@ def test_get_case_detail_handles_missing_investigation_result_gracefully(tmp_pat
 
 def _run_to_investigation_processing(incident_id: str = "INC-1") -> str:
     run_id = wss.start_run(incident_id)
-    wss.save_triage_result(incident_id, run_id, {
+    # Phase 6: canonical prerequisites (Parsing, raw incident, approved
+    # run-bound Triage, run-bound TI result) instead of bare status labels.
+    seed.seed_parsing_and_raw_incident(incident_id, run_id)
+    seed.approve_triage(incident_id, run_id, {
         "ticket": {"incident_id": incident_id, "unc": "#001", "classification": "MEDIUM",
                   "title": "Suspicious activity"},
         "metakeys_payload": {"incident_id": incident_id, "metakey_values": {}},
     })
     wss._guarded_update(incident_id, run_id, {
-        "triage_status": "Approved", "threat_intel_status": "Complete",
+        "threat_intel_status": "Complete",
+        "threat_intel_result_json": json.dumps(
+            seed.threat_intel_result(incident_id, run_id, {"status": "completed"})),
         "investigation_status": "Processing",
     })
     return run_id

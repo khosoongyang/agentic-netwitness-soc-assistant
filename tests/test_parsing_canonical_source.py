@@ -33,6 +33,7 @@ from agents.parsing.parser_context_guard import (
 )
 from agents.reporting.reporting.context_builder import build_context
 from agents.threat_intelligence import threat_intel as ti
+import canonical_seed as seed
 from workflow import engine as wf
 from workflow import state_store as wss
 from workflow import validation as wv
@@ -397,6 +398,8 @@ def test_threat_intel_receives_the_unchanged_processed_alert(monkeypatch, tmp_pa
         raise RuntimeError("captured by the Phase 5 test")
 
     monkeypatch.setattr(wf, "run_threat_intel", capture)
+    # Phase 6: TI runs only on an approved, run-bound Triage result.
+    seed.approve_triage(CASE, run, _triage())
     wss._guarded_update(CASE, run, {"threat_intel_status": "Processing"})
     wf.resume_after_triage_approval(CASE, run)
 

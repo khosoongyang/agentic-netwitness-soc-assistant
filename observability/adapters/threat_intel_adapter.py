@@ -602,8 +602,26 @@ def _model_request_error(call: dict, token: Any, exc: BaseException) -> None:
          span_id=token["span"], parent_span_id=token["parent"], metadata={"model": token["model"]})
 
 
+# ── Canonical audit Phase 6: the worker's prerequisite (readiness) gate ────
+
+def _readiness_error(call: dict, token: Any, exc: BaseException) -> None:
+    """The stage's canonical prerequisites were refused before any
+    enrichment ran."""
+    scope = _scope()
+    if scope is None or call.get("stage") != STAGE:
+        return
+    emit(source="rule", event_type="input_validation", status="failed",
+         title="Stage prerequisites are not satisfied", detail=describe_exception(exc))
+    if not scope.data.get("decision_emitted"):
+        scope.data["decision_emitted"] = True
+        emit(source="decision", event_type="stage_result", status="failed",
+             title="Threat Intelligence enrichment failed", detail=describe_exception(exc))
+
+
 def install(patcher: Patcher) -> None:
     engine = "workflow.engine"
+    patcher.wrap(Target(engine, "_require_stage_ready", ("incident_id", "stage", "run_id")),
+                 Hooks(error=_readiness_error))
     ti = "agents.threat_intelligence.threat_intel"
     patcher.wrap(Target(engine, "resume_after_triage_approval", ("incident_id", "run_id")),
                  Hooks(scope=_stage_scope, after=_stage_after, error=_stage_error))

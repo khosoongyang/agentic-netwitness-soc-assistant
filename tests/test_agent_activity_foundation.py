@@ -232,7 +232,7 @@ def _triage_targets():
 
 def test_every_triage_wrap_point_exists_with_the_expected_signature():
     targets = _triage_targets()
-    assert len(targets) == 17
+    assert len(targets) == 18   # + _require_stage_ready (Phase 6 readiness gate)
     for target in targets:
         assert actual_params(target) == target.params, target.label
 
@@ -284,8 +284,10 @@ def test_install_wraps_every_target_and_uninstall_restores_original_objects(tmp_
                    + _investigation_targets() + _reporting_targets())
     targets = list({t.label: t for t in all_targets}.values())
     # Shared points (claim/complete/requests/summary/model call) once each;
-    # 71 = 70 + Threat Intelligence select_indicators (IOC-coverage phase).
-    assert len(targets) == 71
+    # 71 = 70 + Threat Intelligence select_indicators (IOC-coverage phase);
+    # 72 = + the shared Phase 6 readiness gate _require_stage_ready (one
+    # wrap point, a hook set per stage adapter).
+    assert len(targets) == 72
     originals = {t.label: getattr(resolve_owner(t), t.attr) for t in targets}
     try:
         state = observability.install(str(tmp_path / "activity.db"))

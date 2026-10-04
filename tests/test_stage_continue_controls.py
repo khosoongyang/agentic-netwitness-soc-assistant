@@ -160,6 +160,7 @@ class _Workers:
         wss.save_triage_result(case_id, run_id, {
             "ticket": {"incident_id": case_id, "unc": "#001", "classification": "high"},
             "metakeys_payload": {"incident_id": case_id, "metakey_values": {}},
+            "run_id": run_id,   # Phase 6: run_triage_stage binds its result to the run
         })
         wss._guarded_update(case_id, run_id, {
             "triage_status": "Awaiting Approval", "workflow_status": "Awaiting Approval",
@@ -170,7 +171,12 @@ class _Workers:
     def investigation(self, case_id, run_id):
         self.calls.append("investigation")
         wss._guarded_update(case_id, run_id, {
-            "investigation_status": "Awaiting Approval", "investigation_result_json": "{}",
+            "investigation_status": "Awaiting Approval",
+            # Phase 6: run_investigation_stage persists a case- and run-bound
+            # result (an empty {} is not a canonical Investigation result).
+            "investigation_result_json": json.dumps({
+                "incident_id": case_id, "investigated_for": case_id,
+                "status": "completed", "run_id": run_id}),
             "workflow_status": "Awaiting Approval", "approval_stage": "investigation",
         })
         return {"status": "awaiting_approval"}

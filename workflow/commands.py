@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from workflow import state_store as wss
+from workflow import readiness as wr
 
 
 STAGES = ("parsing", "triage", "threat_intel", "investigation", "reporting")
@@ -37,10 +38,12 @@ _WORKER_START_GRACE_SECONDS = 15
 class WorkflowCommandError(RuntimeError):
     """Stable application error raised around canonical workflow failures."""
 
-    def __init__(self, code: str, message: str, status_code: int = 409):
+    def __init__(self, code: str, message: str, status_code: int = 409,
+                 details: dict[str, Any] | None = None):
         self.code = code
         self.message = message
         self.status_code = status_code
+        self.details = details
         super().__init__(message)
 
 
@@ -144,16 +147,56 @@ def _ensure_no_local_worker(run_id: str) -> None:
             )
 
 
+def _readiness_details(readiness: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "reason_code": readiness.get("reason_code"),
+        "category": readiness.get("category"),
+        "stage": readiness.get("stage"),
+        "run_id": readiness.get("run_id"),
+        "detail": readiness.get("detail"),
+    }
+
+
+def _require_ready(case_id: str, stage: str, state: dict[str, Any], *,
+                   verb: str = "started") -> dict[str, Any]:
+    """Canonical audit Phase 6: prerequisite readiness BEFORE the atomic
+    state-store transition (which still decides whether the target stage
+    itself may move). An upstream status that does not allow the stage keeps
+    the existing STAGE_LOCKED-family codes; a canonical input / identity /
+    run / approval problem is STAGE_NOT_READY. Both carry details.reason_code."""
+    readiness = wr.evaluate_stage_readiness(str(case_id), stage, state=state)
+    if readiness["ready"]:
+        return readiness
+    details = _readiness_details(readiness)
+    if readiness["category"] == wr.CATEGORY_STATUS:
+        got = {
+            "workflow_status": state.get("workflow_status"),
+            f"{stage}_status": state.get(f"{stage}_status"),
+            "reason_code": readiness["reason_code"],
+        }
+        error = _canonical_conflict(
+            RuntimeError(f"{stage} cannot be {verb} from the current workflow state: {got}"),
+            default_code="STAGE_LOCKED")
+        error.details = details
+        raise error
+    raise WorkflowCommandError(
+        "STAGE_NOT_READY",
+        f"{stage} is not ready: {readiness['reason_code']} — {readiness['detail']}",
+        409, details)
+
+
 def _raw_incident(state: dict[str, Any]) -> dict[str, Any]:
-    try:
-        raw = json.loads(state.get("raw_json") or "{}")
-    except (TypeError, ValueError):
-        raw = {}
-    if not isinstance(raw, dict):
-        raw = {}
-    if isinstance(raw.get("incident"), dict):
-        raw = dict(raw["incident"])
-    incident = dict(raw)
+    """The case's own raw NetWitness record for a fresh Parsing run. Phase 6:
+    a missing record, or one whose own id is another case, is refused
+    (missing_raw_incident / raw_incident_identity_mismatch) instead of being
+    synthesised from the row's columns or launched under the foreign id."""
+    readiness = wr.evaluate_stage_readiness(str(state.get("id") or ""), "parsing", state=state)
+    if not readiness["ready"]:
+        raise WorkflowCommandError(
+            "STAGE_NOT_READY",
+            f"parsing is not ready: {readiness['reason_code']} — {readiness['detail']}",
+            409, _readiness_details(readiness))
+    incident = dict(readiness["inputs"]["raw_record"])
     incident.setdefault("id", str(state.get("id") or ""))
     incident.setdefault("title", state.get("title") or "Untitled case")
     incident.setdefault("severity", state.get("severity"))
@@ -283,6 +326,7 @@ def start_stage(
     state = _state_or_error(case_id)
     run_id = _current_run(state)
     _ensure_no_local_worker(run_id)
+    _require_ready(str(case_id), stage, state, verb="started")
     try:
         result = wss.begin_stage(str(case_id), run_id, stage)
     except wss.ApprovalConflictError as exc:
@@ -313,6 +357,7 @@ def rerun_stage(
     state = _state_or_error(case_id)
     run_id = _current_run(state)
     _ensure_no_local_worker(run_id)
+    _require_ready(str(case_id), stage, state, verb="re-run")
     try:
         result = wss.rerun_stage(str(case_id), run_id, stage)
     except wss.ApprovalConflictError as exc:
@@ -492,6 +537,26 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
         in {"Complete", "Complete with Warnings"},
         "reporting": state.get("investigation_status") == "Approved",
     }
+    # Canonical audit Phase 6: the cheap status pre-filter above is refined
+    # by the canonical readiness evaluator (read-only), evaluated lazily and
+    # only for a stage whose status would otherwise allow start/re-run.
+    readiness_cache: dict[str, dict[str, Any]] = {}
+
+    def _readiness(stage_key: str) -> dict[str, Any]:
+        if stage_key not in readiness_cache:
+            readiness_cache[stage_key] = wr.evaluate_stage_readiness(
+                str(state.get("id") or ""), stage_key, state=state)
+        return readiness_cache[stage_key]
+
+    def _gate(stage_key: str, status_allows: bool) -> tuple[bool, str | None, str | None, list]:
+        """(enabled, reason_code, readable reason or None, degraded)."""
+        if not status_allows:
+            return False, None, None, []
+        readiness = _readiness(stage_key)
+        if readiness["ready"]:
+            return True, None, None, list(readiness["degraded"])
+        return (False, readiness["reason_code"],
+                f"Not ready: {readiness['reason_code']} — {readiness['detail']}", [])
     rerun_statuses = {
         "parsing": {"Complete", "Failed"},
         "triage": {"Awaiting Approval", "Approved", "Failed", "Rejected"},
@@ -504,32 +569,37 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
         status = state.get(f"{stage}_status")
         stage_actions: list[dict[str, Any]] = []
         if stage == "parsing":
-            can_start = not run_id and not workflow_busy
-        elif stage == "triage":
-            can_start = bool(run_id and status == "Pending" and upstream_ready[stage]
-                             and not workflow_busy)
+            status_start = not run_id and not workflow_busy
         else:
-            can_start = bool(run_id and status == "Pending" and upstream_ready[stage]
-                             and not workflow_busy)
-        if can_start or status in {None, "", "Pending"}:
+            status_start = bool(run_id and status == "Pending" and upstream_ready[stage]
+                                and not workflow_busy)
+        can_start, start_code, start_reason, start_degraded = _gate(stage, status_start)
+        if can_start or status_start or status in {None, "", "Pending"}:
             stage_actions.append({
                 "type": "start",
                 "label": "Run",
                 "enabled": can_start,
                 "confirmation": False,
-                "reason": None if can_start else "This stage is locked by canonical workflow state.",
+                "reason": None if can_start else (
+                    start_reason or "This stage is locked by canonical workflow state."),
+                "reason_code": start_code,
+                "degraded": start_degraded,
             })
-        can_rerun = bool(
+        status_rerun = bool(
             run_id and not workflow_busy and status in rerun_statuses[stage]
             and upstream_ready[stage]
         )
+        can_rerun, rerun_code, rerun_reason, rerun_degraded = _gate(stage, status_rerun)
         if status in rerun_statuses[stage]:
             stage_actions.append({
                 "type": "rerun",
                 "label": "Re-run",
                 "enabled": can_rerun,
                 "confirmation": True,
-                "reason": None if can_rerun else "The workflow is busy or an upstream gate is locked.",
+                "reason": None if can_rerun else (
+                    rerun_reason or "The workflow is busy or an upstream gate is locked."),
+                "reason_code": rerun_code,
+                "degraded": rerun_degraded,
             })
         awaiting = bool(
             stage in APPROVAL_STAGES

@@ -150,9 +150,14 @@ from integrations.netwitness.alerts import _merge_alert_digest
 # before trusting it over the legacy Markdown-reconstruction path.
 from agents.investigation.investigation_result import InvestigationAgentOutput
 # Canonical audit Phase 5: the one Parsing case-identity resolver (stdlib-only
-# module), shared by the producer, validate_parsing_result() and
-# load_parsing_result_for_run().
-from agents.parsing.parser_context_guard import CASE_IDENTITY_MATCH, resolve_case_identity
+# module), shared by the producer, validate_parsing_result() and -- via
+# workflow.parsing_canonical -- load_parsing_result_for_run().
+from agents.parsing.parser_context_guard import CASE_IDENTITY_MATCH
+from workflow.parsing_canonical import (
+    PARSING_IDENTITY_MISMATCH, PARSING_IDENTITY_UNVERIFIED, evaluate_parsing_envelope,
+)
+# Canonical audit Phase 6: stage readiness (prerequisite evaluation only).
+from workflow.readiness import StageNotReadyError, evaluate_stage_readiness, public_view
 
 ROOT       = Path(__file__).resolve().parent.parent
 # Swapped 2026-07-22: the team's revised investigation agent (adds
@@ -743,6 +748,56 @@ def _data_availability(incident: dict) -> dict:
     }
 
 
+RAW_INCIDENT_MISSING = "missing_raw_incident"
+RAW_INCIDENT_IDENTITY_MISMATCH = "raw_incident_identity_mismatch"
+RAW_INCIDENT_RUN_MISMATCH = "raw_incident_run_mismatch"
+
+
+def inspect_raw_incident_for_run(incident_id: str, run_id: str,
+                                 state: dict | None = None) -> tuple[dict | None, str | None, str | None]:
+    """[FYP-FUNCTION] [FYP-STATE] Read-only inspection of this run's persisted
+    raw-incident artifact: (incident, None, None) when it is usable, else
+    (None, reason_code, detail). Canonical audit Phase 6: a raw incident that
+    belongs to another case or run is unusable evidence and is never handed
+    to a stage. `state` may be passed by a caller that already holds the
+    incidents row (workflow.readiness); otherwise it is read here."""
+    if state is None:
+        state = wss.get_state(incident_id)
+    if not state or state.get("run_id") != run_id:
+        return None, RAW_INCIDENT_RUN_MISMATCH, (
+            f"run {run_id!r} is not the current workflow run for case {incident_id!r}")
+    path = _resolve_trusted_path(state.get("raw_incident_path"))
+    if not path:
+        return None, RAW_INCIDENT_MISSING, f"no raw incident artifact is persisted for run {run_id!r}"
+    try:
+        envelope = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None, RAW_INCIDENT_MISSING, "the persisted raw incident artifact is unreadable"
+    if not isinstance(envelope, dict):
+        return None, RAW_INCIDENT_MISSING, "the persisted raw incident artifact is malformed"
+    if envelope.get("incident_id") != str(incident_id):
+        return None, RAW_INCIDENT_IDENTITY_MISMATCH, (
+            f"the raw incident artifact belongs to case {envelope.get('incident_id')!r}, "
+            f"not {incident_id!r}")
+    if envelope.get("run_id") != run_id:
+        return None, RAW_INCIDENT_RUN_MISMATCH, (
+            f"the raw incident artifact belongs to run {envelope.get('run_id')!r}, "
+            f"not the current run {run_id!r}")
+    payload = envelope.get("payload")
+    if payload is None:
+        return None, RAW_INCIDENT_MISSING, "the raw incident artifact has no payload"
+    if isinstance(payload, dict) and "incident" in payload and "data_availability" in payload:
+        incident = payload["incident"]
+    else:
+        incident = payload   # legacy artifact: the payload WAS the incident dict
+    if isinstance(incident, dict):
+        own_id = incident.get("id") or incident.get("incidentId")
+        if own_id not in (None, "") and str(own_id) != str(incident_id):
+            return None, RAW_INCIDENT_IDENTITY_MISMATCH, (
+                f"the raw incident record is {str(own_id)!r}, not {incident_id!r}")
+    return incident, None, None
+
+
 def load_raw_incident_for_run(incident_id: str, run_id: str) -> dict | None:
     """[FYP-FUNCTION] [FYP-STATE] The ONLY source of the full raw incident (with alertMeta) for the
     durable Threat Intelligence path — never browser-session state. Returns
@@ -754,17 +809,11 @@ def load_raw_incident_for_run(incident_id: str, run_id: str) -> dict | None:
     bare incident dict, unchanged from every existing caller's point of
     view. Artifacts written before this metadata existed have the incident
     dict directly as the payload (no "incident"/"data_availability" keys)
-    — both shapes are handled so old runs keep resolving."""
-    state = wss.get_state(incident_id)
-    if not state or state.get("run_id") != run_id:
-        return None
-    payload = _load_artifact_envelope(
-        _resolve_trusted_path(state.get("raw_incident_path")), incident_id, run_id)
-    if payload is None:
-        return None
-    if isinstance(payload, dict) and "incident" in payload and "data_availability" in payload:
-        return payload["incident"]
-    return payload   # legacy artifact: the payload WAS the incident dict
+    — both shapes are handled so old runs keep resolving. Canonical audit
+    Phase 6: a record whose own id is another case is also refused (see
+    inspect_raw_incident_for_run())."""
+    incident, _code, _detail = inspect_raw_incident_for_run(incident_id, run_id)
+    return incident
 
 
 def load_data_availability_for_run(incident_id: str, run_id: str) -> dict | None:
@@ -794,24 +843,16 @@ def load_parsing_result_for_run(incident_id: str, run_id: str) -> dict | None:
     which held the flat processed_alert). Returns None — never a guess — when
     the summary's run_id doesn't match, or when its case identity, re-resolved
     from the inline content (resolve_case_identity()), is anything but a
-    match for `incident_id` (mismatch or not_available)."""
+    match for `incident_id` (mismatch or not_available).
+
+    Canonical audit Phase 6: the rules live in workflow.parsing_canonical
+    (evaluate_parsing_envelope), shared verbatim with workflow.readiness."""
     state = wss.get_state(incident_id)
-    if not state or state.get("run_id") != run_id:
-        return None
-    try:
-        summary = json.loads(state.get("parsing_result_json") or "{}")
-    except Exception:
-        return None
-    if summary.get("run_id") != run_id:
-        return None
-    case_identity = resolve_case_identity(summary, incident_id)
-    if case_identity["status"] != CASE_IDENTITY_MATCH:
+    result, reason_code, detail = evaluate_parsing_envelope(state, incident_id, run_id)
+    if reason_code in (PARSING_IDENTITY_MISMATCH, PARSING_IDENTITY_UNVERIFIED):
         _log("PARSING", f"parsing result for {incident_id!r} run {run_id!r} rejected: "
-                        f"case identity {case_identity['status']} — {case_identity['reason']}")
-        return None
-    out = dict(summary)
-    out["case_identity"] = case_identity
-    return out
+                        f"{reason_code} — {detail}")
+    return result
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3798,11 +3839,26 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
     which is not a reliable structured signal."""
     payload = triage_result.get("metakeys_payload", {})
     ticket  = triage_result.get("ticket", {})
-    inc_id  = payload.get("incident_id") or ticket.get("incident_id") or "INC-0001"
+    run_scoped = incident_id is not None and run_id is not None and reporting_stage_attempt is not None
+    # Canonical audit Phase 6: never a fabricated case id or ticket. The
+    # run-scoped workflow path hands off THIS case (incident_id) and refuses
+    # a Triage result without a real ticket before anything is written; the
+    # legacy standalone path uses the real identity it was given or fails.
+    if run_scoped:
+        inc_id = str(incident_id)
+        if not str(ticket.get("unc") or "").strip():
+            raise ValueError(f"missing_triage_ticket: the Triage result for case {inc_id!r} "
+                             "carries no real ticket -- refusing the Reporting handoff")
+    else:
+        inc_id = (payload.get("incident_id") or ticket.get("incident_id")
+                  or (incident or {}).get("id") or (incident or {}).get("incidentId"))
+        if not inc_id:
+            raise ValueError("missing_case_identity: neither the Triage result nor the incident "
+                             "carries a case id -- refusing the Reporting handoff")
     title   = payload.get("incident_title") or ticket.get("title") or "SOC incident"
+    # TKT-UNKNOWN can only arise on the legacy standalone path (see above).
     ticket_id = _safe_ticket_id(ticket.get("unc"))
 
-    run_scoped = incident_id is not None and run_id is not None and reporting_stage_attempt is not None
     if run_scoped:
         attempt_dir = reporting_attempt_dir(incident_id, run_id, reporting_stage_attempt)
         outputs = attempt_dir / "outputs"
@@ -4617,6 +4673,8 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
         "summary": ticket.get("summary") or "", "ticket": ticket})
 
     # ── Save Triage result ──────────────────────────────────────────────────────
+    # Phase 6: run binding for the persisted Triage result.
+    triage_result["run_id"] = run_id
     wss.save_triage_result(inc_id, run_id, triage_result)
 
     # ── One-time internal IOC correlation snapshot ──────────────────────────────
@@ -4668,6 +4726,40 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     _log("WORKFLOW", f"paused for mandatory SOC analyst approval "
                      f"(ticket={ticket.get('unc')}, next={gate['next_stage_after_approval']})")
     return ctx
+
+
+def _require_stage_ready(incident_id: str, stage: str, run_id: str) -> dict:
+    """Canonical audit Phase 6 worker re-check: evaluate the PREREQUISITES of
+    `stage` for this claimed run (never the stage's own, now-Processing,
+    status) and raise StageNotReadyError if they are not satisfied."""
+    readiness = evaluate_stage_readiness(incident_id, stage, run_id=run_id)
+    if not readiness["ready"]:
+        raise StageNotReadyError(readiness)
+    if readiness["degraded"]:
+        _log(stage.upper(), f"running with degraded evidence: {readiness['degraded_details']}")
+    return readiness
+
+
+def _record_stage_not_ready(incident_id: str, run_id: str, worker_id: str, stage: str,
+                            exc: StageNotReadyError, status_updates: dict, *,
+                            expected_stage_attempt: int | None = None) -> dict:
+    """Record a readiness refusal through the stage's normal failure path
+    (complete_stage + last_error), keeping the stable reason code."""
+    failure = {"status": "failed", "errors": [str(exc)[:500]],
+               "readiness": public_view(exc.readiness)}
+    try:
+        complete_stage(incident_id, run_id, worker_id, stage=stage,
+                       result_column=f"{stage}_result_json", result=failure,
+                       status_updates=status_updates,
+                       expected_stage_attempt=expected_stage_attempt)
+    except Exception:
+        pass
+    try:
+        wss.set_last_error(incident_id, run_id, str(exc)[:500])
+    except Exception:
+        pass
+    _log(stage.upper(), f"NOT READY: {exc}")
+    return failure
 
 
 def run_triage_stage(incident_id: str, run_id: str) -> dict:
@@ -4735,8 +4827,14 @@ def run_triage_stage(incident_id: str, run_id: str) -> dict:
     renewer = LeaseRenewer(incident_id, run_id, worker_id)
     renewer.start()
     try:
-        parsing_result = load_parsing_result_for_run(incident_id, run_id) or {}
-        incident = load_raw_incident_for_run(incident_id, run_id) or {}
+        # Phase 6: canonical Parsing and this run's own raw incident are
+        # REQUIRED -- production Triage never runs on parsed_context=None or
+        # an empty incident because an input is missing.
+        _require_stage_ready(incident_id, "triage", run_id)
+        parsing_result = load_parsing_result_for_run(incident_id, run_id)
+        incident = load_raw_incident_for_run(incident_id, run_id)
+        if parsing_result is None or not incident:
+            raise RuntimeError("canonical Triage inputs changed after the readiness check")
         inc_id = str(incident.get("id") or incident.get("incidentId") or incident_id)
         title = incident.get("title") or incident.get("name") or "Untitled"
         parsed_context = parsing_result.get("processed_alert") or None
@@ -4787,6 +4885,8 @@ def run_triage_stage(incident_id: str, run_id: str) -> dict:
                 pass
 
         gate = wv.mandatory_triage_approval(incident_id=inc_id, triage_result=triage_result)
+        # Phase 6: run binding for the persisted Triage result.
+        triage_result["run_id"] = run_id
 
         if renewer.lease_lost.is_set():
             raise StageClaimError(f"triage: worker {worker_id} lost its lease mid-run")
@@ -4806,6 +4906,10 @@ def run_triage_stage(incident_id: str, run_id: str) -> dict:
         return triage_result
     except StageClaimError:
         raise   # a losing race is not a crash — run_stage_chain just stops quietly
+    except StageNotReadyError as exc:
+        return _record_stage_not_ready(
+            incident_id, run_id, worker_id, "triage", exc,
+            {"triage_status": "Failed", "workflow_status": "Failed"})
     except Exception as exc:
         try:
             complete_stage(
@@ -4904,10 +5008,15 @@ def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
     renewer = LeaseRenewer(incident_id, run_id, worker_id)
     renewer.start()
     try:
-        state = wss.get_state(incident_id)
-        triage_result  = json.loads(state.get("triage_result_json") or "{}")
-        parsing_result = load_parsing_result_for_run(incident_id, run_id) or {}
-        incident       = load_raw_incident_for_run(incident_id, run_id) or {}
+        # Phase 6: canonical Triage (case + run + real ticket), its current
+        # approval and canonical Parsing are REQUIRED; the raw incident is
+        # optional (degraded when unavailable or foreign -- never consumed).
+        readiness = _require_stage_ready(incident_id, "threat_intel", run_id)
+        triage_result  = readiness["inputs"]["triage"]
+        parsing_result = load_parsing_result_for_run(incident_id, run_id)
+        if parsing_result is None:
+            raise RuntimeError("canonical Parsing changed after the readiness check")
+        incident       = load_raw_incident_for_run(incident_id, run_id) or {}   # optional; never a foreign record
         ti_result = run_threat_intel(
             incident_id=incident_id, run_id=run_id, incident=incident,
             normalised_alert=parsing_result.get("processed_alert"),
@@ -4942,6 +5051,11 @@ def resume_after_triage_approval(incident_id: str, run_id: str) -> dict:
         return ti_result
     except StageClaimError:
         raise   # a losing race is not a crash — run_stage_chain just stops quietly
+    except StageNotReadyError as exc:
+        return _record_stage_not_ready(
+            incident_id, run_id, worker_id, "threat_intel", exc,
+            {"threat_intel_status": "Failed", "investigation_status": "Blocked",
+             "workflow_status": "Failed"})
     except Exception as exc:
         # complete_stage() may itself be unreachable (e.g. lease already
         # gone) — this is a best-effort failure record; if the lease is
@@ -5047,6 +5161,9 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
     renewer.start()
     lock_acquired = False
     try:
+        # Phase 6: prerequisites (Parsing, Triage + approval, TI result for
+        # this case/run) are checked BEFORE waiting for the shared workspace.
+        readiness = _require_stage_ready(incident_id, "investigation", run_id)
         deadline = time.monotonic() + _GLOBAL_LOCK_MAX_WAIT_SECONDS
         backoff = 2.0
         while True:
@@ -5075,10 +5192,12 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
         renewer.also_renew_global_lock(_INVESTIGATION_LOCK)
 
         state = wss.get_state(incident_id)
-        triage_result  = json.loads(state.get("triage_result_json") or "{}")
-        ti_result      = json.loads(state.get("threat_intel_result_json") or "{}")
-        incident       = load_raw_incident_for_run(incident_id, run_id) or {}
-        parsing_result = load_parsing_result_for_run(incident_id, run_id) or {}
+        triage_result  = readiness["inputs"]["triage"]
+        ti_result      = readiness["inputs"]["threat_intel"]
+        incident       = load_raw_incident_for_run(incident_id, run_id) or {}   # optional; never a foreign record
+        parsing_result = load_parsing_result_for_run(incident_id, run_id)
+        if parsing_result is None:
+            raise RuntimeError("canonical Parsing changed after the readiness check")
         ticket = triage_result.get("ticket") or {}
         triage_cls = ticket.get("classification") or state.get("severity") or "UNRATED"
         alert_list = incident.get("alerts") or (incident.get("alertMeta") or {}).get("AlertTitles") or []
@@ -5148,6 +5267,8 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
             except Exception as exc:
                 _log("INVESTIGATION", f"post_investigation pipeline insert failed: {exc}")
 
+        # Phase 6: run binding for the persisted Investigation result.
+        inv_result["run_id"] = run_id
         ok = complete_stage(
             incident_id, run_id, worker_id, stage="investigation",
             result_column="investigation_result_json", result=inv_result,
@@ -5165,6 +5286,11 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
         return inv_result if failed else {**inv_result, "status": "awaiting_approval"}
     except StageClaimError:
         raise
+    except StageNotReadyError as exc:
+        return _record_stage_not_ready(
+            incident_id, run_id, worker_id, "investigation", exc,
+            {"investigation_status": "Failed", "reporting_status": "Blocked",
+             "workflow_status": "Failed"})
     except Exception as exc:
         try:
             complete_stage(
@@ -5270,6 +5396,10 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
     renewer.start()
     lock_acquired = False
     try:
+        # Phase 6: every canonical current-run input Reporting depends on is
+        # checked up front -- before the shared workspace lock, the attempt
+        # directory, the handoff or the subprocess.
+        readiness = _require_stage_ready(incident_id, "reporting", run_id)
         deadline = time.monotonic() + _GLOBAL_LOCK_MAX_WAIT_SECONDS
         backoff = 2.0
         while True:
@@ -5296,16 +5426,15 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
                 backoff = min(backoff * 1.5, 30.0)
         renewer.also_renew_global_lock(_REPORTING_LOCK)
 
-        state = wss.get_state(incident_id)
-        triage_result = json.loads(state.get("triage_result_json") or "{}")
-        investigation_result = json.loads(state.get("investigation_result_json") or "{}")
+        triage_result = readiness["inputs"]["triage"]
+        investigation_result = readiness["inputs"]["investigation"]
         # C1 defence in depth: Reporting never starts from (or hands off)
         # another case's Investigation result -- fails the attempt instead.
         identity_problem = wss.investigation_identity_problem(incident_id, investigation_result)
         if identity_problem:
             raise RuntimeError(f"investigation identity check failed: {identity_problem}")
-        threat_intel_result = json.loads(state.get("threat_intel_result_json") or "{}")
-        incident = load_raw_incident_for_run(incident_id, run_id) or {}
+        threat_intel_result = readiness["inputs"]["threat_intel"]
+        incident = load_raw_incident_for_run(incident_id, run_id) or {}   # optional; never a foreign record
         ticket = triage_result.get("ticket") or {}
         title  = incident.get("title") or incident.get("name") or "Untitled"
         run_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -5463,6 +5592,11 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
         return reporting_result
     except StageClaimError:
         raise
+    except StageNotReadyError as exc:
+        return _record_stage_not_ready(
+            incident_id, run_id, worker_id, "reporting", exc,
+            {"reporting_status": "Failed", "workflow_status": "Failed"},
+            expected_stage_attempt=_stage_attempt)
     except Exception as exc:
         try:
             complete_stage(

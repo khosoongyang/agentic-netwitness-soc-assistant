@@ -35,6 +35,7 @@ from pathlib import Path
 
 import pytest
 
+import canonical_seed as seed
 from workflow import commands
 from workflow import engine as sw
 from workflow import state_store as wss
@@ -187,8 +188,21 @@ def _valid_result(case_id=CASE):
             "investigation_analysis": _analysis(case_id)}
 
 
+def _seed_upstream(case_id, run_id):
+    """Phase 6: the canonical upstream prerequisites Investigation/Reporting
+    run on -- Parsing, raw incident, an approved run-bound Triage result and
+    a completed run-bound Threat Intelligence result."""
+    seed.seed_parsing_and_raw_incident(case_id, run_id)
+    seed.approve_triage(case_id, run_id, _triage(case_id))
+    wss._guarded_update(case_id, run_id, {
+        "threat_intel_status": "Complete",
+        "threat_intel_result_json": json.dumps(seed.threat_intel_result(
+            case_id, run_id, {"status": "completed", "enrichment_risk_level": "Low"}))})
+
+
 def _state_awaiting(gate, inv_result, case_id=CASE):
     run_id = wss.start_run(case_id)
+    _seed_upstream(case_id, run_id)
     sets = {"parsing_status": "Complete", "triage_status": "Approved",
             "threat_intel_status": "Complete",
             "investigation_result_json": json.dumps(inv_result)}
@@ -529,12 +543,8 @@ def _stage_env(monkeypatch, case_id=CASE):
     monkeypatch.setattr(sw, "generate_stage_ai_summary", lambda *a, **k: {})
     monkeypatch.setenv("NW_DISABLE_SKILLS_SIDECAR", "1")
     run_id = wss.start_run(case_id)
-    wss.save_triage_result(case_id, run_id, _triage(case_id))
+    _seed_upstream(case_id, run_id)
     wss._guarded_update(case_id, run_id, {
-        "parsing_status": "Complete", "triage_status": "Approved",
-        "threat_intel_status": "Complete",
-        "threat_intel_result_json": json.dumps({"status": "completed",
-                                                "enrichment_risk_level": "Low"}),
         "investigation_status": "Processing", "workflow_status": "Processing"})
     return run_id
 
@@ -599,7 +609,10 @@ def test_approve_investigation_refuses_mismatched_case():
     state = wss.get_state(CASE)
     assert state["investigation_status"] == "Awaiting Approval"
     assert state["reporting_status"] == "Pending"
-    assert wss.get_approval_history(CASE, run_id) == []
+    # Phase 6: the run carries its (seeded) Triage approval; the refused
+    # Investigation approval itself must have written nothing.
+    assert [r for r in wss.get_approval_history(CASE, run_id)
+            if r["approval_stage"] == "investigation"] == []
 
 
 def test_approve_investigation_accepts_matching_case():

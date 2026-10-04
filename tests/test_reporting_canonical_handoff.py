@@ -16,7 +16,9 @@ import threading
 
 import pytest
 
+import canonical_seed as seed
 from workflow import engine as wf
+from workflow import state_store as wss
 import agents.investigation.skills_sidecar as skills_sidecar
 from agents.reporting.reporting.context_builder import build_context
 from agents.reporting.reporting.export_context_enhancer import (
@@ -153,18 +155,25 @@ def test_25_latest_investigation_result_is_handed_off(tmp_path, monkeypatch):
         captured["investigation_result"] = investigation_result
         raise RuntimeError("stop after handoff")
 
-    state = {"triage_result_json": json.dumps(_triage()), "investigation_result_json": json.dumps(latest),
-             "threat_intel_result_json": json.dumps(_new_ti())}
+    # Phase 6: Reporting reads its inputs from the canonical persisted state
+    # (readiness-checked), so the latest result is persisted in a real
+    # canonical run rather than served from a mocked get_state().
+    run_id = wss.start_run(CASE)
+    seed.seed_parsing_and_raw_incident(CASE, run_id)
+    seed.approve_triage(CASE, run_id, _triage())
+    wss._guarded_update(CASE, run_id, {"threat_intel_status": "Complete",
+                                       "threat_intel_result_json": json.dumps(
+                                           seed.threat_intel_result(CASE, run_id, _new_ti()))})
+    latest = seed.approve_investigation(CASE, run_id, latest)
     monkeypatch.setattr(wf, "claim_stage", lambda *a, **k: ("worker", 1))
     monkeypatch.setattr(wf, "LeaseRenewer", _Renewer)
     for name in ("acquire_global_lock", "release_global_lock", "release_stage_lease",
                  "set_worker_progress_note", "_save_run_artifact", "complete_stage"):
         monkeypatch.setattr(wf, name, lambda *a, **k: True)
-    monkeypatch.setattr(wf.wss, "get_state", lambda case_id: state)
     monkeypatch.setattr(wf.wss, "set_last_error", lambda *a, **k: None)
     monkeypatch.setattr(wf, "load_raw_incident_for_run", lambda *a, **k: {})
     monkeypatch.setattr(wf, "handoff_to_reporting", _capture)
-    assert wf.run_reporting_stage(CASE, "run-1") == {"status": "failed"}
+    assert wf.run_reporting_stage(CASE, run_id) == {"status": "failed"}
     assert captured["investigation_result"] == latest                     # state.investigation_result_json
 
 

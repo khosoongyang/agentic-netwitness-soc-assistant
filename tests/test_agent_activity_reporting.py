@@ -37,6 +37,7 @@ import observability
 from agents.reporting import reporting_approval
 from backend import create_app
 from observability.store import query_events
+import canonical_seed as seed
 from workflow import commands
 from workflow import engine
 from workflow import state_store as wss
@@ -309,17 +310,23 @@ def env(tmp_path, monkeypatch):
             # identity-verified Parsing result for this run (parsing_result_json),
             # not from a file sitting in the parsing directory.
             wss.save_parsing_result(CASE, run_id, {
-                "run_id": run_id,
+                "run_id": run_id, "status": "completed",
                 "processed_alert": {"incident_id": CASE, "source_ip": "10.20.30.41"},
             })
-        wss.save_triage_result(CASE, run_id, copy.deepcopy(TRIAGE))
-        wss._guarded_update(CASE, run_id, {"parsing_status": "Complete", "triage_status": "Approved",
-                                           "threat_intel_status": "Complete",
-                                           "threat_intel_result_json": json.dumps(TI),
-                                           "investigation_status": "Approved",
-                                           "investigation_result_json": json.dumps(INV),
-                                           "reporting_status": "Processing",
-                                           "workflow_status": "Processing"})
+        wss.set_parsing_status(CASE, run_id, "Complete")   # (no result when parsing=False)
+        # Phase 6: Reporting runs only on canonical, run-bound upstream results
+        # with real recorded approvals (Triage, and Investigation on its
+        # current attempt) -- not on bare "Approved" labels.
+        with monkeypatch.context() as m:
+            if fixed_run_id:   # approval timestamps must match across equivalence runs too
+                m.setattr(wss, "datetime", _FixedDateTime)
+            seed.approve_triage(CASE, run_id, copy.deepcopy(TRIAGE))
+            wss._guarded_update(CASE, run_id, {
+                "threat_intel_status": "Complete",
+                "threat_intel_result_json": json.dumps(seed.threat_intel_result(CASE, run_id, TI))})
+            seed.approve_investigation(CASE, run_id, copy.deepcopy(INV))
+            wss._guarded_update(CASE, run_id, {"reporting_status": "Processing",
+                                               "workflow_status": "Processing"})
         return CASE, run_id, rep_dir
 
     return {"prepare": prepare, "monkeypatch": monkeypatch, "tmp": tmp_path}
@@ -823,11 +830,18 @@ def test_agent_reported_failure_skips_export(env, activity):
 
 
 def test_missing_parsing_context_is_shown(env, activity):
+    """Phase 6: canonical Parsing is a Reporting prerequisite, so a run without
+    it is refused up front -- visibly, as the rule that failed -- and nothing
+    is handed off (previously the hand-off ran and only warned)."""
     case_id, run_id, _ = env["prepare"]("noparse", parsing=False)
-    engine.run_reporting_stage(case_id, run_id)
-    handoff = [e for e in _events(activity, run_id) if e["event_type"] == "handoff"]
-    assert [e["status"] for e in handoff] == ["completed", "warning"]
-    assert handoff[1]["title"] == "Parsing result not included in the hand-off"
+    result = engine.run_reporting_stage(case_id, run_id)
+    events = _events(activity, run_id)
+    assert result["readiness"]["reason_code"] == "missing_parsing_result"
+    assert not [e for e in events if e["event_type"] == "handoff"]
+    rule = _one(events, "input_validation", status="failed")
+    assert rule["source"] == "rule" and "missing_parsing_result" in rule["detail"]
+    assert _one(events, "stage_result", status="failed")
+    assert wss.get_state(case_id)["reporting_status"] == "Failed"
 
 
 def test_stage_claim_failure_is_shown(env, activity):
@@ -978,6 +992,8 @@ def test_observability_failures_never_change_the_reporting_result(env, tmp_path)
 
 def test_reporting_events_history_sse_and_isolation(env, activity):
     case_id, run_id, _ = env["prepare"]("sse")
+    # Phase 6: prepare() records the run's real Triage and Investigation approvals first.
+    seeded = query_events(case_id=CASE, run_id=run_id, path=activity.path)
     engine.run_reporting_stage(case_id, run_id)
     expected = _events(activity, run_id)
     client = create_app({"TESTING": True, "AGENT_ACTIVITY_DB_PATH": str(activity.path),
@@ -990,7 +1006,10 @@ def test_reporting_events_history_sse_and_isolation(env, activity):
     resumed = client.get(f"/api/cases/{CASE}/activity/stream?stage=reporting",
                          headers={"Last-Event-ID": str(streamed[-1]["sequence"])}).get_data(as_text=True)
     assert "event: activity" not in resumed
-    every = query_events(case_id=CASE, run_id=run_id, path=activity.path)
+    seeded_ids = {e["sequence"] for e in seeded}
+    every = [e for e in query_events(case_id=CASE, run_id=run_id, path=activity.path)
+             if e["sequence"] not in seeded_ids]
+    assert {e["stage"] for e in seeded} <= {"triage", "investigation"}
     assert {e["stage"] for e in every} == {"reporting"}
 
 
@@ -1002,6 +1021,6 @@ def test_reporting_wrap_points_match_their_expected_signatures():
     patcher = Patcher()
     patcher.wrap = lambda target, hooks: recorded.append(target) or True  # type: ignore[assignment]
     reporting_adapter.install(patcher)
-    assert len(recorded) == 18
+    assert len(recorded) == 19   # + _require_stage_ready (Phase 6 readiness gate)
     for target in recorded:
         assert actual_params(target) == target.params, target.label

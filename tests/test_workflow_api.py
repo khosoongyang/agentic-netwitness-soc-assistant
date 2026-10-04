@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from flask.testing import FlaskClient
 
+import canonical_seed as seed
 from workflow import state_store as wss
 from workflow import commands
 
@@ -61,7 +62,13 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FlaskClient:
 
 
 def _awaiting_triage() -> str:
+    # Phase 6: a run at the Triage gate has the canonical Parsing result,
+    # its raw incident and a run-bound Triage result.
     run_id = wss.start_run("CASE-API")
+    seed.seed_parsing_and_raw_incident("CASE-API", run_id)
+    wss.save_triage_result("CASE-API", run_id, {
+        "ticket": {"incident_id": "CASE-API", "unc": "#00002A", "classification": "HIGH"},
+        "metakeys_payload": {"incident_id": "CASE-API"}, "run_id": run_id})
     wss._guarded_update("CASE-API", run_id, {
         "parsing_status": "Complete",
         "triage_status": "Awaiting Approval",
@@ -226,6 +233,11 @@ def test_api_preserves_canonical_approval_and_stage_handoffs(client: FlaskClient
 
     wss._guarded_update("CASE-API", run_id, {
         "threat_intel_status": "Complete",
+        # Phase 6: the canonical TI and Investigation results Reporting needs.
+        "threat_intel_result_json": json.dumps({"incident_id": "CASE-API", "run_id": run_id,
+                                                "status": "completed"}),
+        "investigation_result_json": json.dumps({"incident_id": "CASE-API", "run_id": run_id,
+                                                 "status": "completed"}),
         "investigation_status": "Awaiting Approval",
         "workflow_status": "Awaiting Approval",
         "approval_stage": "investigation",

@@ -162,6 +162,7 @@ def _normalise(result: dict) -> dict:
     out.get("metakeys_payload", {}).pop("timestamp", None)
     out.get("ticket", {}).pop("created_at", None)
     out.pop("ai_summary_generated_at", None)
+    out.pop("run_id", None)   # Phase 6 run binding: each scenario has its own run
     return out
 
 
@@ -457,6 +458,10 @@ def test_two_incidents_triaged_concurrently_are_attributed_independently(triage_
     raw = engine._save_run_artifact("INC-C2", run2, "raw_incident.json", "raw_incident",
                                     {"incident": second_incident, "data_availability": {}})
     wss.save_raw_incident_path("INC-C2", run2, str(raw))
+    # Phase 6: the same canonical Parsing result prepare() persists for INC-C1.
+    wss.save_parsing_result("INC-C2", run2, {"run_id": run2, "status": "completed",
+                                             "parser_confidence": "High",
+                                             "processed_alert": dict(PROCESSED, incident_id="INC-C2")})
     wss._guarded_update("INC-C2", run2, {"parsing_status": "Complete", "triage_status": "Processing",
                                          "workflow_status": "Processing"})
     runs = [first, ("INC-C2", run2)]

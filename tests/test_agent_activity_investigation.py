@@ -35,6 +35,7 @@ import observability
 from agents.triage import soc_triage_agent
 from backend import create_app
 from observability.store import query_events
+import canonical_seed as seed
 from workflow import commands
 from workflow import engine
 from workflow import state_store as wss
@@ -218,10 +219,13 @@ def env(tmp_path, monkeypatch):
         wss.save_raw_incident_path(CASE, run_id, str(raw))
         wss.save_parsing_result(CASE, run_id, {"run_id": run_id, "status": "completed",
                                                "processed_alert": {"incident_id": CASE, "iocs": []}})
-        wss.save_triage_result(CASE, run_id, copy.deepcopy(TRIAGE))
-        wss._guarded_update(CASE, run_id, {"parsing_status": "Complete", "triage_status": "Approved",
+        # Phase 6: a run-bound Triage result with a recorded approval, and the
+        # TI result with the case/run identity run_threat_intel() stamps.
+        seed.approve_triage(CASE, run_id, copy.deepcopy(TRIAGE))
+        wss._guarded_update(CASE, run_id, {"parsing_status": "Complete",
                                            "threat_intel_status": "Complete",
-                                           "threat_intel_result_json": json.dumps(TI),
+                                           "threat_intel_result_json": json.dumps(
+                                               seed.threat_intel_result(CASE, run_id, TI)),
                                            "investigation_status": "Processing",
                                            "workflow_status": "Processing"})
         return CASE, run_id, inv_dir
@@ -566,6 +570,8 @@ def test_analyst_decision_resolves_the_approval_gate(env, activity, decision):
 
 def test_investigation_events_history_sse_and_isolation(env, activity):
     case_id, run_id, _ = env["prepare"]("sse")
+    # Phase 6: prepare() records the run's real Triage approval first.
+    seeded = query_events(case_id=CASE, run_id=run_id, path=activity.path)
     engine.run_investigation_stage(case_id, run_id)
     expected = _events(activity, run_id)
     client = create_app({"TESTING": True, "AGENT_ACTIVITY_DB_PATH": str(activity.path),
@@ -578,8 +584,10 @@ def test_investigation_events_history_sse_and_isolation(env, activity):
     resumed = client.get(f"/api/cases/{CASE}/activity/stream?stage=investigation",
                          headers={"Last-Event-ID": str(streamed[-1]["sequence"])}).get_data(as_text=True)
     assert "event: activity" not in resumed
-    every = query_events(case_id=CASE, run_id=run_id, path=activity.path)
-    assert {e["stage"] for e in every} == {"investigation"}
+    seeded_ids = {e["sequence"] for e in seeded}
+    every = [e for e in query_events(case_id=CASE, run_id=run_id, path=activity.path)
+             if e["sequence"] not in seeded_ids]
+    assert {e["stage"] for e in seeded} <= {"triage"} and {e["stage"] for e in every} == {"investigation"}
 
 
 def test_lines_captured_from_a_real_agent_run_are_classified_or_kept_raw(tmp_path):
@@ -624,6 +632,6 @@ def test_investigation_wrap_points_match_their_expected_signatures():
     patcher = Patcher()
     patcher.wrap = lambda target, hooks: recorded.append(target) or True  # type: ignore[assignment]
     investigation_adapter.install(patcher)
-    assert len(recorded) == 20
+    assert len(recorded) == 21   # + _require_stage_ready (Phase 6 readiness gate)
     for target in recorded:
         assert actual_params(target) == target.params, target.label

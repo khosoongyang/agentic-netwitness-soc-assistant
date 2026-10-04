@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import canonical_seed as seed
 from workflow import state_store as wss
 from workflow import commands
 
@@ -34,8 +35,18 @@ def isolated_workflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         commands._TASKS.clear()
 
 
+def _triage_result(run_id: str) -> dict:
+    return {"ticket": {"incident_id": "CASE-001", "unc": "#00001A", "classification": "HIGH"},
+            "metakeys_payload": {"incident_id": "CASE-001"}, "run_id": run_id}
+
+
 def _run_at_triage_approval() -> str:
+    # Phase 6: a run at the Triage gate has the canonical Parsing result,
+    # its raw incident and a run-bound Triage result (what production
+    # persists before Triage can await approval).
     run_id = wss.start_run("CASE-001")
+    seed.seed_parsing_and_raw_incident("CASE-001", run_id)
+    wss.save_triage_result("CASE-001", run_id, _triage_result(run_id))
     wss._guarded_update("CASE-001", run_id, {
         "parsing_status": "Complete",
         "triage_status": "Awaiting Approval",
@@ -114,6 +125,7 @@ def test_start_triage_reuses_existing_run_without_reparsing() -> None:
     With Parsing already Complete, clicking Run Triage must execute ONLY
     Triage against the SAME run_id — parsing_status must not move."""
     run_id = wss.start_run("CASE-001")
+    seed.seed_parsing_and_raw_incident("CASE-001", run_id)   # Phase 6: Triage's canonical inputs
     wss._guarded_update("CASE-001", run_id, {
         "parsing_status": "Complete",
         "triage_status": "Pending",

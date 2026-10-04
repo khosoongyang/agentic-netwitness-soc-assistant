@@ -41,6 +41,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+import canonical_seed as seed
 from workflow import state_store as wss
 from workflow import engine as sw
 from agents.threat_intelligence import threat_intel as ti
@@ -114,7 +115,10 @@ def _start_and_reach_triage_approval(incident_id: str = "INC-1") -> str:
     """Fresh run, straight to 'Awaiting Approval / triage' — the state
     approve_triage() requires."""
     run_id = wss.start_run(incident_id)
-    wss.save_triage_result(incident_id, run_id, _triage_result(incident_id))
+    # Phase 6: Triage only awaits approval after canonical Parsing completed
+    # for this run, and its persisted result is bound to the run.
+    seed.seed_parsing(incident_id, run_id)
+    wss.save_triage_result(incident_id, run_id, seed.bind_run(_triage_result(incident_id), run_id))
     wss._guarded_update(incident_id, run_id, {
         "triage_status": "Awaiting Approval",
         "workflow_status": "Awaiting Approval",
@@ -164,6 +168,22 @@ def _save_raw_incident(incident_id: str, run_id: str, incident: dict | None = No
 # [FYP-USED-BY] Static symbol references include tests/test_threat_intel_workflow.py:test_investigation_receives_persisted_threat_intel_result, tests/test_threat_intel_workflow.py:test_missing_api_keys_produce_warnings_not_fabricated_results, tests/test_threat_intel_workflow.py:test_missing_key_warning_only_fires_for_applicable_provider; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `delenv`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
+
+def _run_ready_for_investigation(incident_id: str) -> str:
+    """Phase 6: a run whose canonical prerequisites for Investigation exist --
+    Parsing, raw incident, an approved run-bound Triage result and a
+    completed run-bound Threat Intelligence result."""
+    run_id = wss.start_run(incident_id)
+    seed.seed_parsing(incident_id, run_id)
+    _save_raw_incident(incident_id, run_id)
+    seed.approve_triage(incident_id, run_id, _triage_result(incident_id))
+    wss._guarded_update(incident_id, run_id, {
+        "threat_intel_status": "Complete",
+        "threat_intel_result_json": json.dumps(seed.threat_intel_result(
+            incident_id, run_id, {"status": "completed"})),
+    })
+    return run_id
+
 
 def _mock_all_ti_keys_absent(monkeypatch):
     monkeypatch.delenv("VT_API_KEY", raising=False)
@@ -1646,9 +1666,7 @@ def test_investigation_receives_persisted_threat_intel_result(monkeypatch):
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_investigation_completion_is_awaiting_approval_not_complete(monkeypatch):
-    run_id = wss.start_run("INC-1")
-    _save_raw_incident("INC-1", run_id)
-    wss.save_triage_result("INC-1", run_id, _triage_result("INC-1"))
+    run_id = _run_ready_for_investigation("INC-1")
     wss._guarded_update("INC-1", run_id, {"investigation_status": "Processing",
                                           "workflow_status": "Processing"})
     monkeypatch.setattr(sw, "investigate_with_feedback",
@@ -1671,9 +1689,7 @@ def test_investigation_completion_is_awaiting_approval_not_complete(monkeypatch)
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_investigation_failure_persists_actionable_last_error(monkeypatch):
-    run_id = wss.start_run("INC-1")
-    _save_raw_incident("INC-1", run_id)
-    wss.save_triage_result("INC-1", run_id, _triage_result("INC-1"))
+    run_id = _run_ready_for_investigation("INC-1")
     wss._guarded_update("INC-1", run_id, {"investigation_status": "Processing",
                                           "workflow_status": "Processing"})
     monkeypatch.setattr(

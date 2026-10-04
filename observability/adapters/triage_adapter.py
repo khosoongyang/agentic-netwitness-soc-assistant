@@ -641,8 +641,21 @@ def _wrap_phase(patcher: Patcher, method: str, params: tuple[str, ...]) -> None:
                        error=_phase_error(method), cleanup=_phase_cleanup))
 
 
+# ── Canonical audit Phase 6: the worker's prerequisite (readiness) gate ────
+
+def _readiness_error(call: dict, token: Any, exc: BaseException) -> None:
+    """The stage's canonical prerequisites were refused before Triage ran
+    (the failed stage_result itself is emitted by _stage_after)."""
+    if _scope() is None or call.get("stage") != STAGE:
+        return
+    emit(source="rule", event_type="input_validation", status="failed",
+         title="Stage prerequisites are not satisfied", detail=describe_exception(exc))
+
+
 def install(patcher: Patcher) -> None:
     engine = "workflow.engine"
+    patcher.wrap(Target(engine, "_require_stage_ready", ("incident_id", "stage", "run_id")),
+                 Hooks(error=_readiness_error))
     patcher.wrap(Target(engine, "run_triage_stage", ("incident_id", "run_id")),
                  Hooks(scope=_stage_scope, after=_stage_after, error=_stage_error))
     patcher.wrap(Target(engine, "claim_stage",
