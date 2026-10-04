@@ -21,6 +21,15 @@ import agents.investigation.skills_sidecar as skills_sidecar
 from agents.investigation.tools.triage_verdict import aggregate_verdict
 
 
+@pytest.fixture(autouse=True)
+def _legacy_reporting_root(tmp_path, monkeypatch):
+    """These tests exercise the LEGACY flat handoff_to_reporting() path,
+    which writes REP_DIR/inputs|outputs. Canonical audit Phase 7: give each
+    test its own temporary legacy root so the tracked
+    agents/reporting/inputs/*.json files are never rewritten."""
+    monkeypatch.setattr(sw, "REP_DIR", tmp_path / "reporting")
+
+
 def _incident(incident_id: str = "INC-1", **overrides) -> dict:
     incident = {
         "id": incident_id,
@@ -74,7 +83,6 @@ def test_handoff_forwards_persisted_ti_result_to_sidecar(monkeypatch):
         return {"available": False}
 
     monkeypatch.setattr(skills_sidecar, "build_skills_context", _fake_build_skills_context)
-    monkeypatch.setattr(sw, "REP_DIR", sw.REP_DIR)  # no-op, keeps default flat paths
 
     sw.handoff_to_reporting(
         _triage_result("INC-1"), _incident("INC-1"),

@@ -4135,12 +4135,32 @@ def _archive_run_exports(exports: dict, run_stamp: str) -> dict:
     return out
 
 
+REPORTING_WORKSPACE_RUN_SCOPED = "run_scoped"
+REPORTING_WORKSPACE_LEGACY = "legacy"
+
+
+def _reporting_workspace_mode(**parts) -> str:
+    """[FYP-FUNCTION] [FYP-VALIDATION] Canonical audit Phase 7: decide the
+    Reporting workspace mode from the EXPLICIT run-scoping arguments only.
+    All given -> run_scoped; none given -> legacy; anything in between is a
+    partial run-scoped configuration and is refused (ValueError) before a
+    subprocess starts -- never a silent fall-back to the shared folders."""
+    missing = [name for name, value in parts.items() if value is None]
+    if not missing:
+        return REPORTING_WORKSPACE_RUN_SCOPED
+    if len(missing) == len(parts):
+        return REPORTING_WORKSPACE_LEGACY
+    raise ValueError("reporting_workspace_incomplete: run-scoped Reporting is missing "
+                     + ", ".join(missing) + " -- refusing to fall back to the shared legacy workspace")
+
+
 def run_reporting(ticket_id: str, timeout: int = 900,
                   run_stamp: str | None = None, line_cb=None, *,
                   reporting_input_dir: Path | None = None,
                   reporting_output_dir: Path | None = None,
                   run_id: str | None = None,
-                  reporting_stage_attempt: int | None = None) -> dict:
+                  reporting_stage_attempt: int | None = None,
+                  incident_id: str | None = None) -> dict:
     """
     [FYP-FUNCTION] Reporting Agent Subprocess Runner
     [FYP-EVALUATOR]: launches soc_reporting_agent/adapters/run_reporting.py,
@@ -4172,8 +4192,13 @@ def run_reporting(ticket_id: str, timeout: int = 900,
             historical copy.
         line_cb: optional live stdout/stderr streaming callback (agent board).
         reporting_input_dir / reporting_output_dir / run_id /
-            reporting_stage_attempt: durable run-scoping — see docstring
-            above and reporting_attempt_dir().
+            reporting_stage_attempt / incident_id: durable run-scoping — see
+            docstring above and reporting_attempt_dir(). Canonical audit
+            Phase 7: all five or none (see _reporting_workspace_mode()); the
+            subprocesses are told the mode explicitly
+            (REPORTING_WORKSPACE_MODE) together with the canonical case
+            (SOC_CASE_ID), and a run-scoped run keeps its LLM narrative
+            cache inside the attempt (REPORTING_LLM_CACHE_DIR).
 
     Returns:
         The reporting agent's final_report.json contents (dict), augmented
@@ -4188,10 +4213,14 @@ def run_reporting(ticket_id: str, timeout: int = 900,
     (via `_wfm.run_reporting(...)`) for the legacy in-memory Agent Board
     engine.
     """
+    mode = _reporting_workspace_mode(
+        reporting_input_dir=reporting_input_dir, reporting_output_dir=reporting_output_dir,
+        run_id=run_id, reporting_stage_attempt=reporting_stage_attempt, incident_id=incident_id)
     llm_env = _openai_compat_env()
     has_llm = bool(os.environ.get("OPENAI_API_KEY", "").strip() or llm_env)
     output_dir = reporting_output_dir or (REP_DIR / "outputs")
     extra_env = {
+        "REPORTING_WORKSPACE_MODE": mode,
         **llm_env,
         "SOC_TICKET_ID": ticket_id,
         "REPORTING_USE_LLM": "true" if has_llm else "false",
@@ -4218,6 +4247,12 @@ def run_reporting(ticket_id: str, timeout: int = 900,
         extra_env["SOC_RUN_ID"] = run_id
     if reporting_stage_attempt is not None:
         extra_env["SOC_REPORTING_ATTEMPT"] = str(reporting_stage_attempt)
+    if mode == REPORTING_WORKSPACE_RUN_SCOPED:
+        extra_env["SOC_CASE_ID"] = str(incident_id)
+        # Attempt-local narrative cache: another attempt's cached narrative
+        # is never read, even for identical inputs (location only -- the
+        # narrative logic itself is unchanged).
+        extra_env["REPORTING_LLM_CACHE_DIR"] = str(Path(reporting_output_dir) / "report_cache")
     if llm_env.get("OPENAI_MODEL"):
         # The Cisco TGI endpoint has no Responses API — force chat completions.
         extra_env["REPORTING_LLM_MODEL"] = llm_env["OPENAI_MODEL"]
@@ -4238,9 +4273,18 @@ def run_reporting(ticket_id: str, timeout: int = 900,
                 "subprocess": run}
     final["orchestrator_subprocess"] = {k: run[k] for k in ("returncode", "success")
                                         if k in run}
+    if (mode == REPORTING_WORKSPACE_RUN_SCOPED and final.get("status") != "failed"
+            and str(final.get("incident_id") or "") != str(incident_id)):
+        # Defence in depth: the adapter already stamps the canonical case.
+        final["status"] = "failed"
+        final["error"] = (f"reporting_result_identity_mismatch: final_report.json names "
+                          f"{final.get('incident_id')!r}, not {incident_id!r}")
     if final.get("status") != "failed":
+        # Phase 7: a run-scoped export is told the canonical workflow case,
+        # never whatever the result wrapper happened to resolve.
         exports = export_report_documents(
-            final.get("incident_id"), reporting_output_dir=reporting_output_dir,
+            incident_id if mode == REPORTING_WORKSPACE_RUN_SCOPED else final.get("incident_id"),
+            reporting_output_dir=reporting_output_dir,
             run_id=run_id, reporting_stage_attempt=reporting_stage_attempt)
         if run_stamp:
             exports = _archive_run_exports(exports, run_stamp)
@@ -4269,17 +4313,23 @@ def export_report_documents(incident_id: str | None, timeout: int = 180, *,
     A returned path is guaranteed FRESH (written during this call) — a stale
     file from an earlier run is reported as an error, never as a success."""
     started = time.time()
+    mode = _reporting_workspace_mode(
+        reporting_output_dir=reporting_output_dir, run_id=run_id,
+        reporting_stage_attempt=reporting_stage_attempt,
+        incident_id=incident_id if reporting_output_dir is not None else None)
     cmd = [sys.executable, str(REP_DIR / "adapters" / "export_documents.py")]
     if incident_id:
         cmd.append(str(incident_id))
-    extra_env: dict[str, str] = {}
+    extra_env: dict[str, str] = {"REPORTING_WORKSPACE_MODE": mode}
+    if mode == REPORTING_WORKSPACE_RUN_SCOPED:
+        extra_env["SOC_CASE_ID"] = str(incident_id)
     if reporting_output_dir is not None:
         extra_env["REPORTING_OUTPUT_DIR"] = str(reporting_output_dir)
     if run_id is not None:
         extra_env["SOC_RUN_ID"] = run_id
     if reporting_stage_attempt is not None:
         extra_env["SOC_REPORTING_ATTEMPT"] = str(reporting_stage_attempt)
-    run = _run_subprocess(cmd, cwd=REP_DIR, timeout=timeout, extra_env=extra_env or None)
+    run = _run_subprocess(cmd, cwd=REP_DIR, timeout=timeout, extra_env=extra_env)
     out: dict = {}
     for line in (run.get("stdout") or "").splitlines():
         if line.startswith("EXPORT_JSON:"):
@@ -5315,6 +5365,42 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
 _REPORTING_LOCK = "reporting_workspace"
 
 
+def _reporting_attempt_artifact(reporting_stage_attempt: int, filename: str) -> str:
+    """Run-artifact name (relative to _artifact_dir) for one Reporting
+    attempt: reporting/attempt_N/<filename>, alongside that attempt's
+    inputs/ and outputs/ -- attempt N+1 never overwrites attempt N's copy."""
+    return f"reporting/attempt_{int(reporting_stage_attempt)}/{filename}"
+
+
+def _verify_reporting_candidate(incident_id: str, run_id: str, reporting_stage_attempt: int,
+                                exports: dict) -> dict:
+    """[FYP-FUNCTION] [FYP-VALIDATION] Canonical audit Phase 7: verify the
+    candidate set this attempt exported with the SAME integrity check
+    approval uses (agents/reporting/reporting_approval.verify_candidate_set),
+    against this module's trusted root. Returns {"ok": True, ...} or
+    {"ok": False, "reason_code", "detail"}; never raises."""
+    from agents.reporting.reporting_approval import (CANDIDATE_MANIFEST_MISSING, CandidateSetError,
+                                                     verify_candidate_set)
+    path = exports.get("candidate_manifest_path")
+    if not path:
+        why = (exports.get("candidate_manifest_error") or exports.get("error")
+               or "the exporter published no candidate manifest")
+        return {"ok": False, "reason_code": CANDIDATE_MANIFEST_MISSING,
+                "detail": "no candidate manifest was published for this attempt: " + str(why)[:300]}
+    try:
+        manifest = verify_candidate_set(path, incident_id=incident_id, run_id=run_id,
+                                        reporting_stage_attempt=reporting_stage_attempt,
+                                        trusted_root=_TRUSTED_OUTPUT_ROOT)
+    except CandidateSetError as exc:
+        return {"ok": False, "reason_code": exc.reason_code, "detail": exc.detail[:300]}
+    except Exception as exc:   # never let verification itself crash the stage
+        return {"ok": False, "reason_code": "candidate_manifest_unreadable",
+                "detail": f"candidate set could not be verified: {exc}"[:300]}
+    return {"ok": True, "report_set_id": manifest.get("report_set_id"),
+            "candidate_manifest_sha256": manifest.get("candidate_manifest_sha256"),
+            "reports": len(manifest.get("reports") or [])}
+
+
 def run_reporting_stage(incident_id: str, run_id: str) -> dict:
     """
     [FYP-FUNCTION] [FYP-ENTRY-POINT] Durable Reporting Stage Runner
@@ -5334,12 +5420,14 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
 
     [FYP-STAGE-LOCK]: the "reporting_workspace" global lock (same
     acquire-with-backoff pattern as run_investigation_stage's
-    "investigation_workspace" lock) covers the complete lifecycle: a
-    run-scoped copy of the handoff is persisted BEFORE touching the shared
-    REP_DIR/inputs|outputs paths, the shared workspace is used only while
-    the lock is held, and a run-scoped copy of the generated output is
-    persisted AFTER reading it back — the lock is released only once that
-    copy exists, never immediately after writing inputs.
+    "investigation_workspace" lock) covers the complete lifecycle. Canonical
+    audit Phase 7: workflow FILE isolation no longer depends on it — every
+    run-scoped attempt reads and writes only its own reporting_attempt_dir()
+    (inputs, outputs, exports, manifests, LLM narrative cache), never the
+    shared REP_DIR/inputs|outputs. The lock is kept unchanged because it
+    still serialises the heavy shared resources a Reporting run drives (the
+    Reporting model load, DOCX->PDF conversion and other external
+    processes); any redesign of it belongs to a later phase.
 
     [FYP-DECISION]: TWO extra integrity checks beyond the lock itself:
       1. handoff_manifest.json verification — after handoff_to_reporting()
@@ -5349,14 +5437,15 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
          truncated/altered before the subprocess launches. A mismatch
          raises RuntimeError (caught by the outer except, recorded as a
          failed stage).
-      2. candidate_manifest identity check — after run_reporting()
-         completes, the exported candidate manifest's own
-         incident_id/run_id/reporting_stage_attempt must match this call's
-         — otherwise the lock's guarantee would have been violated by a
-         lock-design bug, so this is treated as a hard failure, not a
-         warning (unlike the softer ticket_id mismatch check just above it,
-         which only logs a WARNING since the lock already rules out the
-         dangerous case).
+      2. candidate-set verification (canonical audit Phase 7) — after
+         run_reporting() completes, the exported candidate set is verified
+         with reporting_approval.verify_candidate_set(), the same integrity
+         check approval runs: the manifest must exist, be readable and live
+         inside THIS attempt; its incident_id/run_id/reporting_stage_attempt
+         must match; and every listed file plus the manifest's own hash
+         must match. Any failure (including a missing manifest) fails the
+         attempt with a stable candidate_* reason code — Reporting never
+         reaches Awaiting Approval without a verified candidate set.
 
     [FYP-ERROR] [FYP-FALLBACK]: StageClaimError propagates on a lost
     per-incident lease OR a failure to acquire the global lock within
@@ -5440,7 +5529,10 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
         run_stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
 
         try:
-            _save_run_artifact(incident_id, run_id, "reporting_handoff.json",
+            # Phase 7: per attempt -- a rerun never overwrites an earlier
+            # attempt's copy (nothing reads these back; audit copies only).
+            _save_run_artifact(incident_id, run_id,
+                               _reporting_attempt_artifact(_stage_attempt, "reporting_handoff.json"),
                                "reporting_handoff",
                                {"triage_result": triage_result,
                                 "investigation_result": investigation_result,
@@ -5498,7 +5590,8 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
             ticket_id, run_stamp=run_stamp,
             reporting_input_dir=reporting_input_dir,
             reporting_output_dir=reporting_output_dir,
-            run_id=run_id, reporting_stage_attempt=_stage_attempt)
+            run_id=run_id, reporting_stage_attempt=_stage_attempt,
+            incident_id=incident_id)
 
         if renewer.lease_lost.is_set():
             raise StageClaimError(f"reporting: worker {worker_id} lost its lease mid-run")
@@ -5522,7 +5615,8 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
                               f"reporting_workspace lock")
 
         try:
-            _save_run_artifact(incident_id, run_id, "reporting_output.json",
+            _save_run_artifact(incident_id, run_id,
+                               _reporting_attempt_artifact(_stage_attempt, "reporting_output.json"),
                                "reporting_output",
                                {"incident_id": str(incident_id), "run_id": run_id,
                                 "ticket_id": ticket_id,
@@ -5535,30 +5629,21 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
 
         failed = reporting_result.get("status") == "failed"
 
-        # Validate the candidate manifest's identity — all three of
-        # incident_id/run_id/reporting_stage_attempt, not incident_id
-        # alone — before accepting this attempt's output as good. A
-        # mismatch here means something is badly wrong (not merely a
-        # possible outcome to warn about, unlike the ticket_id check
-        # above) — treat it exactly like a generation failure.
+        # Canonical audit Phase 7: generation -> export -> candidate manifest
+        # -> VERIFIED candidate set -> only then Awaiting Approval. A
+        # missing, unreadable, foreign, out-of-attempt or altered candidate
+        # set fails the attempt with a stable reason code.
+        candidate_failure = None
         if not failed:
-            candidate_manifest_path_str = (reporting_result.get("document_exports") or {}).get(
-                "candidate_manifest_path")
-            try:
-                cm = json.loads(Path(candidate_manifest_path_str).read_text(encoding="utf-8")) \
-                    if candidate_manifest_path_str else {}
-            except Exception:
-                cm = {}
-            if cm and (str(cm.get("incident_id")) != str(incident_id)
-                      or cm.get("run_id") != run_id
-                      or cm.get("reporting_stage_attempt") != _stage_attempt):
-                _log("REPORTING", f"candidate manifest identity mismatch: "
-                                  f"{cm.get('incident_id')!r}/{cm.get('run_id')!r}/"
-                                  f"{cm.get('reporting_stage_attempt')!r} != expected "
-                                  f"{incident_id!r}/{run_id!r}/{_stage_attempt!r}")
+            check = _verify_reporting_candidate(
+                incident_id, run_id, _stage_attempt, reporting_result.get("document_exports") or {})
+            reporting_result["candidate_manifest_check"] = check
+            if not check["ok"]:
+                candidate_failure = f"{check['reason_code']}: {check['detail']}"
+                _log("REPORTING", f"candidate set verification failed — {candidate_failure}")
                 failed = True
                 reporting_result["status"] = "failed"
-                reporting_result["error"] = "candidate manifest identity mismatch"
+                reporting_result["error"] = candidate_failure
 
         if not failed:
             reporting_result.update(
@@ -5587,6 +5672,8 @@ def run_reporting_stage(incident_id: str, run_id: str) -> dict:
         if not ok:
             raise StageClaimError(f"reporting: lease for {incident_id}/{run_id} "
                                   "was reassigned before this result could be saved")
+        if candidate_failure:
+            wss.set_last_error(incident_id, run_id, f"reporting failed: {candidate_failure[:300]}")
         _log("REPORTING", f"complete — status={reporting_result.get('status')}"
                           if not failed else "REPORTING FAILED")
         return reporting_result

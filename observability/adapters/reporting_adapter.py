@@ -817,6 +817,20 @@ def _model_request_error(call: dict, token: Any, exc: BaseException) -> None:
 
 # ── Result persistence ─────────────────────────────────────────────────────
 
+_CANDIDATE_RULE_TITLES = {
+    "candidate_manifest_missing": "Candidate manifest missing",
+    "candidate_manifest_unreadable": "Candidate manifest unreadable",
+    "candidate_manifest_outside_attempt": "Candidate manifest outside this Reporting attempt",
+    "candidate_manifest_identity_mismatch": "Candidate manifest identity mismatch",
+    "candidate_manifest_run_mismatch": "Candidate manifest identity mismatch",
+    "candidate_manifest_attempt_mismatch": "Candidate manifest identity mismatch",
+    "candidate_manifest_empty": "Candidate manifest lists no reports",
+    "candidate_file_missing": "Candidate report file missing",
+    "candidate_file_hash_mismatch": "Candidate report file hash mismatch",
+    "candidate_manifest_hash_mismatch": "Candidate manifest hash mismatch",
+}
+
+
 def _complete_after(call: dict, token: Any, ok: Any) -> None:
     scope = _scope()
     if scope is None or call.get("stage") != STAGE:
@@ -835,12 +849,20 @@ def _complete_after(call: dict, token: Any, ok: Any) -> None:
             emit(source="rule", event_type="handoff_verification", status="failed",
                  title="Hand-off manifest verification failed",
                  detail=sanitize_text(error.split(":", 1)[-1], 300) + " — the Reporting Agent was not launched.")
-        elif error == "candidate manifest identity mismatch":
+        elif error.split(":", 1)[0] in _CANDIDATE_RULE_TITLES:
+            # Canonical audit Phase 7: the exact candidate-set rule the stage
+            # verification failed (stable reason code -> truthful title).
+            code = error.split(":", 1)[0]
             cand = scope.data.get("candidate") or {}
+            if code == "candidate_manifest_attempt_mismatch":
+                detail = (f"Manifest records attempt {cand.get('attempt')!s}; this run is attempt "
+                          f"{scope.stage_attempt!s}. The attempt is treated as a generation failure.")
+            else:
+                detail = (sanitize_text(error.split(":", 1)[-1].strip(), 300)
+                          + " — the attempt is treated as a generation failure.")
             emit(source="rule", event_type="manifest_identity", status="failed",
-                 title="Candidate manifest identity mismatch",
-                 detail=f"Manifest records attempt {cand.get('attempt')!s}; this run is attempt "
-                        f"{scope.stage_attempt!s}. The attempt is treated as a generation failure.")
+                 title=_CANDIDATE_RULE_TITLES[code], detail=detail,
+                 metadata={"reason_code": code})
         if not scope.data.get("decided"):
             scope.data["decided"] = True
             emit(source="decision", event_type="stage_result", status="failed", title="Reporting failed",
@@ -929,7 +951,8 @@ def _commit_after(call: dict, token: Any, result: Any) -> None:
 def _approve_error(call: dict, token: Any, exc: BaseException) -> None:
     incident_id = str(call.get("incident_id"))
     attempt = _state(incident_id).get("reporting_attempt")
-    blocked = type(exc).__name__ == "ReportValidationError"
+    # Phase 7: CandidateSetError (an integrity failure) is a subclass.
+    blocked = any(cls.__name__ == "ReportValidationError" for cls in type(exc).__mro__)
     emit(source="human", event_type="approval_decision", status="warning", origin="state_transition",
          title="Reporting approval blocked by candidate-set validation" if blocked
          else "Reporting approval was not committed",
@@ -984,7 +1007,7 @@ def install(patcher: Patcher) -> None:
                  Hooks(after=_handoff_after, error=_handoff_error))
     patcher.wrap(Target(engine, "run_reporting",
                         ("ticket_id", "timeout", "run_stamp", "line_cb", "reporting_input_dir",
-                         "reporting_output_dir", "run_id", "reporting_stage_attempt")),
+                         "reporting_output_dir", "run_id", "reporting_stage_attempt", "incident_id")),
                  Hooks(before=_run_reporting_before, after=_run_reporting_after, error=_run_reporting_error))
     patcher.wrap(Target(engine, "_run_subprocess", ("cmd", "cwd", "timeout", "extra_env")),
                  Hooks(before=_subprocess_before, after=_subprocess_after, error=_subprocess_error))

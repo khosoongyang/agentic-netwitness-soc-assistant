@@ -134,13 +134,31 @@ def _isolate_mutable_test_state(
     module = request.module
     module_path = Path(getattr(module, "__file__", "")).resolve()
     script_dir = PROJECT_ROOT / "agents" / "reporting" / "scripts"
+    reporting_inputs = isolation.reporting_inputs
+    reporting_outputs = isolation.reporting_outputs
+
+    if module_path in (script_dir / "test_evidence_gap_branch_and_reporting_wrapper.py",
+                       script_dir / "test_reporting_appendix_context.py"):
+        # Canonical audit Phase 7: these legacy adapter tests each get their
+        # OWN legacy input/output roots (seeded from the tracked fixture
+        # inputs, read-only) instead of the session-wide folders, so one
+        # test's artefacts can never be picked up by another (the adapter's
+        # newest-file discovery made them order-dependent). The roots sit
+        # under the bridge link, keeping the adapter's package-relative path
+        # contract, and are exported to subprocesses through the environment.
+        per_test = isolation.bridge_link / "per_test" / f"{tmp_path.name}-{os.getpid()}"
+        reporting_inputs, reporting_outputs = per_test / "inputs", per_test / "outputs"
+        _copy_directory(PROJECT_ROOT / "agents" / "reporting" / "inputs", reporting_inputs)
+        reporting_outputs.mkdir(parents=True)
+        monkeypatch.setenv("REPORTING_INPUT_DIR", str(reporting_inputs))
+        monkeypatch.setenv("REPORTING_OUTPUT_DIR", str(reporting_outputs))
 
     if module_path == script_dir / "test_evidence_gap_branch_and_reporting_wrapper.py":
-        monkeypatch.setattr(module, "INPUTS_DIR", isolation.reporting_inputs)
-        monkeypatch.setattr(module, "OUTPUTS_DIR", isolation.reporting_outputs)
+        monkeypatch.setattr(module, "INPUTS_DIR", reporting_inputs)
+        monkeypatch.setattr(module, "OUTPUTS_DIR", reporting_outputs)
     elif module_path == script_dir / "test_reporting_appendix_context.py":
-        monkeypatch.setattr(module, "INPUTS", isolation.reporting_inputs)
-        monkeypatch.setattr(module, "OUTPUTS", isolation.reporting_outputs)
+        monkeypatch.setattr(module, "INPUTS", reporting_inputs)
+        monkeypatch.setattr(module, "OUTPUTS", reporting_outputs)
     elif module_path == script_dir / "test_merged_report_context.py":
         monkeypatch.setattr(module, "BASE", isolation.merged_fixture)
         monkeypatch.setattr(module, "INPUTS", isolation.merged_fixture / "inputs")
@@ -148,15 +166,15 @@ def _isolate_mutable_test_state(
 
     common = sys.modules.get("adapters.common")
     if common is not None:
-        monkeypatch.setattr(common, "INPUTS_DIR", isolation.reporting_inputs)
-        monkeypatch.setattr(common, "OUTPUTS_DIR", isolation.reporting_outputs)
+        monkeypatch.setattr(common, "INPUTS_DIR", reporting_inputs)
+        monkeypatch.setattr(common, "OUTPUTS_DIR", reporting_outputs)
         monkeypatch.setattr(common, "LOGS_DIR", isolation.adapter_logs)
         monkeypatch.setattr(common, "RUNTIME_DIR", isolation.adapter_runtime)
 
     run_reporting = sys.modules.get("adapters.run_reporting")
     if run_reporting is not None:
-        monkeypatch.setattr(run_reporting, "INPUTS_DIR", isolation.reporting_inputs)
-        monkeypatch.setattr(run_reporting, "OUTPUTS_DIR", isolation.reporting_outputs)
+        monkeypatch.setattr(run_reporting, "INPUTS_DIR", reporting_inputs)
+        monkeypatch.setattr(run_reporting, "OUTPUTS_DIR", reporting_outputs)
 
 
 def pytest_unconfigure(config: pytest.Config) -> None:

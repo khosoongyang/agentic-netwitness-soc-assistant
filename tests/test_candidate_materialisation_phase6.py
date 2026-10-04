@@ -27,6 +27,14 @@ from agents.reporting.reporting.candidate_materialiser import (
 def _isolated_db(tmp_path, monkeypatch):
     monkeypatch.setattr(wss, "DB_FILE", tmp_path / "phase6.db")
     wss.db_init()
+    # Canonical audit Phase 7: submit_for_approval() only accepts versions
+    # reviewed against the CURRENT Reporting attempt's own candidate set, so
+    # the run these edits belong to must exist with that attempt and the
+    # generated set ("set-1", the id every edit below is made against).
+    wss.start_run(INCIDENT_ID)
+    wss._guarded_update(INCIDENT_ID, None, {
+        "run_id": RUN_ID, "reporting_attempt": ATTEMPT,
+        "reporting_result_json": json.dumps({"document_exports": {"report_set_id": "set-1"}})})
 
 
 @pytest.fixture(autouse=True)

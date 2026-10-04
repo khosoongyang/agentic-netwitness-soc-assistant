@@ -462,7 +462,10 @@ def test_reporting_is_identical_with_observability_on_and_off(env, tmp_path, rep
     runs = json.loads(on["subprocess_runs"].replace("<DIR>", "d").replace("<TS>", "t"))
     exported = rep_mode not in ("agent_failed", "crash")
     assert [r["script"] for r in runs] == ["run_reporting"] + (["export_documents"] if exported else [])
-    expected = "Failed" if rep_mode in ("agent_failed", "crash") or export_mode == "mismatch" else "Awaiting Approval"
+    # Phase 7: no candidate set reaches Awaiting Approval unverified -- a
+    # missing manifest (manifest_error / no_output) fails like a mismatch.
+    expected = ("Failed" if rep_mode in ("agent_failed", "crash")
+                or export_mode in ("mismatch", "manifest_error", "no_output") else "Awaiting Approval")
     assert off["statuses"]["reporting_status"] == expected
 
 
@@ -729,20 +732,27 @@ def test_pdf_export_failure_is_a_warning_with_the_reason(env, activity):
     assert "PDF converter not available" in json.dumps(export["metadata"]["details"])
 
 
-def test_missing_candidate_manifest_is_shown_and_approval_is_blocked(env, activity):
+def test_missing_candidate_manifest_fails_the_stage_with_the_failed_rule(env, activity):
+    # Phase 7: a missing candidate manifest no longer reaches Awaiting
+    # Approval (where approval was then blocked); the stage fails and the
+    # timeline names the integrity rule that failed.
     env["monkeypatch"].setenv("FAKE_EXPORT_MODE", "manifest_error")
     case_id, run_id, _ = env["prepare"]("noman")
-    engine.run_reporting_stage(case_id, run_id)
-    events = _events(activity, run_id)
-    identity = _one(events, "manifest_identity")
-    assert identity["status"] == "warning" and identity["title"] == "Candidate manifest identity check skipped"
-    assert _one(events, "stage_result")["status"] == "warning"
-    assert wss.get_state(CASE)["reporting_status"] == "Awaiting Approval"  # unchanged engine behaviour
-    with pytest.raises(commands.WorkflowCommandError):
+    result = engine.run_reporting_stage(case_id, run_id)
+    assert result["status"] == "failed"
+    assert result["candidate_manifest_check"]["reason_code"] == "candidate_manifest_missing"
+    top = _top(_events(activity, run_id))
+    identity = _one(top, "manifest_identity")
+    assert identity["status"] == "failed" and identity["title"] == "Candidate manifest missing"
+    assert "ReportIntegrityError: structured content missing" in identity["detail"]
+    assert top[-2]["event_type"] == "stage_result" and top[-2]["status"] == "failed"
+    assert top[-1]["event_type"] == "stage_settled" and top[-1]["status"] == "failed"
+    assert not [e for e in top if e["source"] == "human" or e["event_type"] == "ai_summary"]
+    state = wss.get_state(CASE)
+    assert (state["reporting_status"], state["workflow_status"]) == ("Failed", "Failed")
+    assert "candidate_manifest_missing" in state["last_error"]
+    with pytest.raises(commands.WorkflowCommandError):   # nothing to approve
         commands.approve_stage(case_id, "reporting", analyst="Analyst One", comments="")
-    blocked = [e for e in _events(activity, run_id) if e["event_type"] == "approval_decision"]
-    assert blocked[-1]["status"] == "warning"
-    assert blocked[-1]["title"] == "Reporting approval blocked by candidate-set validation"
 
 
 def test_export_with_no_output_is_a_failed_export(env, activity):

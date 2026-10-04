@@ -513,6 +513,63 @@ def reporting_data_json(state: dict[str, Any], incident_id: str) -> tuple[bytes,
     return data, filename
 
 
+REVIEWED_VERSION_OUTDATED = "reviewed_version_outdated"
+NO_CURRENT_CANDIDATE_SET = "no_current_candidate_set"
+
+
+class StaleReviewedVersionError(ReportEditingError):
+    """Canonical audit Phase 7: submission refused because a reviewed
+    version does not belong to the current Reporting attempt's candidate
+    set. Carries a stable reason_code."""
+
+    def __init__(self, reason_code: str, detail: str):
+        super().__init__(f"{reason_code}: {detail}")
+        self.reason_code = reason_code
+
+
+def _current_attempt_report_set_id(incident_id: str, run_id: str,
+                                   reporting_stage_attempt: int) -> str:
+    """The report_set_id of the candidate set the CURRENT Reporting attempt
+    generated (the stage's verified document_exports), i.e. the same
+    current_report_set_id the Reports tab compares versions against."""
+    state = wss.get_state(incident_id) or {}
+    if (state.get("run_id") != run_id
+            or int(state.get("reporting_attempt") or 0) != int(reporting_stage_attempt)):
+        raise StaleReviewedVersionError(
+            NO_CURRENT_CANDIDATE_SET,
+            f"Reporting attempt {reporting_stage_attempt} is not the current attempt of this run.")
+    try:
+        result = json.loads(state.get("reporting_result_json") or "{}") or {}
+    except (TypeError, ValueError):
+        result = {}
+    set_id = (result.get("document_exports") or {}).get("report_set_id")
+    if not set_id:
+        raise StaleReviewedVersionError(
+            NO_CURRENT_CANDIDATE_SET,
+            f"Reporting attempt {reporting_stage_attempt} has no generated candidate set to review against.")
+    return str(set_id)
+
+
+def _refuse_outdated_versions(latest_by_type: dict[str, dict[str, Any]], current_set_id: str) -> None:
+    """Every component report's reviewed version must have been taken from
+    (or edited against) the current attempt's candidate set; the assembled
+    Final Incident Report must be assembled from exactly those current
+    component versions (or itself be edited against the current set)."""
+    for report_type, latest in latest_by_type.items():
+        if report_type == "final_incident_report" and latest.get("origin") == "assembled":
+            sources = json.loads(latest.get("source_version_ids_json") or "null") or {}
+            current = {t: latest_by_type[t]["id"] for t in COMPONENT_REPORT_TYPES if t in latest_by_type}
+            ok = sources == current
+        else:
+            ok = str(latest.get("source_report_set_id") or "") == current_set_id
+        if not ok:
+            raise StaleReviewedVersionError(
+                REVIEWED_VERSION_OUTDATED,
+                f"'{DISPLAY_TITLES.get(report_type, report_type)}' is Outdated — its reviewed version "
+                "belongs to an earlier Reporting attempt's report set. Replace it with the current AI "
+                "version (or edit it) and mark it Reviewed before submitting for approval.")
+
+
 def submit_for_approval(incident_id: str, run_id: str, reporting_stage_attempt: int, *,
                         analyst: str) -> dict[str, Any]:
     """Phase 6: the gate + trigger for "Submit for Approval". Refuses
@@ -532,8 +589,17 @@ def submit_for_approval(incident_id: str, run_id: str, reporting_stage_attempt: 
     — Phase 7's approve_reporting_candidate() is what later flips that row
     to 'approved'; this function never approves anything itself.
 
+    Canonical audit Phase 7: every reviewed version must belong to the
+    CURRENT Reporting attempt's own candidate set -- a version reviewed
+    against an earlier attempt's set (the "Outdated" state in the Reports
+    tab) is refused with reason `reviewed_version_outdated`, never carried
+    forward into this attempt. The analyst replaces it with the current AI
+    version (or re-edits it) and reviews it again.
+
     Returns the published candidate manifest dict."""
+    current_set_id = _current_attempt_report_set_id(incident_id, run_id, reporting_stage_attempt)
     reviewed_reports: dict[str, dict[str, Any]] = {}
+    latest_by_type: dict[str, dict[str, Any]] = {}
     for report_type in CORE_REPORT_TYPES:
         latest = wss.get_latest_report_version(incident_id, run_id, report_type)
         review = wss.get_report_review(latest["id"]) if latest else None
@@ -541,10 +607,12 @@ def submit_for_approval(incident_id: str, run_id: str, reporting_stage_attempt: 
             raise ReportEditingError(
                 f"'{DISPLAY_TITLES.get(report_type, report_type)}' must be marked Reviewed "
                 "before this report set can be submitted for approval.")
+        latest_by_type[report_type] = latest
         reviewed_reports[report_type] = {
             "version_id": latest["id"],
             "blocks": json.loads(latest["content_json"]),
         }
+    _refuse_outdated_versions(latest_by_type, current_set_id)
 
     based_on = (wss.get_latest_report_set(incident_id, run_id, status="approved")
                or wss.get_latest_report_set(incident_id, run_id, status="generated"))

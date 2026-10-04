@@ -79,9 +79,84 @@ OUTPUTS_DIR = Path(os.getenv("REPORTING_OUTPUT_DIR") or (PROJECT_ROOT / "outputs
 LOGS_DIR = PROJECT_ROOT / "logs"
 RUNTIME_DIR = PROJECT_ROOT / "runtime"
 
+# Canonical audit Phase 7: the workspace mode is EXPLICIT, never inferred
+# from which directories or files happen to exist. workflow/engine.py sets
+# REPORTING_WORKSPACE_MODE on every subprocess it starts:
+#   run_scoped -- one case/run/Reporting attempt; every workflow artefact is
+#                 read from and written to that attempt's own directories.
+#   legacy     -- standalone/CLI compatibility (also the default when unset):
+#                 the configured (or shared PROJECT_ROOT) inputs/outputs.
+# Read once at import, so one process can never switch modes midway.
+WORKSPACE_MODE_RUN_SCOPED = "run_scoped"
+WORKSPACE_MODE_LEGACY = "legacy"
+WORKSPACE_MODE = (os.getenv("REPORTING_WORKSPACE_MODE") or WORKSPACE_MODE_LEGACY).strip().lower()
+RUN_SCOPED = WORKSPACE_MODE == WORKSPACE_MODE_RUN_SCOPED
+_RUN_SCOPED_ENV = ("REPORTING_INPUT_DIR", "REPORTING_OUTPUT_DIR", "SOC_CASE_ID", "SOC_RUN_ID",
+                   "SOC_REPORTING_ATTEMPT")
+
+
+class WorkspaceConfigError(RuntimeError):
+    """[FYP-ERROR] The workspace configuration (or the attempt it points at)
+    cannot be trusted; carries a stable reason_code."""
+
+    def __init__(self, reason_code: str, detail: str):
+        super().__init__(f"{reason_code}: {detail}")
+        self.reason_code = reason_code
+        self.detail = detail
+
+
+def run_scoped_identity() -> dict[str, Any]:
+    """[FYP-FUNCTION] [FYP-VALIDATION] The canonical case/run/attempt the
+    engine supplied for this run-scoped process. Raises WorkspaceConfigError
+    on an unknown mode or any missing item -- a partial run-scoped
+    configuration never falls back to the shared legacy folders."""
+    if WORKSPACE_MODE not in (WORKSPACE_MODE_RUN_SCOPED, WORKSPACE_MODE_LEGACY):
+        raise WorkspaceConfigError("reporting_workspace_mode_invalid",
+                                   f"unknown REPORTING_WORKSPACE_MODE {WORKSPACE_MODE!r}")
+    missing = [key for key in _RUN_SCOPED_ENV if not str(os.getenv(key) or "").strip()]
+    if missing:
+        raise WorkspaceConfigError("reporting_workspace_incomplete",
+                                   "run-scoped Reporting is missing " + ", ".join(missing))
+    try:
+        attempt = int(os.environ["SOC_REPORTING_ATTEMPT"])
+    except ValueError:
+        raise WorkspaceConfigError("reporting_workspace_incomplete",
+                                   f"SOC_REPORTING_ATTEMPT is not an integer: {os.environ['SOC_REPORTING_ATTEMPT']!r}")
+    return {"case_id": os.environ["SOC_CASE_ID"], "run_id": os.environ["SOC_RUN_ID"],
+            "reporting_attempt": attempt}
+
+
+def verify_run_scoped_workspace() -> dict[str, Any]:
+    """[FYP-FUNCTION] [FYP-VALIDATION] Startup check for a run-scoped process:
+    the attempt's own inputs/workflow_metadata.json (written by the engine's
+    hand-off) must name exactly the case/run/attempt the engine supplied.
+    Returns the canonical identity; raises WorkspaceConfigError otherwise."""
+    identity = run_scoped_identity()
+    meta = read_json(INPUTS_DIR / "workflow_metadata.json", None)
+    if not isinstance(meta, dict):
+        raise WorkspaceConfigError("reporting_workspace_metadata_missing",
+                                   "inputs/workflow_metadata.json is missing or unreadable")
+    recorded = {"case_id": str(meta.get("incident_id") or ""), "run_id": meta.get("run_id"),
+                "reporting_attempt": meta.get("reporting_stage_attempt")}
+    if recorded != {**identity, "case_id": str(identity["case_id"])}:
+        raise WorkspaceConfigError(
+            "reporting_workspace_identity_mismatch",
+            f"workflow_metadata.json names {recorded['case_id']!r}/{recorded['run_id']!r}/attempt "
+            f"{recorded['reporting_attempt']!r}; the engine supplied {identity['case_id']!r}/"
+            f"{identity['run_id']!r}/attempt {identity['reporting_attempt']!r}")
+    return identity
+
+
 # Directories are created eagerly at import time so any adapter importing
 # this module can immediately read/write without its own mkdir boilerplate.
-for d in (INPUTS_DIR, OUTPUTS_DIR, LOGS_DIR, RUNTIME_DIR):
+# A run-scoped process only ever creates its own attempt directories (and
+# none at all when its configuration is incomplete -- it fails at startup).
+if RUN_SCOPED:
+    _EAGER_DIRS = (INPUTS_DIR, OUTPUTS_DIR) if (os.getenv("REPORTING_INPUT_DIR")
+                                                 and os.getenv("REPORTING_OUTPUT_DIR")) else ()
+else:
+    _EAGER_DIRS = (INPUTS_DIR, OUTPUTS_DIR, LOGS_DIR, RUNTIME_DIR)
+for d in _EAGER_DIRS:
     d.mkdir(parents=True, exist_ok=True)
 
 # Load soc_reporting_agent/.env (API keys, LLM/DB settings) without
@@ -125,7 +200,9 @@ def write_json(path: Path, data: Any) -> None:
     # written under outputs/ is also mirrored under that run folder using the same
     # relative path. This preserves an immutable per-run copy even when the
     # compatibility output is overwritten by a later run.
-    run_output_dir = os.getenv("SOC_RUN_OUTPUT_DIR") or os.getenv("SOC_OUTPUT_DIR")
+    # Phase 7: never in run-scoped mode -- the attempt directory IS the
+    # per-run copy, and a mirror would write outside it.
+    run_output_dir = None if RUN_SCOPED else (os.getenv("SOC_RUN_OUTPUT_DIR") or os.getenv("SOC_OUTPUT_DIR"))
     if run_output_dir:
         try:
             resolved = path.resolve()

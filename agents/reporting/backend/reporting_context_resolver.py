@@ -181,7 +181,17 @@ def _ticket_value(ticket: dict[str, Any] | None, key: str) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def investigation_candidate_paths(project_root: Path, ticket_id: str | None = None) -> list[Path]:
+def _roots(project_root: Path, inputs_dir: Path | None, outputs_dir: Path | None) -> tuple[Path, Path]:
+    """[FYP-FUNCTION] Canonical audit Phase 7: the legacy inputs/outputs roots
+    to use -- the caller's explicitly configured ones when given, otherwise
+    project_root/inputs|outputs (the original behaviour)."""
+    return (Path(inputs_dir) if inputs_dir is not None else project_root / "inputs",
+            Path(outputs_dir) if outputs_dir is not None else project_root / "outputs")
+
+
+def investigation_candidate_paths(project_root: Path, ticket_id: str | None = None, *,
+                                  inputs_dir: Path | None = None,
+                                  outputs_dir: Path | None = None) -> list[Path]:
     """[FYP-FUNCTION] [FYP-INPUT] Enumerate candidate filesystem locations for a ticket's investigation_result.json, most-specific first.
 
     Params: project_root -- soc_reporting_agent root; ticket_id -- optional,
@@ -191,8 +201,7 @@ def investigation_candidate_paths(project_root: Path, ticket_id: str | None = No
     checked here -- see resolve_investigation_context for that).
     Called by: resolve_investigation_context.
     """
-    outputs = project_root / "outputs"
-    inputs = project_root / "inputs"
+    inputs, outputs = _roots(project_root, inputs_dir, outputs_dir)
     paths: list[Path] = []
     if ticket_id:
         paths.extend([
@@ -211,15 +220,16 @@ def investigation_candidate_paths(project_root: Path, ticket_id: str | None = No
     return _unique_paths(paths)
 
 
-def approval_candidate_paths(project_root: Path, ticket_id: str | None = None) -> list[Path]:
+def approval_candidate_paths(project_root: Path, ticket_id: str | None = None, *,
+                             inputs_dir: Path | None = None,
+                             outputs_dir: Path | None = None) -> list[Path]:
     """[FYP-FUNCTION] [FYP-INPUT] Enumerate candidate filesystem locations for a ticket's investigation approval result, most-specific first.
 
     Mirrors investigation_candidate_paths() but for the approval decision
     (investigation_approval_result.json / approval_result.json).
     Called by: resolve_investigation_approval_context.
     """
-    outputs = project_root / "outputs"
-    inputs = project_root / "inputs"
+    inputs, outputs = _roots(project_root, inputs_dir, outputs_dir)
     paths: list[Path] = []
     if ticket_id:
         paths.extend([
@@ -243,7 +253,8 @@ def is_approval_approved(data: dict[str, Any]) -> bool:
     return decision in {"approved", "approve", "completed", "confirmed"}
 
 
-def resolve_investigation_context(project_root: Path, ticket_id: str | None = None, ticket: dict[str, Any] | None = None) -> ResolvedContext:
+def resolve_investigation_context(project_root: Path, ticket_id: str | None = None, ticket: dict[str, Any] | None = None, *,
+                                  inputs_dir: Path | None = None, outputs_dir: Path | None = None) -> ResolvedContext:
     """[FYP-FUNCTION] [FYP-DECISION] Find the best available investigation result for a ticket.
 
     Params: project_root -- project root; ticket_id -- optional ticket id
@@ -275,7 +286,8 @@ def resolve_investigation_context(project_root: Path, ticket_id: str | None = No
         )
 
     first_existing: tuple[dict[str, Any], Path] | None = None
-    for path in investigation_candidate_paths(project_root, ticket_id):
+    for path in investigation_candidate_paths(project_root, ticket_id,
+                                              inputs_dir=inputs_dir, outputs_dir=outputs_dir):
         data = _read_json(path)
         if not data:
             continue
@@ -309,7 +321,8 @@ def resolve_investigation_context(project_root: Path, ticket_id: str | None = No
     )
 
 
-def resolve_investigation_approval_context(project_root: Path, ticket_id: str | None = None, ticket: dict[str, Any] | None = None) -> ResolvedContext:
+def resolve_investigation_approval_context(project_root: Path, ticket_id: str | None = None, ticket: dict[str, Any] | None = None, *,
+                                           inputs_dir: Path | None = None, outputs_dir: Path | None = None) -> ResolvedContext:
     """[FYP-FUNCTION] [FYP-APPROVAL] [FYP-DECISION] Find the best available investigation-approval result for a ticket.
 
     Mirrors resolve_investigation_context()'s resolution order (ticket dict
@@ -330,7 +343,8 @@ def resolve_investigation_approval_context(project_root: Path, ticket_id: str | 
         )
 
     first_existing: tuple[dict[str, Any], Path] | None = None
-    for path in approval_candidate_paths(project_root, ticket_id):
+    for path in approval_candidate_paths(project_root, ticket_id,
+                                         inputs_dir=inputs_dir, outputs_dir=outputs_dir):
         data = _read_json(path)
         if not data:
             continue
@@ -361,7 +375,8 @@ def resolve_investigation_approval_context(project_root: Path, ticket_id: str | 
     return ResolvedContext(False, False, {}, None, "No investigation approval result was found.")
 
 
-def ensure_reporting_inputs(project_root: Path, ticket_id: str | None = None, ticket: dict[str, Any] | None = None) -> dict[str, Any]:
+def ensure_reporting_inputs(project_root: Path, ticket_id: str | None = None, ticket: dict[str, Any] | None = None, *,
+                            inputs_dir: Path | None = None, outputs_dir: Path | None = None) -> dict[str, Any]:
     """Copy resolved investigation/approval contexts into inputs and legacy outputs.
 
     The dashboard stores ticket context in PostgreSQL while legacy reporting
@@ -380,20 +395,26 @@ def ensure_reporting_inputs(project_root: Path, ticket_id: str | None = None, ti
     inputs/ and outputs/, AND additionally writes it as inputs/approval_result.json
     (because Reporting's legacy input_loader still expects that generic
     filename for the "latest gate" approval).
+    Canonical audit Phase 7: LEGACY/standalone mode only -- a run-scoped
+    Reporting attempt never calls this (its inputs come solely from the
+    canonical hand-off). inputs_dir/outputs_dir, when given, are the legacy
+    process's configured folders and are used for BOTH the candidate scan and
+    the writes, so one run never mixes them with project_root's.
     Called by:
       - backend/app.py, immediately before dispatching a Reporting agent run.
-      - adapters/run_reporting.py `_prepare_inputs()`, before invoking the
-        reporting subprocess/scripts.
+      - adapters/run_reporting.py `_prepare_inputs()` (legacy mode), before
+        invoking the reporting subprocess/scripts.
     Calls: resolve_investigation_context, resolve_investigation_approval_context,
     _write_json.
     """
-    inputs = project_root / "inputs"
-    outputs = project_root / "outputs"
+    inputs, outputs = _roots(project_root, inputs_dir, outputs_dir)
     inputs.mkdir(parents=True, exist_ok=True)
     outputs.mkdir(parents=True, exist_ok=True)
 
-    inv = resolve_investigation_context(project_root, ticket_id=ticket_id, ticket=ticket)
-    approval = resolve_investigation_approval_context(project_root, ticket_id=ticket_id, ticket=ticket)
+    inv = resolve_investigation_context(project_root, ticket_id=ticket_id, ticket=ticket,
+                                        inputs_dir=inputs, outputs_dir=outputs)
+    approval = resolve_investigation_approval_context(project_root, ticket_id=ticket_id, ticket=ticket,
+                                                      inputs_dir=inputs, outputs_dir=outputs)
 
     if inv.exists and inv.data:
         _write_json(inputs / "investigation_result.json", inv.data)

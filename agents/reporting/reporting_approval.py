@@ -67,6 +67,32 @@ class ReportValidationError(RuntimeError):
     "something is wrong"."""
 
 
+# Canonical audit Phase 7: stable reason codes for candidate-set INTEGRITY
+# failures, shared by the Reporting stage (before Awaiting Approval) and by
+# approval (before the decision is committed).
+CANDIDATE_MANIFEST_MISSING = "candidate_manifest_missing"
+CANDIDATE_MANIFEST_UNREADABLE = "candidate_manifest_unreadable"
+CANDIDATE_MANIFEST_OUTSIDE_ATTEMPT = "candidate_manifest_outside_attempt"
+CANDIDATE_MANIFEST_IDENTITY_MISMATCH = "candidate_manifest_identity_mismatch"
+CANDIDATE_MANIFEST_RUN_MISMATCH = "candidate_manifest_run_mismatch"
+CANDIDATE_MANIFEST_ATTEMPT_MISMATCH = "candidate_manifest_attempt_mismatch"
+CANDIDATE_MANIFEST_EMPTY = "candidate_manifest_empty"
+CANDIDATE_FILE_MISSING = "candidate_file_missing"
+CANDIDATE_FILE_HASH_MISMATCH = "candidate_file_hash_mismatch"
+CANDIDATE_MANIFEST_HASH_MISMATCH = "candidate_manifest_hash_mismatch"
+
+
+class CandidateSetError(ReportValidationError):
+    """An integrity failure of a candidate set: `reason_code` is one of the
+    CANDIDATE_* codes above, `detail` the readable (unchanged) reason. A
+    ReportValidationError, so every existing approval caller is unaffected."""
+
+    def __init__(self, reason_code: str, detail: str):
+        super().__init__(detail)
+        self.reason_code = reason_code
+        self.detail = detail
+
+
 # [FYP-FUNCTION] `_resolve_trusted_path` — implements the resolve trusted path operation used by the surrounding reporting workflow.
 # [FYP-INPUT] Parameters: `raw_path`, `attempt_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
@@ -75,7 +101,9 @@ class ReportValidationError(RuntimeError):
 # [FYP-CALLS] Calls: `Path`, `ReportValidationError`, `is_absolute`, `is_file`, `resolve`, `startswith`, `str`.
 # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
-def _resolve_trusted_path(raw_path: str, *, attempt_dir: Path) -> Path:
+def _resolve_trusted_path(raw_path: str, *, attempt_dir: Path,
+                          trusted_root: Path | None = None,
+                          missing_code: str = CANDIDATE_FILE_MISSING) -> Path:
     """Every path referenced by a candidate manifest is validated before
     being trusted: it must resolve successfully, stay inside this
     attempt's own directory (which itself is inside the global trusted
@@ -85,14 +113,119 @@ def _resolve_trusted_path(raw_path: str, *, attempt_dir: Path) -> Path:
     if not candidate.is_absolute():
         candidate = attempt_dir / raw_path
     resolved = candidate.resolve()
-    trusted_root = _TRUSTED_OUTPUT_ROOT.resolve()
+    trusted_root = (trusted_root if trusted_root is not None else _TRUSTED_OUTPUT_ROOT).resolve()
     if not str(resolved).startswith(str(trusted_root)):
-        raise ReportValidationError(f"path escapes the trusted artefact root: {raw_path}")
+        raise CandidateSetError(CANDIDATE_MANIFEST_OUTSIDE_ATTEMPT,
+                                f"path escapes the trusted artefact root: {raw_path}")
     if not str(resolved).startswith(str(attempt_dir.resolve())):
-        raise ReportValidationError(f"path escapes this attempt's own directory: {raw_path}")
+        raise CandidateSetError(CANDIDATE_MANIFEST_OUTSIDE_ATTEMPT,
+                                f"path escapes this attempt's own directory: {raw_path}")
     if not resolved.is_file():
-        raise ReportValidationError(f"required file is missing: {raw_path}")
+        raise CandidateSetError(missing_code, f"required file is missing: {raw_path}")
     return resolved
+
+
+def _inside(raw_path: str | None, directory: Path) -> bool:
+    """Path-only containment check (no file read, no hashing) -- cheap
+    enough for rendering a button; real verification happens on approval."""
+    if not raw_path:
+        return False
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = directory / raw_path
+    try:
+        candidate.resolve().relative_to(directory.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def current_attempt_materialised_set(incident_id: str, run_id: str,
+                                     reporting_attempt: int) -> dict[str, Any] | None:
+    """[FYP-FUNCTION] [FYP-APPROVAL] Canonical audit Phase 7: the newest
+    'materialised' (reviewed) report set of THIS case/run/Reporting attempt
+    -- a set materialised during an earlier attempt is never eligible, even
+    though report_sets rows are keyed by run only. Attributed by where its
+    manifest lives (inside reporting_attempt_dir(case, run, attempt)), a
+    path check only. Used by approve_reporting_candidate() and by
+    workflow/commands.py::available_actions()."""
+    attempt_dir = reporting_attempt_dir(incident_id, run_id, int(reporting_attempt))
+    for row in wss.list_report_sets(incident_id, run_id):   # newest first
+        if row.get("status") == "materialised" and _inside(row.get("manifest_path"), attempt_dir):
+            return row
+    return None
+
+
+def verify_candidate_set(candidate_manifest_path: str | None, *, incident_id: str, run_id: str,
+                         reporting_stage_attempt: int,
+                         trusted_root: Path | None = None) -> dict[str, Any]:
+    """[FYP-FUNCTION] [FYP-VALIDATION] [FYP-EVALUATOR] Canonical audit
+    Phase 7: the INTEGRITY verification of one candidate set, shared by the
+    Reporting stage (nothing reaches Awaiting Approval without it) and by
+    approval. Reads only the files it verifies: the manifest exists, is
+    readable and lives inside this attempt's own directory; its
+    case/run/attempt match; it lists reports; every structured/DOCX/PDF
+    file exists inside the attempt and matches its recorded SHA-256 and
+    size; and the manifest's own hash matches. Report-content validation
+    status is deliberately NOT judged here (approval-only, unchanged).
+    Raises CandidateSetError(reason_code, detail); returns the manifest."""
+    if not candidate_manifest_path:
+        raise CandidateSetError(CANDIDATE_MANIFEST_MISSING,
+                                "no candidate manifest is referenced for this attempt")
+    attempt_dir = reporting_attempt_dir(incident_id, run_id, reporting_stage_attempt)
+    manifest_path = _resolve_trusted_path(candidate_manifest_path, attempt_dir=attempt_dir,
+                                          trusted_root=trusted_root,
+                                          missing_code=CANDIDATE_MANIFEST_MISSING)
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise CandidateSetError(CANDIDATE_MANIFEST_UNREADABLE,
+                                f"candidate manifest could not be read: {exc}") from exc
+    if not isinstance(manifest, dict):
+        raise CandidateSetError(CANDIDATE_MANIFEST_UNREADABLE, "candidate manifest is not a JSON object")
+
+    identity_detail = (f"candidate manifest identity mismatch: "
+                       f"{manifest.get('incident_id')!r}/{manifest.get('run_id')!r}/"
+                       f"{manifest.get('reporting_stage_attempt')!r} != expected "
+                       f"{incident_id!r}/{run_id!r}/{reporting_stage_attempt!r}")
+    if str(manifest.get("incident_id")) != str(incident_id):
+        raise CandidateSetError(CANDIDATE_MANIFEST_IDENTITY_MISMATCH, identity_detail)
+    if manifest.get("run_id") != run_id:
+        raise CandidateSetError(CANDIDATE_MANIFEST_RUN_MISMATCH, identity_detail)
+    if manifest.get("reporting_stage_attempt") != reporting_stage_attempt:
+        raise CandidateSetError(CANDIDATE_MANIFEST_ATTEMPT_MISMATCH, identity_detail)
+
+    reports = manifest.get("reports") or []
+    if not reports:
+        raise CandidateSetError(CANDIDATE_MANIFEST_EMPTY, "candidate manifest has no reports")
+
+    for report in reports:
+        report_type = report.get("report_type")
+        for artefact_key in ("structured_content", "docx", "pdf"):
+            artefact = report.get(artefact_key) or {}
+            raw_path = artefact.get("path")
+            expected_sha256 = artefact.get("sha256")
+            if not raw_path or not expected_sha256:
+                raise CandidateSetError(
+                    CANDIDATE_FILE_MISSING,
+                    f"candidate manifest entry for '{report_type}' is missing {artefact_key}")
+            resolved = _resolve_trusted_path(raw_path, attempt_dir=attempt_dir, trusted_root=trusted_root)
+            actual_size = resolved.stat().st_size
+            actual_sha256 = hashlib.sha256(resolved.read_bytes()).hexdigest()
+            if actual_size != artefact.get("size") or actual_sha256 != expected_sha256:
+                raise CandidateSetError(
+                    CANDIDATE_FILE_HASH_MISMATCH,
+                    f"'{report_type}' {artefact_key} no longer matches the reviewed "
+                    f"candidate set (hash mismatch) — the file changed after generation")
+
+    manifest_without_hash = {k: v for k, v in manifest.items() if k != "candidate_manifest_sha256"}
+    recomputed_digest = hashlib.sha256(_canonical_manifest_bytes(manifest_without_hash)).hexdigest()
+    if recomputed_digest != manifest.get("candidate_manifest_sha256"):
+        raise CandidateSetError(
+            CANDIDATE_MANIFEST_HASH_MISMATCH,
+            "candidate manifest's own content no longer matches its published hash "
+            "— the manifest was altered after generation")
+    return manifest
 
 
 # [FYP-FUNCTION] `_canonical_manifest_bytes` — implements the canonical manifest bytes operation used by the surrounding reporting workflow.
@@ -125,55 +258,18 @@ def _verify_candidate_manifest(candidate_manifest_path: str, *, incident_id: str
     and that no report's validation.status is "error". Raises
     ReportValidationError with a specific reason on any failure. Returns
     the manifest dict on success."""
-    attempt_dir = reporting_attempt_dir(incident_id, run_id, expected_reporting_attempt)
-    manifest_path = _resolve_trusted_path(candidate_manifest_path, attempt_dir=attempt_dir)
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        raise ReportValidationError(f"candidate manifest could not be read: {exc}") from exc
-
-    if (str(manifest.get("incident_id")) != str(incident_id)
-            or manifest.get("run_id") != run_id
-            or manifest.get("reporting_stage_attempt") != expected_reporting_attempt):
-        raise ReportValidationError(
-            f"candidate manifest identity mismatch: "
-            f"{manifest.get('incident_id')!r}/{manifest.get('run_id')!r}/"
-            f"{manifest.get('reporting_stage_attempt')!r} != expected "
-            f"{incident_id!r}/{run_id!r}/{expected_reporting_attempt!r}")
-
-    reports = manifest.get("reports") or []
-    if not reports:
-        raise ReportValidationError("candidate manifest has no reports")
-
-    for report in reports:
-        report_type = report.get("report_type")
-        for artefact_key in ("structured_content", "docx", "pdf"):
-            artefact = report.get(artefact_key) or {}
-            raw_path = artefact.get("path")
-            expected_sha256 = artefact.get("sha256")
-            if not raw_path or not expected_sha256:
-                raise ReportValidationError(
-                    f"candidate manifest entry for '{report_type}' is missing {artefact_key}")
-            resolved = _resolve_trusted_path(raw_path, attempt_dir=attempt_dir)
-            actual_size = resolved.stat().st_size
-            actual_sha256 = hashlib.sha256(resolved.read_bytes()).hexdigest()
-            if actual_size != artefact.get("size") or actual_sha256 != expected_sha256:
-                raise ReportValidationError(
-                    f"'{report_type}' {artefact_key} no longer matches the reviewed "
-                    f"candidate set (hash mismatch) — the file changed after generation")
+    # Phase 7: the integrity half is the same verify_candidate_set() the
+    # Reporting stage runs before Awaiting Approval; the approval-only
+    # content rule (no report with validation.status "error") follows.
+    manifest = verify_candidate_set(
+        candidate_manifest_path, incident_id=incident_id, run_id=run_id,
+        reporting_stage_attempt=expected_reporting_attempt)
+    for report in manifest.get("reports") or []:
         validation = report.get("validation") or {}
         if validation.get("status") == "error":
             raise ReportValidationError(
-                f"'{report_type}' has a blocking validation error and cannot be "
+                f"'{report.get('report_type')}' has a blocking validation error and cannot be "
                 f"approved: {'; '.join(validation.get('errors') or []) or 'unspecified'}")
-
-    manifest_without_hash = {k: v for k, v in manifest.items() if k != "candidate_manifest_sha256"}
-    recomputed_digest = hashlib.sha256(_canonical_manifest_bytes(manifest_without_hash)).hexdigest()
-    if recomputed_digest != manifest.get("candidate_manifest_sha256"):
-        raise ReportValidationError(
-            "candidate manifest's own content no longer matches its published hash "
-            "— the manifest was altered after generation")
-
     return manifest
 
 
@@ -249,7 +345,9 @@ def approve_reporting_candidate(incident_id: str, run_id: str, *, analyst: str,
     except Exception as exc:
         raise ReportValidationError(f"reporting_result_json could not be parsed: {exc}") from exc
 
-    materialised_set = wss.get_latest_report_set(incident_id, run_id, status="materialised")
+    # Phase 7: only a reviewed set materialised for THIS Reporting attempt;
+    # an earlier attempt's materialised row is never approved for this one.
+    materialised_set = current_attempt_materialised_set(incident_id, run_id, reporting_attempt)
     if materialised_set is not None:
         candidate_manifest_path = materialised_set["manifest_path"]
     else:

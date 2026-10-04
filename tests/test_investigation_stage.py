@@ -567,10 +567,13 @@ def test_investigation_stage_passes_persisted_threat_intel_explicitly(monkeypatc
 # [FYP-CALLS] Calls: `_incident`, `_triage_result`, `handoff_to_reporting`, `loads`, `read_text`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def test_reporting_receives_persisted_threat_intel_result():
+def test_reporting_receives_persisted_threat_intel_result(tmp_path, monkeypatch):
     """handoff_to_reporting() writes threat_intel_result.json explicitly —
     Reporting no longer has to hope TI survived into investigation_result's
     prose."""
+    # Canonical audit Phase 7: the LEGACY flat handoff writes REP_DIR/inputs|
+    # outputs -- a temporary legacy root, never the tracked shared files.
+    monkeypatch.setattr(sw, "REP_DIR", tmp_path / "reporting")
     ti_payload = {"status": "completed", "risk_level": "high", "iocs": []}
     ticket_id = sw.handoff_to_reporting(
         _triage_result("INC-1"), _incident("INC-1"),

@@ -67,10 +67,44 @@ from reporting import editable_reports as er
 # [FYP-CALLS] Calls: `candidate_manifest_path`, `confirm_report`, `dumps`, `export_docx`, `export_pdf`, `export_section_docx`, `export_section_pdf`, `finalize_candidate_manifest`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
+def _run_scoped_identity(incident_id: str | None) -> tuple[str | None, int | None, str | None]:
+    """[FYP-VALIDATION] Canonical audit Phase 7: in run-scoped mode the case,
+    run and Reporting attempt are mandatory and must agree with what the
+    engine supplied -- no default attempt, no file-derived case. Returns
+    (run_id, attempt, error); error is "<reason_code>: <detail>" or None."""
+    missing = [k for k in ("REPORTING_OUTPUT_DIR", "SOC_CASE_ID", "SOC_RUN_ID", "SOC_REPORTING_ATTEMPT")
+               if not str(os.getenv(k) or "").strip()]
+    if not incident_id:
+        missing.append("case argument")
+    if missing:
+        return None, None, "reporting_workspace_incomplete: run-scoped export is missing " + ", ".join(missing)
+    if str(incident_id) != os.environ["SOC_CASE_ID"]:
+        return None, None, (f"reporting_workspace_identity_mismatch: asked to export {incident_id!r} "
+                            f"for case {os.environ['SOC_CASE_ID']!r}")
+    try:
+        attempt = int(os.environ["SOC_REPORTING_ATTEMPT"])
+    except ValueError:
+        return None, None, "reporting_workspace_incomplete: SOC_REPORTING_ATTEMPT is not an integer"
+    return os.environ["SOC_RUN_ID"], attempt, None
+
+
 def main() -> int:
     incident_id = sys.argv[1] if len(sys.argv) > 1 else None
     output_dir = settings.OUTPUT_DIR
     result: dict = {"incident_id": incident_id}
+    mode = (os.getenv("REPORTING_WORKSPACE_MODE") or "legacy").strip().lower()
+    if mode not in ("run_scoped", "legacy"):
+        result["candidate_manifest_error"] = f"reporting_workspace_mode_invalid: {mode!r}"
+        print("EXPORT_JSON:" + json.dumps(result, default=str))
+        return 1
+    run_scoped = mode == "run_scoped"
+    if run_scoped:
+        scoped_run_id, scoped_attempt, error = _run_scoped_identity(incident_id)
+        if error:
+            # Refuse before confirming/exporting anything.
+            result["candidate_manifest_error"] = error
+            print("EXPORT_JSON:" + json.dumps(result, default=str))
+            return 1
 
     # Combined export requires every section confirmed; the workflow is
     # headless so sections are auto-confirmed here. Analysts can still edit
@@ -117,12 +151,15 @@ def main() -> int:
     # alongside REPORTING_INPUT_DIR/REPORTING_OUTPUT_DIR) rather than new
     # positional CLI args, so the existing `python export_documents.py
     # [incident_id]` invocation shape is unchanged.
-    run_id = os.getenv("SOC_RUN_ID")
-    attempt_raw = os.getenv("SOC_REPORTING_ATTEMPT")
-    try:
-        reporting_stage_attempt = int(attempt_raw) if attempt_raw else 1
-    except ValueError:
-        reporting_stage_attempt = 1
+    if run_scoped:
+        run_id, reporting_stage_attempt = scoped_run_id, scoped_attempt
+    else:
+        run_id = os.getenv("SOC_RUN_ID")
+        attempt_raw = os.getenv("SOC_REPORTING_ATTEMPT")
+        try:
+            reporting_stage_attempt = int(attempt_raw) if attempt_raw else 1
+        except ValueError:
+            reporting_stage_attempt = 1
     try:
         candidate_manifest = er.finalize_candidate_manifest(
             output_dir, incident_id, run_id, reporting_stage_attempt)

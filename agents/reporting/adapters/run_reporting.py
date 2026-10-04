@@ -44,7 +44,9 @@ REPO_ROOT_BOOTSTRAP = str(PROJECT_ROOT_BOOTSTRAP.parent.parent)
 sys.path = [p for p in sys.path if p != REPO_ROOT_BOOTSTRAP]
 sys.path.insert(0, REPO_ROOT_BOOTSTRAP)
 
-from adapters.common import INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, copy_if_exists, latest_file, now_iso, read_json, run_script, write_json
+from adapters.common import (INPUTS_DIR, OUTPUTS_DIR, PROJECT_ROOT, RUN_SCOPED, WorkspaceConfigError,
+                             copy_if_exists, latest_file, now_iso, read_json, run_script,
+                             verify_run_scoped_workspace, write_json)
 from agents.reporting.backend.reporting_context_resolver import ensure_reporting_inputs
 
 
@@ -79,6 +81,9 @@ def _copy_first_existing(candidates: list[Path], dest: Path) -> bool:
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def _prepare_inputs(ticket_id: str | None = None) -> None:
+    if RUN_SCOPED:
+        _prepare_run_scoped_inputs()
+        return
     copy_if_exists(OUTPUTS_DIR / "triage_result.json", INPUTS_DIR / "triage_result.json")
     inv_candidates = []
     approval_candidates = []
@@ -104,7 +109,27 @@ def _prepare_inputs(ticket_id: str | None = None) -> None:
     ])
     _copy_first_existing(inv_candidates, INPUTS_DIR / "investigation_result.json")
     _copy_first_existing(approval_candidates, INPUTS_DIR / "approval_result.json")
-    ensure_reporting_inputs(PROJECT_ROOT, ticket_id=ticket_id)
+    # Phase 7: the legacy bridge uses this process's CONFIGURED legacy
+    # folders -- never PROJECT_ROOT's alongside them.
+    ensure_reporting_inputs(PROJECT_ROOT, ticket_id=ticket_id,
+                            inputs_dir=INPUTS_DIR, outputs_dir=OUTPUTS_DIR)
+    if not (INPUTS_DIR / "enriched_alert.json").exists():
+        copy_if_exists(OUTPUTS_DIR / "enriched_alert.json", INPUTS_DIR / "enriched_alert.json")
+
+
+# Hand-off files workflow/engine.py::handoff_to_reporting() writes only to the
+# attempt's outputs/ that input_loader reads from inputs/.
+_RUN_SCOPED_LOCAL_COPIES = ("triage_result.json", "investigation_result.json")
+
+
+def _prepare_run_scoped_inputs() -> None:
+    """[FYP-FUNCTION] Canonical audit Phase 7: run-scoped preparation is a
+    purely LOCAL outputs/ -> inputs/ copy inside this one Reporting attempt.
+    The canonical hand-off (Phases 3-6) already wrote every input, so no
+    shared folder, per-ticket/'unknown' candidate, approval-file fallback or
+    ensure_reporting_inputs() bridge is consulted."""
+    for name in _RUN_SCOPED_LOCAL_COPIES:
+        copy_if_exists(OUTPUTS_DIR / name, INPUTS_DIR / name)
     if not (INPUTS_DIR / "enriched_alert.json").exists():
         copy_if_exists(OUTPUTS_DIR / "enriched_alert.json", INPUTS_DIR / "enriched_alert.json")
 
@@ -473,7 +498,10 @@ def _copy_report_artifacts(ticket_id: str | None, wrapper: dict[str, Any]) -> No
 # [FYP-CALLS] Calls: `_copy_report_artifacts`, `_error_summary`, `_find_reporting_result`, `_first`, `_has_report_artifacts`, `_is_new_enough`, `_iso_to_ts`, `_latest_manifest`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) -> dict[str, Any]:
+def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None,
+                                identity: dict[str, Any] | None = None) -> dict[str, Any]:
+    """`identity` (the engine-supplied canonical case/run/attempt) is given
+    only in run-scoped mode -- see _apply_run_scoped_identity()."""
     started_ts = _iso_to_ts(run_result.get("started_at"))
     result_path = _find_reporting_result(ticket_id, started_ts=started_ts)
     final_txt_path = latest_file("*/reports/editable/final_incident_report.txt", OUTPUTS_DIR) or latest_file("*/final_report.txt", OUTPUTS_DIR)
@@ -484,9 +512,20 @@ def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) 
     processed = read_json(INPUTS_DIR / "processed_alert.json", {}) or read_json(OUTPUTS_DIR / "processed_alert.json", {}) or {}
     enriched = read_json(INPUTS_DIR / "enriched_alert.json", {}) or read_json(OUTPUTS_DIR / "enriched_alert.json", {}) or {}
     triage = read_json(OUTPUTS_DIR / "triage_result.json", {}) or read_json(INPUTS_DIR / "triage_result.json", {}) or {}
-    inv = read_json(OUTPUTS_DIR / "investigation_result.json", {}) or read_json(INPUTS_DIR / "investigation_result.json", {}) or read_json(OUTPUTS_DIR / "unknown" / "investigation_result.json", {}) or {}
-    approval = read_json(OUTPUTS_DIR / "investigation_approval_result.json", {}) or read_json(INPUTS_DIR / "investigation_approval_result.json", {}) or {}
+    if identity is not None:
+        # Phase 7: only the canonical hand-off -- no 'unknown/' candidate and
+        # no approval file (run-scoped approvals reach the report through
+        # approval_history.json, Phase 4).
+        inv = read_json(OUTPUTS_DIR / "investigation_result.json", {}) or read_json(INPUTS_DIR / "investigation_result.json", {}) or {}
+        approval: dict[str, Any] = {}
+    else:
+        inv = read_json(OUTPUTS_DIR / "investigation_result.json", {}) or read_json(INPUTS_DIR / "investigation_result.json", {}) or read_json(OUTPUTS_DIR / "unknown" / "investigation_result.json", {}) or {}
+        approval = read_json(OUTPUTS_DIR / "investigation_approval_result.json", {}) or read_json(INPUTS_DIR / "investigation_approval_result.json", {}) or {}
     manifest = _latest_manifest(ticket_id, started_ts=started_ts)
+    # Display defaults exist for legacy/standalone runs only; a run-scoped
+    # wrapper takes its identity from the canonical workflow case instead.
+    incident_default = None if identity is not None else (ticket_id or "INC-0001")
+    alert_default = None if identity is not None else "UNKNOWN-ALERT"
 
     if generated:
         wrapper = dict(generated)
@@ -504,8 +543,8 @@ def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) 
             wrapper["status"] = "failed"
             wrapper["report_status"] = "failed"
         wrapper.setdefault("ticket_id", ticket_id)
-        wrapper["incident_id"] = _first(processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), inv.get("incident_id"), wrapper.get("incident_id"), default=ticket_id or "INC-0001")
-        wrapper["alert_id"] = _first(processed.get("alert_id"), enriched.get("alert_id"), triage.get("alert_id"), inv.get("alert_id"), wrapper.get("alert_id"), default="UNKNOWN-ALERT")
+        wrapper["incident_id"] = _first(processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), inv.get("incident_id"), wrapper.get("incident_id"), default=incident_default)
+        wrapper["alert_id"] = _first(processed.get("alert_id"), enriched.get("alert_id"), triage.get("alert_id"), inv.get("alert_id"), wrapper.get("alert_id"), default=alert_default)
         wrapper["title"] = _first(processed.get("alert_title"), processed.get("alert_name"), enriched.get("alert_title"), enriched.get("alert_name"), triage.get("title"), inv.get("title"), wrapper.get("title"), default="SOC incident")
         wrapper["reporting_mode"] = _resolve_reporting_mode(inv, approval, wrapper)
         wrapper["investigation_status"] = inv.get("status") or wrapper.get("investigation_status")
@@ -516,9 +555,11 @@ def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) 
             wrapper["error_summary"] = _error_summary(run_result)
         wrapper["report_manifest"] = manifest or wrapper.get("report_manifest") or {}
         wrapper["dashboard_copy_created_at"] = now_iso()
-        wrapper["real_reporting_result_path"] = str(result_path.relative_to(PROJECT_ROOT)) if result_path else None
-        wrapper["final_report_text_path"] = str(final_txt_path.relative_to(PROJECT_ROOT)) if final_txt_path else None
+        wrapper["real_reporting_result_path"] = _artifact_path(result_path, identity)
+        wrapper["final_report_text_path"] = _artifact_path(final_txt_path, identity)
         wrapper["subprocess"] = run_result
+        if identity is not None:
+            _apply_run_scoped_identity(wrapper, identity, generated)
         _copy_report_artifacts(ticket_id, wrapper)
         return wrapper
 
@@ -530,8 +571,8 @@ def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) 
         "status": fallback_status,
         "report_status": fallback_status,
         "ticket_id": ticket_id,
-        "incident_id": _first(processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), inv.get("incident_id"), default=ticket_id or "INC-0001"),
-        "alert_id": _first(processed.get("alert_id"), enriched.get("alert_id"), triage.get("alert_id"), inv.get("alert_id"), default="UNKNOWN-ALERT"),
+        "incident_id": _first(processed.get("incident_id"), enriched.get("incident_id"), triage.get("incident_id"), inv.get("incident_id"), default=incident_default),
+        "alert_id": _first(processed.get("alert_id"), enriched.get("alert_id"), triage.get("alert_id"), inv.get("alert_id"), default=alert_default),
         "title": _first(processed.get("alert_title"), processed.get("alert_name"), enriched.get("alert_title"), enriched.get("alert_name"), triage.get("title"), inv.get("title"), default="SOC incident"),
         "reporting_mode": _resolve_reporting_mode(inv, approval),
         "summary": (
@@ -551,8 +592,48 @@ def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) 
         "subprocess": run_result,
         "created_at": now_iso(),
     }
+    if identity is not None:
+        _apply_run_scoped_identity(wrapper, identity, {})
     _copy_report_artifacts(ticket_id, wrapper)
     return wrapper
+
+
+def _artifact_path(path: Path | None, identity: dict[str, Any] | None) -> str | None:
+    """Legacy: relative to the Reporting package (unchanged). Run-scoped:
+    relative to the attempt directory -- never an absolute local path."""
+    if not path:
+        return None
+    if identity is None:
+        return str(path.relative_to(PROJECT_ROOT))
+    try:
+        return path.relative_to(OUTPUTS_DIR.parent).as_posix()
+    except ValueError:
+        return path.name
+
+
+def _apply_run_scoped_identity(wrapper: dict[str, Any], identity: dict[str, Any],
+                               generated: dict[str, Any]) -> None:
+    """[FYP-FUNCTION] [FYP-VALIDATION] Canonical audit Phase 7: a run-scoped
+    result carries the engine-supplied case/run/attempt -- never a value
+    derived from fallback files or output paths, never a placeholder. A
+    generated result naming another case, or a missing alert identity, fails
+    the result instead of being relabelled."""
+    case_id = str(identity["case_id"])
+    problem = None
+    generated_case = _clean(generated.get("incident_id"))
+    if generated_case is not None and str(generated_case) != case_id:
+        problem = ("reporting_result_identity_mismatch",
+                   f"the Reporting Agent generated a result for {generated_case!r}, not {case_id!r}")
+    elif not wrapper.get("alert_id"):
+        problem = ("missing_alert_identity", f"no alert identity for case {case_id!r} in the hand-off")
+    wrapper["incident_id"] = case_id
+    wrapper["run_id"] = identity["run_id"]
+    wrapper["reporting_stage_attempt"] = identity["reporting_attempt"]
+    if problem:
+        wrapper["status"] = wrapper["report_status"] = "failed"
+        wrapper["reason_code"] = problem[0]
+        wrapper["error_summary"] = f"{problem[0]}: {problem[1]}"
+        wrapper["summary"] = "Reporting result rejected: " + problem[1]
 
 
 # [FYP-FUNCTION] `main` — orchestrates the main entry point and its ordered stage adapter operations.
@@ -566,6 +647,16 @@ def _normalise_reporting_result(run_result: dict, ticket_id: str | None = None) 
 def main() -> int:
     strict = os.getenv("STRICT_AGENT_MODE", "false").lower() == "true"
     ticket_id = os.getenv("SOC_TICKET_ID") or None
+    identity = None
+    if RUN_SCOPED:
+        # Phase 7: validate the run-scoped workspace BEFORE any work. On
+        # failure nothing is written anywhere (the output folder itself may
+        # be the untrusted part); the engine reports the reason from stderr.
+        try:
+            identity = verify_run_scoped_workspace()
+        except WorkspaceConfigError as exc:
+            print(f"[Reporting Adapter] {exc}", file=sys.stderr)
+            return 2
     _prepare_inputs(ticket_id=ticket_id)
     _clear_stale_reporting_wrappers(ticket_id=ticket_id)
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
@@ -584,7 +675,7 @@ def main() -> int:
     run_result = run_script(PROJECT_ROOT / "agents" / "reporting_agent.py", timeout=int(os.getenv("REPORTING_TIMEOUT", "420")), extra_env=extra_env)
     if strict and not run_result.get("success"):
         raise RuntimeError(run_result.get("stderr") or "Reporting agent failed")
-    output = _normalise_reporting_result(run_result, ticket_id=ticket_id)
+    output = _normalise_reporting_result(run_result, ticket_id=ticket_id, identity=identity)
     write_json(OUTPUTS_DIR / "final_report.json", output)
     write_json(OUTPUTS_DIR / "reporting_result.json", output)
     write_json(INPUTS_DIR / "reporting_result.json", output)

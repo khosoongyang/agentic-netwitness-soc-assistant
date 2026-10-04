@@ -2128,9 +2128,20 @@ def finalize_candidate_manifest(output_dir: Path, incident_id: str, run_id: str,
     reporting_approval.approve_reporting_candidate())."""
     from reporting.report_validator import validate_generated_report
 
-    manifest = load_manifest(output_dir, incident_id)
-    if not manifest:
-        raise FileNotFoundError("No report manifest found — cannot finalize a candidate set.")
+    # Canonical audit Phase 7: ONLY this incident's own report_manifest.json.
+    # load_manifest() falls back to the newest manifest of ANY incident in
+    # output_dir, which would publish another case's reports under this
+    # case's identity -- never acceptable here, in either workspace mode.
+    own_manifest_path = manifest_path(output_dir, incident_id) if incident_id else None
+    if own_manifest_path is None or not own_manifest_path.exists():
+        raise FileNotFoundError(
+            f"No report manifest found for {incident_id!r} — cannot finalize a candidate set "
+            "(another incident's report manifest is never used).")
+    manifest = json.loads(own_manifest_path.read_text(encoding="utf-8"))
+    if str(manifest.get("incident_id") or "") != str(incident_id):
+        raise FileNotFoundError(
+            f"report manifest identity mismatch: {own_manifest_path.name} records "
+            f"{manifest.get('incident_id')!r}, expected {incident_id!r} — cannot finalize a candidate set.")
 
     # [FYP-FUNCTION] `_build_report_entries` — constructs build report entries output for the next report generation and export consumer or analyst-facing view.
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.

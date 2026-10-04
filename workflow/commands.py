@@ -429,7 +429,8 @@ def approve_stage(
             ) from exc
         raise _canonical_conflict(exc, default_code="APPROVAL_CONFLICT") from exc
     except Exception as exc:
-        if exc.__class__.__name__ == "ReportValidationError":
+        # Phase 7: CandidateSetError (an integrity failure) is a subclass.
+        if any(cls.__name__ == "ReportValidationError" for cls in type(exc).__mro__):
             raise WorkflowCommandError("APPROVAL_CONFLICT", str(exc)) from exc
         raise
     return {**result, "case_id": str(case_id), "stage": stage, "decision": "approve"}
@@ -620,8 +621,14 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
             # unreviewed AI-generated candidate. This is the one place
             # that decides whether Approve is actionable, so the UI never
             # needs a second, competing approval control.
-            pending_reviewed_set = wss.get_latest_report_set(
-                str(state.get("id") or ""), state.get("run_id"), status="materialised")
+            # Canonical audit Phase 7: only a reviewed set materialised for
+            # the CURRENT Reporting attempt counts (a cheap path check -- the
+            # actual approval still fully verifies it); an earlier attempt's
+            # materialised row never enables Approve.
+            from agents.reporting.reporting_approval import current_attempt_materialised_set
+
+            pending_reviewed_set = current_attempt_materialised_set(
+                str(state.get("id") or ""), state.get("run_id"), int(state.get("reporting_attempt") or 1))
             if pending_reviewed_set is None:
                 approve_enabled = False
                 approve_reason = "Submit the reviewed report set for approval first (all four reports must be Reviewed)."
