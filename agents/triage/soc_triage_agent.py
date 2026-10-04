@@ -74,7 +74,7 @@ from .raw_alerts import alert_name, group_signatures, rank_signatures
 # ranked signature compaction replacing first-12-alerts truncation.
 # [FYP-TRIAGE-STEP3] bumped: context.analyst_note (delimited analyst-provided
 # context) and context.suppression_match leaves; prompt rule for both.
-TRIAGE_PROMPT_VERSION = "2026-10-audit-prompt-hardening"
+TRIAGE_PROMPT_VERSION = "2026-10-audit-observed-metakeys"
 
 # Keys the SOC Classification call returns for the disposition assessment.
 # They are split off cls_data (so the trace keeps its historical shape) and
@@ -1244,6 +1244,52 @@ _METAKEY_MAP: dict[str, list[str]] = {
     "process.name": ["processName", "process_name"],
     "os.version":   ["osVersion", "os_version", "operatingSystem", "osType"],
 }
+# [AUDIT T-17] Every IOC-checklist meta key gets a mapping. Aliases are
+# APPENDED (earlier aliases still win, so existing extractions are
+# unchanged) and use the NetWitness field names measured in demo/*.json and
+# soc_db incidents (events.port_dst, ip_proto, filename_src, checksum_src,
+# dir_path_src, cert_thumbprint, device_type, event_time, OS, size, ...).
+# A leading "=" means "exact last path segment only" so short names (OS,
+# size, pid, service) cannot match unrelated keys by suffix. Keys with no
+# real field in the data (cpu.usage, packets.*, boot.config, ...) map only
+# to their literal spellings: they are never invented, and the ticket only
+# lists keys actually observed (see _observed_metakeys).
+for _mk, _aliases in {
+    "ip.src":            ["ipSrc"],
+    "protocol":          ["ip_proto", "ipProto"],
+    "geo.country":       ["country_src", "country_dst"],
+    "file.name":         ["filename_src", "filename_dst", "=filename"],
+    "file.hash":         ["checksum_src", "checksum_dst", "file_SHA256"],
+    "process.name":      ["filename_src"],
+    "os.version":        ["=OS"],
+    "port.dst":          ["port_dst", "dstPort", "destinationPort", "destination.port"],
+    "device.type":       ["device_type", "deviceType"],
+    "event.time":        ["event_time", "eventTime"],
+    "file.path":         ["file_path", "filePath", "dir_path_src", "dir_path_dst"],
+    "file.size":         ["file_size", "fileSize", "size_bytes", "=size"],
+    "cert.hash":         ["cert_thumbprint", "certThumbprint", "cert_hash"],
+    "cert.issuer":       ["cert_issuer", "certIssuer"],
+    "alert.type":        ["alert_type", "alertType", "moduleType"],
+    "network.service":   ["network_service", "=service"],
+    "process.path":      ["process_path", "processPath", "dir_path_src"],
+    "process.pid":       ["process_id", "processId", "=pid"],
+    "user.role":         ["user_role", "userRole"],
+    "account.action":    ["account_action", "accountAction"],
+    "change.type":       ["change_type", "changeType"],
+    "config.change":     ["config_change", "configChange"],
+    "permission.change": ["permission_change", "permissionChange"],
+    "firmware.version":  ["firmware_version", "firmwareVersion"],
+    "boot.config":       ["boot_config", "bootConfig"],
+    "bytes.in":          ["bytes_in", "bytesIn"],
+    "bytes.transferred": ["bytes_transferred", "bytesTransferred"],
+    "network.interface": ["network_interface", "networkInterface"],
+    "packets.in":        ["packets_in", "packetsIn"],
+    "packets.out":       ["packets_out", "packetsOut"],
+    "packets.malformed": ["packets_malformed", "malformedPackets"],
+    "cpu.usage":         ["cpu_usage", "cpuUsage"],
+}.items():
+    _existing = _METAKEY_MAP.setdefault(_mk, [])
+    _existing.extend(a for a in _aliases if a not in _existing)
 
 # Values that carry no forensic information — never surface them as extracted
 # metakey values (they'd feed "Unknown" straight into the investigation agent).
@@ -1296,9 +1342,10 @@ def _extract_metakey_values(incident: dict, metakeys: list[str]) -> dict:
     for mk in metakeys:
         hits: list = []
         for cand in _METAKEY_MAP.get(mk, []):
-            nc = norm(cand)
+            exact = cand.startswith("=")
+            nc = norm(cand.lstrip("="))
             for tail, last, val in norm_flat:
-                if (last == nc or tail.endswith(nc)) and val not in hits:
+                if (last == nc or (not exact and tail.endswith(nc))) and val not in hits:
                     hits.append(val)
                 if len(hits) >= 5:
                     break
@@ -1307,6 +1354,14 @@ def _extract_metakey_values(incident: dict, metakeys: list[str]) -> dict:
         if hits:
             values[mk] = hits[0] if len(hits) == 1 else hits
     return values
+
+
+def _observed_metakeys(incident: dict, implied: list[str]) -> tuple[list[str], dict]:
+    """[AUDIT T-17] (keys, values) for the checklist-implied meta keys that
+    actually carry a value in this incident. The ticket's "Matched
+    Meta-Keys" must never name a field the incident does not have."""
+    values = _extract_metakey_values(incident, list(implied))
+    return sorted(k for k in set(implied) if k in values), values
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1852,9 +1907,12 @@ class TriageAgent:
 
             # Phase 1 — IOC
             ioc_data = self._run_ioc(incident, parsed_context)
+            # [AUDIT T-17] observed keys only; implied keys kept for the trace.
+            observed_metakeys, observed_values = _observed_metakeys(incident, ioc_data["all_metakeys"])
             ioc_step = {
                 "step": "IOC Checklist", "status": "ok",
-                "matched_metakeys": ioc_data["all_metakeys"],
+                "matched_metakeys": observed_metakeys,
+                "implied_metakeys": ioc_data["all_metakeys"],
                 "ioc_summary":      ioc_data["ioc_summary"],
                 "total_ioc_count":  ioc_data["total_ioc_count"],
                 "per_category":     ioc_data["per_category"],
@@ -1915,7 +1973,7 @@ class TriageAgent:
             }
             return dump_triage_agent_output(validate_triage_agent_output(error_result))
 
-        matched_metakeys = ioc_data["all_metakeys"]
+        matched_metakeys = observed_metakeys
 
         # Output 1 — meta-key payload
         metakeys_payload = {
@@ -1923,7 +1981,7 @@ class TriageAgent:
             "incident_title":   inc_title,
             "timestamp":        timestamp,
             "matched_metakeys": matched_metakeys,
-            "metakey_values":   _extract_metakey_values(incident, matched_metakeys),
+            "metakey_values":   observed_values,
             "ioc_summary":      ioc_data["ioc_summary"],
             "risk_level":       risk_level,
             "classification":   classification,

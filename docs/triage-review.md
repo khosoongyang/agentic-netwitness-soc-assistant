@@ -55,7 +55,9 @@ The note does **not** lower uncertainty: `uncertainty` measures how complete
 the machine-measured evidence is (`guards.CORE_EVIDENCE`), and a human claim must
 not be reflected back to the reviewer as AI confidence (audit T-18, a deliberate
 choice).
-`TRIAGE_PROMPT_VERSION` = `2026-10-audit-prompt-hardening` (was `2026-10-step3-analyst-note-suppression` before the audit T-08 delimiter hardening).
+`TRIAGE_PROMPT_VERSION` = `2026-10-audit-observed-metakeys` (bumped for audit T-08 delimiter hardening and T-17 observed-only meta keys, which change cached results; was `2026-10-step3-analyst-note-suppression`).
+
+The ticket's **Matched Meta-Keys** lists only meta keys that carry a value in the incident (audit T-17). The keys implied by the matched IOC-checklist rows stay visible per category in the IOC trace (`category_metakeys`) and as `implied_metakeys` on the trace step.
 
 ## 4. Scripts
 
