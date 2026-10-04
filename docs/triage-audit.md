@@ -9,7 +9,7 @@ copies; outputs below are pasted verbatim (trimmed).
 ## 0. Fix status (update after the fix pass)
 
 Fixed in severity order on top of `dbdaffb`; each fix has a failing-first
-regression test. After the pass: `pytest -q` **1285 passed, 9 failed** (the
+regression test. After the pass (HEAD 637c0e1): `pytest -q` **1287 passed, 9 failed** (the
 same 9 pre-existing failures, verified identical by name), clean git status
 after the run; acceptance step 1 **17/17**, step 2 **23/23**, step 3 **23/23**;
 offline eval acceptable-hit **0.9167**, must_not violations **0**, consistency
