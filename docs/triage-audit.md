@@ -9,7 +9,7 @@ copies; outputs below are pasted verbatim (trimmed).
 ## 0. Fix status (update after the fix pass)
 
 Fixed in severity order on top of `dbdaffb`; each fix has a failing-first
-regression test. After the pass (HEAD 637c0e1): `pytest -q` **1287 passed, 9 failed** (the
+regression test. After the pass (HEAD 0bb1585): `pytest -q` **1290 passed, 9 failed** (the
 same 9 pre-existing failures, verified identical by name), clean git status
 after the run; acceptance step 1 **17/17**, step 2 **23/23**, step 3 **23/23**;
 offline eval acceptable-hit **0.9167**, must_not violations **0**, consistency
@@ -18,7 +18,7 @@ offline eval acceptable-hit **0.9167**, must_not violations **0**, consistency
 | ID | Status | Commit | Regression test / note |
 |---|---|---|---|
 | T-01 | Fixed | 05c6903 | `tests/test_block_editor_xss.py` (real blockEditor.js in headless Chrome: 5 handlers fired before, 0 after) |
-| T-02 | Fixed | 86885b5 | `test_reviews_endpoint_sanitizes_packet_snapshot` |
+| T-02 | Fixed | 86885b5, 0bb1585 | `test_reviews_endpoint_sanitizes_packet_snapshot`. Follow-up found by re-running the audit repros: the LOLBAS leaf `source` itself held the absolute cache path (prompts, stored snapshots, blind-review HTML); now file name only (`test_lolbas_source_names_no_local_path`, `test_lolbas_failure_reason_in_packet_names_no_local_path`) |
 | T-03 | Fixed | 7d7483c | `tests/test_disposition_consistency.py`. Final verdict uses substantiation wording only, shows the analyst verdict, flags a strong-substantiation vs FP/benign clash as a conflict |
 | T-04 | Fixed | 7d7483c | AI-summary context + prompt carry disposition / uncertainty / guard actions |
 | T-05 | Fixed | 7d7483c | SOC Triage Review report: Disposition / Analyst Review / Triage Uncertainty rows |
@@ -41,6 +41,29 @@ offline eval acceptable-hit **0.9167**, must_not violations **0**, consistency
 | T-22 | Partly fixed | 54eb9b6, cbcd0d8 | 173 stale paths in comments/docstrings (27 files) rewritten; `tests/test_fyp_annotation_paths.py`. **Open:** module split (refactor), 4 reporting-subproject annotation paths name files that exist nowhere. The 3 user-visible strings that named removed modules (Reporting thinking text, stale-write error, validation rationale) were fixed in cbcd0d8 |
 | T-23 | Fixed | 34d9789 | Docs check in `tests/test_triage_guard_decisions.py` |
 | T-24 | **User decision** | - | Unchanged: running the app still adds the 4 review tables to the tracked `soc_db/soc_incidents.db` |
+
+### Post-fix re-run of the original audit repros (unchanged scripts)
+
+| Repro | Before (audit) | After |
+|---|---|---|
+| T-02 reviews endpoint path leak / LOLBAS source path | True / True | False / False |
+| T-03 verdict mentions disposition | False | True |
+| T-07 "What does this ticket say?" runs TriageAgent | True | False |
+| T-08 attacker delimiter lines in packet | >0 | 0 |
+| T-10 tampered LOLBAS cache accepted | True | rejected (dataset None; the old repro crashes on `ds.meta`) |
+| T-11 169.254.1.1 / 100.64.0.1 / fd00::1 / ::1 private | False x4 | True x4 |
+| T-12 two forced runs | #00000A #00001A | #00000A #00000A |
+| T-13 `+08:00` 10:00 | 10:00:00 UTC | 02:00:00 UTC |
+| T-14 created_at | naive | `+00:00` |
+| T-15 no-key triage error | `Connection error.` | `LLM_NOT_CONFIGURED: ...` |
+| T-16 JSON mode for non-OpenAI base_url | True | False |
+| T-18 analyst note in CORE_EVIDENCE | False | False (decided, documented) |
+
+End-to-end through the real Flask app on a temp DB (analyst approves
+`benign_expected` over AI `needs_info`): reviews endpoint HTTP 200 with no path
+leak; Ask Aegis facts `disposition: Benign-expected (analyst)`,
+`analyst_verdict: AI: Needs-info -> Analyst: Benign-expected`, and the chat
+prompt carries that line. All 98 mapped regression checks pass together.
 
 ## 1. Summary
 
