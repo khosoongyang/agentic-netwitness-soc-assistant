@@ -1663,15 +1663,6 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
 // fabricating content when its source field is empty/absent.
 // ══════════════════════════════════════════════════════════════════════════
 
-function _provEntry(entry) {
-  return entry && typeof entry === "object" && "value" in entry ? entry : { value: entry };
-}
-
-function provenanceRow(label, entry) {
-  const e = _provEntry(entry);
-  const title = e.source_stage ? `Source: ${e.source_stage}${e.source_field ? ` · ${e.source_field}` : ""}` : "";
-  return `<tr><th scope="row">${escapeHTML(label)}</th><td title="${escapeHTML(title)}">${escapeHTML(e.value ?? "—")}</td></tr>`;
-}
 
 // Display order follows the reference layout; any key the checklist adds
 // later is still shown, after these.
@@ -1771,26 +1762,16 @@ export function investigationOverviewTab(workspace) {
     </section>
   ` : "";
 
-  if (!Object.keys(ctx).length && !findingsSection) return assessment || emptyState("No case overview is available yet.");
-  const rows = [
-    provenanceRow("NetWitness Severity", ctx.netwitness_severity),
-    provenanceRow("Triage Classification", ctx.triage_classification),
-    provenanceRow("Host", ctx.host),
-    provenanceRow("User", ctx.user),
-    provenanceRow("NetWitness Status", ctx.netwitness_status),
-    provenanceRow("Workflow Status", ctx.workflow_status),
-    provenanceRow("IOC IP Count", ctx.ioc_ip_count),
-  ].join("");
   // Investigation Severity (stage conclusion) and the Unified Verdict
   // (case-level aggregation) are deliberately separate groups: the verdict
   // sits in its own divided .verdict-section, never inside the Investigation
   // assessment.
   const verdict = unifiedVerdictCard(ctx.unified_verdict);
+  if (!assessment && !verdict && !findingsSection) return emptyState("No case overview is available yet.");
   return `<div class="stage-sections">
     ${assessment}
     ${verdict ? `<div class="verdict-section" aria-label="Case-level assessment">${verdict}</div>` : ""}
     ${findingsSection}
-    <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>
   </div>`;
 }
 
@@ -1837,9 +1818,6 @@ function investigationOutputTab(workspace) {
   parts.push(`<p>${result.severity ? severityBadge(result.severity, result.severity_justification) : ""} ${result.confidence ? confidenceBadge(result.confidence, result.confidence_justification) : ""} ${statusBadge(result.status)}</p>`);
   if (output.errors?.length) parts.push(`<p class="notice">${output.errors.map((e) => escapeHTML(e)).join("<br>")}</p>`);
   if (output.last_error) parts.push(`<p class="notice">${escapeHTML(output.last_error)}</p>`);
-  if (output.warnings?.length) {
-    parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Evidence Gaps</h3><ul class="data-list">${output.warnings.map((w) => `<li>${escapeHTML(w)}</li>`).join("")}</ul></section>`);
-  }
   if (result.summary) {
     parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Summary</h3><p>${escapeHTML(result.summary)}</p></section>`);
   }
