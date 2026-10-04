@@ -413,3 +413,38 @@ def test_small_packet_render_is_unchanged_by_budget():
         v = "—" if leaf["status"] == "missing" else ep.defang_prompt_delimiters(ep._render_value(path, leaf["value"]))
         lines.append(f"{path} [{leaf['status']}] = {v}")
     assert text == "\n".join(lines)
+
+
+def _phase_prompts(tmp_path, monkeypatch, inc, **kw):
+    from test_triage_step1_agent_integration import FakeLLM, _history_db
+    monkeypatch.setattr(soc_triage_agent, "_TICKET_DB", tmp_path / "t.db")
+    soc_triage_agent._ticket_db_init()
+    a = soc_triage_agent.TriageAgent(baseline_db_path=_history_db(tmp_path / "h.db"))
+    fake = FakeLLM()
+    monkeypatch.setattr(a, "_call", fake)
+    a.triage(inc, force=True, data_availability=dict(LIVE, alerts_count=len(inc.get("alerts") or [])), **kw)
+    return {k: "".join(m.content for m in v) for k, v in fake.prompts.items()}
+
+
+def test_every_llm_call_fits_the_total_prompt_budget(inc_52825, tmp_path, monkeypatch):
+    """Audit T-19 remainder: per-call prompts were ~18-21k chars and
+    unbounded. Each call now fits _MAX_CALL_PROMPT_CHARS, even with a maximal
+    analyst note, and the top-ranked signature still reaches the model."""
+    note = {"note": "x" * 2000, "analyst": "A", "created_at": "t"}
+    for i, kw in enumerate(({}, {"analyst_note": note})):
+        sub = tmp_path / str(i)
+        sub.mkdir()
+        prompts = _phase_prompts(sub, monkeypatch, inc_52825, **kw)
+        assert set(prompts) == {"IOC Checklists", "Risk Rating", "SOC Classification"}
+        for phase, text in prompts.items():
+            assert len(text) <= soc_triage_agent._MAX_CALL_PROMPT_CHARS, (phase, len(text), kw.keys())
+        assert "Disables UAC" in prompts["SOC Classification"]
+
+
+def test_small_incident_block_is_not_squeezed(tmp_path, monkeypatch):
+    from test_triage_step1_agent_integration import _incident
+    inc = _incident(id="INC-SMALL")
+    prompts = _phase_prompts(tmp_path, monkeypatch, inc)
+    full = soc_triage_agent._untrusted_block(soc_triage_agent._compact_incident(inc, None))
+    for phase in ("Risk Rating", "SOC Classification"):
+        assert full in prompts[phase]
