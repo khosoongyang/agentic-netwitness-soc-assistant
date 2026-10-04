@@ -32,6 +32,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from agents.parsing.parser_context_guard import (
+    CASE_IDENTITY_MATCH, CASE_IDENTITY_MISMATCH, resolve_case_identity,
+)
+
 
 # =============================================================================
 # [FYP-SECTION] WORKFLOW ORCHESTRATION AND STATE EXECUTION, VALIDATION, AND SUPPORTING OPERATIONS
@@ -83,26 +87,31 @@ def validate_parsing_result(*, incident_id: str, parsing_result: dict,
             f"Parsing completed but returned no normalised_alert for "
             f"incident {incident_id!r}")
 
-    alert_summary = normalised_alert.get("alert_summary") or {}
-    compat_view = normalised_alert.get("compatibility_view") or {}
-    parsed_incident_id = str(
-        alert_summary.get("incident_id") or compat_view.get("incident_id") or "")
-
-    if parsed_incident_id and parsed_incident_id != str(incident_id):
+    # Canonical audit Phase 5: explicit three-state case identity (the same
+    # resolver the producer and load_parsing_result_for_run() use). Only a
+    # match is valid; a mismatch AND not_available both refuse the handoff —
+    # missing identity is no longer accepted as "incident_id_unavailable".
+    case_identity = resolve_case_identity(parsing_result, incident_id)
+    if case_identity["status"] == CASE_IDENTITY_MISMATCH:
         raise ParsingValidationError(
-            f"normalised_alert belongs to incident {parsed_incident_id!r}, "
+            f"Parsing result belongs to case {case_identity['parsed_case_reference']!r}, "
             f"expected {incident_id!r} — refusing stale/mismatched handoff")
+    if case_identity["status"] != CASE_IDENTITY_MATCH:
+        raise ParsingValidationError(
+            f"Parsing result for case {incident_id!r} has no verifiable case identity "
+            f"({case_identity['reason']}) — refusing unverified handoff")
 
     return {
         "valid": True,
         "incident_id": str(incident_id),
-        "parsed_incident_id": parsed_incident_id or str(incident_id),
+        "parsed_incident_id": case_identity["parsed_case_reference"],
+        "case_identity": case_identity,
         "selected_alert_id": parsing_result.get("selected_alert_id"),
         "normalised_alert_count": parsing_result.get("normalised_alert_count"),
         "checks_passed": [
             "parsing_status_completed",
             "normalised_alert_present",
-            "incident_id_match" if parsed_incident_id else "incident_id_unavailable_in_alert",
+            f"case_identity_match:{case_identity['basis']}",
         ],
         "validated_at": datetime.now(timezone.utc).isoformat(),
     }

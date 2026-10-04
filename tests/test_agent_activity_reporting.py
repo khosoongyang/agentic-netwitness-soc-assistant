@@ -305,10 +305,13 @@ def env(tmp_path, monkeypatch):
                                          "data_availability": {}})
         wss.save_raw_incident_path(CASE, run_id, str(raw))
         if parsing:
-            parsing_dir = rep_dir / "outputs" / engine._safe(CASE) / engine._safe(run_id) / "parsing"
-            parsing_dir.mkdir(parents=True)
-            (parsing_dir / "processed_alert.json").write_text(
-                json.dumps({"incident_id": CASE, "source_ip": "10.20.30.41"}), encoding="utf-8")
+            # Phase 5: Reporting takes processed_alert from the canonical,
+            # identity-verified Parsing result for this run (parsing_result_json),
+            # not from a file sitting in the parsing directory.
+            wss.save_parsing_result(CASE, run_id, {
+                "run_id": run_id,
+                "processed_alert": {"incident_id": CASE, "source_ip": "10.20.30.41"},
+            })
         wss.save_triage_result(CASE, run_id, copy.deepcopy(TRIAGE))
         wss._guarded_update(CASE, run_id, {"parsing_status": "Complete", "triage_status": "Approved",
                                            "threat_intel_status": "Complete",

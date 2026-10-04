@@ -160,7 +160,7 @@ def test_parsing_is_identical_with_observability_on_and_off(env, tmp_path, scena
     if scenario == "parser_failure":
         import agents.parsing as parsing_pkg
 
-        def broken(raw_alert, output_dir="x"):
+        def broken(raw_alert, output_dir="x", expected_case_id=None):
             raise ValueError("unsupported incident structure")
 
         env["monkeypatch"].setattr(parsing_pkg, "run_parser_normalisation_for_dashboard", broken)
@@ -205,9 +205,10 @@ def test_successful_parsing_timeline_is_real_and_truthfully_labelled(env, activi
         ("system", None, "parser", "completed"),
         ("ai", "summary", "ai_summary", "running"),
         ("ai", "summary", "ai_summary", "completed"),
+        # Phase 5: validation runs BEFORE the result is persisted / marked Complete.
+        ("rule", None, "validation", "completed"),
         ("system", None, "result_saved", "completed"),
         ("orchestration", None, "status_update", "completed"),
-        ("rule", None, "validation", "completed"),
         ("orchestration", None, "routing", "info"),
         ("decision", None, "stage_result", "completed"),
         ("orchestration", None, "stage_settled", "completed"),
@@ -348,7 +349,7 @@ def test_parser_identity_guard_failure_reports_the_parsers_own_reason(env, activ
 def test_parser_exception_is_a_failed_parsing_without_any_ai_summary(env, activity):
     import agents.parsing as parsing_pkg
 
-    def broken(raw_alert, output_dir="x"):
+    def broken(raw_alert, output_dir="x", expected_case_id=None):
         raise ValueError("unsupported incident structure")
 
     store = _reinstall(activity, env["monkeypatch"],
@@ -372,8 +373,8 @@ def test_validation_failure_is_a_failed_rule_and_a_failed_parsing(env, activity,
 
     real = unwrapped(parsing_pkg.run_parser_normalisation_for_dashboard)
 
-    def mismatched(raw_alert, output_dir="x"):
-        result = real(raw_alert, output_dir=output_dir)
+    def mismatched(raw_alert, output_dir="x", expected_case_id=None):
+        result = real(raw_alert, output_dir=output_dir, expected_case_id=expected_case_id)
         result["normalised_alert"].setdefault("alert_summary", {})["incident_id"] = "INC-SOMETHING-ELSE"
         return result
 

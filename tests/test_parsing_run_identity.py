@@ -66,8 +66,15 @@ def _fake_parsing_result(**overrides) -> dict:
         "missing_important_fields": [],
         "warnings": [],
         "parser_summary_card": {"parser_confidence": "High"},
-        "normalised_alert": {"alert_summary": {"raw_event_count": 4}, "host": "WIN-TEST-01"},
+        # Phase 5: workflow Parsing must carry verifiable case identity. This
+        # mirrors the real bare-incident shape (the record's own id becomes
+        # alert_summary.alert_id), resolving with basis bare_incident_record_id.
+        "normalised_alert": {"alert_summary": {"raw_event_count": 4, "alert_id": "CASE-PARSE-ID"},
+                             "host": "WIN-TEST-01"},
         "processed_alert": {"flat": True, "host": "WIN-TEST-01"},
+        "input_shape": "generic_dictionary",
+        "raw_record_id": "CASE-PARSE-ID",
+        "normalised_alert_count": 1,
         "output_files": {"parsed_incident_file": "parsed_incident.json"},
         "ai_summary": None,
         "ai_thinking": None,
@@ -206,6 +213,7 @@ def test_parsing_result_persists_real_normalised_alert(monkeypatch):
 
     state = wss.get_state("CASE-PARSE-ID")
     result = json.loads(state["parsing_result_json"])
-    assert result["normalised_alert"] == {"alert_summary": {"raw_event_count": 4}, "host": "WIN-TEST-01"}
+    assert result["normalised_alert"] == {"alert_summary": {"raw_event_count": 4, "alert_id": "CASE-PARSE-ID"},
+                                          "host": "WIN-TEST-01"}
     assert result["processed_alert"] == {"flat": True, "host": "WIN-TEST-01"}
     assert result["summary"]

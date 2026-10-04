@@ -43,12 +43,23 @@
 #   - Building the various on-disk JSON/CSV artefacts described below.
 #
 # Design rule (unchanged from original author's docstring):
-#   - soc_context_normalised_alert.json is clean and contains only important
-#     SOC information.
-#   - soc_context_raw_alert_debug.json contains extraction paths and parser
-#     traceability (evidence).
-#   - Evidence paths are NEVER written into soc_context_normalised_alert.json
-#     (kept separate for analyst-facing cleanliness vs debug traceability).
+#   - The normalised alert is clean and contains only important SOC
+#     information.
+#   - Extraction paths / parser traceability (raw_alert_debug) are returned
+#     separately and are NEVER merged into the normalised alert.
+#
+# Canonical Parsing result (canonical audit Phase 5):
+#   The workflow's canonical Parsing result is the run-scoped
+#   incidents.parsing_result_json envelope (see workflow/engine.py
+#   run_until_triage_approval / load_parsing_result_for_run): case identity
+#   (incident_id + case_identity), run_id, the inline STRUCTURED
+#   normalised_alert and the inline FLAT processed_alert derived from it.
+#   The files written by write_outputs() are derived exports only:
+#     parsed_incident.json  -- every structured normalised alert record (list)
+#     processed_alert.json  -- the flat compatibility view of the selected
+#                              record (build_agent_friendly_processed_alert())
+#   Neither file overwrites the other, and neither is read back over the
+#   canonical envelope.
 #
 # Workflow position:
 #   Stage 0 of soc_workflow.py's 4-stage pipeline (Parsing -> Triage ->
@@ -88,22 +99,18 @@
 #     Convert messy NetWitness exports into a clean SOC/agent-facing alert view.
 #
 # Design rule:
-#     - soc_context_normalised_alert.json is clean and contains only important SOC information.
-#     - soc_context_raw_alert_debug.json contains extraction paths and parser traceability.
-#     - evidence paths are NEVER written into soc_context_normalised_alert.json.
+#     - the normalised alert is clean and contains only important SOC information.
+#     - raw_alert_debug contains extraction paths and parser traceability.
+#     - evidence paths are NEVER written into the normalised alert.
 #
 # Usage:
 #     python services/parser_normaliser.py inputs/alert2.json
 #     python services/parser_normaliser.py inputs/alert2.json --output-dir outputs/soc_context_parser
-#     python services/parser_normaliser.py inputs/alert2.json --debug
 #
-# Outputs:
-#     outputs/soc_context_parser/soc_context_normalised_alert.json
-#     outputs/soc_context_parser/soc_context_processed_alert.json
-#     outputs/soc_context_parser/soc_context_processed_alert.csv
-#     outputs/soc_context_parser/soc_context_netwitness_normalised_alerts.json
-#     outputs/soc_context_parser/soc_context_parser_summary.json
-#     outputs/soc_context_parser/soc_context_raw_alert_debug.json
+# Outputs (write_outputs(); the soc_context_*.json files this docstring used
+# to list are not written by any current code path):
+#     <output-dir>/parsed_incident.json   -- structured normalised alert records
+#     <output-dir>/processed_alert.json   -- flat compatibility view
 
 from __future__ import annotations
 
@@ -125,7 +132,9 @@ from urllib.parse import urlparse
 # point) to refuse to hand back parser output that doesn't belong to the
 # raw alert it was actually given.
 from agents.parsing.powershell_decoder import analyse_powershell_command_lines
-from agents.parsing.parser_context_guard import extract_alert_identity, validate_parser_identity
+from agents.parsing.parser_context_guard import (
+    CASE_IDENTITY_MATCH, extract_alert_identity, raw_record_id, validate_parser_identity,
+)
 
 
 # =============================================================================
@@ -139,20 +148,30 @@ from agents.parsing.parser_context_guard import extract_alert_identity, validate
 PARSER_VERSION = "3.4-context-aware-normalised"
 SCHEMA_VERSION = "1.0"
 
-# [FYP-CONFIG] [FYP-OUTPUT] Canonical output file names written by
-# write_outputs() (see below) under the run's parsing output directory.
-# NORMALISED_ALERT_FILE = clean, analyst-facing alert (no evidence paths).
-# PROCESSED_ALERT_FILE  = agent-facing structure consumed by Triage/other
-#                         stages (see build_agent_friendly_processed_alert()).
-# RAW_DEBUG_FILE         = extraction paths / traceability evidence — kept
-#                         separate from the normalised alert by design.
-NORMALISED_ALERT_FILE = "soc_context_normalised_alert.json"
-PROCESSED_ALERT_FILE = "soc_context_processed_alert.json"
-PROCESSED_ALERT_CSV_FILE = "soc_context_processed_alert.csv"
-ALL_NORMALISED_ALERTS_FILE = "soc_context_netwitness_normalised_alerts.json"
-ALL_PARSED_EVENTS_FILE = "soc_context_all_parsed_events.json"
-PARSER_SUMMARY_FILE = "soc_context_parser_summary.json"
-RAW_DEBUG_FILE = "soc_context_raw_alert_debug.json"
+# [FYP-CONFIG] [FYP-OUTPUT] The only files write_outputs() (see below) writes
+# under the run's parsing output directory -- derived exports of the
+# canonical Parsing result, never read back over it (canonical audit Phase 5;
+# the six soc_context_*.json names previously advertised here were never
+# written by any current code path and had no consumer).
+# PARSED_INCIDENT_FILE = every STRUCTURED normalised alert record (a list).
+# PROCESSED_ALERT_FILE = the FLAT agent-facing compatibility view of the
+#                        selected record (build_agent_friendly_processed_alert()).
+PARSED_INCIDENT_FILE = "parsed_incident.json"
+PROCESSED_ALERT_FILE = "processed_alert.json"
+
+
+# [FYP-FUNCTION] `parsing_output_files` — the accurate output_files map for the files write_outputs() writes.
+def parsing_output_files(output_dir: Any) -> Dict[str, str]:
+    """Every key names a file write_outputs() really writes, and says what it
+    holds. There is deliberately no `normalised_alert` file key: the selected
+    structured record lives only inline in the canonical Parsing result."""
+    parsed_file = str(Path(output_dir) / PARSED_INCIDENT_FILE)
+    processed_file = str(Path(output_dir) / PROCESSED_ALERT_FILE)
+    return {
+        "parsed_incident": parsed_file,         # structured normalised records (list)
+        "all_normalised_alerts": parsed_file,   # same file, kept as an existing alias
+        "processed_alert": processed_file,      # flat compatibility view
+    }
 
 # [FYP-PROCESS] IOC/indicator extraction regex patterns — pure rule-based
 # pattern matching, NO LLM involved. Used by extract_emails()/
@@ -2718,14 +2737,7 @@ def build_parser_summary(selected: Optional[Dict[str, Any]], alerts: List[Dict[s
         },
         "missing_important_fields": metadata.get("missing_fields", []),
         "warnings": metadata.get("warnings", []),
-        "output_files": {
-            "normalised_alert": str(Path(output_dir) / NORMALISED_ALERT_FILE),
-            "processed_alert": str(Path(output_dir) / PROCESSED_ALERT_FILE),
-            "processed_alert_csv": str(Path(output_dir) / PROCESSED_ALERT_CSV_FILE),
-            "all_normalised_alerts": str(Path(output_dir) / ALL_NORMALISED_ALERTS_FILE),
-            "parser_summary": str(Path(output_dir) / PARSER_SUMMARY_FILE),
-            "raw_debug": str(Path(output_dir) / RAW_DEBUG_FILE),
-        },
+        "output_files": parsing_output_files(output_dir),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -2810,15 +2822,9 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
         "all_parsed_events": all_parsed_events,
         "parser_summary": parser_summary,
         "raw_alert_debug": raw_debug,
-        "output_files": {
-            "normalised_alert": str(Path(output_dir) / NORMALISED_ALERT_FILE),
-            "processed_alert": str(Path(output_dir) / PROCESSED_ALERT_FILE),
-            "processed_alert_csv": str(Path(output_dir) / PROCESSED_ALERT_CSV_FILE),
-            "all_normalised_alerts": str(Path(output_dir) / ALL_NORMALISED_ALERTS_FILE),
-            "all_parsed_events": str(Path(output_dir) / ALL_PARSED_EVENTS_FILE),
-            "parser_summary": str(Path(output_dir) / PARSER_SUMMARY_FILE),
-            "raw_debug": str(Path(output_dir) / RAW_DEBUG_FILE),
-        },
+        # all_parsed_events / parser_summary / raw_alert_debug are returned
+        # inline above, not written as files (no soc_context_* file is).
+        "output_files": parsing_output_files(output_dir),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -2873,32 +2879,34 @@ def write_csv_file(data: Dict[str, Any], path: str) -> None:
 # [FYP-CALLS] Calls: `Path`, `get`, `mkdir`, `prune_empty_and_null_values`, `save_json_file`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def write_outputs(result: Dict[str, Any], output_dir: str = "outputs/soc_context_parser", write_debug: bool = True) -> Dict[str, str]:
+def write_outputs(result: Dict[str, Any], output_dir: str = "outputs/soc_context_parser", write_debug: bool = True,
+                  processed_alert: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """Write the two derived Parsing export files, each with its own shape
+    (canonical audit Phase 5 -- previously both held the same object and
+    run_parser_normalisation_for_dashboard() then overwrote both again):
+
+      parsed_incident.json -- every STRUCTURED normalised alert record (list)
+      processed_alert.json -- the FLAT compatibility view of the selected
+                              record; `processed_alert` when the caller has
+                              already built it, else built here.
+    """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Get all normalised alerts (matching parsed_incident_INC-53016.json format)
     alerts = result.get("normalised_alerts")
+    selected = result.get("normalised_alert")
     if not alerts:
-        selected = result.get("normalised_alert")
         alerts = [selected] if selected else []
-    
+
     # Recursively prune all None, empty string, empty list, and empty dict fields
     pruned_data = prune_empty_and_null_values(alerts) or []
-    
-    parsed_file = str(out_dir / "parsed_incident.json")
-    processed_file = str(out_dir / "processed_alert.json")
-    
-    # Save the single clean pruned JSON file
-    save_json_file(pruned_data, parsed_file)
-    save_json_file(pruned_data, processed_file)
-    
-    paths = {
-        "parsed_incident": parsed_file,
-        "normalised_alert": parsed_file,
-        "processed_alert": processed_file,
-        "all_normalised_alerts": parsed_file,
-    }
+    if processed_alert is None:
+        processed_alert = build_agent_friendly_processed_alert(selected) if selected else {}
+
+    paths = parsing_output_files(out_dir)
+    save_json_file(pruned_data, paths["parsed_incident"])
+    save_json_file(processed_alert, paths["processed_alert"])
     return paths
 
 
@@ -3110,7 +3118,8 @@ def build_agent_friendly_processed_alert(normalised_alert: Dict[str, Any]) -> Di
 # [FYP-CALLS] Calls: `Path`, `build_agent_friendly_processed_alert`, `build_standard_alert`, `get`, `isoformat`, `len`, `make_json_safe`, `now`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Path = "outputs/soc_context_parser") -> Dict[str, Any]:
+def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Path = "outputs/soc_context_parser",
+                                           expected_case_id: Any = None) -> Dict[str, Any]:
     """Run parser and return all dashboard-facing artefacts.
 
     This is the function the Flask adapter uses. It keeps the original parser
@@ -3121,17 +3130,23 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
     result's identity is checked against it before returning, so a caller
     can never silently receive parser output that belongs to a different
     alert/incident than the one it asked to parse.
+
+    expected_case_id (canonical audit Phase 5; the workflow passes its
+    case id): adds a hard case-identity check (resolve_case_identity()) in
+    which not_available fails, and on a match stamps the case onto this
+    result's envelope (`incident_id` + `case_identity`). The alert objects
+    themselves (normalised_alert / processed_alert) are never modified.
     """
     output_dir = Path(output_dir)
     input_identity = extract_alert_identity(raw_alert)
     result = build_standard_alert(raw_alert, output_dir=str(output_dir))
-    paths = write_outputs(result, output_dir=str(output_dir), write_debug=True)
     normalised = result.get("normalised_alert") or {}
     processed = build_agent_friendly_processed_alert(normalised)
-    parsed_path = output_dir / "parsed_incident.json"
-    processed_path = output_dir / "processed_alert.json"
-    save_json_file(processed, str(parsed_path))
-    save_json_file(processed, str(processed_path))
+    # parsed_incident.json keeps the structured records; processed_alert.json
+    # holds the flat view -- they no longer overwrite each other.
+    paths = write_outputs(result, output_dir=str(output_dir), write_debug=True, processed_alert=processed)
+    parsed_path = Path(paths["parsed_incident"])
+    processed_path = Path(paths["processed_alert"])
 
     parser_summary = result.get("parser_summary") or {}
     dashboard_result = {
@@ -3148,6 +3163,10 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
         "selected_alert_id": result.get("selected_alert_id"),
         "normalised_alert_count": result.get("normalised_alert_count", 0),
         "event_count": result.get("event_count", 0),
+        # Phase 5 case-identity evidence (see resolve_case_identity()): the
+        # detected input shape and the raw input record's own top-level id.
+        "input_shape": result.get("input_shape"),
+        "raw_record_id": raw_record_id(raw_alert),
         "important_extracted_fields": parser_summary.get("important_extracted_fields", {}),
         "missing_important_fields": parser_summary.get("missing_important_fields", []),
         "warnings": parser_summary.get("warnings", []),
@@ -3174,10 +3193,19 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
     # same identity check the CLI adapter (agents/reporting/adapters/
     # run_parser_normalisation.py) performs around this same call; owning
     # it here means every caller of the canonical dashboard entry point
-    # gets it, not just that one adapter.
-    identity_validation = validate_parser_identity(input_identity, dashboard_result)
+    # gets it, not just that one adapter. With expected_case_id it also
+    # checks the workflow case (match / mismatch / not_available).
+    identity_validation = validate_parser_identity(
+        input_identity, dashboard_result, expected_case_id=expected_case_id)
     dashboard_result["input_identity"] = input_identity
     dashboard_result["identity_validation"] = identity_validation
+    case_identity = identity_validation.get("case_identity")
+    if case_identity is not None:
+        dashboard_result["case_identity"] = case_identity
+        if case_identity.get("status") == CASE_IDENTITY_MATCH:
+            # Envelope-level case identity only -- never written into the
+            # alert objects (that would change Triage's input).
+            dashboard_result["incident_id"] = case_identity.get("expected_case_id")
     if not identity_validation.get("passed"):
         dashboard_result["status"] = "failed"
         dashboard_result["parser_status"] = "failed"

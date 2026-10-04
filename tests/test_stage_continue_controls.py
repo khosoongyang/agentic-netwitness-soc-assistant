@@ -121,8 +121,13 @@ def _fake_parsing_result() -> dict:
         "missing_important_fields": [],
         "warnings": [],
         "parser_summary_card": {"parser_confidence": "High"},
-        "normalised_alert": {"alert_summary": {"raw_event_count": 1}},
+        # Phase 5: workflow Parsing must carry verifiable case identity
+        # (real bare-incident shape: the record's own id is alert_id).
+        "normalised_alert": {"alert_summary": {"raw_event_count": 1, "alert_id": CASE}},
         "processed_alert": {"host": "WIN-TEST-01"},
+        "input_shape": "generic_dictionary",
+        "raw_record_id": CASE,
+        "normalised_alert_count": 1,
         "output_files": {},
     }
 

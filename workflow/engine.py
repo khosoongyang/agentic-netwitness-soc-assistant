@@ -149,6 +149,10 @@ from integrations.netwitness.alerts import _merge_alert_digest
 # run_investigation() to validate investigation_analysis.json (see Phase 2)
 # before trusting it over the legacy Markdown-reconstruction path.
 from agents.investigation.investigation_result import InvestigationAgentOutput
+# Canonical audit Phase 5: the one Parsing case-identity resolver (stdlib-only
+# module), shared by the producer, validate_parsing_result() and
+# load_parsing_result_for_run().
+from agents.parsing.parser_context_guard import CASE_IDENTITY_MATCH, resolve_case_identity
 
 ROOT       = Path(__file__).resolve().parent.parent
 # Swapped 2026-07-22: the team's revised investigation agent (adds
@@ -780,11 +784,17 @@ def load_data_availability_for_run(incident_id: str, run_id: str) -> dict | None
 
 
 def load_parsing_result_for_run(incident_id: str, run_id: str) -> dict | None:
-    """[FYP-FUNCTION] Reads the run-scoped parsing summary saved by
-    wss.save_parsing_result() and, where the paths it recorded still
-    resolve inside the trusted root, loads the full normalised_alert/
-    processed_alert content back from disk. Returns None if the summary's
-    own run_id doesn't match — never trusts a stale/foreign summary."""
+    """[FYP-FUNCTION] The canonical Parsing result for this case/run: the
+    run-scoped parsing_result_json envelope saved by wss.save_parsing_result(),
+    with its INLINE structured normalised_alert and flat processed_alert.
+
+    Canonical audit Phase 5: disk files under output_files are derived
+    exports and are never read back over the inline content (previously the
+    structured normalised_alert was replaced here by parsed_incident.json,
+    which held the flat processed_alert). Returns None — never a guess — when
+    the summary's run_id doesn't match, or when its case identity, re-resolved
+    from the inline content (resolve_case_identity()), is anything but a
+    match for `incident_id` (mismatch or not_available)."""
     state = wss.get_state(incident_id)
     if not state or state.get("run_id") != run_id:
         return None
@@ -794,14 +804,13 @@ def load_parsing_result_for_run(incident_id: str, run_id: str) -> dict | None:
         return None
     if summary.get("run_id") != run_id:
         return None
+    case_identity = resolve_case_identity(summary, incident_id)
+    if case_identity["status"] != CASE_IDENTITY_MATCH:
+        _log("PARSING", f"parsing result for {incident_id!r} run {run_id!r} rejected: "
+                        f"case identity {case_identity['status']} — {case_identity['reason']}")
+        return None
     out = dict(summary)
-    for key in ("normalised_alert", "processed_alert"):
-        p = _resolve_trusted_path((summary.get("output_files") or {}).get(key))
-        if p:
-            try:
-                out[key] = json.loads(p.read_text(encoding="utf-8"))
-            except Exception:
-                out[key] = None
+    out["case_identity"] = case_identity
     return out
 
 
@@ -1013,7 +1022,11 @@ def run_parsing(incident: dict, run_id: str) -> dict:
 
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
     output_dir = REP_DIR / "outputs" / _safe(inc_id) / _safe(run_id) / "parsing"
-    result = run_parser_normalisation_for_dashboard(incident, output_dir=output_dir)
+    # Canonical audit Phase 5: the workflow case is the expected identity —
+    # the parser fails (not_available counts as a failure) unless its output
+    # resolves to exactly this case.
+    result = run_parser_normalisation_for_dashboard(
+        incident, output_dir=output_dir, expected_case_id=inc_id)
     if result.get("status") == "completed":
         result.update(generate_parsing_ai_summary(result))
     return result
@@ -3953,25 +3966,21 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
     if run_scoped:
         # Parsing's own output — input_loader.py's existing "processed_alert"
         # input key, promoted to hard-required for a current-run generation
-        # (see HARD_REQUIRED_INPUT_KEYS). Sourced from Parsing's own run-scoped
-        # output directory (the same path run_parsing() writes to), with an
-        # identity check mirroring workflow_validation.validate_parsing_result()'s
-        # existing precedent: only copy it in if its own incident_id matches.
+        # (see HARD_REQUIRED_INPUT_KEYS). Canonical audit Phase 5: taken from
+        # the canonical Parsing result for THIS case/run
+        # (load_parsing_result_for_run(), which only returns a result whose
+        # case identity resolves to a match for incident_id) — never from
+        # whatever processed_alert.json happens to sit in a parsing
+        # directory. The flat processed_alert content itself is unchanged.
         try:
-            parsing_output_dir = REP_DIR / "outputs" / _safe(incident_id) / _safe(run_id) / "parsing"
-            processed_alert_src = parsing_output_dir / "processed_alert.json"
-            if processed_alert_src.exists():
-                processed_alert_data = json.loads(processed_alert_src.read_text(encoding="utf-8"))
-                parsed_incident_id = str(processed_alert_data.get("incident_id") or "")
-                if not parsed_incident_id or parsed_incident_id == str(incident_id):
-                    _write_json(inputs / "processed_alert.json", processed_alert_data)
-                else:
-                    _log("HANDOFF", f"processed_alert.json belongs to incident "
-                                    f"{parsed_incident_id!r}, expected {incident_id!r} — "
-                                    "refusing stale/mismatched handoff")
+            parsing_now = load_parsing_result_for_run(incident_id, run_id)
+            processed_alert_data = (parsing_now or {}).get("processed_alert")
+            if isinstance(processed_alert_data, dict) and processed_alert_data:
+                _write_json(inputs / "processed_alert.json", processed_alert_data)
             else:
-                _log("HANDOFF", f"processed_alert.json not found at {processed_alert_src} "
-                                "— Reporting will fail safely on this required input")
+                _log("HANDOFF", f"no identity-verified Parsing result for {incident_id!r} "
+                                f"run {run_id!r} — processed_alert.json not written; "
+                                "Reporting will fail safely on this required input")
         except Exception as exc:
             _log("HANDOFF", f"processed_alert.json handoff failed: {exc}")
 
@@ -4468,6 +4477,26 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
         _log("PARSING", "FAILED: non-completed status")
         return ctx
 
+    # ── Validate the Parsing -> Triage handoff ────────────────────────────────
+    # Canonical audit Phase 5: validated BEFORE anything is persisted or the
+    # stage is marked Complete, so a result whose case identity is a
+    # mismatch or not_available is never recorded as a successful Parsing
+    # result (this run's parsing_result_json is simply never written).
+    try:
+        validation = wv.validate_parsing_result(
+            incident_id=inc_id, parsing_result=parsing_result, skip=use_mock_triage)
+    except wv.ParsingValidationError as exc:
+        ctx["stages"]["parsing"] = "failed"
+        ctx["errors"]["parsing"] = str(exc)
+        wss.set_parsing_status(inc_id, run_id, "Failed")
+        wss.set_triage_status(inc_id, run_id, "Blocked")
+        wss.set_workflow_status(inc_id, run_id, "Failed")
+        wss.set_last_error(inc_id, run_id, f"parsing failed: {str(exc)[:300]}")
+        _emit("phase_error", "Parsing and Normalisation", str(exc))
+        _log("PARSING", f"VALIDATION FAILED: {exc}")
+        return ctx
+    ctx["parsing_validation"] = validation
+
     # Persist BEFORE marking the stage Complete: the case page's Parsing
     # tab (and any later resume) reads only parsing_result_json, not this
     # in-process ctx, so a persist failure here must not be allowed to
@@ -4475,7 +4504,20 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     # that would let Continue to Triage / a rerun proceed on missing data.
     try:
         wss.save_parsing_result(inc_id, run_id, {
+            # Canonical Parsing result envelope (canonical audit Phase 5):
+            # run + case identity live HERE, not inside the alert objects.
+            # incident_id is only present once case_identity resolved to a
+            # match; load_parsing_result_for_run() re-resolves it from the
+            # inline content below rather than trusting this claim.
             "run_id": run_id,
+            "incident_id": (str(inc_id) if (validation.get("case_identity") or {}).get("status")
+                            == CASE_IDENTITY_MATCH else None),
+            "case_identity": validation.get("case_identity"),
+            "input_shape": parsing_result.get("input_shape"),
+            "raw_record_id": parsing_result.get("raw_record_id"),
+            "normalised_alert_count": parsing_result.get("normalised_alert_count"),
+            "event_count": parsing_result.get("event_count"),
+            "selected_alert_id": parsing_result.get("selected_alert_id"),
             "status": parsing_result.get("status"),
             "summary": parsing_result.get("summary"),
             "parser_confidence": parsing_result.get("parser_confidence"),
@@ -4520,21 +4562,6 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
     wss.set_parsing_status(inc_id, run_id, "Complete")
     _emit("phase_complete", "Parsing and Normalisation",
           parsing_result.get("parser_confidence") or "")
-
-    # ── Validate the Parsing -> Triage handoff ────────────────────────────────
-    try:
-        validation = wv.validate_parsing_result(
-            incident_id=inc_id, parsing_result=parsing_result, skip=use_mock_triage)
-    except wv.ParsingValidationError as exc:
-        ctx["stages"]["parsing"] = "failed"
-        ctx["errors"]["parsing"] = str(exc)
-        wss.set_parsing_status(inc_id, run_id, "Failed")
-        wss.set_triage_status(inc_id, run_id, "Blocked")
-        wss.set_workflow_status(inc_id, run_id, "Failed")
-        wss.set_last_error(inc_id, run_id, f"parsing failed: {str(exc)[:300]}")
-        _log("PARSING", f"VALIDATION FAILED: {exc}")
-        return ctx
-    ctx["parsing_validation"] = validation
 
     if parsing_only:
         # Parsing is a discrete case-page action. Do not mark Triage as

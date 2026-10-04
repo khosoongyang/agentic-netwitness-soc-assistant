@@ -594,7 +594,7 @@ def install(patcher: Patcher) -> None:
                         ("incident_id", "run_id", "filename", "artifact_type", "payload")),
                  Hooks(after=_artifact_after, error=_artifact_error))
     patcher.wrap(Target("agents.parsing", "run_parser_normalisation_for_dashboard",
-                        ("raw_alert", "output_dir")),
+                        ("raw_alert", "output_dir", "expected_case_id")),
                  Hooks(before=_parser_before, after=_parser_after, error=_parser_error))
     patcher.wrap(Target(engine, "generate_parsing_ai_summary", ("parsing_result", "model")),
                  Hooks(before=_summary_before, after=_summary_after, error=_summary_error,

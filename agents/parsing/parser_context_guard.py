@@ -305,6 +305,105 @@ def extract_parser_output_identity(parser_result: Any) -> dict[str, Any]:
     }
 
 
+# Canonical audit Phase 5: explicit three-state case identity for a Parsing
+# result. "not_available" is never a match -- callers that need a verified
+# case (workflow mode) must treat it as a failure.
+CASE_IDENTITY_MATCH = "match"
+CASE_IDENTITY_MISMATCH = "mismatch"
+CASE_IDENTITY_NOT_AVAILABLE = "not_available"
+
+# Input shapes the parser treats as ONE record, so that record's own
+# top-level id is what build_standard_alert() stores as alert_summary.alert_id.
+# The workflow's bare NetWitness incident record ({"id": "INC-...", ...}) is
+# one of these, which is why its incident id lands in alert_id, not incident_id.
+BARE_RECORD_INPUT_SHAPES = frozenset({
+    "generic_dictionary", "flattened_dictionary",
+    "single_full_alert", "single_summary_alert",
+})
+
+
+# [FYP-FUNCTION] `raw_record_id` — the raw parser input's own top-level id (the true raw object under a dashboard wrapper), or None.
+def raw_record_id(raw_input: Any) -> str | None:
+    data = _raw_source(raw_input) if isinstance(raw_input, dict) else {}
+    return _clean(data.get("id")) if isinstance(data, dict) else None
+
+
+# [FYP-FUNCTION] `resolve_case_identity` — resolves which workflow case a Parsing result belongs to, with an explicit basis.
+# [FYP-INPUT] Parameters: `parsing_result` (dashboard result or persisted parsing_result_json envelope), `expected_case_id`.
+# [FYP-OUTPUT] {"status": match|mismatch|not_available, "basis", "expected_case_id", "parsed_case_reference", "reason", ...}.
+# [FYP-USED-BY] validate_parser_identity() (producer), workflow/validation.py:validate_parsing_result() (gate),
+#   workflow/engine.py:load_parsing_result_for_run() (canonical loader).
+
+def resolve_case_identity(parsing_result: Any, expected_case_id: Any) -> dict[str, Any]:
+    """Resolve the case a Parsing result belongs to from the parsed content
+    itself -- never from an envelope-level incident_id claim, which this
+    function's own verdict is what licenses in the first place.
+
+    Bases, in order:
+      parsed_incident_id      -- the parsed alert carries an incident id.
+      bare_incident_record_id -- the input was a single bare record (see
+                                 BARE_RECORD_INPUT_SHAPES) whose own top-level
+                                 id the parser stored as alert_summary.alert_id;
+                                 that record id is the case reference.
+    Anything else is not_available (never inferred).
+    """
+    data = parsing_result if isinstance(parsing_result, dict) else {}
+    expected = _clean(expected_case_id)
+    normalised = _as_dict(data.get("normalised_alert"))
+    summary = _as_dict(normalised.get("alert_summary"))
+    compat = _as_dict(normalised.get("compatibility_view"))
+    processed = _as_dict(data.get("processed_alert"))
+    record_id = _clean(data.get("raw_record_id"))
+    input_shape = data.get("input_shape")
+    alert_count = data.get("normalised_alert_count")
+    out: dict[str, Any] = {
+        "status": CASE_IDENTITY_NOT_AVAILABLE,
+        "basis": None,
+        "expected_case_id": expected,
+        "parsed_case_reference": None,
+        "raw_record_id": record_id,
+        "input_shape": input_shape,
+        "normalised_alert_count": alert_count,
+        "reason": None,
+    }
+
+    def _verdict(reference: str, basis: str) -> dict[str, Any]:
+        out["basis"] = basis
+        out["parsed_case_reference"] = reference
+        matched = _normalise_for_compare(reference) == _normalise_for_compare(expected)
+        out["status"] = CASE_IDENTITY_MATCH if matched else CASE_IDENTITY_MISMATCH
+        out["reason"] = None if matched else (
+            f"Parsing result references case {reference!r}, expected {expected!r}.")
+        return out
+
+    if not expected:
+        out["reason"] = "No expected case id was supplied."
+        return out
+
+    parsed_incident = _clean(_first(
+        summary.get("incident_id"), compat.get("incident_id"), processed.get("incident_id")))
+    if parsed_incident:
+        return _verdict(parsed_incident, "parsed_incident_id")
+
+    if record_id and input_shape in BARE_RECORD_INPUT_SHAPES and alert_count == 1:
+        parsed_record = _clean(summary.get("alert_id"))
+        if not parsed_record or _normalise_for_compare(parsed_record) != _normalise_for_compare(record_id):
+            out["basis"] = "bare_incident_record_id"
+            out["parsed_case_reference"] = parsed_record
+            out["status"] = CASE_IDENTITY_MISMATCH
+            out["reason"] = (f"Parsed record id {parsed_record!r} is not the raw input "
+                             f"record id {record_id!r}.")
+            return out
+        return _verdict(record_id, "bare_incident_record_id")
+
+    missing = [name for name, value in (
+        ("parsed incident id", parsed_incident), ("raw record id", record_id),
+        ("single bare-record input shape",
+         input_shape in BARE_RECORD_INPUT_SHAPES and alert_count == 1)) if not value]
+    out["reason"] = "Case identity not available: no " + ", no ".join(missing) + "."
+    return out
+
+
 # [FYP-FUNCTION] `validate_parser_identity` — evaluates validate parser identity conditions so invalid or unsafe parsing and reporting service processing is stopped early.
 # [FYP-INPUT] Parameters: `input_identity`, `parser_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
@@ -313,12 +412,19 @@ def extract_parser_output_identity(parser_result: Any) -> dict[str, Any]:
 # [FYP-CALLS] Calls: `add_check`, `extract_parser_output_identity`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict[str, Any]) -> dict[str, Any]:
+def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict[str, Any],
+                             expected_case_id: Any = None) -> dict[str, Any]:
     """Validate that parser output belongs to the selected raw alert.
 
     Hard failures are limited to stable identifiers. Titles, hostnames, users,
     and IPs can legitimately differ between incident-level and alert-level
     fields, so those are warnings only.
+
+    Every check carries an explicit `outcome` (match / mismatch /
+    not_available); `matched`/`reason` are kept for existing readers. When
+    `expected_case_id` is given (workflow mode), a hard `case_id` check is
+    added via resolve_case_identity() and not_available FAILS it -- missing
+    identity is never counted as a match there.
     """
     parsed = extract_parser_output_identity(parser_result)
     checks: list[dict[str, Any]] = []
@@ -337,10 +443,12 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
         expected = input_identity.get(field)
         actual = parsed.get(field)
         if not expected or not actual:
-            checks.append({"field": field, "expected": expected, "actual": actual, "matched": None, "reason": "not_enough_information"})
+            checks.append({"field": field, "expected": expected, "actual": actual, "matched": None,
+                           "outcome": CASE_IDENTITY_NOT_AVAILABLE, "reason": "not_enough_information"})
             return
         matched = _normalise_for_compare(expected) == _normalise_for_compare(actual)
-        record = {"field": field, "expected": expected, "actual": actual, "matched": matched}
+        record = {"field": field, "expected": expected, "actual": actual, "matched": matched,
+                  "outcome": CASE_IDENTITY_MATCH if matched else CASE_IDENTITY_MISMATCH}
         if not matched and not hard:
             record["severity"] = "warning"
             warnings.append(field)
@@ -356,6 +464,21 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
     for field in ("alert_title", "hostname", "username", "source_ip", "destination_ip"):
         add_check(field, hard=False)
 
+    case_identity = None
+    if expected_case_id is not None:
+        case_identity = resolve_case_identity(parser_result, expected_case_id)
+        checks.append({
+            "field": "case_id",
+            "expected": case_identity["expected_case_id"],
+            "actual": case_identity["parsed_case_reference"],
+            "matched": {CASE_IDENTITY_MATCH: True, CASE_IDENTITY_MISMATCH: False}.get(case_identity["status"]),
+            "outcome": case_identity["status"],
+            "basis": case_identity["basis"],
+            "reason": case_identity["reason"],
+        })
+        if case_identity["status"] != CASE_IDENTITY_MATCH:
+            hard_failures.append("case_id")
+
     passed = not hard_failures
     status = "passed" if passed and not warnings else ("passed_with_warnings" if passed else "failed")
     message = "Parser identity check passed."
@@ -363,7 +486,10 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
         message = "Parser identity check passed with non-blocking field warnings."
     if not passed:
         message = "Parser input mismatch. Selected ticket raw alert does not match generated parser output."
-    return {
+        if hard_failures == ["case_id"] and case_identity["status"] == CASE_IDENTITY_NOT_AVAILABLE:
+            message = ("Parser case identity could not be verified for case "
+                       f"{case_identity['expected_case_id']!r}: {case_identity['reason']}")
+    result = {
         "passed": passed,
         "status": status,
         "input_identity": input_identity,
@@ -373,6 +499,9 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
         "warnings": warnings,
         "message": message,
     }
+    if case_identity is not None:
+        result["case_identity"] = case_identity
+    return result
 
 # [FYP-FUNCTION] `clear_stale_parser_outputs` — persists or updates clear stale parser outputs state used by the surrounding parsing and reporting service workflow.
 # [FYP-INPUT] Parameters: `project_root`, `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
