@@ -267,7 +267,7 @@ function findings(workspace, stage) {
 
 // One action bar for every stage (see ../stageContinue.js for the labels and
 // the Continue rule): [Run/Re-run <stage>] [Continue to <next stage>] on the
-// left, [Reject <stage>] [Approve <stage>] on the right while a gate is
+// left, [Approve <stage>] on the right while a gate is
 // awaiting a decision. Every button keeps its backend action's enabled state
 // and reason; Continue is enabled only while the NEXT stage's `start` action
 // is (i.e. the backend has unlocked it). `footer` renders the bar as the
@@ -285,7 +285,7 @@ function stageActionButtons(stage, workflow, { footer = false } = {}) {
 }
 
 // Continue = navigation, Run = execution. The stage's own buttons (Run/
-// Re-run/Approve/Reject/Resume) go to onAction(type, stage); Continue only
+// Re-run/Approve/Resume) go to onAction(type, stage); Continue only
 // calls onNavigate(nextStageKey), which selects the next stage so the analyst
 // sees it still Pending with its own Run <Stage> button. Continue never
 // reaches onAction, so it can never start a stage.
@@ -2916,7 +2916,7 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onNavigat
 }
 
 // Reporting stage card: same header/action-bar shape every other stage uses
-// (name, stateBadge, Re-run/Reject/Approve Reporting — the final stage, so
+// (name, stateBadge, Re-run/Approve Reporting — the final stage, so
 // never a Continue control), but with the four-report
 // table (frontend/js/pages/reports.js —
 // the SAME implementation the standalone Reporting page uses, embedded

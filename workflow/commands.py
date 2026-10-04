@@ -546,18 +546,13 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
                 approve_enabled = False
                 approve_reason = "Submit the reviewed report set for approval first (all four reports must be Reviewed)."
         if stage in APPROVAL_STAGES and (awaiting or status == "Awaiting Approval"):
-            stage_actions.extend((
-                {
-                    "type": "approve", "label": "Approve", "enabled": approve_enabled,
-                    "confirmation": False,
-                    "reason": approve_reason,
-                },
-                {
-                    "type": "reject", "label": "Reject", "enabled": awaiting,
-                    "confirmation": True,
-                    "reason": None if awaiting else "This approval gate is no longer current.",
-                },
-            ))
+            stage_actions.append({
+                "type": "approve",
+                "label": "Approve",
+                "enabled": approve_enabled,
+                "confirmation": False,
+                "reason": approve_reason,
+            })
         if processing_stage == stage:
             stage_actions.append({
                 "type": "resume",
