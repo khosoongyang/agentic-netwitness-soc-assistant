@@ -507,8 +507,6 @@ def build_agent_llm_fields(agent_key: str, context: dict[str, Any], output: dict
                 "mitre_technique_ids": extracted.get("mitre_technique_ids") or [],
             },
             "data_quality": {
-                "parser_confidence": output.get("parser_confidence"),
-                "parser_confidence_score": output.get("parser_confidence_score"),
                 "missing_important_fields": output.get("missing_important_fields") or [],
                 "warnings": output.get("warnings") or [],
             },
@@ -629,8 +627,7 @@ def build_agent_llm_fields(agent_key: str, context: dict[str, Any], output: dict
             f"{alert.get('alert_id') or 'Not confirmed in the provided evidence.'}. It extracted SOC-ready fields for downstream triage."
         )
         quality = (
-            f"Parser confidence is {dq.get('parser_confidence') or 'Not Provided'} with score {dq.get('parser_confidence_score') or 'Not Provided'}. "
-            + (f"Missing fields requiring analyst awareness: {', '.join(map(str, missing))}." if missing else "No major missing parser fields were recorded.")
+            f"Missing fields requiring analyst awareness: {', '.join(map(str, missing))}." if missing else "No major missing parser fields were recorded."
         )
         interpretation = (
             f"Severity is {alert.get('severity') or 'Not Provided'}. Hosts: {', '.join(map(str, extracted.get('hosts') or [])) or 'Not confirmed in the provided evidence.'}. "

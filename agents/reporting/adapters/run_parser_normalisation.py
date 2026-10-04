@@ -232,8 +232,6 @@ def main() -> int:
         "warning_count": len(result["warnings"]),
         "powershell_decode_status": powershell_analysis.get("decode_status") or "not_detected",
         "ioc_count": len(processed.get("iocs") or []),
-        "parser_confidence": result.get("parser_confidence"),
-        "parser_confidence_score": result.get("parser_confidence_score"),
     }
     result["parser_summary_card"] = {
         "input_source": result["parser_run_metadata"]["input_source"],
@@ -242,8 +240,6 @@ def main() -> int:
         "missing_fields": missing_fields,
         "powershell_decode_status": result["parser_run_metadata"]["powershell_decode_status"],
         "ioc_count": result["parser_run_metadata"]["ioc_count"],
-        "parser_confidence": result.get("parser_confidence"),
-        "parser_confidence_score": result.get("parser_confidence_score"),
         "warnings": result.get("warnings") or [],
     }
     result["export_status"] = {
@@ -271,7 +267,6 @@ def main() -> int:
     print(json.dumps({
         "status": result.get("status"),
         "selected_alert_id": result.get("selected_alert_id"),
-        "parser_confidence": result.get("parser_confidence"),
         "identity_validation": validation.get("status"),
     }, indent=2), flush=True)
     return 0 if str(result.get("status") or "").lower() in {"completed", "completed_with_warnings"} else 1

@@ -384,7 +384,6 @@ def _build_appendix_summaries(
         },
         "processed_alert": {
             "Parser Status": _short_value(_first(processed.get("parser_status"), processed.get("normalisation_status"), default="Not Provided")),
-            "Parser Confidence": _short_value(_first(processed.get("parser_confidence"), _get(processed, "data_quality.parser_confidence"), default="Not Provided")),
             "Missing Fields": _short_value(_first(processed.get("missing_fields"), _get(processed, "data_quality.missing_required_fields"), default=[])),
             "IOC Count": str(len(_list(processed.get("iocs")))),
         },

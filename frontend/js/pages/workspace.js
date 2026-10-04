@@ -525,23 +525,19 @@ function _poCount(value) {
   return typeof value === "number" ? value : null;
 }
 
-// Parsing is a normalisation stage, so its headline is the two values it
+// Parsing is a normalisation stage, so its headline is the value it
 // actually carries — the NetWitness alert's own severity (as extracted by
-// the parser; Parsing does not produce a severity) and the parser's
-// confidence. No overall "Parsing risk" is invented. Everything else —
-// PowerShell Risk (scoped to PowerShell only), data quality and
+// the parser; Parsing does not produce a severity). No overall "Parsing risk" is invented.
+// Everything else — PowerShell Risk (scoped to PowerShell only), data quality and
 // normalisation metadata — sits in the parsing details view.
 export function parsingAssessment(na, context = na?.observed_data_context || {}) {
   const summary = na.alert_summary || {};
   const risk = na.powershell_analysis?.risk_assessment || {};
   const dq = na.data_quality || {};
   const meta = na.parser_metadata || {};
-  const confidence = dq.parser_confidence || meta.parser_confidence;
-  const score = dq.parser_confidence_score ?? meta.parser_confidence_score;
 
   const headlines = [
     assessmentHeadline("NetWitness Severity", hasValue(summary.severity) ? bandValue(summary.severity) : pendingValue("Not provided in the alert")),
-    assessmentHeadline("Parser Confidence", hasValue(confidence) ? confidenceBadge(confidence) : pendingValue("Not recorded")),
   ];
 
   const rows = _poRows([
@@ -549,9 +545,6 @@ export function parsingAssessment(na, context = na?.observed_data_context || {})
     ["NetWitness Risk Score", summary.risk_score],
     ["PowerShell Risk", risk.risk_level, bandValue],
     ["PowerShell Risk Score", risk.risk_score],
-    ["Parser Confidence", confidence, (v) => confidenceBadge(v)],
-    ["Parser Confidence Score", score, (v) => `<span class="mono">${escapeHTML(String(v))}/100</span>`],
-    ["Confidence Explanation", dq.confidence_explanation],
     ["Normalisation Status", meta.normalisation_status, (v) => escapeHTML(_poHumanise(v))],
     ["Missing Optional Fields", _poCount(dq.missing_optional_fields)],
     ["Not Applicable Fields", _poCount(dq.not_applicable_fields)],

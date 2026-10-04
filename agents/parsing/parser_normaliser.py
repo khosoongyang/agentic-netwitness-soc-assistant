@@ -1195,14 +1195,9 @@ def build_observed_data_context(
 #      has_network_data is True, etc.) so an alert that legitimately has no
 #      email evidence is not penalised for missing email fields.
 #   3. missing_optional_fields — "nice to have" ids (session/event_source/
-#      record/signature/community) that lower the score less.
-# A weighted score starts at 100 and is deducted per missing field
-# (-15 per missing base field, -10 per missing conditionally-required
-# context field, -2 per missing optional field), clamped to [0, 100], then
-# bucketed into parser_confidence: >=80 High, >=50 Medium, else Low.
+#      record/signature/community).
 #
-# [FYP-OUTPUT] dict with parser_confidence/parser_confidence_score/
-# confidence_explanation/missing_required_fields/missing_context_fields/
+# [FYP-OUTPUT] dict with missing_required_fields/missing_context_fields/
 # missing_optional_fields/not_applicable_fields/warnings — merged verbatim
 # into normalised_alert["data_quality"] and parser_metadata by
 # normalise_alert_record() below. [FYP-USED-BY] normalise_alert_record(),
@@ -1323,39 +1318,13 @@ def evaluate_context_data_quality(
     if not observed_data_context.get("has_web_data"):
         not_applicable_fields.extend(["url", "domain", "user_agent"])
 
-    score = 100
-    score -= len(missing_base_fields) * 15
-    score -= len(context_fields_flat) * 10
-    score -= len(missing_optional_fields) * 2
-    score = max(0, min(100, score))
-
-    if score >= 80:
-        parser_confidence = "High"
-    elif score >= 50:
-        parser_confidence = "Medium"
-    else:
-        parser_confidence = "Low"
-
     warnings = []
     if missing_base_fields or context_fields_flat:
         warnings.append("Missing context-relevant parsing fields: " + ", ".join(dedupe(missing_base_fields + context_fields_flat)))
     if raw_meta_key_count > 300:
         warnings.append("Large raw metadata detected; normalised alert was kept concise for SOC readability.")
 
-    observed_types = ", ".join(observed_data_context.get("observed_data_types", []))
-    if parser_confidence == "High" and not missing_base_fields and not context_fields_flat:
-        confidence_explanation = f"Required parser fields for observed data types ({observed_types}) were extracted successfully."
-    elif parser_confidence == "High":
-        confidence_explanation = f"Most parser fields for observed data types ({observed_types}) were extracted, with minor optional gaps."
-    elif parser_confidence == "Medium":
-        confidence_explanation = f"Some parser fields for observed data types ({observed_types}) are missing, so downstream systems should review the gaps."
-    else:
-        confidence_explanation = f"Several parser fields for observed data types ({observed_types}) are missing, so downstream systems should treat this output carefully."
-
     return {
-        "parser_confidence": parser_confidence,
-        "parser_confidence_score": score,
-        "confidence_explanation": confidence_explanation,
         "missing_required_fields": dedupe(missing_base_fields),
         "missing_context_fields": {key: dedupe(value) for key, value in missing_context_fields.items()},
         "missing_optional_fields": dedupe(missing_optional_fields),
@@ -2348,8 +2317,6 @@ def normalise_alert_record(
         data_quality.get("missing_required_fields", [])
         + [field for fields in data_quality.get("missing_context_fields", {}).values() for field in fields]
     )
-    parser_confidence = data_quality.get("parser_confidence", "Unknown")
-    parser_confidence_score = data_quality.get("parser_confidence_score", 0)
     warnings = data_quality.get("warnings", [])
 
     ioc_summary = {
@@ -2516,8 +2483,6 @@ def normalise_alert_record(
             "alert_count": alert_count,
             "raw_event_count": len(raw_event_records),
             "raw_meta_key_count": len(alert),
-            "parser_confidence": parser_confidence,
-            "parser_confidence_score": parser_confidence_score,
             "missing_fields": dedupe(missing_fields),
             "warnings": warnings,
             "debug_available": True,
@@ -2591,7 +2556,6 @@ def build_compatibility_view(alert: Dict[str, Any], incident: Dict[str, Any]) ->
         "record_id": first(identifiers.get("record_ids", [])),
         "severity": summary.get("severity"),
         "timestamp": summary.get("alert_time"),
-        "parser_confidence": metadata.get("parser_confidence"),
         "parser_warnings": metadata.get("warnings", []),
         "missing_fields": metadata.get("missing_fields", []),
     }
@@ -2655,7 +2619,6 @@ def severity_sort_score(alert: Dict[str, Any]) -> int:
         score += 2
     if alert.get("threat_context", {}).get("mitre_technique_ids"):
         score += 2
-    score += int(alert.get("parser_metadata", {}).get("parser_confidence_score", 0) / 20)
     return score
 
 
@@ -2685,8 +2648,6 @@ def build_parser_summary(selected: Optional[Dict[str, Any]], alerts: List[Dict[s
         "detected_input_format": input_format,
         "normalised_alert_count": len(alerts),
         "selected_alert_id": summary.get("alert_id"),
-        "parser_confidence": metadata.get("parser_confidence", "Unknown"),
-        "parser_confidence_score": metadata.get("parser_confidence_score", 0),
         "important_extracted_fields": {
             "alert_id": summary.get("alert_id"),
             "incident_id": summary.get("incident_id"),
@@ -2918,7 +2879,6 @@ def print_summary(result: Dict[str, Any], paths: Dict[str, str]) -> None:
     print(f"Parsing succeeded: {summary.get('parsing_succeeded')}")
     print(f"Detected input format: {summary.get('detected_input_format')}")
     print(f"Normalised alert count: {summary.get('normalised_alert_count')}")
-    print(f"Parser confidence: {summary.get('parser_confidence')} ({summary.get('parser_confidence_score')})")
     print()
     print("Important extracted fields:")
     for key, value in extracted.items():
@@ -3143,8 +3103,6 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
         "created_at": datetime.now(timezone.utc).isoformat(),
         "summary": parser_summary.get("important_extracted_fields", {}).get("alert_name") or "NetWitness alert parsed and normalised for downstream SOC agents.",
         "parser_status": result.get("parser_status"),
-        "parser_confidence": parser_summary.get("parser_confidence", "Unknown"),
-        "parser_confidence_score": parser_summary.get("parser_confidence_score", 0),
         "selected_alert_id": result.get("selected_alert_id"),
         "normalised_alert_count": result.get("normalised_alert_count", 0),
         "event_count": result.get("event_count", 0),
@@ -3158,8 +3116,6 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
             "missing_fields": parser_summary.get("missing_important_fields", []),
             "powershell_decode_status": (normalised.get("powershell_analysis") or {}).get("decode_status") or "not_detected",
             "ioc_count": len(processed.get("iocs") or []),
-            "parser_confidence": parser_summary.get("parser_confidence", "Unknown"),
-            "parser_confidence_score": parser_summary.get("parser_confidence_score", 0),
             "warnings": parser_summary.get("warnings", []),
         },
         "normalised_alert": normalised,

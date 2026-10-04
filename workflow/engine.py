@@ -3104,7 +3104,6 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
             "run_id": run_id,
             "status": parsing_result.get("status"),
             "summary": parsing_result.get("summary"),
-            "parser_confidence": parsing_result.get("parser_confidence"),
             "recommended_next_action": parsing_result.get("recommended_next_action"),
             "important_extracted_fields": parsing_result.get("important_extracted_fields"),
             "missing_important_fields": parsing_result.get("missing_important_fields"),
@@ -3144,8 +3143,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
 
     ctx["stages"]["parsing"] = "completed"
     wss.set_parsing_status(inc_id, run_id, "Complete")
-    _emit("phase_complete", "Parsing and Normalisation",
-          parsing_result.get("parser_confidence") or "")
+    _emit("phase_complete", "Parsing and Normalisation", "")
 
     # ── Validate the Parsing -> Triage handoff ────────────────────────────────
     try:

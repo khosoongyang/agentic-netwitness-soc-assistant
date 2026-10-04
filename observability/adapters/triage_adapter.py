@@ -172,13 +172,10 @@ def _parsing_loaded(call: dict, token: Any, result: Any) -> None:
              detail="Triage will work from the raw incident only (no parsed context supplied).")
         return
     ioc_count = len(processed.get("iocs") or []) if isinstance(processed, dict) else None
-    confidence = result.get("parser_confidence")
     emit(source="system", event_type="context_loaded", status="completed",
          title="Loaded normalised incident context from Parsing",
-         detail=" · ".join(p for p in (
-             f"{ioc_count} indicator(s) in the processed alert" if ioc_count is not None else "",
-             f"parser confidence {confidence}" if confidence else "") if p),
-         metadata={"ioc_count": ioc_count, "parser_confidence": confidence})
+         detail=f"{ioc_count} indicator(s) in the processed alert" if ioc_count is not None else "",
+         metadata={"ioc_count": ioc_count})
 
 
 def _raw_loaded(call: dict, token: Any, result: Any) -> None:

@@ -309,9 +309,7 @@ def _headline(html: str) -> str:
 PARSING_NA = {
     "alert_summary": {"severity": "High", "risk_score": 70},
     "powershell_analysis": {"risk_assessment": {"risk_level": "Low", "risk_score": 0}},
-    "data_quality": {"parser_confidence": "Medium", "parser_confidence_score": 70,
-                     "confidence_explanation": "Some network fields are missing.",
-                     "missing_optional_fields": ["session_id", "record_id"],
+    "data_quality": {"missing_optional_fields": ["session_id", "record_id"],
                      "not_applicable_fields": ["hostname"], "normalised_event_count": 0,
                      "warnings": ["Missing context-relevant parsing fields: protocol"]},
     "parser_metadata": {"normalisation_status": "success"},
@@ -322,23 +320,26 @@ PARSING_NA = {
 def test_parsing_headline_and_details():
     html = _render({"parsing": PARSING_NA})["parsing"]
     head = _headline(html)
-    assert "NetWitness Severity" in head and "Parser Confidence" in head
+    assert "NetWitness Severity" in head
+    assert "Parser Confidence" not in head
     assert "PowerShell Risk" not in head
     assert "Parser Severity" not in html and "Parsing Risk" not in html
     assert "View parsing details" in html and "Hide parsing details" in html
     for label in ("NetWitness Risk Score", "PowerShell Risk", "PowerShell Risk Score",
-                  "Parser Confidence Score", "Confidence Explanation", "Normalisation Status",
+                  "Normalisation Status",
                   "Missing Optional Fields", "Not Applicable Fields", "Normalised Event Count", "Warnings"):
         assert label in html, label
-    assert "70/100" in html
+    assert "Parser Confidence" not in html
+    assert "Parser Confidence Score" not in html
+    assert "Confidence Explanation" not in html
 
 
 @requires_node
 def test_parsing_details_omit_fields_that_do_not_exist():
     html = _render({"parsing": {"alert_summary": {"severity": "High"}}})["parsing"]
     assert "PowerShell Risk" not in html
+    assert "Parser Confidence" not in html
     assert "Parser Confidence Score" not in html
-    assert "Not recorded" in _headline(html)
 
 
 @requires_node

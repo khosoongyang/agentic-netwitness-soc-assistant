@@ -302,7 +302,6 @@ def _stage_ai_summary_context(stage: str, result: dict) -> str:
     if key == "parsing":
         context = {
             "status": result.get("status"),
-            "parser_confidence": result.get("parser_confidence"),
             "normalised_alert_count": result.get("normalised_alert_count"),
             "selected_alert_id": result.get("selected_alert_id"),
             "processed_alert": result.get("processed_alert"),
