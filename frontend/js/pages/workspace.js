@@ -745,16 +745,41 @@ function _triageNormText(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-// ticket.summary (the classification phase's own summary) leads; the
-// stage-level ai_summary keeps its "AI-generated summary · model" label and
-// is only dropped when it repeats ticket.summary word-for-word.
-function triageExplanation(ticket, result) {
-  const parts = [];
-  if (ticket.summary) parts.push(`<p class="notice triage-explanation">${escapeHTML(ticket.summary)}</p>`);
-  if (result.ai_summary && _triageNormText(result.ai_summary) !== _triageNormText(ticket.summary)) {
-    parts.push(`<p class="notice triage-explanation">${escapeHTML(result.ai_summary)}<small class="triage-attribution">AI-generated summary${result.ai_summary_model ? ` · ${escapeHTML(result.ai_summary_model)}` : ""}</small></p>`);
+function _mergeTriageSummaries(ticketSummary, aiSummary) {
+  const s1 = String(ticketSummary || "").trim();
+  const s2 = String(aiSummary || "").trim();
+  if (!s1) return s2;
+  if (!s2) return s1;
+  if (_triageNormText(s1) === _triageNormText(s2)) return s2;
+  if (s2.includes(s1)) return s2;
+  if (s1.includes(s2)) return s1;
+
+  const splitSentences = (text) => text.match(/[^.!?]+[.!?]+|\S+/g) || [text];
+  const sentences1 = splitSentences(s1).map((s) => s.trim()).filter(Boolean);
+
+  const getWords = (s) => new Set(s.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter((w) => w.length > 3));
+  const s2Words = getWords(s2);
+
+  const uniqueAdditional = sentences1.filter((s) => {
+    const words = getWords(s);
+    if (!words.size) return false;
+    let overlap = 0;
+    words.forEach((w) => { if (s2Words.has(w)) overlap++; });
+    return (overlap / words.size) < 0.6;
+  });
+
+  if (!uniqueAdditional.length) {
+    return s2;
   }
-  return parts.join("");
+  return `${s2} ${uniqueAdditional.join(" ")}`.trim();
+}
+
+// Unify ticket.summary and stage-level ai_summary into a single AI summary block.
+function triageExplanation(ticket, result) {
+  const summary = _mergeTriageSummaries(ticket?.summary, result?.ai_summary);
+  if (!summary) return "";
+  const model = result?.ai_summary_model;
+  return `<p class="notice triage-explanation">${escapeHTML(summary)}<small class="triage-attribution">AI-generated summary${model ? ` · ${escapeHTML(model)}` : ""}</small></p>`;
 }
 
 // Classification/category/risk are the Triage assessment (triageAssessment());
