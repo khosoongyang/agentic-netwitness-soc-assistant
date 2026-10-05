@@ -763,49 +763,49 @@ The appendices below are analyst-facing summaries. Full raw artefacts remain ava
 
 | Field | Value |
 |---|---|
-{% if raw_alert_summary %}
-{% for field, value in raw_alert_summary.items() %}
+{%- if raw_alert_summary %}
+{%- for field, value in raw_alert_summary.items() %}
 | {{ field }} | {{ value }} |
-{% endfor %}
-{% else %}
+{%- endfor %}
+{%- else %}
 | Summary | Not available in reporting context. |
-{% endif %}
+{%- endif %}
 
 ### Appendix B: Triage Summary
 
 | Field | Value |
 |---|---|
-{% if triage_appendix %}
-{% for field, value in triage_appendix.items() %}
+{%- if triage_appendix %}
+{%- for field, value in triage_appendix.items() %}
 | {{ field }} | {{ value }} |
-{% endfor %}
-{% else %}
+{%- endfor %}
+{%- else %}
 | Summary | Not available in reporting context. |
-{% endif %}
+{%- endif %}
 
 ### Appendix C: Investigation Summary
 
 | Field | Value |
 |---|---|
-{% if investigation_appendix %}
-{% for field, value in investigation_appendix.items() %}
+{%- if investigation_appendix %}
+{%- for field, value in investigation_appendix.items() %}
 | {{ field }} | {{ value }} |
-{% endfor %}
-{% else %}
+{%- endfor %}
+{%- else %}
 | Summary | Not available in reporting context. |
-{% endif %}
+{%- endif %}
 
 ### Appendix D: Approval Summary
 
 | Field | Value |
 |---|---|
-{% if approval_appendix %}
-{% for field, value in approval_appendix.items() %}
+{%- if approval_appendix %}
+{%- for field, value in approval_appendix.items() %}
 | {{ field }} | {{ value }} |
-{% endfor %}
-{% else %}
+{%- endfor %}
+{%- else %}
 | Summary | Not available in reporting context. |
-{% endif %}
+{%- endif %}
 
 ### Appendix E: Chain of Custody
 
