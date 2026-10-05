@@ -365,3 +365,31 @@ class TestAPIRetrievalComprehensivePayload:
             payload = APIRetrieval.get_comprehensive_incident_payload("INC-LIVE-1")
             assert payload["incident"]["id"] == "INC-LIVE-1"
             assert len(payload["alerts"]) == 1
+
+
+def test_env_file_blanks_never_override_real_environment(tmp_path, monkeypatch):
+    """A .env with blank NW_USERNAME= / NW_PASSWORD= (the shipped template)
+    must not wipe credentials already present in the process environment
+    when get_auth_token(force_refresh=True) re-reads .env. Found when a real
+    .env was created: load_dotenv(override=True) replaced them with ''."""
+    env_file = tmp_path / ".env"
+    env_file.write_text("NW_USERNAME=\nNW_PASSWORD=\nNW_HOST=https://from-dotenv\nNW_EXTRA=filled\n",
+                        encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NW_USERNAME", "analyst_user")
+    monkeypatch.setenv("NW_PASSWORD", "analyst_pass")
+    monkeypatch.setenv("NW_HOST", "https://192.168.20.11")
+    monkeypatch.delenv("NW_EXTRA", raising=False)
+    APIRetrieval._refresh_env_from_dotenv()
+    assert os.environ["NW_USERNAME"] == "analyst_user"
+    assert os.environ["NW_PASSWORD"] == "analyst_pass"
+    assert os.environ["NW_HOST"] == "https://from-dotenv"        # non-blank .env still wins (unchanged)
+    assert os.environ["NW_EXTRA"] == "filled"                     # unset -> filled from .env
+
+
+def test_env_file_value_fills_a_blank_environment_entry(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text("NW_USERNAME=edited_in_file\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("NW_USERNAME", "")
+    APIRetrieval._refresh_env_from_dotenv()
+    assert os.environ["NW_USERNAME"] == "edited_in_file"

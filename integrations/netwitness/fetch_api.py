@@ -274,6 +274,21 @@ def _is_expired_token_response(response: requests.Response | None) -> bool:
 # [FYP-CALLS] Calls: `_maybe_b64_decode`, `authenticate_netwitness`, `getenv`, `load_dotenv`, `print`, `rstrip`, `strip`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
+def _refresh_env_from_dotenv() -> None:
+    """Same as the previous load_dotenv(override=True) -- credentials edited
+    into .env while the app is running are picked up -- except that a BLANK
+    .env entry (the shipped template has NW_USERNAME= etc.) never wipes a
+    value already set in the environment (it used to replace it with '')."""
+    from dotenv import dotenv_values, find_dotenv
+    path = find_dotenv(usecwd=True)
+    if not path:
+        return
+    for key, value in dotenv_values(path).items():
+        if value is None or not str(value).strip():
+            continue                       # blank in .env never overrides
+        os.environ[key] = value            # non-blank .env value wins (as before)
+
+
 def get_auth_token(host: str | None = None, token: str | None = None, force_refresh: bool = False) -> str | None:
     """Get an active NetWitness session token.
     If an explicit token is provided and force_refresh is False, return it.
@@ -288,7 +303,7 @@ def get_auth_token(host: str | None = None, token: str | None = None, force_refr
         if cached_token:
             return cached_token
 
-    load_dotenv(override=True)
+    _refresh_env_from_dotenv()
     target_host = (host or os.getenv("NW_HOST", os.getenv("NETWITNESS_HOST", "https://192.168.20.11"))).strip().rstrip("/")
     username = os.getenv("NW_USERNAME", os.getenv("NETWITNESS_USERNAME", "")).strip()
     raw_password = os.getenv("NW_PASSWORD", os.getenv("NETWITNESS_PASSWORD", "")).strip()
