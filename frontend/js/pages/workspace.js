@@ -1750,10 +1750,189 @@ export function investigationAssessment(result) {
   });
 }
 
+function _cleanGapFindings(text) {
+  if (!text) return "No telemetry or event logs were recorded.";
+  let clean = String(text).trim();
+  clean = clean.replace(/^(?:NOT_MET|SKIPPED|MET)[:.\s-]+/i, "").trim();
+  return clean;
+}
+
+function _gapProfileTitle(instruction, findings) {
+  const instr = (instruction || "").toLowerCase();
+  const find = (findings || "").toLowerCase();
+
+  if (/tree|lineage|ancestry/i.test(instr) || /process tree/i.test(find)) {
+    return "Process Tree Lineage & Ancestry";
+  }
+  if (/process|spawned|execution/i.test(instr)) {
+    return "Malicious Process Execution";
+  }
+  if (/horizontal|vertical|lateral|spread/i.test(instr)) {
+    return "Lateral Movement vs. Vertical Privilege Scope";
+  }
+  if (/user|login|credential|identity|auth/i.test(instr)) {
+    return "User Identity & Logon Scope";
+  }
+  if (/exfiltration|egress|outbound/i.test(instr)) {
+    return "Data Exfiltration & Outbound Egress";
+  }
+  return instruction.length > 50 ? instruction.slice(0, 48) + "…" : instruction;
+}
+
+function _extractPivotsForStep(step, result) {
+  const findings = step?.findings || "";
+  const allPivots = [
+    ...(Array.isArray(result?.suggested_pivots) ? result.suggested_pivots : []),
+    ...(Array.isArray(result?.indicators) ? result.indicators : []),
+  ].filter(Boolean).map(String);
+
+  // Extract IPs, filenames, and hashes from the step's findings
+  const ipMatches = findings.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [];
+  const fileMatches = findings.match(/\b[\w-]+\.(?:exe|dll|bat|cmd|ps1|sh|py|js|vbs|msi)\b/gi) || [];
+  const hashMatches = findings.match(/\b[a-fA-F0-9]{32,64}\b/g) || [];
+
+  const benign = new Set(["127.0.0.1", "0.0.0.0"]);
+  const cleanIps = [...new Set(ipMatches.filter((ip) => !benign.has(ip)))];
+  const cleanFiles = [...new Set(fileMatches.filter((f) => !/^(?:event|eid|id)\./i.test(f)))];
+  const cleanHashes = [...new Set(hashMatches)];
+
+  const pivotIps = allPivots.filter((p) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(p) && !benign.has(p));
+  const pivotFiles = allPivots.filter((p) => /\.(?:exe|dll|bat|cmd|ps1|sh|py|js|vbs|msi)$/i.test(p));
+  const pivotHashes = allPivots.filter((p) => /^[a-fA-F0-9]{32,64}$/.test(p));
+  const otherPivots = allPivots.filter((p) => !pivotIps.includes(p) && !pivotFiles.includes(p) && !pivotHashes.includes(p));
+
+  const instr = (step?.instruction || "").toLowerCase();
+  const isProcessStep = /process|spawned|execution|tree|lineage|ancestry/i.test(instr);
+  const isNetworkStep = /horizontal|vertical|lateral|network|traffic|exfiltration|egress/i.test(instr);
+  const isIdentityStep = /user|login|credential|identity|auth/i.test(instr);
+
+  const stepPivots = [];
+
+  if (isProcessStep) {
+    stepPivots.push(...cleanFiles, ...pivotFiles);
+    if (!stepPivots.length && cleanHashes.length) stepPivots.push(...cleanHashes, ...pivotHashes);
+    if (!stepPivots.length) {
+      if (cleanIps.length) stepPivots.push(...cleanIps);
+      else if (pivotIps.length) stepPivots.push(...pivotIps);
+    }
+  } else if (isNetworkStep) {
+    stepPivots.push(...cleanIps, ...pivotIps);
+  } else if (isIdentityStep) {
+    const userPivots = otherPivots.filter((p) => !/^(?:inc|alert)-/i.test(p));
+    stepPivots.push(...userPivots);
+    if (!stepPivots.length) stepPivots.push(...cleanIps, ...pivotIps);
+  } else {
+    stepPivots.push(...cleanFiles, ...cleanIps, ...otherPivots);
+  }
+
+  const filtered = [...new Set(stepPivots)].filter((p) => !/^(?:inc|alert)-\d+/i.test(p));
+  if (!filtered.length) {
+    const fallback = allPivots.filter((p) => !/^(?:inc|alert)-\d+/i.test(p));
+    filtered.push(...fallback.slice(0, 3));
+  }
+  return filtered.slice(0, 4);
+}
+
+function _generatePivotRecommendation(step, pivots) {
+  const instr = (step?.instruction || "").toLowerCase();
+  const isProcessStep = /process|spawned|execution|tree|lineage|ancestry/i.test(instr);
+  const isNetworkStep = /horizontal|vertical|lateral|network|traffic/i.test(instr);
+  const isIdentityStep = /user|login|credential|identity|auth/i.test(instr);
+  const isExfilStep = /exfiltration|egress|outbound/i.test(instr);
+
+  const filePivots = pivots.filter((p) => /\.(?:exe|dll|bat|cmd|ps1|sh|py|js|vbs|msi)$/i.test(p));
+  const ipPivots = pivots.filter((p) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(p));
+  const hashPivots = pivots.filter((p) => /^[a-fA-F0-9]{32,64}$/.test(p));
+  const otherPivots = pivots.filter((p) => !filePivots.includes(p) && !ipPivots.includes(p) && !hashPivots.includes(p));
+
+  if (filePivots.length) {
+    const targets = filePivots.join(", ");
+    if (isProcessStep) {
+      return `Search process execution and script logs for filename ${targets} to inspect parent-child execution hierarchy and command-line arguments.`;
+    }
+    return `Search host logs for filename ${targets} to verify whether the binary executed or spawned additional processes.`;
+  }
+
+  if (hashPivots.length) {
+    const targets = hashPivots.join(", ");
+    return `Search file creation and execution events for hash ${targets} to identify execution ancestry and associated binaries.`;
+  }
+
+  if (ipPivots.length) {
+    const targets = ipPivots.join(" and ");
+    if (isNetworkStep) {
+      return `Search network traffic and authentication sessions for IP ${targets} to verify destination ports, protocol type, and whether communication was lateral or vertical.`;
+    }
+    if (isProcessStep) {
+      return `Search host and process creation logs associated with IP ${targets} to identify spawned binaries, command-line arguments, and parent process trees.`;
+    }
+    if (isIdentityStep) {
+      return `Search logon session and authentication logs involving IP ${targets} to determine logged-on accounts and authentication packages.`;
+    }
+    if (isExfilStep) {
+      return `Search network connection and proxy logs for IP ${targets} to inspect outbound byte transfer volume and communication duration.`;
+    }
+    return `Search network traffic and host activity for IP ${targets} to correlate related event logs within the alert window.`;
+  }
+
+  if (otherPivots.length) {
+    const targets = otherPivots.join(", ");
+    if (isIdentityStep) {
+      return `Search authentication and directory logs for user or account ${targets} to verify interactive and network logon activity.`;
+    }
+    return `Pivot on indicator ${targets} across host and network logs to gather supporting telemetry.`;
+  }
+
+  return "Collect host process execution, authentication records, and network connection logs across the incident timeframe.";
+}
+
+function evidenceGapsCard(trace, result) {
+  if (!Array.isArray(trace) || !trace.length) return "";
+  const unmetSteps = trace.filter((s) => s && s.status === "NOT_MET" && !/determine if further investigation/i.test(s.instruction || ""));
+  if (!unmetSteps.length) return "";
+
+  const items = unmetSteps.map((step) => {
+    const title = _gapProfileTitle(step.instruction, step.findings);
+    const cleanFindings = _cleanGapFindings(step.findings);
+    const pivots = _extractPivotsForStep(step, result);
+    const recommendation = _generatePivotRecommendation(step, pivots);
+
+    const pivotChips = pivots.length
+      ? `<div class="finding-evidence">
+          <span class="finding-evidence-label">Suggested Pivots</span>
+          ${pivots.map((p) => `<span class="evidence-chip">${escapeHTML(p)}</span>`).join("")}
+        </div>`
+      : "";
+
+    return `<li class="finding-item">
+      <div>
+        <div class="finding-heading">
+          <strong>${escapeHTML(title)}</strong>
+          <span class="finding-category cat-observed">${escapeHTML(step.step_id || "step")}</span>
+        </div>
+        <p>${highlightEvidence(cleanFindings, result?.indicators)}</p>
+        ${pivotChips}
+        <div class="finding-meta">
+          <span class="finding-source">Recommendation: ${escapeHTML(recommendation)}</span>
+        </div>
+      </div>
+      <span>${badge("NOT MET", "state-failed")}</span>
+    </li>`;
+  }).join("");
+
+  return `<section class="panel">
+    <h3>Evidence Gaps &amp; Hunting Recommendations (${unmetSteps.length})</h3>
+    <ul class="data-list findings-list">${items}</ul>
+  </section>`;
+}
+
 export function investigationOverviewTab(workspace) {
   const ctx = workspace?.overview?.case_context || {};
   const stageFindings = workspace?.overview?.key_findings_by_stage?.investigation || [];
-  const assessment = investigationAssessment(workspace?.output?.investigation_result);
+  const result = workspace?.output?.investigation_result || {};
+  const assessment = investigationAssessment(result);
+  const trace = _pickAnalysisField(result, "execution_trace");
+  const gapsSection = evidenceGapsCard(trace, result);
 
   const findingsSection = stageFindings.length ? `
     <section class="panel" style="margin-top:.75rem">
@@ -1767,11 +1946,12 @@ export function investigationOverviewTab(workspace) {
   // sits in its own divided .verdict-section, never inside the Investigation
   // assessment.
   const verdict = unifiedVerdictCard(ctx.unified_verdict);
-  if (!assessment && !verdict && !findingsSection) return emptyState("No case overview is available yet.");
+  if (!assessment && !verdict && !findingsSection && !gapsSection) return emptyState("No case overview is available yet.");
   return `<div class="stage-sections">
     ${assessment}
     ${verdict ? `<div class="verdict-section" aria-label="Case-level assessment">${verdict}</div>` : ""}
     ${findingsSection}
+    ${gapsSection}
   </div>`;
 }
 
@@ -1814,6 +1994,7 @@ function investigationOutputTab(workspace) {
       ? "Investigation is currently running."
       : "No Investigation output has been persisted yet.");
   }
+  const trace = _pickAnalysisField(result, "execution_trace");
   const parts = [];
   parts.push(`<p>${result.severity ? severityBadge(result.severity, result.severity_justification) : ""} ${result.confidence ? confidenceBadge(result.confidence, result.confidence_justification) : ""} ${statusBadge(result.status)}</p>`);
   if (output.errors?.length) parts.push(`<p class="notice">${output.errors.map((e) => escapeHTML(e)).join("<br>")}</p>`);
@@ -1828,7 +2009,6 @@ function investigationOutputTab(workspace) {
   if (Array.isArray(containment) && containment.length) {
     parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Recommended Containment Actions</h3><ul class="data-list">${containment.map((c) => `<li>${escapeHTML(c)}</li>`).join("")}</ul></section>`);
   }
-  const trace = _pickAnalysisField(result, "execution_trace");
   parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Playbook Execution Trace</h3>${playbookTraceTable(trace)}</section>`);
   const audits = result.investigation_analysis?.policy_audit_logs;
   parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Policy-Based Compliance Audit Log</h3>${policyAuditTable(audits)}</section>`);

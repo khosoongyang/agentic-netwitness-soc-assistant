@@ -184,6 +184,7 @@ class FinalIncidentAnalysis(BaseModel):
     mitre_mappings: List[mitre_mapper.MitreTTPMapping] = Field(default_factory=list, description="Chronological list of MITRE ATT&CK TTP mappings evaluated holistically at the incident level.")
     mitre_attack_table: Optional[str] = Field(default=None, description="Markdown summary table mapping incident timeline events to MITRE ATT&CK TTPs at the incident level.")
     policy_audit_logs: List[PolicyAuditRecord] = Field(default_factory=list, description="The list of PolicyAuditRecord generated during policy-based verification checks.")
+    suggested_pivots: List[str] = Field(default_factory=list, description="List of suggested pivots/indicators from Pass 1.")
 
 # [FYP-CLASS] `Pass1StepResult` — owns Pass1StepResult state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
@@ -1280,7 +1281,7 @@ async def analyze_alert_group_p1(correlated_alerts: List[dict], playbook_path: s
             "suggested_pivots": []
         }
 
-async def compile_final_report(correlated_alerts: List[dict], playbook_path: str, p1_trace: List[MilestoneExecution]) -> FinalIncidentAnalysis:
+async def compile_final_report(correlated_alerts: List[dict], playbook_path: str, p1_trace: List[MilestoneExecution], suggested_pivots: Optional[List[str]] = None) -> FinalIncidentAnalysis:
     """
     [FYP-FUNCTION] [FYP-EVALUATOR] Pass 2 of the async two-pass pipeline —
     the production-path counterpart to generate_final_analysis(). Called by
@@ -1391,6 +1392,9 @@ async def compile_final_report(correlated_alerts: List[dict], playbook_path: str
             except Exception:
                 pass
 
+        if suggested_pivots:
+            final_report.suggested_pivots = [str(p) for p in suggested_pivots if p]
+
         log_success(f"[LLM RESPONSE] Pass 2 completed for {seed_id} (Severity: {final_report.severity})")
         return final_report
     except Exception as e:
@@ -1407,7 +1411,8 @@ async def compile_final_report(correlated_alerts: List[dict], playbook_path: str
             business_impact_checklist=BusinessImpactChecklist(critical_system="unknown", essential_service="unknown", data_sensitivity="unknown", operational_impact="unknown"),
             severity_justification=f"Fallback due to error: {e}",
             confidence_justification="Fallback due to error",
-            policy_audit_logs=[]
+            policy_audit_logs=[],
+            suggested_pivots=[str(p) for p in (suggested_pivots or []) if p]
         )
         try:
             _, mitre_table = mitre_mapper.map_incident_mitre_ttps(correlated_alerts, llm=None)

@@ -799,7 +799,7 @@ async def main_async():
                                 orchestrator.log_success(f"Dynamic retrieval matched alert {alert_id} (RRF: {score:.4f})")
                                 
                 # 3. Pass 2 (Always compile final report for dynamic/cluster incidents)
-                report = await orchestrator.compile_final_report(current_alerts, playbook_path, p1_trace)
+                report = await orchestrator.compile_final_report(current_alerts, playbook_path, p1_trace, suggested_pivots=suggested_pivots)
                 
             return (inst_id, incident, current_alerts, report)
 

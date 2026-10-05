@@ -2393,6 +2393,7 @@ def run_investigation(incident_id: str, timeout: int = 600,
         result["severity_justification"] = agent_output.severity_justification
         result["confidence_justification"] = agent_output.confidence_justification
         result["execution_trace"] = [step.model_dump() for step in agent_output.execution_trace]
+        result["suggested_pivots"] = getattr(agent_output, "suggested_pivots", []) or []
     if result["status"] == "completed_limited":
         result["missing_evidence"] = ["Final analysis report was not generated."]
     _annotate_severity_divergence(result, triage_classification)
