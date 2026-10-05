@@ -15,6 +15,7 @@ All variables are optional unless noted. Set them in `.env` (copy from
 | `OPENAI_MODEL` | Model name for chat/completions calls. | No | `gpt-4o-mini` | `gpt-4o-mini` |
 | `OPENAI_SEED` | Fixed sampling seed, for more reproducible model output. | No | unset (non-deterministic) | `42` |
 | `TRIAGE_JSON_MODE` | `always` / `never` overrides JSON-mode detection (on for OpenAI / Azure OpenAI hosts, off for other providers). | No | auto | `never` |
+| `TRIAGE_JSON_SCHEMA` | `never` turns off the strict JSON schema used for the SOC Classification call on OpenAI / Azure OpenAI hosts (every citation is restricted to the evidence-packet paths that are present). Also off when `TRIAGE_JSON_MODE=never`. | No | auto | `never` |
 
 ## Triage evidence and review
 

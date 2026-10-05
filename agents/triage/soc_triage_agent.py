@@ -109,7 +109,7 @@ from .display import (  # noqa: F401
 # ranked signature compaction replacing first-12-alerts truncation.
 # [FYP-TRIAGE-STEP3] bumped: context.analyst_note (delimited analyst-provided
 # context) and context.suppression_match leaves; prompt rule for both.
-TRIAGE_PROMPT_VERSION = "2026-10-citation-paths"
+TRIAGE_PROMPT_VERSION = "2026-10-constrained-citations"
 
 # Keys the SOC Classification call returns for the disposition assessment.
 # They are split off cls_data (so the trace keeps its historical shape) and
@@ -190,6 +190,72 @@ def _provider_supports_json_mode(base_url: str) -> bool:
     from urllib.parse import urlparse
     host = (urlparse(str(base_url)).hostname or "").lower()
     return any(host == h or (h.startswith(".") and host.endswith(h)) for h in _JSON_MODE_HOSTS)
+
+
+def _provider_supports_json_schema(base_url: str) -> bool:
+    """Strict json_schema response_format: OpenAI / Azure OpenAI only (same
+    host rule as json mode). TRIAGE_JSON_SCHEMA=never disables it."""
+    if os.environ.get("TRIAGE_JSON_SCHEMA", "").strip().lower() == "never":
+        return False
+    if os.environ.get("TRIAGE_JSON_MODE", "").strip().lower() == "never":
+        return False
+    return _provider_supports_json_mode(base_url)
+
+
+def _accepts_response_format(call) -> bool:
+    """True if this _call (the real one, or a harness replacement) takes a
+    response_format argument. Offline harnesses (acceptance / eval /
+    tests) replace _call with a 2-argument function and must keep working."""
+    import inspect
+    try:
+        params = inspect.signature(call).parameters
+    except (TypeError, ValueError):
+        return False
+    return "response_format" in params or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
+def _citable_paths(packet: dict | None) -> list[str]:
+    """[IMPROVEMENT #1] Every evidence-packet dot-path the guards accept as a
+    cite: present and not [missing]. Sorted for a stable schema."""
+    from .evidence_packet import iter_leaves
+    return sorted(path for path, leaf in iter_leaves(packet or {}) if leaf.get("status") != "missing")
+
+
+def _classification_response_format(packet: dict | None) -> dict:
+    """[IMPROVEMENT #1] Strict JSON schema for the SOC Classification answer.
+    Same fields as the prompt's schema; every cite is an enum of
+    _citable_paths(packet), so the model cannot name an invented or
+    [missing] path. OpenAI strict mode: all properties required,
+    additionalProperties false."""
+    from .triage_result import DISPOSITIONS
+    paths = _citable_paths(packet)
+    cites = {"type": "array", "items": {"type": "string", "enum": paths}}
+
+    def obj(props: dict) -> dict:
+        return {"type": "object", "properties": props, "required": list(props),
+                "additionalProperties": False}
+
+    claim = obj({"claim": {"type": "string"}, "cites": cites})
+    claims = {"type": "array", "items": claim}
+    side = obj({"evidence_for": claims, "evidence_against": claims})
+    schema = obj({
+        "classification": {"type": "string", "enum": ["Critical", "High", "Medium", "Low"]},
+        "incident_category": {"type": "string"},
+        "response_time": {"type": "string"},
+        "summary": {"type": "string"},
+        "recommended_actions": {"type": "array", "items": {"type": "string"}},
+        "mitre_tactic": {"type": "string"},
+        "mitre_technique": {"type": "string"},
+        "hypotheses": obj({"malicious": side, "benign": side}),
+        "proposed_disposition": {"type": "string", "enum": list(DISPOSITIONS)},
+        "lookalike_ruled_out": obj({"lookalike": {"type": "string"}, "ruled_out": {"type": "boolean"},
+                                    "reason": {"type": "string"}, "cites": cites}),
+        "fn_cost_if_wrong": {"type": "string"},
+        "evidence_checked": cites,
+    })
+    return {"type": "json_schema",
+            "json_schema": {"name": "soc_classification", "strict": True, "schema": schema}}
 
 
 # [AUDIT T-15] Specific, stable error prefix for an unconfigured provider.
@@ -986,14 +1052,17 @@ class TriageAgent:
     # [FYP-CALLS] Calls: `StrOutputParser`, `_emit`, `_stream_or_invoke`, `from_messages`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
-    def _call(self, messages: list, phase_label: str) -> tuple[str, dict]:
+    def _call(self, messages: list, phase_label: str, response_format: dict | None = None) -> tuple[str, dict]:
         """
         Build a chain, stream/invoke it, extract JSON, repair if needed.
-        Returns (raw_text, data_dict).
+        Returns (raw_text, data_dict). [IMPROVEMENT #1] response_format, when
+        given, overrides the json_object mode for this one call (strict
+        json_schema with citable-path enums for SOC Classification).
         """
         self._emit("phase_start", phase_label)
         prompt     = ChatPromptTemplate.from_messages(messages)
-        text_chain = prompt | self.llm | StrOutputParser()
+        llm        = self.llm.bind(response_format=response_format) if response_format else self.llm
+        text_chain = prompt | llm | StrOutputParser()
         raw_text   = _stream_or_invoke(text_chain, self.thinking_container)
         return raw_text
 
@@ -1276,7 +1345,17 @@ class TriageAgent:
 
         messages = _fit_call(_build, incident, parsed_context)
 
-        raw_text = self._call(messages, "SOC Classification")
+        # [IMPROVEMENT #1] OpenAI hosts: strict schema whose cite items are an
+        # enum of this packet's citable paths, so an invented / [missing]
+        # path cannot be generated. Harnesses that replace _call keep the
+        # 2-argument call. Guards still verify every cite afterwards.
+        response_format = (_classification_response_format(evidence_packet)
+                           if evidence_packet and _provider_supports_json_schema(self.cfg.base_url)
+                           else None)
+        if response_format is not None and _accepts_response_format(self._call):
+            raw_text = self._call(messages, "SOC Classification", response_format=response_format)
+        else:
+            raw_text = self._call(messages, "SOC Classification")
         data     = _extract_json(raw_text)
         if not data.get("classification"):
             data = _repair_json(
