@@ -9,7 +9,7 @@ copies; outputs below are pasted verbatim (trimmed).
 ## 0. Fix status (update after the fix pass)
 
 Fixed in severity order on top of `dbdaffb`; each fix has a failing-first
-regression test. After the pass (HEAD 0bb1585): `pytest -q` **1290 passed, 9 failed** (the
+regression test. After the pass (HEAD a27058a): `pytest -q` **1322 passed, 9 failed** (the
 same 9 pre-existing failures, verified identical by name), clean git status
 after the run; acceptance step 1 **17/17**, step 2 **23/23**, step 3 **23/23**;
 offline eval acceptable-hit **0.9167**, must_not violations **0**, consistency
@@ -27,20 +27,20 @@ offline eval acceptable-hit **0.9167**, must_not violations **0**, consistency
 | T-08 | Fixed | 45c41a4 | `tests/test_triage_prompt_injection_hardening.py`. Both delimiters defanged in packet values and the untrusted block; `TRIAGE_PROMPT_VERSION` bumped |
 | T-09 | Fixed | 45c41a4 | same file (deep-dive prompt delimited + rule) |
 | T-10 | Fixed | 8ba82c0 | `tests/test_audit_egress_and_integrity.py` (mismatch and tamper-after-load fail closed). Real runtime cache verified OK |
-| T-11 | Fixed | 8ba82c0 | same file. **Not done:** opt-out for internal file-hash lookups (product decision) |
+| T-11 | Fixed | 8ba82c0, 2502371 | `tests/test_audit_egress_and_integrity.py`. Internal IPs never sent; `AEGIS_TI_HASH_LOOKUPS=off` stops file hashes going to VirusTotal/OTX (recorded as skipped: unknown, not clean). Default unchanged |
 | T-12 | Fixed | 76cbc7f, b7cce26 | One UNC per incident (reuse), not allocate-at-approval. Acceptance step 2 check updated (it asserted the old behaviour) |
 | T-13 | Fixed | 69038fd | `tests/test_triage_time_handling.py` |
 | T-14 | Fixed | 69038fd | same file (+ mock path in ba45fe6) |
 | T-15 | Fixed | 93466a6 | `tests/test_triage_llm_config.py`. `LLM_NOT_CONFIGURED` fail-fast, no network call; README/configuration corrected |
 | T-16 | Fixed | 93466a6 | same file (OpenAI/Azure hosts only; env override kept) |
-| T-17 | **Open (measured)** | - | Measured with the extractor the ticket actually uses (`_extract_metakey_values`) over 404 incidents (`demo/*.json` + 400 stored): only **9 of the 38** checklist meta keys ever yield a value (`ip.src`/`ip.dst` 384 incidents each; `domain, event.type, file.hash, file.name, host.name, os.version, user.name` 2-4 each). **29 never do**, including `process.name, process.path, port.dst, protocol, bytes.*, packets.*, cpu.usage, cert.*`. (An earlier looser key-name scan reported 15 absent; it over-counted presence by matching last path segments such as `type`.) The ticket's "Matched Meta-Keys" therefore mostly lists keys the incident never had. Fixing it changes that field's meaning and needs the real NetWitness meta dictionary, so it is left for a decision: map the keys, or demote the checklist to a CIA impact tag |
+| T-17 | Fixed | 1f49367 | `tests/test_triage_metakeys.py`. Every checklist key mapped to NetWitness fields measured in the data (`port_dst`, `ip_proto`, `filename_src`, `checksum_src`, `dir_path_src`, `cert_thumbprint`, ...): extractable keys on 404 incidents 9 -> 23, the old 9 byte-identical. The ticket now lists only keys observed in the incident; implied keys stay in the IOC trace. 15 keys (cpu.usage, packets.*, bytes.in, ...) have no field in this data and are never listed. `TRIAGE_PROMPT_VERSION` -> `2026-10-audit-observed-metakeys` |
 | T-18 | Decided + documented | 34d9789 | Human context stays out of `CORE_EVIDENCE` (uncertainty = machine evidence). `tests/test_triage_guard_decisions.py` |
-| T-19 | Partly fixed | 797f606 | Packet render budgeted (INC-52825: 9,782 -> 8,522 chars, no leaf dropped). **Open:** total per-call prompts still ~18-21k chars |
+| T-19 | Fixed | 797f606, 9e9733c | Packet render budget (9,000) + per-call budget `_MAX_CALL_PROMPT_CHARS = 18000`: only the INCIDENT block is re-compacted when a call is over (packet/method/schema never cut, small incidents byte-identical). INC-52825 per call: 10,941 / 18,277 / 20,709 -> 10,941 / 15,929 / 17,691; top signature still present, also with a maximal analyst note |
 | T-20 | Fixed | 2c0edc3, 08ec776 | Latest decision per (incident, run) in metrics and in the blind-review sample |
 | T-21 | Fixed | ba45fe6 | Mock path: suppressions + `{prompt_version: "mock", model: "mock"}` |
 | T-22 | Partly fixed | 54eb9b6, cbcd0d8 | 173 stale paths in comments/docstrings (27 files) rewritten; `tests/test_fyp_annotation_paths.py`. **Open:** module split (refactor), 4 reporting-subproject annotation paths name files that exist nowhere. The 3 user-visible strings that named removed modules (Reporting thinking text, stale-write error, validation rationale) were fixed in cbcd0d8 |
 | T-23 | Fixed | 34d9789 | Docs check in `tests/test_triage_guard_decisions.py` |
-| T-24 | **User decision** | - | Unchanged: running the app still adds the 4 review tables to the tracked `soc_db/soc_incidents.db` |
+| T-24 | Fixed | a27058a | `tests/test_live_data_dir.py`. Live DBs in git-ignored `AEGIS_DATA_DIR` (default `runtime/db/`), seeded once from tracked `soc_db/`, which is never written (`AEGIS_DATA_DIR=soc_db` restores the old behaviour). Real-app check: run + approve with review -> 1 `triage_reviews` row in `runtime/db/`, none in `soc_db/`, all `soc_db/*.db` sha256 unchanged, git status clean |
 
 ### Post-fix re-run of the original audit repros (unchanged scripts)
 
