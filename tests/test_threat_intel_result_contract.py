@@ -389,7 +389,7 @@ def test_persisted_threat_intel_result_json_round_trips_through_contract(monkeyp
         result = ti.run_threat_intel_for_dashboard(
             {"source_ip": "203.0.113.9"}, output_dir=tmp_path)
 
-    on_disk = json.loads((tmp_path / "threat_intel_result.json").read_text())
+    on_disk = json.loads((tmp_path / "threat_intel_result.json").read_text(encoding="utf-8"))
     assert on_disk == result
     # The persisted file itself must validate against the same contract.
     validate_threat_intel_result(on_disk)

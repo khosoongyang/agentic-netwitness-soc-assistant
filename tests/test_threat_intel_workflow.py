@@ -1758,7 +1758,11 @@ def test_recommended_next_action_reflects_warnings_over_risk_level(monkeypatch, 
 
 
 def test_recommended_next_action_reflects_medium_or_high_risk(monkeypatch, tmp_path):
+    # A file hash makes BOTH VirusTotal and OTX applicable (OTX is queried
+    # for "file" indicators), so both keys must be configured for a
+    # warning-free result; OTX's response is irrelevant to the risk asserted.
     monkeypatch.setenv("VT_API_KEY", "test-vt-key")
+    monkeypatch.setenv("OTX_API_KEY", "test-otx-key")
     resp = _ok_json_response({"data": {"attributes": {
         "last_analysis_stats": {"malicious": 5, "suspicious": 0}, "reputation": -10}}})
     with patch("requests.get", return_value=resp):
