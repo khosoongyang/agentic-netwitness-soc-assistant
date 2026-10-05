@@ -62,7 +62,9 @@ from typing import Any
 
 # Default DB: <project>/soc_db/soc_incidents.db (same layout as
 # soc_triage_agent._SOC_DB_DIR). NOT created if absent -- absence = "unknown".
-DEFAULT_BASELINE_DB = Path(__file__).resolve().parents[2] / "soc_db" / "soc_incidents.db"
+# [AUDIT T-24] the live incident DB (AEGIS_DATA_DIR, seeded from soc_db/).
+from aegis_paths import ensure_live as _ensure_live, live_db as _live_db
+DEFAULT_BASELINE_DB = _live_db("soc_incidents.db")
 
 # Look-back windows, in days, measured back from the incident's created time.
 BASELINE_WINDOWS_DAYS: tuple[int, ...] = (7, 30, 90)
@@ -254,7 +256,7 @@ def compute_baseline(incident: dict, db_path: Path | None = None) -> dict:
     measurable -- see the ``result`` literal below). ``status`` is
     "measured" only when the DB was readable, the entity resolved and the
     incident time falls inside the DB's coverage window."""
-    db = Path(db_path) if db_path is not None else DEFAULT_BASELINE_DB
+    db = _ensure_live(Path(db_path) if db_path is not None else DEFAULT_BASELINE_DB)
     entity = extract_entity(incident)
     source = detection_source(incident)
     as_of, as_of_field = incident_created_time(incident)
@@ -409,7 +411,7 @@ def noisy_pairs(db_path: Path | None = None, *, limit: int = NOISY_PAIRS_DEFAULT
     an offline snapshot, so "now" would make every window empty).
     detection_source = "createdBy" or "createdBy / ruleId" (the same label
     agents/triage/suppression.scope_from_packet() produces)."""
-    db = Path(db_path) if db_path is not None else DEFAULT_BASELINE_DB
+    db = _ensure_live(Path(db_path) if db_path is not None else DEFAULT_BASELINE_DB)
     out: dict[str, Any] = {"status": "unknown", "reason": "", "db_source": f"{db.name}:incidents",
                            "as_of": None, "pairs": []}
     if not db.is_file():

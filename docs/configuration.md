@@ -23,7 +23,8 @@ See [`triage-review.md`](triage-review.md) and [`triage-evaluation.md`](triage-e
 | Variable | Purpose | Required | Default | Example |
 |---|---|---|---|---|
 | `AEGIS_LOLBAS_PATH` | LOLBAS dataset cache used for abused-tool enrichment (`python scripts/update_lolbas.py` downloads it with a `.meta.json` sidecar). A cache whose bytes no longer match the sidecar sha256 is rejected, and enrichment is then reported as unknown, never as safe. | No | `runtime/threat_data/lolbas.json` | `/data/lolbas.json` |
-| `AEGIS_TICKET_DB` | Triage ticket / result-cache SQLite file (evaluation scripts point it at a temp copy). | No | `soc_db/soc_tickets.db` | `/tmp/tickets.db` |
+| `AEGIS_TICKET_DB` | Triage ticket / result-cache SQLite file (evaluation scripts point it at a temp copy). | No | `<AEGIS_DATA_DIR>/soc_tickets.db` | `/tmp/tickets.db` |
+| `AEGIS_DATA_DIR` | Directory of the LIVE SQLite databases (incidents/workflow, pipeline, tickets). Each is seeded once by copying the tracked `soc_db/` demo file; the app never writes `soc_db/`. Relative paths are resolved from the repository root; `soc_db` restores the old in-place behaviour. | No | `runtime/db` (gitignored) | `/var/lib/aegis/db` |
 
 Triage separates **severity** (`ticket.classification`) from **disposition**
 (`true_positive` / `false_positive` / `benign_expected` / `needs_info`, set by

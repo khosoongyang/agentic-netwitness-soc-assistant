@@ -11,7 +11,9 @@ from .case_service import _case_list_item, open_readonly_connection
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PIPELINE_DB = PROJECT_ROOT / "soc_db" / "soc_pipeline.db"
+# [AUDIT T-24] the live pipeline DB (AEGIS_DATA_DIR, seeded from soc_db/).
+from aegis_paths import ensure_live as _ensure_live, live_db as _live_db
+DEFAULT_PIPELINE_DB = _live_db("soc_pipeline.db")
 _CLOSED_STATUSES = ("CLOSED", "RESOLVED", "REMEDIATED")
 _PIPELINE_TABLES = (
     "alerts_to_triage", "post_triage_investigate", "post_triage_no_investigate",
@@ -36,7 +38,7 @@ def _counts(connection: sqlite3.Connection, column: str, where: str = "") -> dic
 
 
 def _pipeline_counts(database_path: str | Path | None) -> dict[str, int]:
-    path = Path(database_path or DEFAULT_PIPELINE_DB).resolve()
+    path = Path(database_path or _ensure_live(DEFAULT_PIPELINE_DB)).resolve()
     if not path.is_file():
         return {table: 0 for table in _PIPELINE_TABLES}
     connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=15)

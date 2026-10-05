@@ -71,6 +71,10 @@ runtime/eval_reports/
 # Triage Step 3: rule-tuning backlog ADS stubs (scripts/export_tuning_backlog.py)
 runtime/tuning_backlog/
 
+# Live SQLite databases (audit T-24): seeded from the tracked soc_db/ demo
+# copies on first use; workflow state, analyst reviews and tickets live here.
+runtime/db/
+
 # NOTE: soc_db/, chroma_db/, *.db, incident_reports/, triaged_alerts/ are
 # intentionally TRACKED — they are the offline demo payload the cloud app
 # reads. Do not add them here.

@@ -161,9 +161,17 @@ ROOT       = Path(__file__).resolve().parent.parent
 INV_DIR    = ROOT / "agents" / "investigation"
 REP_DIR    = ROOT / "agents" / "reporting"
 SOC_DB_DIR = ROOT / "soc_db"
-SOC_DB_DIR.mkdir(exist_ok=True)
 
-PIPELINE_DB_FILE = SOC_DB_DIR / "soc_pipeline.db"
+# [AUDIT T-24] live pipeline/ticket DBs in AEGIS_DATA_DIR (see aegis_paths).
+from aegis_paths import ensure_live as _ensure_live, live_db as _live_db
+PIPELINE_DB_FILE = _live_db("soc_pipeline.db")
+
+
+def _tickets_db_path() -> Path:
+    """Live triage ticket DB: the same file the triage agent writes
+    (AEGIS_TICKET_DB override, else AEGIS_DATA_DIR/soc_tickets.db)."""
+    from agents.triage import soc_triage_agent as _sta
+    return Path(_sta._TICKET_DB)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -244,7 +252,7 @@ def _pl_con() -> sqlite3.Connection:
     # [FYP-DATABASE]: opens a fresh sqlite3 connection per call (no pooling).
     # Generous busy-timeout: the app's poll loop reads these tables every
     # ~1.5s while the worker writes — waits must outlast brief read locks.
-    con = sqlite3.connect(str(PIPELINE_DB_FILE), check_same_thread=False,
+    con = sqlite3.connect(str(_ensure_live(PIPELINE_DB_FILE)), check_same_thread=False,
                           timeout=15)
     con.row_factory = sqlite3.Row
     return con
@@ -2209,7 +2217,7 @@ def reconcile_incident_severity(incident_id: str, unc: str, final_severity: str)
         return
     final_severity = final_severity.strip().capitalize()
 
-    tkt_db = ROOT / "soc_db" / "soc_tickets.db"
+    tkt_db = _tickets_db_path()
     if tkt_db.exists():
         try:
             with sqlite3.connect(str(tkt_db), timeout=15) as con:
@@ -2227,7 +2235,7 @@ def reconcile_incident_severity(incident_id: str, unc: str, final_severity: str)
         except Exception as e:
             _log("RECONCILE", f"tickets.db annotate failed for {unc}: {e}")
 
-    pl_db = ROOT / "soc_db" / "soc_pipeline.db"
+    pl_db = Path(_ensure_live(PIPELINE_DB_FILE))
     if pl_db.exists():
         try:
             with sqlite3.connect(str(pl_db), timeout=15) as con:

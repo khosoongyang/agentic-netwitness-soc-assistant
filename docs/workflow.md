@@ -1,7 +1,7 @@
 # Aegis workflow
 
 How `workflow/engine.py` (orchestration) and `workflow/state_store.py` (the
-durable state machine, one row per incident in `soc_db/soc_incidents.db`)
+durable state machine, one row per incident in the live `soc_incidents.db` under `AEGIS_DATA_DIR`, default `runtime/db/`, seeded from `soc_db/`)
 actually behave. Every mechanism below is quoted or paraphrased from the
 functions' own docstrings, not inferred - if this file and the code
 disagree, the code is right.

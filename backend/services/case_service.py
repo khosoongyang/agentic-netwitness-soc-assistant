@@ -77,7 +77,8 @@ _STAGE_DEFINITIONS = (
 
 def open_readonly_connection(database_path: str | Path | None = None) -> sqlite3.Connection:
     """Open the canonical case database without permitting writes."""
-    path = Path(database_path or wss.DB_FILE).resolve()
+    from aegis_paths import ensure_live   # [AUDIT T-24] seed the live DB on first read
+    path = Path(ensure_live(database_path or wss.DB_FILE)).resolve()
     if not path.is_file():
         raise DataStoreUnavailableError()
     connection = sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True, timeout=15)

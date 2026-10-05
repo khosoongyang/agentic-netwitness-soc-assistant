@@ -17,7 +17,9 @@ pipeline_blueprint = Blueprint("pipeline", __name__, url_prefix="/api")
 
 def _service():
     configured = current_app.config.get("AEGIS_PIPELINE_SERVICE")
-    return configured or PipelineService(current_app.config.get("AEGIS_PIPELINE_DB_PATH") or DEFAULT_PIPELINE_DB)
+    from aegis_paths import ensure_live   # [AUDIT T-24]
+    return configured or PipelineService(current_app.config.get("AEGIS_PIPELINE_DB_PATH")
+                                         or ensure_live(DEFAULT_PIPELINE_DB))
 
 
 def _settings():

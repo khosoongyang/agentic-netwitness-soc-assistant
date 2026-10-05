@@ -20,13 +20,26 @@
 # Key evaluator search terms: package initialisation and import-time configuration, [FYP-FUNCTION], [FYP-EVALUATOR].
 # =============================================================================
 
-import sqlite3, os, shutil, glob
+import sqlite3, os, shutil, glob, sys
+from pathlib import Path
+
+# [AUDIT T-24] Reset the LIVE databases the app uses (AEGIS_DATA_DIR, default
+# runtime/db/), never the tracked soc_db/ demo seeds.
+_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_ROOT))
+os.chdir(_ROOT)
+from aegis_paths import live_db
+INCIDENTS_DB = str(live_db("soc_incidents.db"))
+PIPELINE_DB = str(live_db("soc_pipeline.db"))
+TICKETS_DB = str(live_db("soc_tickets.db"))
+if not os.path.exists(INCIDENTS_DB):
+    sys.exit(f"No live database at {INCIDENTS_DB} yet (the app has not run); nothing to reset.")
 
 inc_id = "INC-51772"  # Target incident ID
 inc_num = inc_id.replace("INC-", "")
 
 # 1. Reset workflow state in soc_incidents.db
-with sqlite3.connect("soc_db/soc_incidents.db") as con:
+with sqlite3.connect(INCIDENTS_DB) as con:
     con.execute("""
         UPDATE incidents SET 
             workflow_status=NULL, approval_stage=NULL, run_id=NULL,
@@ -44,8 +57,8 @@ with sqlite3.connect("soc_db/soc_incidents.db") as con:
     con.execute("DELETE FROM report_edits WHERE incident_id=?", (inc_id,))
 
 # 2. Clear records from soc_pipeline.db
-if os.path.exists("soc_db/soc_pipeline.db"):
-    with sqlite3.connect("soc_db/soc_pipeline.db") as con:
+if os.path.exists(PIPELINE_DB):
+    with sqlite3.connect(PIPELINE_DB) as con:
         tables = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         for t in tables:
             try:
@@ -54,8 +67,8 @@ if os.path.exists("soc_db/soc_pipeline.db"):
                 pass
 
 # 3. Clear records from soc_tickets.db
-if os.path.exists("soc_db/soc_tickets.db"):
-    with sqlite3.connect("soc_db/soc_tickets.db") as con:
+if os.path.exists(TICKETS_DB):
+    with sqlite3.connect(TICKETS_DB) as con:
         tables = [r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]
         for t in tables:
             try:

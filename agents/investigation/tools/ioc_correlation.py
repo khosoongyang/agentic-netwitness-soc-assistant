@@ -92,10 +92,16 @@ import time
 from pathlib import Path
 from typing import Any
 
-_DB_DIR = Path(__file__).resolve().parents[3] / "soc_db"
-_INCIDENTS_DB = _DB_DIR / "soc_incidents.db"
-_PIPELINE_DB = _DB_DIR / "soc_pipeline.db"
-_TICKETS_DB = _DB_DIR / "soc_tickets.db"
+# [AUDIT T-24] the live DBs (AEGIS_DATA_DIR, seeded from tracked soc_db/).
+import sys as _sys
+_ROOT = Path(__file__).resolve().parents[3]
+if str(_ROOT) not in _sys.path:          # also imported from the investigation subprocess
+    _sys.path.insert(0, str(_ROOT))
+from aegis_paths import data_dir as _data_dir, ensure_live as _ensure_live, live_db as _live_db
+_DB_DIR = _data_dir()
+_INCIDENTS_DB = _live_db("soc_incidents.db")
+_PIPELINE_DB = _live_db("soc_pipeline.db")
+_TICKETS_DB = _live_db("soc_tickets.db")
 
 _HASH_RE = re.compile(r"^[0-9a-fA-F]{32,64}$")
 _IP_RE = re.compile(r"^\d{1,3}(?:\.\d{1,3}){3}$")
@@ -539,9 +545,9 @@ def correlate_iocs(incident: dict, triage_result: dict | None = None,
     iocs, truncated = _extract_iocs(incident, triage_result, max_iocs)
     seed_ids = _seed_ids(incident)
 
-    inc_path = incidents_db or str(_INCIDENTS_DB)
-    pipe_path = pipeline_db or str(_PIPELINE_DB)
-    tick_path = tickets_db or str(_TICKETS_DB)
+    inc_path = incidents_db or str(_ensure_live(_INCIDENTS_DB))
+    pipe_path = pipeline_db or str(_ensure_live(_PIPELINE_DB))
+    tick_path = tickets_db or str(_ensure_live(_TICKETS_DB))
 
     # [FYP-FUNCTION] `_ro` — implements the ro operation used by the surrounding SOC analysis support workflow.
     # [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.

@@ -418,8 +418,10 @@ if _TICKET_DB_OVERRIDE:
     _TICKET_DB = Path(_TICKET_DB_OVERRIDE)
     _TICKET_DB.parent.mkdir(parents=True, exist_ok=True)
 else:
-    _SOC_DB_DIR.mkdir(parents=True, exist_ok=True)
-    _TICKET_DB = _SOC_DB_DIR / "soc_tickets.db"
+    # [AUDIT T-24] live ticket DB in AEGIS_DATA_DIR (default runtime/db/,
+    # git-ignored), seeded from the tracked soc_db/ copy -- never soc_db/.
+    from aegis_paths import ensure_live as _ensure_live, live_db as _live_db
+    _TICKET_DB = _ensure_live(_live_db("soc_tickets.db"))
 _TICKET_LOCK = threading.Lock()
 
 

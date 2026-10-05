@@ -118,8 +118,12 @@ from pathlib import Path
 # of the process's cwd.
 ROOT = Path(__file__).resolve().parent.parent
 SOC_DB_DIR = ROOT / "soc_db"
-SOC_DB_DIR.mkdir(exist_ok=True)
-DB_FILE = SOC_DB_DIR / "soc_incidents.db"
+# [AUDIT T-24] The live DB lives in the git-ignored AEGIS_DATA_DIR (default
+# runtime/db/), seeded on first open from the tracked soc_db/ demo copy, so
+# running the app never modifies tracked files. AEGIS_DATA_DIR=soc_db
+# restores the old location.
+from aegis_paths import ensure_live as _ensure_live, live_db as _live_db
+DB_FILE = _live_db("soc_incidents.db")
 
 # [FYP-STATE] The two workflow_status values that mean "a run is currently
 # in flight" — used by start_run() to decide whether a fresh run may replace
@@ -199,7 +203,7 @@ def db_connect() -> sqlite3.Connection:
     instead of app.py defining its own connection helper.
     Canonical connection factory — app.py imports this instead of
     defining its own (db_upsert_incidents, db_get_incident, etc. all use it)."""
-    con = sqlite3.connect(str(DB_FILE), check_same_thread=False, timeout=15)
+    con = sqlite3.connect(str(_ensure_live(DB_FILE)), check_same_thread=False, timeout=15)
     con.row_factory = sqlite3.Row
     return con
 
@@ -215,7 +219,7 @@ def _autocommit_connect() -> sqlite3.Connection:
     Manual transaction control for the guarded read-then-write helpers
     below — isolation_level=None so an explicit BEGIN IMMEDIATE isn't
     nested inside sqlite3's own implicit transaction."""
-    con = sqlite3.connect(str(DB_FILE), check_same_thread=False, timeout=15)
+    con = sqlite3.connect(str(_ensure_live(DB_FILE)), check_same_thread=False, timeout=15)
     con.row_factory = sqlite3.Row
     con.isolation_level = None
     return con

@@ -164,6 +164,7 @@ aggressive internal decomposition merely because it is large").
 ## Runtime
 
 Mutable, non-source data lives under `runtime/` (Chroma vector store,
-uploads) and `soc_db/` (the workflow SQLite database, intentionally
-tracked as demo data - see the README's **Demo data** section) and
+uploads) and `runtime/db/` (the live workflow SQLite databases, seeded
+from the tracked `soc_db/` demo copies, which are never written - see the
+README's **Demo data** section and `aegis_paths.py`) and
 `agents/reporting/outputs/` (per-run reporting artifacts, gitignored).

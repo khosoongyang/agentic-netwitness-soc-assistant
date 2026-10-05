@@ -78,7 +78,7 @@ for exactly what is and isn't safe to rely on.
 |---|---|
 | Backend | Python, Flask |
 | Frontend | HTML, CSS, vanilla JavaScript (no build step, no framework) |
-| Workflow state | SQLite (`soc_db/`) |
+| Workflow state | SQLite (live copy in `runtime/db/`, seeded from `soc_db/`) |
 | Vector search | Chroma |
 | LLM | OpenAI API (chat/investigation/reporting), optional local Ollama fallback for reporting narrative |
 | Document export | python-docx, reportlab, pypdf |
@@ -148,7 +148,8 @@ Aegis reports itself unavailable. Offline runs use the mock triage mode
 
 | Path | Contents |
 |---|---|
-| `soc_db/` | The workflow state machine and case archive (SQLite, tracked as demo data - see below) |
+| `soc_db/` | Demo seed databases (SQLite, tracked; never written by the app - see below) |
+| `runtime/db/` | Live databases: workflow state, analyst reviews, tickets, pipeline (gitignored; seeded from `soc_db/`; `AEGIS_DATA_DIR`) |
 | `chroma_db/` | Seed vector store copied into `runtime/chroma/` on first use |
 | `runtime/chroma/` | The live Chroma vector store (gitignored) |
 | `runtime/uploads/` | Uploaded incident files, server-generated filenames (gitignored) |
@@ -227,7 +228,7 @@ for the full security posture and what would need to change.
 ## Demo data
 
 `soc_db/` and `chroma_db/` are intentionally committed so the app has
-something to show without a live NetWitness connection. **If this data is
+something to show without a live NetWitness connection. Running the app never modifies `soc_db/`: on first use each database is copied to the git-ignored live directory `runtime/db/` (override with `AEGIS_DATA_DIR`; `AEGIS_DATA_DIR=soc_db` restores the old in-place behaviour), and all workflow state, analyst reviews, tickets and pipeline rows are written there. Delete `runtime/db/` to start again from the demo data. **If this data is
 not entirely synthetic** (it may contain real internal hostnames, usernames
 or IP addresses from a lab NetWitness instance), treat it as sensitive:
 verify/scrub it before pushing this repository to any remote you don't

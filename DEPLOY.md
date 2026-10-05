@@ -38,7 +38,9 @@ passwords, tokens and TLS certificate material out of version control -
 
 NetWitness is optional and normally reachable only from its trusted
 network/VPN. When it's unavailable or unconfigured, Aegis continues to
-serve every case already held in `soc_db/`. Runtime writes (uploads,
+serve every case already held in `soc_db/` (copied on first use into the
+live directory `AEGIS_DATA_DIR`, default `runtime/db/`; point it at durable
+storage when deploying). Runtime writes (uploads,
 Chroma index, per-run reporting artifacts) should be placed on durable,
 access-controlled storage if you deploy this anywhere persistent -
 see [`docs/architecture.md`](docs/architecture.md#runtime) for exactly

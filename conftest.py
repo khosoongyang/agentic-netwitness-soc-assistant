@@ -30,6 +30,7 @@ _ENV_KEYS = (
     "SOC_RUN_OUTPUT_DIR",
     "SOC_OUTPUT_DIR",
     "AEGIS_CHROMA_DB_PATH",
+    "AEGIS_DATA_DIR",
 )
 
 
@@ -130,6 +131,9 @@ def pytest_configure(config: pytest.Config) -> None:
         "SOC_RUN_OUTPUT_DIR": root / "run_outputs",
         "SOC_OUTPUT_DIR": root / "run_outputs",
         "AEGIS_CHROMA_DB_PATH": root / "aegis_chroma",
+        # [AUDIT T-24] live SQLite dir for the session: a test can never seed
+        # or write the developer's runtime/db/ (or the tracked soc_db/).
+        "AEGIS_DATA_DIR": root / "live_db",
     }
     for path in paths.values():
         if not path.exists() and PROJECT_ROOT not in path.parents:
