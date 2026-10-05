@@ -89,7 +89,7 @@ fallback logic - Phase 9's OpenAI-infrastructure audit deliberately did
   implementation (a divergently-forked duplicate at
   `parsing-normalisation-codes/` was removed in Phase 9 after confirming
   zero consumers).
-- **`agents/triage/`** - `soc_triage_agent.py`, LangChain `ChatOpenAI`-backed.
+- **`agents/triage/`** - `soc_triage_agent.py` (the `TriageAgent`: LLM config, ticket/cache DB, prompt compaction, the three LLM phases, chat), LangChain `ChatOpenAI`-backed. Split out of it (audit T-22, re-exported so imports are unchanged): `checklists.py` (IOC checklists, risk guidance, classification table, MITRE normalisation), `llm_json.py` (JSON extraction/repair), `incident_fields.py` (incident time, meta-key extraction, IOC-match resolution), `display.py` (Markdown trace/ticket rendering).
   Evidence-first: `baseline.py` (measured prior from incident history),
   `raw_alerts.py`, `lolbas.py`, `evidence_packet.py` (every fact as
   `{value, status, source}`), then three LLM calls whose cited hypotheses are
