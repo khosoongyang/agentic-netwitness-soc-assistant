@@ -9,7 +9,7 @@ copies; outputs below are pasted verbatim (trimmed).
 ## 0. Fix status (update after the fix pass)
 
 Fixed in severity order on top of `dbdaffb`; each fix has a failing-first
-regression test. After the pass (HEAD a27058a): `pytest -q` **1322 passed, 9 failed** (the
+regression test. After the pass (HEAD ce909c3): `pytest -q` **1357 passed, 9 failed** (the
 same 9 pre-existing failures, verified identical by name), clean git status
 after the run; acceptance step 1 **17/17**, step 2 **23/23**, step 3 **23/23**;
 offline eval acceptable-hit **0.9167**, must_not violations **0**, consistency
@@ -38,7 +38,7 @@ offline eval acceptable-hit **0.9167**, must_not violations **0**, consistency
 | T-19 | Fixed | 797f606, 9e9733c | Packet render budget (9,000) + per-call budget `_MAX_CALL_PROMPT_CHARS = 18000`: only the INCIDENT block is re-compacted when a call is over (packet/method/schema never cut, small incidents byte-identical). INC-52825 per call: 10,941 / 18,277 / 20,709 -> 10,941 / 15,929 / 17,691; top signature still present, also with a maximal analyst note |
 | T-20 | Fixed | 2c0edc3, 08ec776 | Latest decision per (incident, run) in metrics and in the blind-review sample |
 | T-21 | Fixed | ba45fe6 | Mock path: suppressions + `{prompt_version: "mock", model: "mock"}` |
-| T-22 | Partly fixed | 54eb9b6, cbcd0d8 | 173 stale paths in comments/docstrings (27 files) rewritten; `tests/test_fyp_annotation_paths.py`. **Open:** module split (refactor), 4 reporting-subproject annotation paths name files that exist nowhere. The 3 user-visible strings that named removed modules (Reporting thinking text, stale-write error, validation rationale) were fixed in cbcd0d8 |
+| T-22 | Fixed | 54eb9b6, cbcd0d8, 537241e, ce909c3 | Agent module split (2,577 -> 1,867 lines) into `checklists.py`, `llm_json.py`, `incident_fields.py`, `display.py`, moved verbatim and re-exported as the same objects (`tests/test_triage_module_split.py`); the 3 LLM prompts and the triage result for INC-52825 are byte-identical before/after. Every path in `[FYP-*]` annotations now exists (~590 old-root paths rewritten, 22 marked `(removed)`; comments/docstrings only, AST unchanged; `tests/test_fyp_annotation_paths.py`). `thinking_container` kept for signature compatibility (documented) |
 | T-23 | Fixed | 34d9789 | Docs check in `tests/test_triage_guard_decisions.py` |
 | T-24 | Fixed | a27058a | `tests/test_live_data_dir.py`. Live DBs in git-ignored `AEGIS_DATA_DIR` (default `runtime/db/`), seeded once from tracked `soc_db/`, which is never written (`AEGIS_DATA_DIR=soc_db` restores the old behaviour). Real-app check: run + approve with review -> 1 `triage_reviews` row in `runtime/db/`, none in `soc_db/`, all `soc_db/*.db` sha256 unchanged, git status clean |
 
