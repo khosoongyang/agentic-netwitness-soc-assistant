@@ -622,6 +622,30 @@ def _safe(s: str) -> str:
 _TRUSTED_OUTPUT_ROOT = REP_DIR / "outputs"
 
 
+# Windows MAX_PATH is 260 unless LongPathsEnabled=1; leave room for the
+# longest file name a stage writes (processed_alert.json) plus margin.
+_STAGE_PATH_BUDGET = 240
+
+
+def _stage_output_dir(incident_id: str, run_id: str, stage: str) -> Path:
+    """REP_DIR/outputs/<incident>/<run_id>/<stage> for one stage's files.
+    run_id already contains the incident id ("<inc>@<ts>-<hex>"), so long
+    ids doubled the path and crossed Windows MAX_PATH ([Errno 2] when the
+    parser wrote processed_alert.json). If the readable path would exceed
+    _STAGE_PATH_BUDGET, the run segment becomes a short deterministic hash;
+    ordinary ids keep the readable layout unchanged."""
+    base = REP_DIR / "outputs" / _safe(str(incident_id))
+    readable = base / _safe(run_id) / stage
+    if len(str(readable / "processed_alert.json")) <= _STAGE_PATH_BUDGET:
+        return readable
+    run_hash = "r-" + hashlib.sha256(str(run_id).encode()).hexdigest()[:12]
+    short = base / run_hash / stage
+    if len(str(short / "processed_alert.json")) <= _STAGE_PATH_BUDGET:
+        return short
+    inc_hash = "i-" + hashlib.sha256(str(incident_id).encode()).hexdigest()[:12]
+    return REP_DIR / "outputs" / inc_hash / run_hash / stage
+
+
 def _artifact_dir(incident_id: str, run_id: str) -> Path:
     """[FYP-FUNCTION] [FYP-STATE] A readable prefix plus a content hash of the FULL original
     identifier, so two different incident_ids that _safe() would
@@ -1102,7 +1126,7 @@ def run_parsing(incident: dict, run_id: str) -> dict:
     from agents.parsing import run_parser_normalisation_for_dashboard
 
     inc_id = str(incident.get("id") or incident.get("incidentId") or "unknown")
-    output_dir = REP_DIR / "outputs" / _safe(inc_id) / _safe(run_id) / "parsing"
+    output_dir = _stage_output_dir(inc_id, run_id, "parsing")
     result = run_parser_normalisation_for_dashboard(incident, output_dir=output_dir)
     if result.get("status") == "completed":
         result.update(generate_parsing_ai_summary(result))
@@ -1301,7 +1325,7 @@ def run_threat_intel(incident_id: str, run_id: str,
             f"triage_result belongs to incident {tri_inc_id!r}, expected "
             f"{incident_id!r} — refusing stale/mismatched threat-intel run")
 
-    output_dir = REP_DIR / "outputs" / _safe(str(incident_id)) / _safe(run_id) / "threat_intel"
+    output_dir = _stage_output_dir(str(incident_id), run_id, "threat_intel")
     flat_alert = threat_intel._build_flat_alert(incident or {}, triage_result, normalised_alert)
     dashboard_result = threat_intel.run_threat_intel_for_dashboard(flat_alert, output_dir=output_dir)
 
@@ -2736,7 +2760,7 @@ def handoff_to_reporting(triage_result: dict, incident: dict,
         # identity check mirroring workflow_validation.validate_parsing_result()'s
         # existing precedent: only copy it in if its own incident_id matches.
         try:
-            parsing_output_dir = REP_DIR / "outputs" / _safe(incident_id) / _safe(run_id) / "parsing"
+            parsing_output_dir = _stage_output_dir(str(incident_id), run_id, "parsing")
             processed_alert_src = parsing_output_dir / "processed_alert.json"
             if processed_alert_src.exists():
                 processed_alert_data = json.loads(processed_alert_src.read_text(encoding="utf-8"))
