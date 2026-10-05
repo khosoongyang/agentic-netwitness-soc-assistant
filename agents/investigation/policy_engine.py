@@ -32,7 +32,7 @@ from pydantic import BaseModel, Field
 
 # [FYP-CLASS] `PolicyAuditRecord` — owns PolicyAuditRecord state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/policy_engine.py:run_policy_compliance_rules.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/policy_engine.py:run_policy_compliance_rules.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -52,7 +52,7 @@ class PolicyAuditRecord(BaseModel):
 
 # [FYP-CLASS] `PolicyManager` — owns PolicyManager state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: __init__, _load_policies, _parse_policies, get_section.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/orchestrator.py:get_policy_manager.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/orchestrator.py:get_policy_manager.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -61,7 +61,7 @@ class PolicyManager:
     # [FYP-INPUT] Parameters: `policy_file_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_load_policies`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -76,7 +76,7 @@ class PolicyManager:
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/policy_engine.py:__init__, soc_investigation_agent_revised/policy_engine.py:get_section; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/policy_engine.py:__init__, agents/investigation/policy_engine.py:get_section; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_parse_policies`, `getmtime`, `open`, `read`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -97,7 +97,7 @@ class PolicyManager:
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/policy_engine.py:_load_policies; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/policy_engine.py:_load_policies; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `compile`, `group`, `join`, `lower`, `match`, `splitlines`, `strip`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -132,7 +132,7 @@ class PolicyManager:
     # [FYP-INPUT] Parameters: `section_name`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/orchestrator.py:compile_final_report, agents/investigation/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_load_policies`, `items`, `lower`, `strip`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -150,7 +150,7 @@ class PolicyManager:
 # [FYP-INPUT] Parameters: `incident_id`, `severity`, `confidence`, `incident_summary`, `recommended_containment`, `business_impact_checklist`, `timeline_text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_local_standalone_report, soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:generate_local_standalone_report, agents/investigation/orchestrator.py:compile_final_report, agents/investigation/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `PolicyAuditRecord`, `any`, `append`, `dict`, `findall`, `get`, `hasattr`, `insert`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -387,7 +387,7 @@ def run_policy_compliance_rules(
 # [FYP-INPUT] Parameters: `section_text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/orchestrator.py:compile_final_report, agents/investigation/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `append`, `bool`, `endswith`, `join`, `lower`, `match`, `splitlines`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

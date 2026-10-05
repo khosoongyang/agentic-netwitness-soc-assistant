@@ -51,7 +51,7 @@ from adapters.common import OUTPUTS_DIR, INPUTS_DIR
 # [FYP-INPUT] Parameters: `cond`, `msg`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_decision_buttons_and_branches, soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_reporting_wrapper_backfill, soc_reporting_agent/scripts/test_export_cache.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_decision_buttons_and_branches, agents/reporting/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:test_reporting_wrapper_backfill, agents/reporting/scripts/test_export_cache.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `AssertionError`.
 # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -64,7 +64,7 @@ def assert_true(cond: bool, msg: str) -> None:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/scripts/test_evidence_gap_branch_and_reporting_wrapper.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_normalise_reporting_result`, `assert_true`, `dumps`, `exists`, `mkdir`, `rmtree`, `str`, `write_text`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -100,7 +100,7 @@ def test_reporting_wrapper_backfill() -> dict:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, agents/investigation/bench_correlation.py:main_bench; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `dumps`, `mkdir`, `print`, `test_decision_buttons_and_branches`, `test_reporting_wrapper_backfill`, `write_text`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

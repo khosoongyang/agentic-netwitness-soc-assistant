@@ -99,7 +99,7 @@ def _resolve_trusted_path(raw_path: str, *, attempt_dir: Path) -> Path:
 # [FYP-INPUT] Parameters: `manifest_without_hash`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include reporting_approval.py:_verify_candidate_manifest, soc_reporting_agent/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include reporting_approval.py:_verify_candidate_manifest, agents/reporting/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dumps`, `encode`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

@@ -219,7 +219,7 @@ def _pick_playbook(incident: dict, triage_result: dict | None,
 # [FYP-INPUT] Parameters: `incident`, `triage_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop, soc_reporting_agent/reporting/export_context_enhancer.py:derive_affected_assets; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include reporting_sop.py:build_incident_sop, agents/reporting/reporting/export_context_enhancer.py:derive_affected_assets; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_classification`, `_safe`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

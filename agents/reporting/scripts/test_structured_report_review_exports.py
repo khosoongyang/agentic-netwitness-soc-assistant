@@ -66,7 +66,7 @@ RESULTS = TEST_ROOT / "test_results.json"
 # [FYP-INPUT] Parameters: `path`, `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include reporting_approval.py:build_export_all_zip, soc_investigation_agent_revised/main.py:write_markdown_report, soc_investigation_agent_revised/sync_engine.py:_commit_disk; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include reporting_approval.py:build_export_all_zip, agents/investigation/main.py:write_markdown_report, agents/investigation/sync_engine.py:_commit_disk; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `mkdir`, `write_text`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -79,7 +79,7 @@ def write(path: Path, text: str) -> None:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis test and validation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, agents/investigation/bench_correlation.py:main_bench; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `ZipFile`, `append`, `bool`, `build_report_manifest`, `confirm_section`, `decode`, `dumps`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

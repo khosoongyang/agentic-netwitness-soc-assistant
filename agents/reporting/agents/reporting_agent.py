@@ -45,7 +45,7 @@ from reporting.status_display import get_status_metadata, calculate_llm_enhancem
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting agent workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async, soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/agents/reporting_agent.py:parse_args; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async, agents/reporting/agents/reporting_agent.py:main, agents/reporting/agents/reporting_agent.py:parse_args; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `ArgumentParser`, `add_argument`, `getattr`, `parse_args`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -62,7 +62,7 @@ def parse_args():
 # [FYP-INPUT] Parameters: `loaded`, `optional`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting agent workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:_print_loaded_sources; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:_print_loaded_sources; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: no nested function/service calls.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -76,7 +76,7 @@ def _status_word(loaded: bool, optional: bool = False) -> str:
 # [FYP-INPUT] Parameters: `inputs`, `warnings`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting agent workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_status_word`, `bool`, `get`, `print`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -101,7 +101,7 @@ def _print_loaded_sources(inputs: dict, warnings: list[str]) -> None:
 # [FYP-INPUT] Parameters: `label`, `category`, `technical_status`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting agent workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get_status_metadata`, `print`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -116,7 +116,7 @@ def _print_status(label: str, category: str, technical_status: str) -> None:
 # [FYP-INPUT] Parameters: `reporting_result`, `postgres_status`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting agent workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `get_status_metadata`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -133,7 +133,7 @@ def _add_postgres_display_fields(reporting_result: dict, postgres_status: str) -
 # [FYP-INPUT] Parameters: `name`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting agent workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `replace`, `title`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -153,7 +153,7 @@ def _friendly_report_name(name: str) -> str:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting agent workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, agents/investigation/bench_correlation.py:main_bench; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_add_postgres_display_fields`, `_friendly_report_name`, `_print_loaded_sources`, `_print_status`, `append`, `build_context`, `calculate_llm_enhancement_score`, `enhance_export_context`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

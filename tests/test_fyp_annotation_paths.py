@@ -48,3 +48,22 @@ def test_user_visible_strings_name_no_removed_modules():
         src = (ROOT / rel).read_text(encoding="utf-8")
         assert 'f"workflow_state_store: stale write refused' not in src
         assert "(soc_triage_agent/soc_triage_agent.py)" not in src
+
+
+_PATH_RX = re.compile(r"(?<![\w./-])((?:[\w-]+/)+[\w-]+\.(?:py|js|j2))(?=[:\s,);]|$)")
+
+
+def test_every_path_named_in_fyp_annotations_exists():
+    """Audit T-22 remainder: [FYP-*] lines named ~590 paths under old roots
+    (soc_reporting_agent/, soc_investigation_agent_revised/, ...) and ~29 that
+    exist nowhere. Every repo-relative path in an annotation must now exist;
+    a reference to a removed module is written as '<name> (removed)'."""
+    bad = []
+    for p in _py_files():
+        for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
+            if "[FYP-" not in line:
+                continue
+            for path in _PATH_RX.findall(line):
+                if not (ROOT / path).exists():
+                    bad.append(f"{p.relative_to(ROOT)}:{n}: {path}")
+    assert bad == [], f"{len(bad)} stale paths, e.g. {bad[:8]}"

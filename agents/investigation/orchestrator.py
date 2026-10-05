@@ -85,7 +85,7 @@ class Color:
 # [FYP-INPUT] Parameters: `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_incident_report, soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/main.py:select_playbook_automatically; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:generate_incident_report, agents/investigation/main.py:main_async, agents/investigation/main.py:select_playbook_automatically; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `print`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -94,7 +94,7 @@ def log_info(message: str): print(f"{Color.CYAN}[*] {message}{Color.RESET}", fil
 # [FYP-INPUT] Parameters: `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_incident_report, soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/main.py:write_markdown_report; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:generate_incident_report, agents/investigation/main.py:main_async, agents/investigation/main.py:write_markdown_report; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `print`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -103,7 +103,7 @@ def log_success(message: str): print(f"{Color.GREEN}[+] {message}{Color.RESET}",
 # [FYP-INPUT] Parameters: `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/main.py:select_playbook_automatically, soc_investigation_agent_revised/orchestrator.py:__init__; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async, agents/investigation/main.py:select_playbook_automatically, agents/investigation/orchestrator.py:__init__; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `print`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -112,7 +112,7 @@ def log_warning(message: str): print(f"{Color.YELLOW}[~] {message}{Color.RESET}"
 # [FYP-INPUT] Parameters: `message`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/orchestrator.py:analyze_alert_group_p1, soc_investigation_agent_revised/orchestrator.py:check_milestone_sufficiency; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async, agents/investigation/orchestrator.py:analyze_alert_group_p1, agents/investigation/orchestrator.py:check_milestone_sufficiency; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `print`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -131,7 +131,7 @@ class SuspiciousSeeds(BaseModel):
 
 # [FYP-CLASS] `MilestoneCheck` — owns MilestoneCheck state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/orchestrator.py:check_milestone_sufficiency.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/orchestrator.py:check_milestone_sufficiency.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -143,7 +143,7 @@ class MilestoneCheck(BaseModel):
 
 # [FYP-CLASS] `MilestoneExecution` — owns MilestoneExecution state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:generate_local_standalone_report, soc_investigation_agent_revised/orchestrator.py:analyze_alert_group_p1, soc_investigation_agent_revised/orchestrator.py:orchestrate_incident.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/main.py:generate_local_standalone_report, agents/investigation/orchestrator.py:analyze_alert_group_p1, agents/investigation/orchestrator.py:orchestrate_incident.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -154,7 +154,7 @@ class MilestoneExecution(BaseModel):
     findings: str
 # [FYP-CLASS] `BusinessImpactChecklist` — owns BusinessImpactChecklist state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/orchestrator.py:compile_final_report, agents/investigation/orchestrator.py:generate_final_analysis.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -166,7 +166,7 @@ class BusinessImpactChecklist(BaseModel):
 
 # [FYP-CLASS] `FinalIncidentAnalysis` — owns FinalIncidentAnalysis state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:generate_local_standalone_report, soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/main.py:generate_local_standalone_report, agents/investigation/orchestrator.py:compile_final_report, agents/investigation/orchestrator.py:generate_final_analysis.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -216,7 +216,7 @@ _chain_p2 = None
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:check_milestone_sufficiency, soc_investigation_agent_revised/orchestrator.py:classify_policies_for_investigation, soc_investigation_agent_revised/orchestrator.py:filter_suspicious_seeds; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/orchestrator.py:check_milestone_sufficiency, agents/investigation/orchestrator.py:classify_policies_for_investigation, agents/investigation/orchestrator.py:filter_suspicious_seeds; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `getenv`, `join`, `lower`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -344,7 +344,7 @@ class PolicyVectorIndex:
     # [FYP-INPUT] Parameters: `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `OpenAIEmbeddingFunction`, `PersistentClient`, `get`, `log_warning`, `open_persistent_collection`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -372,7 +372,7 @@ class PolicyVectorIndex:
     # [FYP-INPUT] Parameters: `sections`, `relevant_keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:get_policy_manager; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/orchestrator.py:get_policy_manager; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `any`, `append`, `delete_collection`, `get_or_create_collection`, `items`, `len`, `log_success`, `lower`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -420,7 +420,7 @@ class PolicyVectorIndex:
     # [FYP-INPUT] Parameters: `query_text`, `limit`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/orchestrator.py:compile_final_report, agents/investigation/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `log_error`, `query`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

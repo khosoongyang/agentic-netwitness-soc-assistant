@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 # ==============================================================================
-# [FYP-FILE] soc_reporting_agent/reporting/llm_narrative.py
+# [FYP-FILE] agents/reporting/reporting/llm_narrative.py
 # File: soc_reporting_agent/reporting/llm_narrative.py
 # Important dependencies: __future__, config, json, os, pathlib, re, reporting, typing.
 #
@@ -347,7 +347,7 @@ def _cache_file(context: dict[str, Any]) -> Path:
 # [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_cache_file`, `all`, `exists`, `get`, `isinstance`, `loads`, `read_text`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -387,7 +387,7 @@ def _load_cached_narrative(context: dict[str, Any]) -> dict[str, str] | None:
 # [FYP-INPUT] Parameters: `context`, `narrative`, `provider`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_cache_file`, `dumps`, `get`, `mkdir`, `write_text`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -587,7 +587,7 @@ def _event_phrase(event: str) -> str:
 # [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:enhance_narrative; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_asset_story`, `_event_phrase`, `_evidence_story`, `_first_asset`, `_first_user`, `_gap_story`, `_mitre_story`, `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -722,7 +722,7 @@ def deterministic_narrative(context: dict[str, Any]) -> dict[str, str]:
 # [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:build_section_prompt; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:build_section_prompt; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -799,7 +799,7 @@ def _compact_context(context: dict[str, Any]) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `section`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:build_section_prompt; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:build_section_prompt; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: no nested function/service calls.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -887,7 +887,7 @@ def _section_instruction(section: str) -> str:
 # [FYP-INPUT] Parameters: `section`, `context`, `deterministic`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_compact_context`, `_section_instruction`, `dumps`, `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -966,7 +966,7 @@ def _normalise_llm_output(text: str) -> str:
 # [FYP-INPUT] Parameters: `prompt`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `OllamaLLM`, `getattr`, `invoke`, `str`, `strip`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1020,7 +1020,7 @@ def supports_temperature(model_name: str) -> bool:
 # [FYP-INPUT] Parameters: `client`, `selected`, `prompt`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_invoke_openai; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:_invoke_openai; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `create`, `getattr`, `lower`, `pop`, `str`, `strip`, `supports_temperature`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1079,7 +1079,7 @@ def _invoke_openai_chat(client: Any, selected: str, prompt: str) -> str:
 # [FYP-INPUT] Parameters: `prompt`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `OpenAI`, `RuntimeError`, `_invoke_openai_chat`, `any`, `create`, `getenv`, `lower`, `pop`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1165,7 +1165,7 @@ def _extract_section_from_prompt(prompt: str) -> str:
 # [FYP-INPUT] Parameters: `prompt`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:invoke_llm; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_extract_section_from_prompt`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1275,7 +1275,7 @@ def _invoke_mock(prompt: str, model: str | None = None) -> str:
 # [FYP-INPUT] Parameters: `prompt`, `provider`, `model`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `RuntimeError`, `_invoke_mock`, `_invoke_ollama`, `_invoke_openai`, `lower`, `selected_model_for_provider`, `selected_provider`, `strip`.
 # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -1318,7 +1318,7 @@ def invoke_llm(prompt: str, provider: str | None = None, model: str | None = Non
 # [FYP-INPUT] Parameters: `prompt`, `section`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `RuntimeError`, `append`, `configured_llm_providers`, `invoke_llm`, `join`, `max`, `range`, `selected_model_for_provider`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1390,7 +1390,7 @@ def _contains_uncertainty(text: str) -> bool:
 # [FYP-INPUT] Parameters: `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `get`, `lower`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1439,7 +1439,7 @@ def _numbered_checklist_count(text: str) -> int:
 # [FYP-INPUT] Parameters: `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `append`, `fromkeys`, `get`, `list`, `lower`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1493,7 +1493,7 @@ def _detect_locked_fact_contradictions(text: str, context: dict[str, Any] | None
 # [FYP-INPUT] Parameters: `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:validate_llm_section_quality; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `append`, `dumps`, `findall`, `fromkeys`, `get`, `isinstance`, `list`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1557,7 +1557,7 @@ def _detect_unsupported_fact_creation(text: str, context: dict[str, Any] | None)
 # [FYP-INPUT] Parameters: `section`, `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section, soc_reporting_agent/reporting/llm_narrative.py:assess_llm_section_quality, soc_reporting_agent/reporting/llm_narrative.py:repair_llm_section; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:_enhance_one_section, agents/reporting/reporting/llm_narrative.py:assess_llm_section_quality, agents/reporting/reporting/llm_narrative.py:repair_llm_section; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_contains_uncertainty`, `_detect_business_impact_overstatement`, `_detect_locked_fact_contradictions`, `_detect_unsupported_fact_creation`, `_numbered_checklist_count`, `any`, `append`, `count`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1745,7 +1745,7 @@ def _split_checklist_lines(text: str) -> list[str]:
 # [FYP-INPUT] Parameters: `text`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:repair_llm_section; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:repair_llm_section; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_contains_uncertainty`, `_numbered_checklist_count`, `_split_checklist_lines`, `append`, `fromkeys`, `join`, `len`, `list`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1799,7 +1799,7 @@ def _repair_checklist(text: str, context: dict[str, Any] | None) -> tuple[str, l
 # [FYP-INPUT] Parameters: `section`, `text`, `quality`, `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_contains_uncertainty`, `_repair_checklist`, `_trim_to_last_complete_sentence`, `_uncertainty_sentence`, `append`, `extend`, `fromkeys`, `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1847,7 +1847,7 @@ def repair_llm_section(section: str, text: str, quality: dict[str, Any], context
 # [FYP-INPUT] Parameters: `original_prompt`, `section`, `issues`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:_enhance_one_section; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `join`, `set`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1901,7 +1901,7 @@ def build_validation_retry_prompt(original_prompt: str, section: str, issues: li
 # [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:apply_llm_narrative; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:apply_llm_narrative; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `ThreadPoolExecutor`, `_enhance_one_section`, `_load_cached_narrative`, `_save_cached_narrative`, `_section_result`, `copy`, `deterministic_narrative`, `extend`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

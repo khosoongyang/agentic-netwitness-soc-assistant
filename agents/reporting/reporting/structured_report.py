@@ -36,7 +36,7 @@ from typing import Any
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:_cells, soc_reporting_agent/reporting/structured_report.py:_collapsed_markdown_table, soc_reporting_agent/reporting/structured_report.py:_flush_bullets; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:_cells, agents/reporting/reporting/structured_report.py:_collapsed_markdown_table, agents/reporting/reporting/structured_report.py:_flush_bullets; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `escape`, `replace`, `str`, `strip`, `sub`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -59,7 +59,7 @@ def clean_inline(value: Any) -> str:
 # [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:_cells, soc_reporting_agent/reporting/structured_report.py:_is_separator_row, soc_reporting_agent/reporting/structured_report.py:_plain_cells; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:_cells, agents/reporting/reporting/structured_report.py:_is_separator_row, agents/reporting/reporting/structured_report.py:_plain_cells; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `endswith`, `join`, `len`, `rstrip`, `startswith`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -121,7 +121,7 @@ def _split_pipe_row(line: str) -> list[str]:
 # [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:_is_table_row, soc_reporting_agent/reporting/structured_report.py:_looks_like_plain_table_row, soc_reporting_agent/reporting/structured_report.py:_single_pipe_row; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:_is_table_row, agents/reporting/reporting/structured_report.py:_looks_like_plain_table_row, agents/reporting/reporting/structured_report.py:_single_pipe_row; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_split_pipe_row`, `all`, `fullmatch`, `len`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -135,7 +135,7 @@ def _is_separator_row(line: str) -> bool:
 # [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:_looks_like_plain_table_row; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:_looks_like_plain_table_row; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_is_separator_row`, `count`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -160,7 +160,7 @@ def _cells(line: str) -> list[str]:
 # [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:_single_pipe_row, soc_reporting_agent/reporting/structured_report.py:parse_pipe_table, soc_reporting_agent/reporting/structured_report.py:repair_pipe_tables_in_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:_single_pipe_row, agents/reporting/reporting/structured_report.py:parse_pipe_table, agents/reporting/reporting/structured_report.py:repair_pipe_tables_in_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_is_separator_row`, `_is_table_row`, `count`, `endswith`, `startswith`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -175,7 +175,7 @@ def _looks_like_plain_table_row(line: str) -> bool:
 # [FYP-INPUT] Parameters: `line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:_single_pipe_row, soc_reporting_agent/reporting/structured_report.py:paragraph_contains_raw_pipe_table, soc_reporting_agent/reporting/structured_report.py:parse_pipe_table; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:_single_pipe_row, agents/reporting/reporting/structured_report.py:paragraph_contains_raw_pipe_table, agents/reporting/reporting/structured_report.py:parse_pipe_table; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_split_pipe_row`, `clean_inline`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -187,7 +187,7 @@ def _plain_cells(line: str) -> list[str]:
 # [FYP-INPUT] Parameters: `lines`, `start`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:blocks_from_text, soc_reporting_agent/reporting/structured_report.py:markdown_to_blocks, soc_reporting_agent/reporting/structured_report.py:repair_pipe_tables_in_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:blocks_from_text, agents/reporting/reporting/structured_report.py:markdown_to_blocks, agents/reporting/reporting/structured_report.py:repair_pipe_tables_in_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_is_separator_row`, `_looks_like_plain_table_row`, `_plain_cells`, `any`, `append`, `count`, `len`, `search`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -270,7 +270,7 @@ def parse_pipe_table(lines: list[str], start: int) -> tuple[dict[str, Any] | Non
 # [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:_validate_no_raw_markdown_tables, soc_reporting_agent/reporting/report_validator.py:_validate_docx_integrity_and_tables, soc_reporting_agent/reporting/report_validator.py:_validate_structured_content; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:_validate_no_raw_markdown_tables, agents/reporting/reporting/report_validator.py:_validate_docx_integrity_and_tables, agents/reporting/reporting/report_validator.py:_validate_structured_content; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_is_separator_row`, `_plain_cells`, `any`, `count`, `endswith`, `len`, `replace`, `splitlines`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -295,7 +295,7 @@ def paragraph_contains_raw_pipe_table(text: Any) -> bool:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:_collapsed_markdown_table; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:_collapsed_markdown_table; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `bool`, `fullmatch`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -307,7 +307,7 @@ def _separator_cell(value: str) -> bool:
 # [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:repair_pipe_tables_in_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:repair_pipe_tables_in_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_separator_cell`, `any`, `append`, `clean_inline`, `count`, `len`, `range`, `split`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -352,7 +352,7 @@ def _collapsed_markdown_table(text: str) -> dict[str, Any] | None:
 # [FYP-INPUT] Parameters: `text`, `width`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:repair_pipe_tables_in_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:repair_pipe_tables_in_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_is_separator_row`, `_looks_like_plain_table_row`, `_plain_cells`, `len`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -370,7 +370,7 @@ def _single_pipe_row(text: str, width: int) -> list[str] | None:
 # [FYP-INPUT] Parameters: `blocks`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:_confirmed_blocks_or_text, soc_reporting_agent/reporting/editable_reports.py:_docx_write_blocks, soc_reporting_agent/reporting/editable_reports.py:_final_report_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:_confirmed_blocks_or_text, agents/reporting/reporting/editable_reports.py:_docx_write_blocks, agents/reporting/reporting/editable_reports.py:_final_report_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_collapsed_markdown_table`, `_looks_like_plain_table_row`, `_single_pipe_row`, `append`, `clean_inline`, `convert_key_value_lines_to_tables`, `get`, `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -460,7 +460,7 @@ _FIELD_SEGMENT_RE = re.compile(
 # [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:convert_key_value_lines_to_tables; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:convert_key_value_lines_to_tables; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `clean_inline`, `enumerate`, `group`, `len`, `lower`, `match`, `split`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -504,7 +504,7 @@ def _parse_key_value_line(text: str) -> tuple[list[str], list[str]] | None:
 # [FYP-INPUT] Parameters: `blocks`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:repair_pipe_tables_in_blocks, soc_reporting_agent/tests/test_structured_report_tables.py:test_ordinary_prose_with_colon_and_pipe_is_not_converted, soc_reporting_agent/tests/test_structured_report_tables.py:test_priority_line_pair_converts_to_table; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:repair_pipe_tables_in_blocks, agents/reporting/tests/test_structured_report_tables.py:test_ordinary_prose_with_colon_and_pipe_is_not_converted, agents/reporting/tests/test_structured_report_tables.py:test_priority_line_pair_converts_to_table; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_parse_key_value_line`, `append`, `dict`, `get`, `isinstance`, `join`, `len`, `list`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -606,7 +606,7 @@ def _flush_plain_table(rows: list[list[str]], blocks: list[dict[str, Any]]) -> N
 # [FYP-INPUT] Parameters: `blocks`, `paragraph`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:markdown_to_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:markdown_to_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `clean_inline`, `clear`, `join`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -623,7 +623,7 @@ def _flush_paragraph(blocks: list[dict[str, Any]], paragraph: list[str]) -> None
 # [FYP-INPUT] Parameters: `blocks`, `bullets`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/structured_report.py:markdown_to_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/structured_report.py:markdown_to_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `clean_inline`, `clear`, `get`, `int`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -641,7 +641,7 @@ def _flush_bullets(blocks: list[dict[str, Any]], bullets: list[dict[str, Any]]) 
 # [FYP-INPUT] Parameters: `markdown_text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/report_renderer.py:render_reports, soc_reporting_agent/tests/test_compact_renderer.py:test_compact_markdown_separator_becomes_table_block, soc_reporting_agent/tests/test_structured_report_tables.py:test_markdown_table_spacing_separator_and_long_cell; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/report_renderer.py:render_reports, agents/reporting/tests/test_compact_renderer.py:test_compact_markdown_separator_becomes_table_block, agents/reporting/tests/test_structured_report_tables.py:test_markdown_table_spacing_separator_and_long_cell; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_flush_bullets`, `_flush_paragraph`, `append`, `clean_inline`, `fullmatch`, `group`, `len`, `lstrip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -723,7 +723,7 @@ def markdown_to_blocks(markdown_text: Any) -> list[dict[str, Any]]:
 # [FYP-INPUT] Parameters: `blocks`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:save_section, soc_reporting_agent/reporting/report_renderer.py:render_reports; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:save_section, agents/reporting/reporting/report_renderer.py:render_reports; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `clean_inline`, `get`, `int`, `isinstance`, `join`, `len`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -779,7 +779,7 @@ def blocks_to_plain_text(blocks: list[dict[str, Any]] | Any) -> str:
 # [FYP-INPUT] Parameters: `path`, `blocks`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:_confirmed_blocks_or_text, soc_reporting_agent/reporting/editable_reports.py:build_report_manifest, soc_reporting_agent/reporting/editable_reports.py:confirm_section; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:_confirmed_blocks_or_text, agents/reporting/reporting/editable_reports.py:build_report_manifest, agents/reporting/reporting/editable_reports.py:confirm_section; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dumps`, `mkdir`, `write_text`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -792,7 +792,7 @@ def save_blocks(path: Path, blocks: list[dict[str, Any]]) -> None:
 # [FYP-INPUT] Parameters: `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:_confirmed_blocks_or_text, soc_reporting_agent/reporting/editable_reports.py:_final_report_blocks, soc_reporting_agent/reporting/editable_reports.py:_section_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:_confirmed_blocks_or_text, agents/reporting/reporting/editable_reports.py:_final_report_blocks, agents/reporting/reporting/editable_reports.py:_section_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `exists`, `get`, `isinstance`, `loads`, `read_text`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -817,7 +817,7 @@ def load_blocks(path: str | Path | None) -> list[dict[str, Any]]:
 # [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:_confirmed_blocks_or_text, soc_reporting_agent/reporting/editable_reports.py:_docx_write, soc_reporting_agent/reporting/editable_reports.py:_final_report_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:_confirmed_blocks_or_text, agents/reporting/reporting/editable_reports.py:_docx_write, agents/reporting/reporting/editable_reports.py:_final_report_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `clean_inline`, `join`, `len`, `match`, `parse_pipe_table`, `split`, `splitlines`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

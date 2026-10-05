@@ -878,7 +878,7 @@ class LeaseRenewer:
     # [FYP-INPUT] Parameters: `incident_id`, `run_id`, `worker_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `Event`, `Thread`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2849,7 +2849,7 @@ def run_reporting(ticket_id: str, timeout: int = 900,
                   reporting_stage_attempt: int | None = None) -> dict:
     """
     [FYP-FUNCTION] Reporting Agent Subprocess Runner
-    [FYP-EVALUATOR]: launches soc_reporting_agent/adapters/run_reporting.py,
+    [FYP-EVALUATOR]: launches agents/reporting/adapters/run_reporting.py,
     reads back final_report.json, then triggers export_report_documents()
     for DOCX/PDF — the single function that turns an approved investigation
     into a finished report artifact. Pair with handoff_to_reporting()

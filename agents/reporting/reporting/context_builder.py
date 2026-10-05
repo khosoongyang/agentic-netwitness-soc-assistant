@@ -35,7 +35,7 @@ from typing import Any
 # [FYP-INPUT] Parameters: `default`, `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_triage_bits, soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_triage_bits, agents/reporting/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: no nested function/service calls.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -50,7 +50,7 @@ def _first(*values: Any, default: Any = "Not Provided") -> Any:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:_build_appendix_summaries, soc_reporting_agent/reporting/context_builder.py:_normalise_ioc, soc_reporting_agent/reporting/context_builder.py:_normalise_timeline; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:_build_appendix_summaries, agents/reporting/reporting/context_builder.py:_normalise_ioc, agents/reporting/reporting/context_builder.py:_normalise_timeline; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `list`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -68,7 +68,7 @@ def _list(value: Any) -> list[Any]:
 # [FYP-INPUT] Parameters: `obj`, `path`, `default`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:_build_appendix_summaries, soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:_build_appendix_summaries, agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `split`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -86,7 +86,7 @@ def _get(obj: Any, path: str, default: Any = None) -> Any:
 # [FYP-INPUT] Parameters: `value`, `reason`, `default`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -99,7 +99,7 @@ def _label(value: Any, reason: Any = None, default: str | None = None) -> dict[s
 # [FYP-INPUT] Parameters: `item`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `get`, `isinstance`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -136,7 +136,7 @@ def _normalise_asset(item: Any) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `item`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `_list`, `get`, `isinstance`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -161,7 +161,7 @@ def _normalise_user(item: Any) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `item`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `_list`, `get`, `isinstance`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -187,7 +187,7 @@ def _normalise_ioc(item: Any) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `item`, `idx`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `get`, `isinstance`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -209,7 +209,7 @@ def _normalise_evidence(item: Any, idx: int = 1) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `item`, `idx`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `_list`, `get`, `isinstance`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -231,7 +231,7 @@ def _normalise_timeline(item: Any, idx: int = 1) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `item`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `get`, `isinstance`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -252,7 +252,7 @@ def _normalise_gap(item: Any) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `item`, `idx`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `get`, `isinstance`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -279,7 +279,7 @@ def _normalise_recommendation(item: Any, idx: int = 1) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `value`, `max_len`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:_build_appendix_summaries; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:_build_appendix_summaries; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `isinstance`, `items`, `join`, `len`, `list`, `split`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -309,7 +309,7 @@ def _short_value(value: Any, max_len: int = 220) -> str:
 # [FYP-INPUT] Parameters: `evidence`, `key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `compile`, `escape`, `get`, `group`, `search`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -327,7 +327,7 @@ def _extract_evidence_value(evidence: list[dict[str, Any]], key: str) -> str | N
 # [FYP-INPUT] Parameters: `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `join`, `lower`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -340,7 +340,7 @@ def _is_ransomware_case(*values: Any) -> bool:
 # [FYP-INPUT] Parameters: `processed`, `enriched`, `triage`, `investigation`, `approval_result`, `incident_id`, `alert_id`, `title`, `severity`, `confidence`, `evidence_gaps`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/context_builder.py:build_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_first`, `_get`, `_list`, `_short_value`, `get`, `join`, `len`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -447,7 +447,7 @@ def _build_appendix_summaries(
 # [FYP-INPUT] Parameters: `inputs`, `warnings`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/reporting/template_document_exporter.py:build_report_context, soc_reporting_agent/scripts/test_merged_report_context.py:test_merged_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:main, agents/reporting/reporting/template_document_exporter.py:build_report_context, agents/reporting/scripts/test_merged_report_context.py:test_merged_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_build_appendix_summaries`, `_extract_evidence_value`, `_first`, `_get`, `_is_ransomware_case`, `_label`, `_list`, `_normalise_asset`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

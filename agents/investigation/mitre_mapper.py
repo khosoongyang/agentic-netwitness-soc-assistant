@@ -62,7 +62,7 @@ load_dotenv()
 # by normalize_incident_input() before MITRE mapping.
 # [FYP-CLASS] `TimelineEvent` — owns TimelineEvent state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/mitre_mapper.py:normalize_incident_input.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/mitre_mapper.py:normalize_incident_input.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -78,7 +78,7 @@ class TimelineEvent(BaseModel):
 # rendered by generate_markdown_table().
 # [FYP-CLASS] `MitreTTPMapping` — owns MitreTTPMapping state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/mitre_mapper.py:fallback_heuristic_mapper.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/mitre_mapper.py:fallback_heuristic_mapper.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -93,7 +93,7 @@ class MitreTTPMapping(BaseModel):
 # the incident-level attack narrative plus its ordered list of TTP mappings.
 # [FYP-CLASS] `IncidentMitreAnalysis` — owns IncidentMitreAnalysis state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/mitre_mapper.py:fallback_heuristic_mapper, soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/mitre_mapper.py:fallback_heuristic_mapper, agents/investigation/orchestrator.py:compile_final_report, agents/investigation/orchestrator.py:generate_final_analysis.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -370,7 +370,7 @@ def generate_markdown_table(analysis: IncidentMitreAnalysis) -> str:
 # [FYP-INPUT] Parameters: `incident_id`, `events`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/mitre_mapper.py:map_incident_mitre_ttps; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/mitre_mapper.py:map_incident_mitre_ttps; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `IncidentMitreAnalysis`, `MitreTTPMapping`, `append`, `capitalize`, `enumerate`, `get`, `isinstance`, `join`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -481,7 +481,7 @@ def fallback_heuristic_mapper(incident_id: str, events: List[TimelineEvent]) -> 
 # [FYP-INPUT] Parameters: `incident_input`, `llm`, `mock_response`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_local_standalone_report, soc_investigation_agent_revised/orchestrator.py:compile_final_report, soc_investigation_agent_revised/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:generate_local_standalone_report, agents/investigation/orchestrator.py:compile_final_report, agents/investigation/orchestrator.py:generate_final_analysis; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `ChatOpenAI`, `ValueError`, `fallback_heuristic_mapper`, `format_event_sequence`, `from_messages`, `generate_markdown_table`, `getenv`, `group`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

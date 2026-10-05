@@ -63,7 +63,7 @@ from reporting import editable_reports as er
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis stage adapter workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, agents/investigation/bench_correlation.py:main_bench; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `candidate_manifest_path`, `confirm_report`, `dumps`, `export_docx`, `export_pdf`, `export_section_docx`, `export_section_pdf`, `finalize_candidate_manifest`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

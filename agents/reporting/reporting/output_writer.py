@@ -1,6 +1,6 @@
 """
-[FYP-FILE] reporting/output_writer.py (174 lines)
-# File: soc_reporting_agent/reporting/output_writer.py
+[FYP-FILE] agents/reporting/reporting/output_writer.py (174 lines)
+# File: agents/reporting/reporting/output_writer.py
 # Purpose: This module implements report generation and export behaviour for output writer.
 # Inputs: Receives function arguments, configured state, and persisted artifacts described below.
 # Outputs: Produces return values and documented state, file, database, export, or UI effects.
@@ -15,10 +15,10 @@ Final pipeline stage: assembles the persisted reporting_result.json record
 the CLI entry point for a second write-back after Postgres status is
 known.
 
-[FYP-USED-BY] agents/reporting_agent.py:main() (write_outputs,
-try_store_postgres, write_json); scripts/test_merged_report_context.py
+[FYP-USED-BY] agents/reporting/agents/reporting_agent.py:main() (write_outputs,
+try_store_postgres, write_json); agents/reporting/scripts/test_merged_report_context.py
 (write_outputs).
-[FYP-CALLS] reporting/status_display.py (get_status_metadata,
+[FYP-CALLS] agents/reporting/reporting/status_display.py (get_status_metadata,
 calculate_llm_enhancement_score) to translate every technical status code
 in the context into analyst-facing display/explanation/workflow_impact
 text.
@@ -61,7 +61,7 @@ def build_reporting_result(context: dict[str, Any], generated_reports: dict[str,
     [FYP-INPUT] context: the dict returned by context_builder.build_context()
     (as further enhanced by export_context_enhancer.enhance_export_context(),
     called between build_context and render_reports in
-    agents/reporting_agent.py:main()); generated_reports: the dict of
+    agents/reporting/agents/reporting_agent.py:main()); generated_reports: the dict of
     output-file paths returned by report_renderer.render_reports().
 
     [FYP-PROCESS] Pulls report/validation/rag/llm/cache/completeness status
@@ -149,11 +149,11 @@ def write_outputs(context: dict[str, Any], generated_reports: dict[str, str], ou
     [FYP-PROCESS] Creates the incident output directory, builds the
     reporting_result via build_reporting_result(), writes both JSON files
     via write_json(), and returns the reporting_result dict so the caller
-    can mutate it further (e.g. agents/reporting_agent.py:main() adds
+    can mutate it further (e.g. agents/reporting/agents/reporting_agent.py:main() adds
     postgres_used/postgres display fields and re-writes
     reporting_result.json a second time after try_store_postgres()).
     [FYP-CALLS] build_reporting_result(), write_json() (both in this file).
-    [FYP-USED-BY] agents/reporting_agent.py:main() (second-to-last pipeline
+    [FYP-USED-BY] agents/reporting/agents/reporting_agent.py:main() (second-to-last pipeline
     step, right after report_renderer.render_reports()); dev/test harness
     scripts/test_merged_report_context.py.
     """
@@ -188,7 +188,7 @@ def try_store_postgres(reporting_result: dict[str, Any], context: dict[str, Any]
     (False, f"postgres_store_failed: {error}") rather than raised — a
     Postgres outage must never fail report generation, since the JSON
     files written by write_outputs() are the source of truth.
-    [FYP-USED-BY] agents/reporting_agent.py:main(), immediately after
+    [FYP-USED-BY] agents/reporting/agents/reporting_agent.py:main(), immediately after
     write_outputs(); its (postgres_used, postgres_status) result is folded
     back into reporting_result and re-persisted via write_json().
     [FYP-EVALUATOR] If Postgres mirroring appears to silently "not work"

@@ -234,7 +234,7 @@ def scan_indicators(flat_string: str) -> dict:
 # [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/ingest_pipeline.py:process_log_file; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/ingest_pipeline.py:process_log_file; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `enumerate`, `get`, `isinstance`, `join`, `len`, `recurse`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -279,7 +279,7 @@ def serialize_json_to_narrative(data: dict) -> str:
     # [FYP-INPUT] Parameters: `d`, `parent_key`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/ingest_pipeline.py:recurse, soc_investigation_agent_revised/ingest_pipeline.py:serialize_json_to_narrative; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/ingest_pipeline.py:recurse, agents/investigation/ingest_pipeline.py:serialize_json_to_narrative; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `isinstance`, `items`, `join`, `recurse`, `replace`, `sorted`, `str`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -305,7 +305,7 @@ def serialize_json_to_narrative(data: dict) -> str:
 # [FYP-INPUT] Parameters: `filepath`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/orchestrator.py:orchestrate_incident; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async, agents/investigation/orchestrator.py:orchestrate_incident; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `basename`, `dumps`, `extract_mapped_fields`, `get`, `join`, `len`, `load`, `open`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

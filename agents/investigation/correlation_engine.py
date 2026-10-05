@@ -63,7 +63,7 @@ from sync_engine import (
 
 # [FYP-CLASS] `CorrelationEngine` — owns CorrelationEngine state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: __init__, load_active_incidents, sync_create_incident, sync_update_incident, _extract_indicators, _calculate_relational_score, _calculate_mitre_score, _calculate_temporal_score.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:main_async.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/main.py:main_async.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -72,7 +72,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `base_folder`, `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `ChromaIncidentVectorStore`, `FileIncidentRepository`, `IncidentSyncManager`, `load_active_incidents`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -93,7 +93,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `clear`, `exists`, `isdir`, `join`, `len`, `listdir`, `load`, `model_validate`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -122,7 +122,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `create_incident`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -136,7 +136,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `pop`, `update_incident`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -167,7 +167,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `alert_log`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:_should_bridge_alerts, soc_investigation_agent_revised/correlation_engine.py:evaluate_tier1, soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:_should_bridge_alerts, agents/investigation/correlation_engine.py:evaluate_tier1, agents/investigation/main.py:main_async; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `add`, `get`, `join`, `len`, `lower`, `set`, `split`, `str`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -210,7 +210,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `alert_indicators`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `endswith`, `get`, `join`, `len`, `lower`, `split`, `str`, `strip`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -278,7 +278,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `alert_log`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `get`, `lower`, `max`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -316,7 +316,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `alert_epoch`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:evaluate_tier1; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `abs`, `append`, `exp`, `get`, `int`, `len`, `max`, `range`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -497,7 +497,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `a1`, `a2`, `window_sec`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:evaluate_tier2; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:evaluate_tier2; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_extract_indicators`, `abs`, `endswith`, `get`, `intersection`, `len`, `lower`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -542,7 +542,7 @@ class CorrelationEngine:
     # [FYP-INPUT] Parameters: `target_alert`, `unassigned_alerts`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:correlate_alert; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:correlate_alert; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_should_bridge_alerts`, `abs`, `add`, `append`, `len`, `pop`, `print`, `range`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

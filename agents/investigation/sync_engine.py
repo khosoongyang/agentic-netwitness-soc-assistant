@@ -76,7 +76,7 @@ class IncidentStatus(str, Enum):
 
 # [FYP-CLASS] `IncidentMetadata` — owns IncidentMetadata state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: set_timestamps.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:main_async.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/main.py:main_async.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -110,7 +110,7 @@ class IncidentMetadata(BaseModel):
 
 # [FYP-CLASS] `Incident` — owns Incident state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:main_async, soc_investigation_agent_revised/sync_engine.py:get.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/main.py:main_async, agents/investigation/sync_engine.py:get.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -138,7 +138,7 @@ class BaseIncidentRepository(ABC):
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -164,7 +164,7 @@ class BaseIncidentRepository(ABC):
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -177,7 +177,7 @@ class BaseIncidentRepository(ABC):
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:_make_docx_bytes, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:_make_docx_bytes, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -190,7 +190,7 @@ class BaseIncidentRepository(ABC):
     # [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -226,7 +226,7 @@ class BaseVectorIndex(ABC):
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:chroma_sync, app.py:pipeline_chroma_insert, soc_investigation_agent_revised/orchestrator.py:populate; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:chroma_sync, app.py:pipeline_chroma_insert, agents/investigation/orchestrator.py:populate; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -239,7 +239,7 @@ class BaseVectorIndex(ABC):
     # [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -268,7 +268,7 @@ class BaseVectorIndex(ABC):
 
 # [FYP-CLASS] `FileIncidentRepository` — owns FileIncidentRepository state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: __init__, _get_file_paths, begin, commit, _commit_disk, rollback, save, delete.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/correlation_engine.py:__init__.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/correlation_engine.py:__init__.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -281,7 +281,7 @@ class FileIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `base_folder`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `set`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -295,7 +295,7 @@ class FileIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:_commit_disk, soc_investigation_agent_revised/sync_engine.py:get; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:_commit_disk, agents/investigation/sync_engine.py:get; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `join`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -308,7 +308,7 @@ class FileIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `clear`, `debug`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -373,7 +373,7 @@ class FileIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `clear`, `debug`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -389,7 +389,7 @@ class FileIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:_make_docx_bytes, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:_make_docx_bytes, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `discard`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -403,7 +403,7 @@ class FileIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `add`, `pop`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -468,7 +468,7 @@ class SQLiteIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `close`, `commit`, `connect`, `cursor`, `execute`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -496,7 +496,7 @@ class SQLiteIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `debug`, `to_thread`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -533,7 +533,7 @@ class SQLiteIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `debug`, `to_thread`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -552,7 +552,7 @@ class SQLiteIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:_make_docx_bytes, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:_make_docx_bytes, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `to_thread`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -590,7 +590,7 @@ class SQLiteIncidentRepository(BaseIncidentRepository):
     # [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `to_thread`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -660,7 +660,7 @@ class SQLiteIncidentRepository(BaseIncidentRepository):
 
 # [FYP-CLASS] `ChromaIncidentVectorStore` — owns ChromaIncidentVectorStore state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: __init__, upsert, delete, query.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/bench_correlation.py:clean_environment, soc_investigation_agent_revised/correlation_engine.py:__init__, soc_investigation_agent_revised/sync_engine.py:_sync_loop.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/bench_correlation.py:clean_environment, agents/investigation/correlation_engine.py:__init__, agents/investigation/sync_engine.py:_sync_loop.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -673,7 +673,7 @@ class ChromaIncidentVectorStore(BaseVectorIndex):
     # [FYP-INPUT] Parameters: `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `OpenAIEmbeddingFunction`, `PersistentClient`, `get`, `open_persistent_collection`, `warning`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -701,7 +701,7 @@ class ChromaIncidentVectorStore(BaseVectorIndex):
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:chroma_sync, app.py:pipeline_chroma_insert, soc_investigation_agent_revised/orchestrator.py:populate; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:chroma_sync, app.py:pipeline_chroma_insert, agents/investigation/orchestrator.py:populate; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `info`, `join`, `to_thread`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -740,7 +740,7 @@ class ChromaIncidentVectorStore(BaseVectorIndex):
     # [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `info`, `to_thread`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -810,7 +810,7 @@ class InMemoryMockVectorIndex(BaseVectorIndex):
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -823,7 +823,7 @@ class InMemoryMockVectorIndex(BaseVectorIndex):
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:chroma_sync, app.py:pipeline_chroma_insert, soc_investigation_agent_revised/orchestrator.py:populate; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:chroma_sync, app.py:pipeline_chroma_insert, agents/investigation/orchestrator.py:populate; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `debug`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -837,7 +837,7 @@ class InMemoryMockVectorIndex(BaseVectorIndex):
     # [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, soc_investigation_agent_revised/sync_engine.py:create_incident, soc_investigation_agent_revised/sync_engine.py:delete_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include app.py:pipeline_delete, agents/investigation/sync_engine.py:create_incident, agents/investigation/sync_engine.py:delete_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `RuntimeError`, `debug`, `pop`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -877,7 +877,7 @@ class InMemoryMockVectorIndex(BaseVectorIndex):
 
 # [FYP-CLASS] `IncidentSyncManager` — owns IncidentSyncManager state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: __init__, create_incident, update_incident, delete_incident.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/correlation_engine.py:__init__.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/correlation_engine.py:__init__.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -890,7 +890,7 @@ class IncidentSyncManager:
     # [FYP-INPUT] Parameters: `repository`, `vector_index`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -902,7 +902,7 @@ class IncidentSyncManager:
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:sync_create_incident, soc_investigation_agent_revised/sync_engine.py:update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:sync_create_incident, agents/investigation/sync_engine.py:update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `begin`, `commit`, `critical`, `delete`, `error`, `info`, `rollback`, `save`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -955,7 +955,7 @@ class IncidentSyncManager:
     # [FYP-INPUT] Parameters: `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/correlation_engine.py:sync_update_incident; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/correlation_engine.py:sync_update_incident; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `begin`, `commit`, `create_incident`, `critical`, `error`, `get`, `info`, `rollback`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1076,7 +1076,7 @@ class IncidentSyncManager:
 
 # [FYP-CLASS] `RealtimeSyncService` — owns RealtimeSyncService state or behaviour for the investigation component.
 # [FYP-PROCESS] Important methods: __init__, start, stop, _sync_loop, sync_once.
-# [FYP-USED-BY] Static constructor/type references include soc_investigation_agent_revised/main.py:start_background_sync.
+# [FYP-USED-BY] Static constructor/type references include agents/investigation/main.py:start_background_sync.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -1089,7 +1089,7 @@ class RealtimeSyncService:
     # [FYP-INPUT] Parameters: `base_folder`, `db_path`, `interval`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: no nested function/service calls.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1139,7 +1139,7 @@ class RealtimeSyncService:
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:start; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:start; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `ChromaIncidentVectorStore`, `error`, `sleep`, `sync_once`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1158,7 +1158,7 @@ class RealtimeSyncService:
     # [FYP-INPUT] Parameters: `vector_store`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/sync_engine.py:_sync_loop; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/investigation/sync_engine.py:_sync_loop; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `delete`, `error`, `exists`, `get`, `getmtime`, `info`, `isdir`, `items`.
     # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1210,7 +1210,7 @@ class RealtimeSyncService:
                     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
                     # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
                     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-                    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/common.py:normalise_incident, soc_reporting_agent/adapters/run_parser_normalisation.py:load_raw_alert_context, soc_reporting_agent/adapters/run_parser_normalisation.py:selected_ticket_id; dynamic framework calls may add callers.
+                    # [FYP-USED-BY] Static symbol references include agents/reporting/adapters/common.py:normalise_incident, agents/reporting/adapters/run_parser_normalisation.py:load_raw_alert_context, agents/reporting/adapters/run_parser_normalisation.py:selected_ticket_id; dynamic framework calls may add callers.
                     # [FYP-CALLS] Calls: `load`, `open`.
                     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

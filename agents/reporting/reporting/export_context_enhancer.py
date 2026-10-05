@@ -1,5 +1,5 @@
 # ============================================================================
-# [FYP-FILE] soc_reporting_agent/reporting/export_context_enhancer.py
+# [FYP-FILE] agents/reporting/reporting/export_context_enhancer.py
 # File: soc_reporting_agent/reporting/export_context_enhancer.py
 # Purpose: This module implements report generation and export behaviour for export context enhancer.
 # Inputs: Receives function arguments, configured state, and persisted artifacts described below.
@@ -509,7 +509,7 @@ def _flatten_values(value: Any, prefix: str = "", limit: int = 1000) -> list[tup
     # [FYP-INPUT] Parameters: `obj`, `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:_flatten_values, soc_reporting_agent/reporting/export_context_enhancer.py:_threat_intel_index, soc_reporting_agent/reporting/export_context_enhancer.py:walk; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:_flatten_values, agents/reporting/reporting/export_context_enhancer.py:_threat_intel_index, agents/reporting/reporting/export_context_enhancer.py:walk; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `append`, `enumerate`, `is_unknown`, `isinstance`, `items`, `len`, `str`, `walk`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -893,7 +893,7 @@ def _threat_intel_index(enriched: dict[str, Any]) -> dict[str, dict[str, Any]]:
     # [FYP-INPUT] Parameters: `obj`, `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:_flatten_values, soc_reporting_agent/reporting/export_context_enhancer.py:_threat_intel_index, soc_reporting_agent/reporting/export_context_enhancer.py:walk; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:_flatten_values, agents/reporting/reporting/export_context_enhancer.py:_threat_intel_index, agents/reporting/reporting/export_context_enhancer.py:walk; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_normalise_lookup`, `any`, `enumerate`, `first_present`, `get`, `int`, `isinstance`, `items`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2438,9 +2438,9 @@ def enhance_export_context(context: dict[str, Any], ticket: dict[str, Any] | Non
     readable narrative section splitting (build_readable_narrative_sections)
     -> final quality counters (finalise_quality_counters,
     finalise_section_placeholder_counts). Mutates `context` in place AND
-    returns it. [FYP-USED-BY] soc_reporting_agent/agents/reporting_agent.py
+    returns it. [FYP-USED-BY] agents/reporting/agents/reporting_agent.py
     (right after context_builder.build_context(), before render_reports())
-    and reporting/template_document_exporter.py (again, just before Jinja2
+    and agents/reporting/reporting/template_document_exporter.py (again, just before Jinja2
     rendering, with a ticket dict carrying live ticket fields)."""
     ticket = ticket or context.get("ticket") or {}
     _quality(context)

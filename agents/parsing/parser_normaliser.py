@@ -826,7 +826,7 @@ def normalise_severity(value: Any) -> str:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record, soc_reporting_agent/services/parser_normaliser.py:normalise_event, soc_reporting_agent/services/parser_normaliser.py:timestamp_to_epoch_ms; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record, agents/parsing/parser_normaliser.py:normalise_event, agents/parsing/parser_normaliser.py:timestamp_to_epoch_ms; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `epoch_to_iso`, `int`, `is_useful`, `isdigit`, `isinstance`, `isoformat`, `replace`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -889,7 +889,7 @@ def epoch_to_iso(value: Any) -> Optional[str]:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record, soc_reporting_agent/services/parser_normaliser.py:normalise_event; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record, agents/parsing/parser_normaliser.py:normalise_event; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `fromisoformat`, `int`, `is_useful`, `isdigit`, `isinstance`, `replace`, `safe_float`, `str`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -1053,7 +1053,7 @@ def build_process_relationships(events: List[Dict[str, Any]]) -> List[Dict[str, 
 # [FYP-INPUT] Parameters: `event_type`, `normalised_events`, `source_emails`, `reply_to_emails`, `destination_emails`, `email_subjects`, `mail_clients`, `file_names`, `file_hashes`, `source_ips`, `destination_ips`, `destination_ports`, `protocols`, `external_urls`, `web_domains`, `user_agents`, `hostnames`, `all_usernames`, `process_names`, `process_paths`, `parent_processes`, `child_processes`, `command_lines`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `append`, `bool`, `dedupe`, `get`, `join`, `lower`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1213,7 +1213,7 @@ def build_observed_data_context(
 # [FYP-INPUT] Parameters: `observed_data_context`, `alert_id`, `alert_name`, `alert_time`, `severity`, `source_ips`, `destination_ips`, `destination_ports`, `protocols`, `source_emails`, `destination_emails`, `reply_to_emails`, `email_subjects`, `hostnames`, `all_usernames`, `process_names`, `command_lines`, `file_names`, `file_hashes`, `external_urls`, `web_domains`, `session_ids`, `event_source_ids`, `record_ids`, `signature_ids`, `community_ids`, `normalised_events`, `raw_meta_key_count`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `bool`, `dedupe`, `extend`, `get`, `items`, `join`, `len`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1594,7 +1594,7 @@ def extract_all_fields(flat: Dict[str, Any]) -> Tuple[Dict[str, List[Any]], Dict
 # [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert, soc_reporting_agent/services/parser_normaliser.py:prepare_incident_and_alerts; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:build_standard_alert, agents/parsing/parser_normaliser.py:prepare_incident_and_alerts; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `get`, `isinstance`, `issubset`, `keys`, `set`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1648,7 +1648,7 @@ def detect_input_format(data: Any) -> str:
 # [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `detect_input_format`, `get`, `isinstance`, `items`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1702,7 +1702,7 @@ def prepare_incident_and_alerts(data: Any) -> Tuple[Dict[str, Any], List[Dict[st
 # [FYP-INPUT] Parameters: `data`, `path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert, soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record, soc_reporting_agent/services/parser_normaliser.py:walk_event_records; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:build_standard_alert, agents/parsing/parser_normaliser.py:normalise_alert_record, agents/parsing/parser_normaliser.py:walk_event_records; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `enumerate`, `extend`, `isinstance`, `items`, `lower`, `str`, `walk_event_records`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1759,7 +1759,7 @@ def normalise_netwitness_data(data: Any) -> Dict[str, Any]:
 # [FYP-INPUT] Parameters: `data`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:main, soc_reporting_agent/services/parser_normaliser.py:normalise_netwitness_data, soc_reporting_agent/services/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:main, agents/parsing/parser_normaliser.py:normalise_netwitness_data, agents/parsing/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `add`, `append`, `detect_input_format`, `enumerate`, `get`, `isinstance`, `len`, `normalise_alert_record`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1817,7 +1817,7 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
 # [FYP-INPUT] Parameters: `alert_values`, `events`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dedupe`, `get`, `is_useful`, `items`, `list`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1875,7 +1875,7 @@ def merge_event_values(alert_values: Dict[str, List[Any]], events: List[Dict[str
 # [FYP-INPUT] Parameters: `event`, `index`, `alert_event_type`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert, soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:build_standard_alert, agents/parsing/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `clean_usernames`, `extract_hashes`, `first`, `get`, `is_external_url`, `isinstance`, `join`, `safe_int`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2089,7 +2089,7 @@ def _normalise_title_for_compare(value: Any) -> str:
 # [FYP-INPUT] Parameters: `alert`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_add`, `get`, `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2182,7 +2182,7 @@ def extract_alert_values_fast(alert: Dict[str, Any], incident: Dict[str, Any]) -
 # [FYP-INPUT] Parameters: `incident`, `alert`, `alert_index`, `alert_count`, `input_format`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `_clean_title_candidate`, `analyse_powershell_command_lines`, `any`, `append`, `build_analyst_summary`, `build_compatibility_view`, `build_debug_evidence`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2560,7 +2560,7 @@ def normalise_alert_record(
 # [FYP-INPUT] Parameters: `alert`, `incident`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `first`, `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2617,7 +2617,7 @@ def build_compatibility_view(alert: Dict[str, Any], incident: Dict[str, Any]) ->
 # [FYP-INPUT] Parameters: `flat`, `paths`, `raw_event_records`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `dedupe`, `enumerate`, `get`, `is_useful`, `isinstance`, `items`, `len`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2679,7 +2679,7 @@ def severity_sort_score(alert: Dict[str, Any]) -> int:
 # [FYP-INPUT] Parameters: `selected`, `alerts`, `input_format`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:build_standard_alert; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `get`, `isoformat`, `len`, `now`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2763,7 +2763,7 @@ def normalise_netwitness_data(data: Any) -> Dict[str, Any]:
 # [FYP-INPUT] Parameters: `data`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:main, soc_reporting_agent/services/parser_normaliser.py:normalise_netwitness_data, soc_reporting_agent/services/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:main, agents/parsing/parser_normaliser.py:normalise_netwitness_data, agents/parsing/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `append`, `build_parser_summary`, `detect_input_format`, `enumerate`, `get`, `isinstance`, `isoformat`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2848,7 +2848,7 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
 # [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:write_csv_file; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:write_csv_file; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dumps`, `isinstance`, `items`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2885,7 +2885,7 @@ def write_csv_file(data: Dict[str, Any], path: str) -> None:
 # [FYP-INPUT] Parameters: `result`, `output_dir`, `write_debug`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/scripts/test_merged_report_context.py:test_merged_context, soc_reporting_agent/services/parser_normaliser.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:main, agents/reporting/scripts/test_merged_report_context.py:test_merged_context, agents/parsing/parser_normaliser.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `get`, `mkdir`, `prune_empty_and_null_values`, `save_json_file`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2922,7 +2922,7 @@ def write_outputs(result: Dict[str, Any], output_dir: str = "outputs/soc_context
 # [FYP-INPUT] Parameters: `result`, `paths`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `items`, `print`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2952,7 +2952,7 @@ def print_summary(result: Dict[str, Any], paths: Dict[str, str]) -> None:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async, soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/agents/reporting_agent.py:parse_args; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async, agents/reporting/agents/reporting_agent.py:main, agents/reporting/agents/reporting_agent.py:parse_args; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `ArgumentParser`, `add_argument`, `parse_args`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2968,7 +2968,7 @@ def parse_args() -> argparse.Namespace:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, agents/investigation/bench_correlation.py:main_bench; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `build_standard_alert`, `exists`, `get`, `load_json_file`, `parse_args`, `print`, `print_summary`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -3002,7 +3002,7 @@ if __name__ == "__main__":
 # [FYP-INPUT] Parameters: `summary`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:build_agent_friendly_processed_alert; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:build_agent_friendly_processed_alert; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `get`, `items`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -3028,7 +3028,7 @@ def _ioc_items_from_summary(summary: Dict[str, Any]) -> List[Dict[str, Any]]:
 # [FYP-INPUT] Parameters: `normalised_alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:run_parser_normalisation_for_dashboard; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_ioc_items_from_summary`, `dict`, `first`, `get`, `make_json_safe`, `prune_empty_and_null_values`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -3122,7 +3122,7 @@ def build_agent_friendly_processed_alert(normalised_alert: Dict[str, Any]) -> Di
 # [FYP-INPUT] Parameters: `raw_alert`, `output_dir`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, workflow/engine.py:run_parsing; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/adapters/run_parser_normalisation.py:main, workflow/engine.py:run_parsing; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `build_agent_friendly_processed_alert`, `build_standard_alert`, `get`, `isoformat`, `len`, `make_json_safe`, `now`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

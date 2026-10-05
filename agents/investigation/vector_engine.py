@@ -296,7 +296,7 @@ def has_technical_token_overlap(candidate_meta: dict, active_seeds: list) -> boo
 # [FYP-INPUT] Parameters: `active_indicators`, `query_text`, `timestamp_epoch`, `time_window_sec`, `k`, `n_results`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:orchestrate_incident; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/orchestrator.py:orchestrate_incident; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `append`, `endswith`, `enumerate`, `get`, `get_alerts_by_temporal_window`, `has_technical_token_overlap`, `items`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

@@ -1,6 +1,6 @@
 """
-[FYP-FILE] reporting/report_validator.py
-# File: soc_reporting_agent/reporting/report_validator.py
+[FYP-FILE] agents/reporting/reporting/report_validator.py
+# File: agents/reporting/reporting/report_validator.py
 # Purpose: This module implements report generation and export behaviour for report validator.
 # Inputs: Receives function arguments, configured state, and persisted artifacts described below.
 # Outputs: Produces return values and documented state, file, database, export, or UI effects.
@@ -11,11 +11,11 @@
 [FYP-SECTION] Responsibility
 Post-generation artefact validation (ReportIntegrityError,
 validate_generated_report() and its three `_validate_*` helpers below) —
-called by reporting/editable_reports.py:finalize_candidate_manifest()
+called by agents/reporting/reporting/editable_reports.py:finalize_candidate_manifest()
 (lazy import) to decide, per rendered report, whether the generated DOCX/
 PDF/structured-content artefacts are safe to publish for analyst review.
 
-[FYP-USED-BY] reporting/editable_reports.py (validate_generated_report(),
+[FYP-USED-BY] agents/reporting/reporting/editable_reports.py (validate_generated_report(),
 via lazy import in finalize_candidate_manifest()).
 """
 import re

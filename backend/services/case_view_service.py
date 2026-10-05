@@ -2162,7 +2162,7 @@ def reporting_blocks_to_render_ops(blocks: list[dict[str, Any]] | Any) -> list[d
     for UI or export adapters.
 
     Pure mapping from structured report blocks (see
-    soc_reporting_agent/reporting/structured_report.py) to a small,
+    agents/reporting/reporting/structured_report.py) to a small,
     UI-framework-agnostic instruction list that is independently unit-testable: a
     {"type":"table",...} block MUST produce a {"op":"table",...}
     instruction (rendered as a structured table), never a

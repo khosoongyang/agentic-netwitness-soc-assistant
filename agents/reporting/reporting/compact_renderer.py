@@ -55,7 +55,7 @@ PLACEHOLDER_VALUES = {
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:build_approval_summary, soc_reporting_agent/reporting/compact_renderer.py:build_chain_of_custody_note, soc_reporting_agent/reporting/compact_renderer.py:build_evidence_register_summary; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:build_approval_summary, agents/reporting/reporting/compact_renderer.py:build_chain_of_custody_note, agents/reporting/reporting/compact_renderer.py:build_evidence_register_summary; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `len`, `lower`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -71,7 +71,7 @@ def is_placeholder(value: Any) -> bool:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:count_placeholders, soc_reporting_agent/reporting/export_context_enhancer.py:finalise_section_placeholder_counts, soc_reporting_agent/reporting/template_document_exporter.py:build_agent_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:count_placeholders, agents/reporting/reporting/export_context_enhancer.py:finalise_section_placeholder_counts, agents/reporting/reporting/template_document_exporter.py:build_agent_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `count_placeholders`, `is_placeholder`, `isinstance`, `sum`, `values`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -87,7 +87,7 @@ def count_placeholders(value: Any) -> int:
 # [FYP-INPUT] Parameters: `rows`, `columns`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:compact_table, soc_reporting_agent/reporting/compact_renderer.py:compact_table_summary, soc_reporting_agent/tests/test_compact_renderer.py:test_all_placeholders; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:compact_table, agents/reporting/reporting/compact_renderer.py:compact_table_summary, agents/reporting/tests/test_compact_renderer.py:test_all_placeholders; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `is_placeholder`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -108,7 +108,7 @@ def table_placeholder_ratio(rows: list[list[Any]], columns: list[str]) -> float:
 # [FYP-INPUT] Parameters: `columns`, `rows`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:compact_table, soc_reporting_agent/tests/test_compact_renderer.py:test_empty_inputs, soc_reporting_agent/tests/test_compact_renderer.py:test_hides_all_placeholder_column; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:compact_table, agents/reporting/tests/test_compact_renderer.py:test_empty_inputs, agents/reporting/tests/test_compact_renderer.py:test_hides_all_placeholder_column; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `enumerate`, `is_placeholder`, `len`, `max`, `range`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -137,7 +137,7 @@ def filter_empty_columns(columns: list[str], rows: list[list[Any]]) -> tuple[lis
 # [FYP-INPUT] Parameters: `columns`, `rows`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:compact_table, soc_reporting_agent/tests/test_compact_renderer.py:test_keeps_partial_row, soc_reporting_agent/tests/test_compact_renderer.py:test_removes_all_placeholder_row; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:compact_table, agents/reporting/tests/test_compact_renderer.py:test_keeps_partial_row, agents/reporting/tests/test_compact_renderer.py:test_removes_all_placeholder_row; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `append`, `is_placeholder`, `len`, `max`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -157,7 +157,7 @@ def filter_empty_rows(columns: list[str], rows: list[list[Any]]) -> tuple[list[s
 # [FYP-INPUT] Parameters: `columns`, `rows`, `section_name`, `gaps`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:build_evidence_register_summary, soc_reporting_agent/reporting/export_context_enhancer.py:build_compact_render_tables; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:build_evidence_register_summary, agents/reporting/reporting/export_context_enhancer.py:build_compact_render_tables; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `bool`, `compact_table_summary`, `filter_empty_columns`, `filter_empty_rows`, `len`, `max`, `table_placeholder_ratio`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -189,7 +189,7 @@ def compact_table(
 # [FYP-INPUT] Parameters: `columns`, `rows`, `section_name`, `gaps`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:compact_table; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:compact_table; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `get`, `is_placeholder`, `join`, `len`, `lower`, `max`, `next`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -218,7 +218,7 @@ def compact_table_summary(columns: list[str], rows: list[list[Any]], section_nam
 # [FYP-INPUT] Parameters: `evidence`, `evidence_gaps`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:enhance_export_context, soc_reporting_agent/tests/test_compact_renderer.py:test_compact_when_many_placeholders, soc_reporting_agent/tests/test_compact_renderer.py:test_full_when_few_placeholders; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:enhance_export_context, agents/reporting/tests/test_compact_renderer.py:test_compact_when_many_placeholders, agents/reporting/tests/test_compact_renderer.py:test_full_when_few_placeholders; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `all`, `append`, `compact_table`, `get`, `is_placeholder`, `len`, `max`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -265,7 +265,7 @@ def build_evidence_register_summary(evidence: list[dict[str, Any]], evidence_gap
 # [FYP-INPUT] Parameters: `context`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:enhance_export_context, soc_reporting_agent/tests/test_compact_renderer.py:test_includes_impact_context, soc_reporting_agent/tests/test_compact_renderer.py:test_returns_compact_summary; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:enhance_export_context, agents/reporting/tests/test_compact_renderer.py:test_includes_impact_context, agents/reporting/tests/test_compact_renderer.py:test_returns_compact_summary; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `get`, `join`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -295,7 +295,7 @@ def build_data_impact_summary(context: dict[str, Any]) -> str:
 # [FYP-INPUT] Parameters: `evidence`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:enhance_export_context, soc_reporting_agent/tests/test_compact_renderer.py:test_empty_note_when_no_evidence, soc_reporting_agent/tests/test_compact_renderer.py:test_empty_note_when_real_custody_exists; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:enhance_export_context, agents/reporting/tests/test_compact_renderer.py:test_empty_note_when_no_evidence, agents/reporting/tests/test_compact_renderer.py:test_empty_note_when_real_custody_exists; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `get`, `is_placeholder`, `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -327,7 +327,7 @@ def build_chain_of_custody_note(evidence: list[dict[str, Any]]) -> str:
 # [FYP-INPUT] Parameters: `approval`, `containment`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:containment_table_summary, soc_reporting_agent/reporting/export_context_enhancer.py:enhance_export_context, soc_reporting_agent/tests/test_compact_renderer.py:test_approved_report_summary; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:containment_table_summary, agents/reporting/reporting/export_context_enhancer.py:enhance_export_context, agents/reporting/tests/test_compact_renderer.py:test_approved_report_summary; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `is_placeholder`, `isinstance`, `lower`, `replace`, `str`, `title`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -414,7 +414,7 @@ _NUMBERED_ITEM_RE = re.compile(r"(?:^|(?<=\s))(\d{1,2})\.\s+")
 # [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:_incident_timeline_from_chronology, soc_reporting_agent/reporting/export_context_enhancer.py:build_readable_narrative_sections; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:_incident_timeline_from_chronology, agents/reporting/reporting/export_context_enhancer.py:build_readable_narrative_sections; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `split`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -433,7 +433,7 @@ def split_into_sentences(text: Any) -> list[str]:
 # [FYP-INPUT] Parameters: `text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:build_readable_narrative_sections; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:build_readable_narrative_sections; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `end`, `enumerate`, `finditer`, `len`, `list`, `start`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -461,7 +461,7 @@ def split_numbered_items(text: Any) -> list[str]:
 # [FYP-INPUT] Parameters: `sentence`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/compact_renderer.py:approval_summary_table; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/compact_renderer.py:approval_summary_table; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `partition`, `rstrip`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -482,7 +482,7 @@ def split_label_value(sentence: Any) -> tuple[str, str]:
 # [FYP-INPUT] Parameters: `summary`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:enhance_export_context; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:enhance_export_context; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `split_label_value`, `values`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

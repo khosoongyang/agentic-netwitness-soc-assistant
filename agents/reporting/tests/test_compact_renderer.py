@@ -5,12 +5,12 @@
 # Workflow position: Aegis test and validation.
 # Important dependencies: __future__, pytest, reporting.
 # Key evaluator search terms: TestIsPlaceholder, TestCountPlaceholders, TestFilterEmptyColumns, TestFilterEmptyRows, TestTablePlaceholderRatio, TestBuildEvidenceRegisterSummary, [FYP-FUNCTION].
-File: soc_reporting_agent/tests/test_compact_renderer.py
+File: agents/reporting/tests/test_compact_renderer.py
 Purpose: Unit tests for the report "compaction" helpers in
-    reporting/compact_renderer.py (placeholder detection/counting, table
+    agents/reporting/reporting/compact_renderer.py (placeholder detection/counting, table
     column/row filtering, evidence/data-impact/chain-of-custody/approval
     summary builders) plus the plain-text/markdown table parsing entry
-    points in reporting/structured_report.py that feed those summaries.
+    points in agents/reporting/reporting/structured_report.py that feed those summaries.
 Main functionalities: Exercises each pure helper function with small
     literal inputs and asserts the exact return value/shape, covering both
     the "mostly placeholders -> compact summary" and "mostly real data ->

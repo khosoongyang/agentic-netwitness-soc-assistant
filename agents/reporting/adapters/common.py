@@ -1,5 +1,5 @@
 # =============================================================================
-# [FYP-FILE] soc_reporting_agent/adapters/common.py
+# [FYP-FILE] agents/reporting/adapters/common.py
 # Important dependencies: __future__, datetime, dotenv, json, os, pathlib, shutil, subprocess.
 #
 # File: Shared helper library for the Reporting-side adapter scripts.
@@ -272,7 +272,7 @@ def run_script(script: Path, timeout: int = 300, extra_env: dict[str, str] | Non
     cwd=PROJECT_ROOT) and capture a normalised result dict.
 
     [FYP-CALLS] Used by run_reporting.py's main() to invoke
-    agents/reporting_agent.py out-of-process (see [FYP-USED-BY] note at top
+    agents/reporting/agents/reporting_agent.py out-of-process (see [FYP-USED-BY] note at top
     of file). extra_env is merged on top of a full copy of the current
     process environment (os.environ), so callers only need to pass the keys
     they want to add/override — not the whole environment.

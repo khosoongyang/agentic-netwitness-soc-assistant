@@ -1000,7 +1000,7 @@ def enrich_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, agents/investigation/bench_correlation.py:main_bench; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dumps`, `enrich_alert`, `load_processed_alert`, `print`, `save_csv`, `save_json`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1028,7 +1028,7 @@ if __name__ == "__main__":
 # [FYP-INPUT] Parameters: `default`, `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis threat intelligence and NetWitness integration workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/common.py:normalise_incident, threat_intel.py:_flatten_ioc_list, threat_intel.py:flatten_alert_for_enrichment; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/adapters/common.py:normalise_incident, threat_intel.py:_flatten_ioc_list, threat_intel.py:flatten_alert_for_enrichment; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: no nested function/service calls.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

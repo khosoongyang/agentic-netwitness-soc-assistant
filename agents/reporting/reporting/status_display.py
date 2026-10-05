@@ -1,6 +1,6 @@
 """
-[FYP-FILE] reporting/status_display.py (354 lines)
-# File: soc_reporting_agent/reporting/status_display.py
+[FYP-FILE] agents/reporting/reporting/status_display.py (354 lines)
+# File: agents/reporting/reporting/status_display.py
 # Purpose: This module implements report generation and export behaviour for status display.
 # Inputs: Receives function arguments, configured state, and persisted artifacts described below.
 # Outputs: Produces return values and documented state, file, database, export, or UI effects.
@@ -33,9 +33,9 @@ calculate_llm_enhancement_score() is a separate, unrelated concern living
 in the same file: it scores LLM section outcomes into a 0-100 completeness
 score independent of the display-text mapping above.
 
-[FYP-USED-BY] reporting/output_writer.py (get_status_metadata,
+[FYP-USED-BY] agents/reporting/reporting/output_writer.py (get_status_metadata,
 calculate_llm_enhancement_score, via _display_fields()/
-build_reporting_result()); agents/reporting_agent.py:main() (both
+build_reporting_result()); agents/reporting/agents/reporting_agent.py:main() (both
 functions directly, plus a second get_status_metadata("postgresql", ...)
 call after try_store_postgres() and a get_status_metadata("llm_section", ...)
 call while printing per-section LLM status to the console).
@@ -315,7 +315,7 @@ STATUS_DISPLAY_MAP: dict[str, dict[str, dict[str, str]]] = {
 # [FYP-INPUT] Parameters: `category`, `technical_status`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:_add_postgres_display_fields, soc_reporting_agent/agents/reporting_agent.py:_print_status, soc_reporting_agent/agents/reporting_agent.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:_add_postgres_display_fields, agents/reporting/agents/reporting_agent.py:_print_status, agents/reporting/agents/reporting_agent.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_meta`, `get`, `replace`, `startswith`, `str`, `title`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -391,7 +391,7 @@ def status_workflow_impact(category: str, technical_status: Any) -> str:
 # [FYP-INPUT] Parameters: `section_results`, `llm_status`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/reporting/output_writer.py:build_reporting_result; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:main, agents/reporting/reporting/output_writer.py:build_reporting_result; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `isinstance`, `round`, `str`, `values`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

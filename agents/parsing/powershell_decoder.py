@@ -72,7 +72,7 @@ MITRE_LABELS = {
 # [FYP-INPUT] Parameters: `values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis shared reporting utility workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/export_context_enhancer.py:derive_affected_assets, soc_reporting_agent/reporting/export_context_enhancer.py:derive_affected_users, soc_reporting_agent/reporting/export_context_enhancer.py:derive_timeline; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/export_context_enhancer.py:derive_affected_assets, agents/reporting/reporting/export_context_enhancer.py:derive_affected_users, agents/reporting/reporting/export_context_enhancer.py:derive_timeline; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `add`, `append`, `lower`, `set`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -93,7 +93,7 @@ def _dedupe(values: Iterable[Any]) -> List[Any]:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis shared reporting utility workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/utils/powershell_decoder.py:decode_powershell_encoded_command, soc_reporting_agent/utils/powershell_decoder.py:extract_encoded_command; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/powershell_decoder.py:decode_powershell_encoded_command, agents/parsing/powershell_decoder.py:extract_encoded_command; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `len`, `strip`, `sub`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -110,7 +110,7 @@ def _normalise_b64(value: str) -> str:
 # [FYP-INPUT] Parameters: `command_line`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis shared reporting utility workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/utils/powershell_decoder.py:analyse_powershell_command_lines; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/powershell_decoder.py:analyse_powershell_command_lines; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_normalise_b64`, `group`, `search`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -127,7 +127,7 @@ def extract_encoded_command(command_line: str) -> Optional[str]:
 # [FYP-INPUT] Parameters: `encoded`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis shared reporting utility workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/utils/powershell_decoder.py:analyse_powershell_command_lines; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/powershell_decoder.py:analyse_powershell_command_lines; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_normalise_b64`, `append`, `b64decode`, `decode`, `isprintable`, `lower`, `replace`, `sorted`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -181,7 +181,7 @@ def _is_public_ip(value: str) -> bool:
 # [FYP-INPUT] Parameters: `decoded`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis shared reporting utility workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/utils/powershell_decoder.py:analyse_decoded_powershell; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/powershell_decoder.py:analyse_decoded_powershell; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_dedupe`, `_is_public_ip`, `append`, `findall`, `list`, `urlparse`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -215,7 +215,7 @@ def extract_iocs_from_powershell(decoded: str) -> Dict[str, List[str]]:
 # [FYP-INPUT] Parameters: `decoded`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis shared reporting utility workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/utils/powershell_decoder.py:analyse_powershell_command_lines; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/powershell_decoder.py:analyse_powershell_command_lines; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_dedupe`, `append`, `extend`, `extract_iocs_from_powershell`, `get`, `group`, `min`, `search`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -251,7 +251,7 @@ def analyse_decoded_powershell(decoded: str) -> Dict[str, Any]:
 # [FYP-INPUT] Parameters: `command_lines`, `alert_text`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis shared reporting utility workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_normaliser.py:normalise_alert_record; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `analyse_decoded_powershell`, `append`, `bool`, `decode_powershell_encoded_command`, `extract_encoded_command`, `get`, `join`, `len`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -295,7 +295,7 @@ def analyse_powershell_command_lines(command_lines: Iterable[Any], alert_text: s
 # [FYP-INPUT] Parameters: `decoded`, `analysis`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis shared reporting utility workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/utils/powershell_decoder.py:analyse_powershell_command_lines; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/powershell_decoder.py:analyse_powershell_command_lines; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `get`, `join`, `len`, `strip`, `sub`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

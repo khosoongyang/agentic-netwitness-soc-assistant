@@ -1,6 +1,6 @@
 """
-[FYP-FILE] reporting/report_renderer.py (61 lines)
-# File: soc_reporting_agent/reporting/report_renderer.py
+[FYP-FILE] agents/reporting/reporting/report_renderer.py (61 lines)
+# File: agents/reporting/reporting/report_renderer.py
 # Purpose: This module implements report generation and export behaviour for report renderer.
 # Inputs: Receives function arguments, configured state, and persisted artifacts described below.
 # Outputs: Produces return values and documented state, file, database, export, or UI effects.
@@ -14,19 +14,19 @@ summary, technical findings, SOC analyst review, SOC triage review, final
 incident report) from Jinja2 `.md.j2` templates against the fully-built
 `context` dict, converts each rendered Markdown string into the structured
 "block" representation used by the analyst-facing editable preview/editor
-(reporting/structured_report.py), and writes both the plain-text and
+(agents/reporting/reporting/structured_report.py), and writes both the plain-text and
 structured-JSON forms to disk under the incident's editable-reports
 directory. Delegates the report *manifest* record (which is what the
 approval UI actually reads to enumerate available reports) to
-reporting/editable_reports.py:build_report_manifest().
+agents/reporting/reporting/editable_reports.py:build_report_manifest().
 
 [FYP-ENTRY-POINT] render_reports() is called once per run, immediately
 after context_builder.build_context() (and export_context_enhancer.
 enhance_export_context()) and immediately before output_writer.
 write_outputs().
-[FYP-USED-BY] agents/reporting_agent.py:main(); dev/test harnesses
-scripts/test_merged_report_context.py, scripts/test_reporting_appendix_context.py.
-[FYP-CALLS] reporting/editable_reports.py (REPORT_SECTION_CONFIG for the
+[FYP-USED-BY] agents/reporting/agents/reporting_agent.py:main(); dev/test harnesses
+agents/reporting/scripts/test_merged_report_context.py, scripts/test_reporting_appendix_context.py.
+[FYP-CALLS] agents/reporting/reporting/editable_reports.py (REPORT_SECTION_CONFIG for the
 per-section template/filename mapping, editable_dir() for the output path,
 build_report_manifest() to persist report_manifest.json); reporting/
 structured_report.py (markdown_to_blocks(), blocks_to_plain_text(),
@@ -88,7 +88,7 @@ def render_reports(context: dict[str, Any], output_dir: Path | None = None, temp
     [FYP-CALLS] editable_reports.editable_dir(), editable_reports.
     build_report_manifest(), structured_report.markdown_to_blocks(),
     structured_report.blocks_to_plain_text(), structured_report.save_blocks().
-    [FYP-USED-BY] agents/reporting_agent.py:main() (between build_context/
+    [FYP-USED-BY] agents/reporting/agents/reporting_agent.py:main() (between build_context/
     enhance_export_context and output_writer.write_outputs()).
     """
     template_dir = template_dir or settings.TEMPLATE_DIR

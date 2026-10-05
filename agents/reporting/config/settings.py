@@ -89,7 +89,7 @@ REQUIRED_KB_FILES = [
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting configuration workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `lower`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -114,7 +114,7 @@ def configured_llm_providers() -> list[str]:
 # [FYP-INPUT] Parameters: `provider`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting configuration workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/config/settings.py:selected_llm_model, soc_reporting_agent/reporting/llm_narrative.py:invoke_llm, soc_reporting_agent/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/config/settings.py:selected_llm_model, agents/reporting/reporting/llm_narrative.py:invoke_llm, agents/reporting/reporting/llm_narrative.py:invoke_llm_with_retries; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `lower`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -133,7 +133,7 @@ def selected_model_for_provider(provider: str) -> str:
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis reporting configuration workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/agents/reporting_agent.py:main, soc_reporting_agent/reporting/llm_narrative.py:selected_model; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/agents/reporting_agent.py:main, agents/reporting/reporting/llm_narrative.py:selected_model; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `selected_model_for_provider`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

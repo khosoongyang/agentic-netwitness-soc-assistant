@@ -1,6 +1,6 @@
 """
-[FYP-FILE] reporting/input_loader.py (143 lines)
-# File: soc_reporting_agent/reporting/input_loader.py
+[FYP-FILE] agents/reporting/reporting/input_loader.py (143 lines)
+# File: agents/reporting/reporting/input_loader.py
 # Purpose: This module implements report generation and export behaviour for input loader.
 # Inputs: Receives function arguments, configured state, and persisted artifacts described below.
 # Outputs: Produces return values and documented state, file, database, export, or UI effects.
@@ -8,7 +8,7 @@
 # Important dependencies: json, pathlib, typing.
 # Key evaluator search terms: ReportingInputError, load_json_file, load_reporting_inputs, [FYP-FUNCTION].
 [FYP-ENTRY-POINT] load_reporting_inputs() is the first pipeline step invoked
-by agents/reporting_agent.py:main() — it reads every upstream agent's JSON
+by agents/reporting/agents/reporting_agent.py:main() — it reads every upstream agent's JSON
 handoff file from the run's input directory before context_builder.build_context()
 normalises them.
 
@@ -21,9 +21,9 @@ actual file read + JSON parse and raises ReportingInputError when a
 hard-required input is missing/empty/unreadable, so callers can fail the
 Reporting stage safely instead of generating a degraded report silently.
 
-[FYP-USED-BY] agents/reporting_agent.py:main() (load_reporting_inputs);
-scripts/test_merged_report_context.py and
-scripts/test_reporting_appendix_context.py (dev/test harnesses that also
+[FYP-USED-BY] agents/reporting/agents/reporting_agent.py:main() (load_reporting_inputs);
+agents/reporting/scripts/test_merged_report_context.py and
+agents/reporting/scripts/test_reporting_appendix_context.py (dev/test harnesses that also
 call load_reporting_inputs directly).
 """
 from pathlib import Path
@@ -67,7 +67,7 @@ HARD_REQUIRED_INPUT_KEYS = {"processed_alert", "triage_result", "investigation_r
 
 # [FYP-CLASS] `ReportingInputError` — owns ReportingInputError state or behaviour for the report generation and export component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_reporting_agent/reporting/input_loader.py:load_reporting_inputs.
+# [FYP-USED-BY] Static constructor/type references include agents/reporting/reporting/input_loader.py:load_reporting_inputs.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -114,7 +114,7 @@ def load_reporting_inputs(input_dir: Path) -> tuple[dict[str, dict[str, Any]], l
     input_dir and enforce HARD_REQUIRED_INPUT_KEYS.
 
     [FYP-INPUT] input_dir: the run's input directory (defaults to
-    settings.INPUT_DIR when called from agents/reporting_agent.py).
+    settings.INPUT_DIR when called from agents/reporting/agents/reporting_agent.py).
 
     [FYP-PROCESS] Loads each registered file via load_json_file(), collecting
     per-file warnings for OPTIONAL_INPUT_KEYS gaps. After loading, checks
@@ -129,8 +129,8 @@ def load_reporting_inputs(input_dir: Path) -> tuple[dict[str, dict[str, Any]], l
     later validate_required_fields() check in report_validator.py, which
     validates content richness rather than file presence.
     [FYP-CALLS] load_json_file() once per registered INPUT_FILES entry.
-    [FYP-USED-BY] agents/reporting_agent.py:main() (first call in the
-    pipeline); scripts/test_merged_report_context.py,
+    [FYP-USED-BY] agents/reporting/agents/reporting_agent.py:main() (first call in the
+    pipeline); agents/reporting/scripts/test_merged_report_context.py,
     scripts/test_reporting_appendix_context.py.
     [FYP-EVALUATOR] Confirm this raises ReportingInputError (not a silent
     empty-dict fallback) when processed_alert/triage_result/

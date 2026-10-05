@@ -5,7 +5,7 @@
 # Workflow position: Aegis test and validation.
 # Important dependencies: __future__, backend, json.
 # Key evaluator search terms: test_extract_json_object_plain_object, test_extract_json_object_strips_markdown_fence, test_extract_json_object_with_surrounding_text, test_extract_json_object_balanced_nested_object_with_braces_in_string, test_extract_json_object_invalid_or_non_object_returns_empty_dict, [FYP-FUNCTION].
-File: soc_reporting_agent/tests/test_openai_client_json_extraction.py
+File: agents/reporting/tests/test_openai_client_json_extraction.py
 Purpose: Unit tests for backend/openai_client.py's extract_json_object() --
     the tolerant parser that turns an LLM's raw text response back into a
     Python dict, even when the model wraps the JSON in a markdown code

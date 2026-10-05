@@ -4,7 +4,7 @@
 
 
 # ============================================================================
-# [FYP-FILE] soc_reporting_agent/reporting/editable_reports.py
+# [FYP-FILE] agents/reporting/reporting/editable_reports.py
 # File: soc_reporting_agent/reporting/editable_reports.py
 # Purpose: This module implements report generation and export behaviour for editable reports.
 # Inputs: Receives function arguments, configured state, and persisted artifacts described below.
@@ -524,7 +524,7 @@ def build_report_manifest(output_dir: Path, incident_id: str, generated_sections
         content as an extra sub-heading when present; writes every section's
         draft text+blocks into drafts_dir(); writes report_manifest.json to
         manifest_path().
-    Called by: soc_reporting_agent/reporting/report_renderer.py (after the
+    Called by: agents/reporting/reporting/report_renderer.py (after the
         Reporting Agent finishes generating section content).
     Calls: editable_dir(), drafts_dir()/confirmed_dir()/exports_dir(),
         reporting.structured_report.{load_blocks, repair_pipe_tables_in_blocks,
@@ -704,7 +704,7 @@ def list_reports(output_dir: Path, incident_id: str | None = None) -> dict[str, 
         the Reporting Agent has not run for this incident) -- callers (e.g.
         backend/app.py's /api/reports routes) turn this into a 404-style
         JSON error response.
-    Called by: soc_reporting_agent/backend/app.py (GET /api/reports and the
+    Called by: backend/app.py (GET /api/reports and the
         per-incident equivalent).
     """
     manifest = load_manifest(output_dir, incident_id)
@@ -763,7 +763,7 @@ def read_section(output_dir: Path, section_key: str, incident_id: str | None = N
         source ("draft"/"confirmed"/"missing"), block_source.
     Error handling: FileNotFoundError if no manifest; KeyError if
         section_key is not a known section.
-    Called by: soc_reporting_agent/backend/app.py (GET section endpoints).
+    Called by: backend/app.py (GET section endpoints).
     Calls: load_manifest(), _section_text(), _section_blocks().
     """
     manifest = load_manifest(output_dir, incident_id)
@@ -806,7 +806,7 @@ def save_section(output_dir: Path, section_key: str, text: str, analyst: str = "
         status.
     Error handling: FileNotFoundError if no manifest; KeyError if
         section_key is unknown.
-    Called by: soc_reporting_agent/backend/app.py (POST section save
+    Called by: backend/app.py (POST section save
         endpoints, both per-incident and legacy routes).
     Calls: load_manifest(), repair_pipe_tables_in_blocks(),
         markdown_to_plain_text(), blocks_from_text(), blocks_to_plain_text(),
@@ -946,7 +946,7 @@ def confirm_report(output_dir: Path, analyst: str = "SOC Analyst", incident_id: 
     Purpose: bulk-confirm every core section in one call -- either the
     analyst's explicit "Confirm all reports" action, or the automated
     auto-confirm used by the headless workflow adapter
-    (adapters/export_documents.py) so a run can proceed to export without a
+    (agents/reporting/adapters/export_documents.py) so a run can proceed to export without a
     human clicking through each section individually.
     Params: output_dir/incident_id -- see load_manifest(); analyst -- name
         recorded as confirming (source: API request body, or
@@ -965,8 +965,8 @@ def confirm_report(output_dir: Path, analyst: str = "SOC Analyst", incident_id: 
         stamps manifest-level confirmed_by/confirmed_at; calls
         save_manifest() again.
     Error handling: FileNotFoundError if no manifest found for this incident.
-    Called by: soc_reporting_agent/backend/app.py (POST confirm-all
-        endpoint); soc_reporting_agent/adapters/export_documents.py (headless
+    Called by: backend/app.py (POST confirm-all
+        endpoint); agents/reporting/adapters/export_documents.py (headless
         auto-confirm before export, wrapped in its own try/except so a
         confirm failure is recorded as "confirm_error" rather than aborting
         the whole export run).
@@ -1003,7 +1003,7 @@ def list_section_drafts(output_dir: Path, section_key: str, incident_id: str | N
         a short preview attached).
     Error handling: FileNotFoundError if no manifest; KeyError if
         section_key unknown.
-    Called by: soc_reporting_agent/backend/app.py (GET revision-history
+    Called by: backend/app.py (GET revision-history
         endpoint).
     """
     manifest = load_manifest(output_dir, incident_id)
@@ -1112,7 +1112,7 @@ def _set_cell_text(cell: Any, text: Any, *, bold: bool = False, font_size: int =
 # [FYP-INPUT] Parameters: `table`, `widths_in`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:_docx_write_blocks; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:_docx_write_blocks; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Inches`, `enumerate`, `len`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -1749,7 +1749,7 @@ def export_section_docx(output_dir: Path, section_key: str, incident_id: str | N
         PermissionError/FileNotFoundError from _confirmed_required() if the
         section is not yet confirmed.
     Called by: export_section_pdf() (renders the DOCX first, then converts);
-        soc_reporting_agent/backend/app.py (POST per-section DOCX export
+        backend/app.py (POST per-section DOCX export
         endpoint).
     Calls: load_manifest(), _confirmed_required(), _confirmed_blocks_or_text(),
         _docx_write_blocks(), save_manifest().
@@ -1791,7 +1791,7 @@ def export_section_pdf(output_dir: Path, section_key: str, incident_id: str | No
     Error handling: same lookup/confirmation errors as export_section_docx();
         DOCX->PDF conversion failures are caught and silently fall back to
         _pdf_write_blocks() rather than failing the export.
-    Called by: soc_reporting_agent/backend/app.py (POST per-section PDF
+    Called by: backend/app.py (POST per-section PDF
         export endpoint).
     Calls: export_section_docx(),
         reporting.template_document_exporter.convert_docx_to_pdf() (lazy
@@ -1831,7 +1831,7 @@ def export_section_pdf(output_dir: Path, section_key: str, incident_id: str | No
 # [FYP-INPUT] Parameters: `manifest`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:export_docx, soc_reporting_agent/reporting/editable_reports.py:export_pdf; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:export_docx, agents/reporting/reporting/editable_reports.py:export_pdf; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `KeyError`, `_read`, `_strip_duplicate_leading_heading`, `blocks_from_text`, `get`, `load_blocks`, `repair_pipe_tables_in_blocks`.
 # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -1877,8 +1877,8 @@ def export_docx(output_dir: Path, incident_id: str | None = None) -> dict[str, A
     Error handling: FileNotFoundError/KeyError if manifest or section
         missing; PermissionError/FileNotFoundError via _confirmed_required().
     Called by: export_pdf() (renders DOCX first, then converts);
-        soc_reporting_agent/backend/app.py (POST combined DOCX export
-        endpoint); soc_reporting_agent/adapters/export_documents.py
+        backend/app.py (POST combined DOCX export
+        endpoint); agents/reporting/adapters/export_documents.py
         (headless workflow export, wrapped in try/except so a failure is
         recorded as result["docx_error"] rather than aborting the run --
         export_documents.py continues on to export_pdf() and the per-section
@@ -1925,8 +1925,8 @@ def export_pdf(output_dir: Path, incident_id: str | None = None) -> dict[str, An
         (including source_docx); calls save_manifest().
     Error handling: same as export_docx(); DOCX->PDF conversion failure
         falls back silently to _pdf_write_blocks().
-    Called by: soc_reporting_agent/backend/app.py (POST combined PDF export
-        endpoint); soc_reporting_agent/adapters/export_documents.py
+    Called by: backend/app.py (POST combined PDF export
+        endpoint); agents/reporting/adapters/export_documents.py
         (headless workflow export; failure recorded as result["pdf_error"]).
     Calls: export_docx(),
         reporting.template_document_exporter.convert_docx_to_pdf() (lazy
@@ -1973,7 +1973,7 @@ def download_path(output_dir: Path, section_key: str | None, file_type: str, inc
     Error handling: FileNotFoundError if no manifest, no matching export
         record, or the file no longer exists on disk; KeyError if
         section_key is not a known section.
-    Called by: soc_reporting_agent/backend/app.py (GET download endpoints,
+    Called by: backend/app.py (GET download endpoints,
         which wrap the returned Path in Flask's send_file()).
     """
     manifest = load_manifest(output_dir, incident_id)
@@ -2009,7 +2009,7 @@ def download_path(output_dir: Path, section_key: str | None, file_type: str, inc
 
 # [FYP-CLASS] `CandidateManifestConflictError` — owns CandidateManifestConflictError state or behaviour for the report generation and export component.
 # [FYP-PROCESS] Important methods: no public methods; class-level data/exception semantics only.
-# [FYP-USED-BY] Static constructor/type references include soc_reporting_agent/reporting/editable_reports.py:finalize_candidate_manifest.
+# [FYP-USED-BY] Static constructor/type references include agents/reporting/reporting/editable_reports.py:finalize_candidate_manifest.
 # [FYP-OUTPUT] Instances expose the state and operations defined by the class body; local methods document side effects.
 # [FYP-ERROR] Constructor/method exceptions propagate unless a documented local fallback handles them.
 
@@ -2051,7 +2051,7 @@ def _hash_file(path: Path) -> tuple[str, int]:
 # [FYP-INPUT] Parameters: `manifest_without_hash`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include reporting_approval.py:_verify_candidate_manifest, soc_reporting_agent/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include reporting_approval.py:_verify_candidate_manifest, agents/reporting/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `dumps`, `encode`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2068,7 +2068,7 @@ def _canonical_manifest_bytes(manifest_without_hash: dict[str, Any]) -> bytes:
 # [FYP-INPUT] Parameters: `entries`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -2106,7 +2106,7 @@ def finalize_candidate_manifest(output_dir: Path, incident_id: str, run_id: str,
         call per core section) to attach a validation status onto each
         report entry; load_manifest(), _hash_file(),
         _canonical_manifest_bytes(), _report_content_signature().
-    Called by: soc_reporting_agent/adapters/export_documents.py, after
+    Called by: agents/reporting/adapters/export_documents.py, after
         confirm_report() + export_docx/pdf() + export_section_docx/pdf()
         (for executive_summary, technical_findings, soc_analyst_review) have
         all completed for a headless workflow run.
@@ -2114,7 +2114,7 @@ def finalize_candidate_manifest(output_dir: Path, incident_id: str, run_id: str,
     Build and atomically publish candidate_manifest.json — the true
     final snapshot of a completed Reporting generation.
 
-    Must be called only after adapters/export_documents.py has confirmed
+    Must be called only after agents/reporting/adapters/export_documents.py has confirmed
     and exported all 4 core reports (structured content + DOCX + PDF for
     each). If any of those 12 files is missing/empty, this raises
     FileNotFoundError and does NOT publish anything — the caller
@@ -2136,7 +2136,7 @@ def finalize_candidate_manifest(output_dir: Path, incident_id: str, run_id: str,
     # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:finalize_candidate_manifest; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `FileNotFoundError`, `Path`, `_hashed`, `append`, `exists`, `get`, `stat`, `utc_now`.
     # [FYP-ERROR] Raises explicit validation/processing errors to the caller; no silent fallback is applied here.
 
@@ -2174,7 +2174,7 @@ def finalize_candidate_manifest(output_dir: Path, incident_id: str, run_id: str,
             # [FYP-INPUT] Parameters: `p`; values come from its direct caller, route, UI event, fixture, or stage handoff.
             # [FYP-PROCESS] Executes the named operation within the Aegis report generation and export workflow; branch rules remain in the body below.
             # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-            # [FYP-USED-BY] Static symbol references include soc_reporting_agent/reporting/editable_reports.py:_build_report_entries; dynamic framework calls may add callers.
+            # [FYP-USED-BY] Static symbol references include agents/reporting/reporting/editable_reports.py:_build_report_entries; dynamic framework calls may add callers.
             # [FYP-CALLS] Calls: `_hash_file`, `_rel`.
             # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

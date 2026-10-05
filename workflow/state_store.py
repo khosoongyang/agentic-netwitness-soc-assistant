@@ -144,7 +144,7 @@ class WorkflowAlreadyRunningError(Exception):
     # [FYP-INPUT] Parameters: `incident_id`, `state`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis workflow orchestration and state workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/error_handling.py:__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include error_handling.py (removed):__init__, workflow/state_store.py:__init__; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `__init__`, `get`, `super`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -678,7 +678,7 @@ def start_run(incident_id: str, *, allow_retry: bool = False) -> str:
     """[FYP-FUNCTION] Start / Restart a Workflow Run
     [FYP-STATE] [FYP-ENTRY-POINT] [FYP-RERUN]
     Params: incident_id (str, source: the incident row selected by the
-    analyst/app.py), allow_retry (bool, default False — if True, permits
+    analyst in the case workspace), allow_retry (bool, default False — if True, permits
     replacing a run currently "Awaiting Approval"; a "Processing" run can
     NEVER be replaced regardless of this flag).
     Returns: the newly generated run_id (str,

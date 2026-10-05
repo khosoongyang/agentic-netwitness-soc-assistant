@@ -37,7 +37,7 @@ from typing import Any
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:_clean, soc_reporting_agent/services/parser_context_guard.py:_first, soc_reporting_agent/services/parser_context_guard.py:_walk_values; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_context_guard.py:_clean, agents/parsing/parser_context_guard.py:_first, agents/parsing/parser_context_guard.py:_walk_values; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`, `lower`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -53,7 +53,7 @@ def _is_useful(value: Any) -> bool:
 # [FYP-INPUT] Parameters: `default`, `*values`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_triage_bits, soc_reporting_agent/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include compliance_evidence.py:_build, compliance_evidence.py:_triage_bits, agents/reporting/adapters/run_reporting.py:_normalise_reporting_result; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_is_useful`, `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -72,7 +72,7 @@ def _first(*values: Any, default: Any = None) -> Any:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include app.py:env_load, soc_reporting_agent/adapters/run_reporting.py:_first, soc_reporting_agent/services/parser_context_guard.py:_title_clean; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include app.py:env_load, agents/reporting/adapters/run_reporting.py:_first, agents/parsing/parser_context_guard.py:_title_clean; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_is_useful`, `str`, `strip`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -86,7 +86,7 @@ def _clean(value: Any) -> str | None:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:add_check; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_context_guard.py:add_check; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `lower`, `str`, `strip`, `sub`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -120,7 +120,7 @@ def _dig(data: Any, *path: Any) -> Any:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -132,7 +132,7 @@ def _as_dict(value: Any) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `data`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get`, `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -151,7 +151,7 @@ def _raw_source(data: dict[str, Any]) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `value`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_clean`, `strip`, `sub`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -166,7 +166,7 @@ def _title_clean(value: Any) -> str | None:
 # [FYP-INPUT] Parameters: `data`, `wanted_keys`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:_walk_values, soc_reporting_agent/services/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_context_guard.py:_walk_values, agents/parsing/parser_context_guard.py:extract_alert_identity; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_is_useful`, `_walk_values`, `append`, `extend`, `isinstance`, `items`, `lower`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -190,7 +190,7 @@ def _walk_values(data: Any, wanted_keys: set[str]) -> list[Any]:
 # [FYP-INPUT] Parameters: `raw_alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main, soc_reporting_agent/backend/app.py:start_background_run, soc_reporting_agent/backend/casework_store.py:normalise_alert; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/adapters/run_parser_normalisation.py:main, backend/app.py:start_background_run, casework_store.py (removed):normalise_alert; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_as_dict`, `_clean`, `_first`, `_raw_source`, `_title_clean`, `_walk_values`, `append`, `extend`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -282,7 +282,7 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `parser_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:validate_parser_identity; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/parsing/parser_context_guard.py:validate_parser_identity; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `_clean`, `_first`, `get`, `isinstance`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -321,7 +321,7 @@ def extract_parser_output_identity(parser_result: Any) -> dict[str, Any]:
 # [FYP-INPUT] Parameters: `input_identity`, `parser_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/adapters/run_parser_normalisation.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/reporting/adapters/run_parser_normalisation.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `add_check`, `extract_parser_output_identity`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -341,7 +341,7 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
     # [FYP-INPUT] Parameters: `field`, `hard`; values come from its direct caller, route, UI event, fixture, or stage handoff.
     # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
     # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-    # [FYP-USED-BY] Static symbol references include soc_reporting_agent/services/parser_context_guard.py:validate_parser_identity; dynamic framework calls may add callers.
+    # [FYP-USED-BY] Static symbol references include agents/parsing/parser_context_guard.py:validate_parser_identity; dynamic framework calls may add callers.
     # [FYP-CALLS] Calls: `_normalise_for_compare`, `append`, `get`.
     # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -398,7 +398,7 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
 # [FYP-INPUT] Parameters: `project_root`, `ticket_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_reporting_agent/backend/app.py:start_background_run; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include backend/app.py:start_background_run; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `Path`, `append`, `exists`, `is_dir`, `rmtree`, `str`, `unlink`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

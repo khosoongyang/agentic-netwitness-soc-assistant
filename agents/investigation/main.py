@@ -65,7 +65,7 @@ os.makedirs(INCIDENT_REPORTS_FOLDER, exist_ok=True)
 # [FYP-INPUT] Parameters: `base_folder`, `db_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `RealtimeSyncService`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -79,7 +79,7 @@ def start_background_sync(base_folder: str, db_path: str) -> tuple[RealtimeSyncS
 # [FYP-INPUT] Parameters: `service`, `thread`, `loop`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: no nested function/service calls.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -90,7 +90,7 @@ def stop_background_sync(service: RealtimeSyncService, thread: threading.Thread,
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `int`, `isdigit`, `join`, `listdir`, `makedirs`, `max`, `split`, `startswith`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -111,7 +111,7 @@ def get_or_create_incident_folder() -> tuple[str, str]:
 # [FYP-INPUT] Parameters: `incident_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `endswith`, `join`, `listdir`, `lower`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -127,7 +127,7 @@ def find_file_by_incident_id(incident_id: str) -> str:
 # [FYP-INPUT] Parameters: `dest_folder`, `incident_num_id`, `report`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `getattr`, `gmtime`, `join`, `log_success`, `open`, `strftime`, `write`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -206,7 +206,7 @@ def write_investigation_analysis_json(
 # [FYP-INPUT] Parameters: `seed_file_path`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_playbook, soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include eval_harness.py:_c_playbook, agents/investigation/main.py:main_async; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `any`, `exists`, `get`, `join`, `load`, `log_info`, `log_warning`, `lower`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -245,7 +245,7 @@ def select_playbook_automatically(seed_file_path: str) -> str:
 # [FYP-INPUT] Parameters: `doc`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_incident_report; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:generate_incident_report; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `append`, `endswith`, `extend`, `findall`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -264,7 +264,7 @@ def extract_indicators_locally(doc: str) -> List[str]:
 # [FYP-INPUT] Parameters: `alert`, `playbook_path`, `inst_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:generate_incident_report; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:generate_incident_report; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `FinalIncidentAnalysis`, `MilestoneExecution`, `any`, `append`, `enumerate`, `exists`, `get`, `isinstance`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -523,7 +523,7 @@ def generate_local_standalone_report(alert: dict, playbook_path: str, inst_id: s
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `ArgumentParser`, `CorrelationEngine`, `Incident`, `IncidentMetadata`, `_extract_indicators`, `add`, `add_argument`, `append`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 
@@ -706,7 +706,7 @@ async def main_async():
         # [FYP-INPUT] Parameters: `inst_id`; values come from its direct caller, route, UI event, fixture, or stage handoff.
         # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
         # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-        # [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/main.py:main_async; dynamic framework calls may add callers.
+        # [FYP-USED-BY] Static symbol references include agents/investigation/main.py:main_async; dynamic framework calls may add callers.
         # [FYP-CALLS] Calls: `add`, `analyze_alert_group_p1`, `append`, `compile_final_report`, `extend`, `extract_indicators_locally`, `generate_local_standalone_report`, `get`.
         # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -845,7 +845,7 @@ async def main_async():
 # [FYP-INPUT] Parameters: no explicit parameters; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns `None` implicitly or explicitly; its observable result is the documented side effect or assertion.
-# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, soc_investigation_agent_revised/bench_correlation.py:main_bench; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include APIRetrieval.py:<module>, eval_harness.py:<module>, agents/investigation/bench_correlation.py:main_bench; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `main_async`, `run`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 

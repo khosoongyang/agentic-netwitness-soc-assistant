@@ -1,5 +1,5 @@
 # ==============================================================================
-# [FYP-FILE] File: soc_reporting_agent/backend/export_cache.py
+# [FYP-FILE] File: agents/reporting/export_cache.py
 # Important dependencies: __future__, datetime, hashlib, json, pathlib, typing.
 #
 # Purpose:
@@ -146,7 +146,7 @@ def calculate_source_hash(*, source_files: Iterable[Path], extra_payload: Any | 
     additional JSON-serialisable data that should also invalidate the cache
     when it changes (e.g. a template version marker).
     Returns: hex SHA-256 string.
-    Called by: reporting/template_document_exporter.py, before calling
+    Called by: agents/reporting/reporting/template_document_exporter.py, before calling
     is_cache_ready()/mark_export_status() around export generation.
     Calls: file_digest, stable_json.
     """
@@ -211,7 +211,7 @@ def is_cache_ready(export_dir: Path, key: str, file_path: Path, source_hash: str
     (i.e. nothing the export depends on has changed), AND file_path actually
     exists on disk with non-zero size (guards against the metadata saying
     "ready" while the file was deleted/moved out from under it).
-    Called by: reporting/template_document_exporter.py, immediately before
+    Called by: agents/reporting/reporting/template_document_exporter.py, immediately before
     regenerating a Word/PDF/JSON export -- this is the actual cache-hit
     decision point that skips expensive regeneration (including the LLM
     call used to build report content) when nothing has changed.
@@ -247,7 +247,7 @@ def mark_export_status(
     previous entry for `key` (previous fields are preserved unless
     overwritten) and persists via save_metadata(). When status == "ready",
     also stamps a fresh generated_at timestamp.
-    Called by: reporting/template_document_exporter.py, before starting
+    Called by: agents/reporting/reporting/template_document_exporter.py, before starting
     generation (status="generating"), after success (status="ready", with
     source_hash/file_path), and after failure (status="failed", with
     message).

@@ -53,7 +53,7 @@ from typing import Any, Dict, Tuple
 # [FYP-INPUT] Parameters: `exc`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/chroma_compat.py:open_persistent_collection; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/chroma_compat.py:open_persistent_collection; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `lower`, `str`.
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
@@ -76,7 +76,7 @@ def is_embedding_function_conflict(exc: ValueError) -> bool:
 # [FYP-INPUT] Parameters: `client`, `name`, `embedding_function`, `metadata`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis investigation workflow; branch rules remain in the body below.
 # [FYP-OUTPUT] Returns the explicit value(s) from its decision paths for the documented caller to consume.
-# [FYP-USED-BY] Static symbol references include soc_investigation_agent_revised/orchestrator.py:__init__, soc_investigation_agent_revised/sync_engine.py:__init__, tests/test_chroma_compat.py:test_embedding_conflict_reopens_collection_without_override; dynamic framework calls may add callers.
+# [FYP-USED-BY] Static symbol references include agents/investigation/orchestrator.py:__init__, agents/investigation/sync_engine.py:__init__, tests/test_chroma_compat.py:test_embedding_conflict_reopens_collection_without_override; dynamic framework calls may add callers.
 # [FYP-CALLS] Calls: `get_collection`, `get_or_create_collection`, `is_embedding_function_conflict`.
 # [FYP-ERROR] Contains local try/except handling; its fallback branches preserve a controlled result before unhandled failures propagate.
 

@@ -1,5 +1,5 @@
 # ==============================================================================
-# [FYP-FILE] File: soc_reporting_agent/backend/reporting_context_resolver.py
+# [FYP-FILE] File: agents/reporting/backend/reporting_context_resolver.py
 # Important dependencies: __future__, backend, dataclasses, json, pathlib, shutil, typing.
 #
 # Purpose:
@@ -403,7 +403,7 @@ def ensure_reporting_inputs(project_root: Path, ticket_id: str | None = None, ti
     filename for the "latest gate" approval).
     Called by:
       - backend/app.py, immediately before dispatching a Reporting agent run.
-      - adapters/run_reporting.py `_prepare_inputs()`, before invoking the
+      - agents/reporting/adapters/run_reporting.py `_prepare_inputs()`, before invoking the
         reporting subprocess/scripts.
     Calls: resolve_investigation_context, resolve_investigation_approval_context,
     _write_json.

@@ -1,6 +1,6 @@
 """
-[FYP-FILE] reporting/rag_context.py (144 lines)
-# File: soc_reporting_agent/reporting/rag_context.py
+[FYP-FILE] agents/reporting/reporting/rag_context.py (144 lines)
+# File: agents/reporting/reporting/rag_context.py
 # Purpose: This module implements report generation and export behaviour for rag context.
 # Inputs: Receives function arguments, configured state, and persisted artifacts described below.
 # Outputs: Produces return values and documented state, file, database, export, or UI effects.
