@@ -127,6 +127,19 @@ def seed_inputs() -> None:
         "reporting_allowed": True,
         "reporting_mode": "with_limitations",
     })
+    # threat_intel_result is a hard-required Reporting input; a small
+    # contract-shaped result consistent with the IOCs above.
+    write_json(INPUTS / "threat_intel_result.json", {
+        "incident_id": "INC-TI-RAW-0001",
+        "stage": "threat_intelligence",
+        "status": "completed_with_warnings",
+        "enrichment_risk_level": "Low",
+        "enrichment_risk_score": 0,
+        "warnings": ["AbuseIPDB not queried -- ABUSEIPDB_API_KEY is not configured."],
+        "notes": [],
+        "iocs": {"ip_indicators": ["8.8.8.8"], "domain_indicators": ["example.com"],
+                 "file_hash": "44d88612fea8a8f36de82e1278abb02f"},
+    })
     write_json(INPUTS / "approval_result.json", {
         "decision": "continue_to_reporting",
         "approval_status": "approved",
@@ -146,10 +159,17 @@ def seed_inputs() -> None:
 def test_context_and_templates() -> None:
     from reporting.input_loader import load_reporting_inputs
     from reporting.context_builder import build_context
+    from reporting.export_context_enhancer import enhance_export_context
     from reporting.report_renderer import render_reports
 
+    # Under pytest main() never runs, so seed this test's own inputs (it
+    # used to read whatever an earlier test left in the shared dir).
+    reset_io()
+    seed_inputs()
     inputs, warnings = load_reporting_inputs(INPUTS)
-    context = build_context(inputs, warnings, output_dir=OUTPUTS)
+    # Same order as the real pipeline (agents/reporting_agent.py): templates
+    # need the export context (compact_tables, ...) before rendering.
+    context = enhance_export_context(build_context(inputs, warnings, output_dir=OUTPUTS), ticket=None)
     assert "appendix_summaries" in context, "appendix_summaries missing from context"
     assert context["appendix_summaries"].get("raw_alert"), "raw alert appendix missing"
     assert context["reporting_mode"] == "with_limitations", context["reporting_mode"]
@@ -169,6 +189,8 @@ def test_context_and_templates() -> None:
 # [FYP-ERROR] Does not define a local fallback; unexpected failures propagate to the caller/framework error boundary.
 
 def test_adapter_success_wrapper() -> None:
+    reset_io()
+    seed_inputs()
     result = subprocess.run(
         [sys.executable, "adapters/run_reporting.py"],
         cwd=ROOT,

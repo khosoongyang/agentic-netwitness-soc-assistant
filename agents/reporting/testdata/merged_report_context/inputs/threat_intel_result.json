@@ -1,0 +1,45 @@
+{
+  "incident_id": "INC-WANNACRY-TEST",
+  "alert_id": "NW-WCRY-445-0001",
+  "stage": "threat_intelligence",
+  "status": "completed",
+  "enrichment_risk_level": "High",
+  "enrichment_risk_score": 100,
+  "enrichment_risk_reasons": [
+    "VirusTotal reported 63 malicious detection(s) for the file hash."
+  ],
+  "warnings": [],
+  "notes": [],
+  "iocs": {
+    "ip_indicators": [
+      "104.17.244.81"
+    ],
+    "domain_indicators": [
+      "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com"
+    ],
+    "file_hash": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa"
+  },
+  "threat_intelligence": {
+    "virustotal": {
+      "file_hash": {
+        "indicator": "ed01ebfbc9eb5bbea545af4d01bf5f1071661840480439c6e5babe8e080e41aa",
+        "malicious": 63,
+        "reputation": -2986
+      },
+      "ip_results": [
+        {
+          "indicator": "104.17.244.81",
+          "malicious": 1,
+          "reputation": -113
+        }
+      ],
+      "domain_results": [
+        {
+          "indicator": "www.iuqerfsodp9ifjaposdfjhgosurijfaewrwergwea.com",
+          "malicious": 10,
+          "reputation": -165
+        }
+      ]
+    }
+  }
+}

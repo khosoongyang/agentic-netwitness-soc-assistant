@@ -95,7 +95,10 @@ def pytest_configure(config: pytest.Config) -> None:
         PROJECT_ROOT
         / "agents" / "reporting"
         / "outputs"
-        / f".pytest-{root.name}"
+        # Short name: the full temp-dir name made reporting artifact paths
+        # exactly 260 chars on a 150-char checkout path (Windows MAX_PATH),
+        # failing the 4 agents/reporting/scripts tests with [Errno 2].
+        / f".pt-{root.name.rsplit('-', 1)[-1]}"
     )
     try:
         bridge_link.symlink_to(reporting_root, target_is_directory=True)

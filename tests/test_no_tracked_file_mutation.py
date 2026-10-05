@@ -40,7 +40,7 @@ def test_flat_reporting_handoff_writes_to_isolated_dirs_not_tracked_fixtures():
     written = json.loads((out / "threat_intel_result.json").read_text(encoding="utf-8"))
     assert written["enrichment_risk_level"] == 12345
     assert ROOT not in Path(os.environ["REPORTING_INPUT_DIR"]).resolve().parents or \
-        ".pytest-" in os.environ["REPORTING_INPUT_DIR"]
+        ".pt-" in os.environ["REPORTING_INPUT_DIR"]
 
 
 def test_conftest_has_tracked_file_guard():
