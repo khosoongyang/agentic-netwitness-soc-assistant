@@ -55,7 +55,7 @@ The note does **not** lower uncertainty: `uncertainty` measures how complete
 the machine-measured evidence is (`guards.CORE_EVIDENCE`), and a human claim must
 not be reflected back to the reviewer as AI confidence (audit T-18, a deliberate
 choice).
-`TRIAGE_PROMPT_VERSION` = `2026-10-audit-observed-metakeys` (bumped for audit T-08 delimiter hardening and T-17 observed-only meta keys, which change cached results; was `2026-10-step3-analyst-note-suppression`).
+`TRIAGE_PROMPT_VERSION` = `2026-10-citation-paths` (history: `2026-10-step3-analyst-note-suppression` -> `2026-10-audit-prompt-hardening` (T-08) -> `2026-10-audit-observed-metakeys` (T-17) -> `2026-10-citation-paths`: the disposition method defines a citable path exactly and maps INCIDENT-block fields to the packet paths that carry the same evidence, after live runs lost the decisive UAC-disable claims to invented paths).
 
 The ticket's **Matched Meta-Keys** lists only meta keys that carry a value in the incident (audit T-17). The keys implied by the matched IOC-checklist rows stay visible per category in the IOC trace (`category_metakeys`) and as `implied_metakeys` on the trace step.
 

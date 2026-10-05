@@ -74,7 +74,7 @@ from .raw_alerts import alert_name, group_signatures, rank_signatures
 # ranked signature compaction replacing first-12-alerts truncation.
 # [FYP-TRIAGE-STEP3] bumped: context.analyst_note (delimited analyst-provided
 # context) and context.suppression_match leaves; prompt rule for both.
-TRIAGE_PROMPT_VERSION = "2026-10-audit-observed-metakeys"
+TRIAGE_PROMPT_VERSION = "2026-10-citation-paths"
 
 # Keys the SOC Classification call returns for the disposition assessment.
 # They are split off cls_data (so the trace keeps its historical shape) and
@@ -1119,6 +1119,22 @@ _DISPOSITION_METHOD = (
     "EVIDENCE PACKET. Paths with status [missing] are UNKNOWN and cannot "
     "support a claim; missing evidence is unknown, NOT safe. Uncited claims "
     "are deleted by code.\n"
+    # [LIVE-FINDING] gpt-4o-mini cited INCIDENT-block fields
+    # ("raw_alerts.alert_signatures[0].alert_name") and [missing] leaves, so
+    # code deleted its strongest claims. State exactly what is citable.
+    "- A citable path is the dot-path exactly as it appears at the start of an "
+    "EVIDENCE PACKET line: no [index], no sub-field, nothing invented. Never "
+    "cite a [missing] path (e.g. context.analyst_note when it is [missing]); "
+    "say the evidence is unknown instead. Fields of the INCIDENT block "
+    "(alert_signatures, alerts_sample, parsed_alert_context, ...) are not "
+    "citable: cite the packet path holding the same evidence -- alert names "
+    "-> raw_alerts.alert_names; ranked signatures -> raw_alerts.signatures; "
+    "processes -> raw_alerts.processes; command lines -> "
+    "raw_alerts.command_lines; a matched rule signal, abused tool or "
+    "masquerading binary -> its own rule_signals line as listed (e.g. "
+    "rule_signals.malware, rule_signals.privilege_escalation, "
+    "rule_signals.lolbas, rule_signals.masquerade) when that line is present "
+    "and not [missing].\n"
     "- Name the most plausible malicious lookalike and say whether the cited "
     "evidence rules it out.\n"
     "- proposed_disposition:\n"

@@ -65,6 +65,24 @@ leak; Ask Aegis facts `disposition: Benign-expected (analyst)`,
 `analyst_verdict: AI: Needs-info -> Analyst: Benign-expected`, and the chat
 prompt carries that line. All 98 mapped regression checks pass together.
 
+### Live follow-up (first runs with a real key, gpt-4o-mini)
+
+Live runs on INC-52825 showed the model citing INCIDENT-block fields
+(`raw_alerts.alert_signatures[0].alert_name`) and `[missing]` leaves, so code
+deleted its decisive UAC-disable / lateral-movement claims and 2 of 3 runs
+fell to `needs_info`. The disposition method now defines a citable path
+exactly and maps incident-block fields to the packet paths carrying the same
+evidence (`TRIAGE_PROMPT_VERSION` `2026-10-citation-paths`;
+`tests/test_triage_citation_prompt.py`). Same 2 incidents, live:
+
+| | runs | citation errors | INC-52825 dispositions |
+|---|---|---|---|
+| before | 6 | 27 (16 invented path, 9 claims dropped, 2 missing-status) | TP, needs_info, needs_info |
+| after | 14 | 4 (all in 2 runs; 1 invented path, 1 missing-status, 2 dropped) | TP x7 |
+
+No guard was loosened: the remaining errors are still caught and deleted by
+code. 14 runs is a small sample.
+
 ## 1. Summary
 
 | Item | Result |
