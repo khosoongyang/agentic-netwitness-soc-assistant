@@ -145,7 +145,7 @@ from agents.parsing.parser_context_guard import (
 # [FYP-CONFIG] Bumped manually by the author when parsing behaviour changes;
 # written into parser summary/metadata output so downstream consumers and
 # evaluators can tell which parser revision produced a given result.
-PARSER_VERSION = "3.4-context-aware-normalised"
+PARSER_VERSION = "3.5-context-aware-normalised"
 SCHEMA_VERSION = "1.0"
 
 # [FYP-CONFIG] [FYP-OUTPUT] The only files write_outputs() (see below) writes
@@ -685,6 +685,42 @@ def first(values: Iterable[Any], default: Any = None) -> Any:
     return values[0] if values else default
 
 
+# [FYP-FUNCTION] meta_values() — [FYP-INPUT] one raw NetWitness meta value,
+# which may be a scalar ("splunkd.exe"), a list (["splunkd.exe"] -- how
+# NetWitness Endpoint emits filename_src/alias_host/directory_src/boc/...),
+# a nested list, or an empty list/[""] placeholder. [FYP-PROCESS] flattens
+# the real list structure (never str() of a list, so "['splunkd.exe']"
+# cannot be produced), strips strings, drops empty/sentinel and dict
+# values. [FYP-OUTPUT] the deduped list of every genuine scalar value, in
+# source order -- [] for [], [""] and None.
+def meta_values(value: Any) -> List[Any]:
+    scalars: List[Any] = []
+    for item in flatten_nested_values([value]):
+        if isinstance(item, dict):
+            continue
+        scalars.append(item.strip() if isinstance(item, str) else item)
+    return dedupe(scalars)
+
+
+# [FYP-FUNCTION] first_meta_values() — [FYP-INPUT] candidate raw meta values
+# in priority order. [FYP-OUTPUT] meta_values() of the first candidate that
+# carries any genuine value. Replaces `a or b or c` chains, which stop at a
+# truthy-but-empty [""] and never look at the next candidate.
+def first_meta_values(*candidates: Any) -> List[Any]:
+    for candidate in candidates:
+        values = meta_values(candidate)
+        if values:
+            return values
+    return []
+
+
+# [FYP-FUNCTION] first_meta_value() — the single primary value of
+# first_meta_values() (or None).
+def first_meta_value(*candidates: Any) -> Any:
+    values = first_meta_values(*candidates)
+    return values[0] if values else None
+
+
 # [FYP-FUNCTION] safe_int() — [FYP-INPUT] any raw value (str/int/float/None).
 # [FYP-PROCESS] best-effort conversion to int; only succeeds if the value is a
 # whole number (rejects "80.5"), returns None on any parse failure.
@@ -969,6 +1005,19 @@ def is_external_url(value: Any) -> bool:
         return False
     parsed = urlparse(value.strip())
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+_FQDN_RE = re.compile(r"^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$", re.I)
+
+
+# [FYP-FUNCTION] looks_like_fqdn() — [FYP-INPUT] any raw value.
+# [FYP-PROCESS] dotted DNS name with an alphabetic top-level label (so an
+# IPv4 address never matches). [FYP-OUTPUT] bool. [FYP-USED-BY]
+# event_host_and_domain_values(): a single-label value from a host metakey
+# (alias.host, hostname, Respond `domain`) is a machine/NetBIOS name and can
+# never be an internet domain; a dotted DNS name can.
+def looks_like_fqdn(value: Any) -> bool:
+    return isinstance(value, str) and bool(_FQDN_RE.match(value.strip().rstrip(".")))
 
 
 # [FYP-FUNCTION] domains_from_urls() — [FYP-INPUT] iterable of URL strings
@@ -1851,13 +1900,140 @@ def merge_event_values(alert_values: Dict[str, List[Any]], events: List[Dict[str
         "child_process_name": "child_process_name",
         "child_process_path": "child_process_path",
         "command_line": "command_line",
+        "attachment_name": "attachment_name",
     }
     for event in events:
         for event_key, field_key in mapping.items():
-            value = event.get(event_key)
+            # A multi-valued event field keeps every value in its plural list
+            # (see _multi_value_key()); the scalar holds only the first.
+            value = event.get(_multi_value_key(event_key)) or event.get(event_key)
             if is_useful(value):
-                merged[field_key] = dedupe(merged.get(field_key, []) + [value])
+                merged[field_key] = dedupe(merged.get(field_key, []) + meta_values(value))
     return merged
+
+
+# ---------------------------------------------------------------------------
+# [FYP-SECTION] PER-EVENT SEMANTICS & EVENT IDENTITY — how one raw NetWitness
+# event's values are typed (host vs. domain, email vs. generic file) and
+# which raw event records are the same underlying NetWitness event.
+#
+# A Respond alert carries each event twice: the raw ESA/decoder meta under
+# originalAlert.events[] (list-valued metakeys, event_source_id
+# "<service>:<sessionid>") and Respond's own reduced view under
+# alert.events[] (event_source "<service>", event_source_id "<sessionid>",
+# nested source/destination objects, `domain` copied from alias.host -- its
+# related_links drill into alias.host='<value>').
+# ---------------------------------------------------------------------------
+
+# Event fields that can carry several genuine values on one event; the
+# plural key (_multi_value_key) is only written when there is more than one.
+_MULTI_VALUE_FIELDS = (
+    "action", "hostname", "domain", "file_name", "file_path", "file_hash",
+    "process_name", "process_path", "command_line", "attachment_name",
+)
+
+# Metakeys that mean "this event is email telemetry" (not the generic `email`
+# metakey, which records any address seen in a session, e.g. in HTTP).
+_EMAIL_EVENT_KEYS = ("email_src", "email_dst", "reply_to", "subject", "attachment")
+
+
+def _multi_value_key(field: str) -> str:
+    return {"file_hash": "file_hashes", "process_name": "process_names", "process_path": "process_paths",
+            "command_line": "command_lines", "attachment_name": "attachment_names"}.get(field, f"{field}s")
+
+
+def _is_respond_reduced_event(event: Dict[str, Any]) -> bool:
+    """Respond's reduced alert.events[] view (nested source/destination
+    objects, event_source + bare event_source_id, related_links) rather than
+    a raw ESA/decoder meta event."""
+    return (isinstance(event.get("source"), dict) or isinstance(event.get("destination"), dict)
+            or "related_links" in event or "event_source" in event)
+
+
+def _is_endpoint_event(event: Dict[str, Any]) -> bool:
+    """NetWitness Endpoint telemetry: there alias.host / hostname / Respond's
+    `domain` name the agent machine itself, never a remote domain."""
+    device_type = " ".join(str(v) for v in meta_values(event.get("device_type"))).lower()
+    return "endpoint" in device_type or is_useful(event.get("agent_id"))
+
+
+def _is_email_event(event: Dict[str, Any]) -> bool:
+    src = event.get("source") if isinstance(event.get("source"), dict) else {}
+    dst = event.get("destination") if isinstance(event.get("destination"), dict) else {}
+    src_usr = src.get("user") if isinstance(src.get("user"), dict) else {}
+    dst_usr = dst.get("user") if isinstance(dst.get("user"), dict) else {}
+    event_kind = " ".join(str(v) for key in ("event_type", "eventSource", "category")
+                          for v in meta_values(event.get(key))).lower()
+    return bool(
+        "mail" in event_kind
+        or any(meta_values(event.get(key)) for key in _EMAIL_EVENT_KEYS)
+        or extract_emails(meta_values(src_usr.get("email_address")) + meta_values(src_usr.get("emailAddress"))
+                          + meta_values(dst_usr.get("email_address")) + meta_values(dst_usr.get("emailAddress")))
+    )
+
+
+# [FYP-FUNCTION] event_host_and_domain_values() — [FYP-INPUT] one raw event.
+# [FYP-PROCESS] types every host/domain value by the metakey it came from:
+#   * host metakeys (alias_host, hostname, host_src, device dnsHostname, and
+#     Respond's reduced `domain`, which Respond copies from alias.host) are
+#     hostnames. On non-endpoint telemetry a dotted DNS name there (e.g. an
+#     HTTP Host "ctldl.windowsupdate.com") is also a domain; a single-label
+#     machine name, or anything on endpoint telemetry (where alias.host is
+#     the agent machine itself), is not.
+#   * the raw `domain` metakey is a domain (only a dotted name on endpoint
+#     telemetry, where a single label is the Windows/NetBIOS domain).
+# [FYP-OUTPUT] (hostnames, domains), each deduped.
+def event_host_and_domain_values(event: Dict[str, Any]) -> Tuple[List[Any], List[Any]]:
+    src = event.get("source") if isinstance(event.get("source"), dict) else {}
+    dst = event.get("destination") if isinstance(event.get("destination"), dict) else {}
+    src_dev = src.get("device") if isinstance(src.get("device"), dict) else {}
+    dst_dev = dst.get("device") if isinstance(dst.get("device"), dict) else {}
+    endpoint = _is_endpoint_event(event)
+    respond = _is_respond_reduced_event(event)
+
+    hosts = meta_values([event.get("alias_host"), event.get("hostname"), event.get("host_src"),
+                         src_dev.get("dnsHostname"), dst_dev.get("dnsHostname")])
+    raw_domains: List[Any] = []
+    if respond:
+        hosts = dedupe(meta_values(event.get("domain")) + hosts)
+    else:
+        raw_domains = [value for value in meta_values(event.get("domain"))
+                       if not endpoint or looks_like_fqdn(value)]
+    host_domains = [] if endpoint else [value for value in hosts if looks_like_fqdn(value)]
+    return hosts, dedupe(raw_domains + host_domains)
+
+
+# [FYP-FUNCTION] event_identity() — [FYP-INPUT] one raw event.
+# [FYP-PROCESS] the stable NetWitness event identity (service, sessionid):
+# raw meta "uuid:50005:1548923" and Respond's event_source "uuid:50005" +
+# event_source_id "1548923" give the same key. [FYP-OUTPUT] the tuple, a
+# (None, id) tuple when no service is known, or None when the event has no
+# event_source_id at all (such an event is never merged with another).
+def event_identity(event: Dict[str, Any]) -> Optional[Tuple[Optional[str], str]]:
+    if not isinstance(event, dict):
+        return None
+    event_id = first_meta_value(event.get("event_source_id"), event.get("eventSourceId"))
+    if event_id is None:
+        return None
+    event_id = str(event_id).strip()
+    service = first_meta_value(event.get("event_source"))
+    service = str(service).strip() if service is not None else None
+    if service:
+        if event_id.startswith(f"{service}:"):
+            return service, event_id[len(service) + 1:]
+        if ":" not in event_id:
+            return service, event_id
+    head, sep, tail = event_id.rpartition(":")
+    if sep and head and tail:
+        return head, tail
+    return None, event_id
+
+
+def _canonical_event_source_id(identity: Optional[Tuple[Optional[str], str]], fallback: Any) -> Any:
+    if identity and identity[0]:
+        return f"{identity[0]}:{identity[1]}"
+    return fallback
+
 
 
 # [FYP-FUNCTION] normalise_event() — per-event field mapper (the raw-event
@@ -1894,57 +2070,165 @@ def normalise_event(event: Dict[str, Any], index: int, alert_event_type: Optiona
     dst_dev = dst.get("device") if isinstance(dst.get("device"), dict) else {}
     dst_usr = dst.get("user") if isinstance(dst.get("user"), dict) else {}
 
-    source_ip = event.get("ip_src") or src_dev.get("ipAddress") or event.get("source_ip")
-    destination_ip = event.get("ip_dst") or dst_dev.get("ipAddress") or event.get("destination_ip")
+    # Every field goes through meta_values()/first_meta_value(): NetWitness
+    # Endpoint emits most metakeys as lists (filename_src: ["splunkd.exe"]),
+    # and str() of such a list used to leak "['splunkd.exe']" downstream.
+    source_ip = first_meta_value(event.get("ip_src"), src_dev.get("ipAddress"), src_dev.get("ip_address"), event.get("source_ip"))
+    destination_ip = first_meta_value(event.get("ip_dst"), dst_dev.get("ipAddress"), dst_dev.get("ip_address"), event.get("destination_ip"))
 
-    source_port = safe_int(event.get("port_src") or src_dev.get("port") or event.get("source_port"))
-    destination_port = safe_int(event.get("port_dst") or dst_dev.get("port") or event.get("destination_port"))
+    source_port = safe_int(first_meta_value(event.get("port_src"), src_dev.get("port"), event.get("source_port")))
+    destination_port = safe_int(first_meta_value(event.get("port_dst"), dst_dev.get("port"), event.get("destination_port")))
 
-    username = event.get("user_src") or event.get("owner") or src_usr.get("username") or dst_usr.get("username") or event.get("username")
-    hostname = event.get("domain") or event.get("alias_host") or event.get("host_src") or src_dev.get("dnsHostname") or dst_dev.get("dnsHostname") or event.get("hostname")
+    username = first_meta_value(event.get("user_src"), event.get("owner"), src_usr.get("username"), dst_usr.get("username"), event.get("username"))
+    hostnames, domains = event_host_and_domain_values(event)
 
-    file_name = event.get("filename_src") or event.get("filename") or event.get("process_name") or event.get("file_name")
-    file_path = event.get("directory_src") or event.get("directory") or event.get("process_path") or event.get("file_path")
-    file_hash = event.get("checksum_src") or event.get("hash") or event.get("file_hash") or event.get("sha256")
+    file_names = first_meta_values(event.get("filename_src"), event.get("filename"), event.get("process_name"),
+                                   event.get("file_name"), src.get("filename"))
+    file_paths = first_meta_values(event.get("directory_src"), event.get("directory"), event.get("process_path"),
+                                   event.get("file_path"), src.get("path"))
+    file_hashes = extract_hashes(first_meta_values(event.get("checksum_src"), event.get("hash"), event.get("file_hash"),
+                                                   event.get("sha256"), src.get("file_SHA256"), src.get("hash")))
+    command_lines = first_meta_values(event.get("param_src"), event.get("param"), event.get("cmdline"),
+                                      event.get("command_line"), src.get("launch_argument"))
+    actions = first_meta_values(event.get("action"), event.get("boc"))
+    # Attachment evidence: the explicit attachment metakey, or the file
+    # names of an event that is itself email telemetry -- never a generic
+    # endpoint/process file.
+    attachment_names = meta_values(event.get("attachment"))
+    if not attachment_names and _is_email_event(event):
+        attachment_names = file_names
 
-    cmdline = event.get("param_src") or event.get("param") or event.get("cmdline") or event.get("command_line")
-    if isinstance(cmdline, list):
-        cmdline = " ".join(str(x) for x in cmdline if x)
-
-    url = event.get("url") or event.get("uri")
-    user_agent = event.get("user_agent") or event.get("useragent")
-    raw_event_time = event.get("event_time") or event.get("time") or event.get("timestamp")
+    url = first_meta_value(event.get("url"), event.get("uri"))
+    user_agent = first_meta_value(event.get("user_agent"), event.get("useragent"))
+    raw_event_time = first_meta_value(event.get("event_time"), event.get("time"), event.get("timestamp"))
 
     clean_usr = first(clean_usernames([username])) if username else None
-    parsed_hash = first(extract_hashes([file_hash])) if file_hash else None
 
-    return {
+    def _first(values: List[Any]) -> Optional[str]:
+        return str(values[0]) if values else None
+
+    normalised = {
         "event_index": index,
         "event_time": timestamp_to_iso(raw_event_time),
         "event_time_epoch_ms": timestamp_to_epoch_ms(raw_event_time),
         "event_type": str(event.get("event_type") or event.get("eventSource") or alert_event_type or "Unknown"),
-        "action": str(event.get("action") or event.get("boc") or "") or None,
+        "action": _first(actions),
         "source_ip": str(source_ip) if source_ip else None,
         "destination_ip": str(destination_ip) if destination_ip else None,
         "source_port": source_port,
         "destination_port": destination_port,
-        "protocol": str(event.get("protocol") or "") or None,
+        "protocol": str(first_meta_value(event.get("protocol")) or "") or None,
         "username": clean_usr,
-        "hostname": str(hostname) if hostname else None,
-        "domain": str(event.get("domain") or hostname) if (event.get("domain") or hostname) else None,
-        "file_name": str(file_name) if file_name else None,
-        "file_path": str(file_path) if file_path else None,
-        "file_hash": parsed_hash,
+        "hostname": _first(hostnames),
+        "domain": _first(domains),
+        "file_name": _first(file_names),
+        "file_path": _first(file_paths),
+        "file_hash": _first(file_hashes),
         "url": str(url) if url and is_external_url(url) else None,
         "user_agent": str(user_agent) if user_agent else None,
-        "process_name": str(file_name) if file_name else None,
-        "process_path": str(file_path) if file_path else None,
-        "parent_process_name": str(event.get("parent_process_name") or "") or None,
-        "command_line": str(cmdline) if cmdline else None,
+        "process_name": _first(file_names),
+        "process_path": _first(file_paths),
+        "parent_process_name": str(first_meta_value(event.get("parent_process_name")) or "") or None,
+        "command_line": _first(command_lines),
+        "attachment_name": _first(attachment_names),
         "session_id": event.get("session_id"),
-        "event_source_id": event.get("event_source_id"),
+        "event_source_id": _canonical_event_source_id(event_identity(event), event.get("event_source_id")),
         "record_id": event.get("record_id"),
     }
+    # Multi-valued fields keep every genuine value (plural key, only when >1).
+    multi = {"action": actions, "hostname": hostnames, "domain": domains, "file_name": file_names,
+             "file_path": file_paths, "file_hash": file_hashes, "process_name": file_names,
+             "process_path": file_paths, "command_line": command_lines, "attachment_name": attachment_names}
+    for field in _MULTI_VALUE_FIELDS:
+        values = [str(value) for value in multi[field]]
+        if len(values) > 1:
+            normalised[_multi_value_key(field)] = values
+    return normalised
+
+
+def _event_richness(event: Dict[str, Any]) -> int:
+    return sum(1 for key, value in event.items() if key != "event_index" and is_useful(value))
+
+
+def _events_conflict(a: Dict[str, Any], b: Dict[str, Any]) -> bool:
+    """Two records sharing an event identity are still kept apart if they
+    disagree on a field both of them carry (time, endpoints, ports)."""
+    for key in ("event_time_epoch_ms", "source_ip", "destination_ip", "source_port", "destination_port"):
+        if is_useful(a.get(key)) and is_useful(b.get(key)) and str(a[key]) != str(b[key]):
+            return True
+    return False
+
+
+def _merge_event_representations(rich: Dict[str, Any], other: Dict[str, Any]) -> Dict[str, Any]:
+    """The richer representation wins; a field present only in the other one
+    is kept, and multi-valued fields are unioned."""
+    merged = dict(rich)
+    for key, value in other.items():
+        if key == "event_index" or not is_useful(value):
+            continue
+        if not is_useful(merged.get(key)):
+            merged[key] = value
+    for field in _MULTI_VALUE_FIELDS:
+        plural = _multi_value_key(field)
+        values = dedupe(meta_values(rich.get(plural) or rich.get(field)) + meta_values(other.get(plural) or other.get(field)))
+        if len(values) > 1:
+            merged[plural] = [str(value) for value in values]
+    return merged
+
+
+# [FYP-FUNCTION] normalise_unique_events() — [FYP-INPUT] the raw event records
+# walk_event_records() found in one aggregate record, plus the fallback
+# event_type. [FYP-PROCESS] normalises every record, then merges records that
+# are the same NetWitness event (same event_identity(); a record whose id has
+# no service matches only when exactly one serviced identity has that id),
+# unless they conflict (_events_conflict). Records without an event identity,
+# or with different identities, are never merged -- equal timestamps alone
+# never merge two events. Order is first-seen; event_index is renumbered.
+# [FYP-OUTPUT] (unique normalised events, deduplication summary).
+def normalise_unique_events(raw_event_records: List[Dict[str, Any]],
+                            alert_event_type: Optional[str] = None) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    identities = [event_identity(record.get("raw_event")) for record in raw_event_records]
+    serviced_by_id: Dict[str, set] = {}
+    for identity in identities:
+        if identity and identity[0]:
+            serviced_by_id.setdefault(identity[1], set()).add(identity[0])
+
+    groups: List[Dict[str, Any]] = []        # {"key", "event"}
+    by_key: Dict[Tuple[Optional[str], str], List[int]] = {}
+    for index, (record, identity) in enumerate(zip(raw_event_records, identities)):
+        event = normalise_event(record.get("raw_event"), index, alert_event_type)
+        key = identity
+        if identity and not identity[0]:
+            # A bare id is only an identity once its service is unambiguous.
+            services = serviced_by_id.get(identity[1], ())
+            key = (next(iter(services)), identity[1]) if len(services) == 1 else None
+        target = None
+        if key is not None:
+            for group_index in by_key.get(key, []):
+                if not _events_conflict(groups[group_index]["event"], event):
+                    target = group_index
+                    break
+        if target is None:
+            if key is not None:
+                by_key.setdefault(key, []).append(len(groups))
+            groups.append({"key": key, "event": event})
+            continue
+        existing = groups[target]["event"]
+        rich, other = (event, existing) if _event_richness(event) > _event_richness(existing) else (existing, event)
+        groups[target]["event"] = _merge_event_representations(rich, other)
+
+    unique_events = []
+    for position, group in enumerate(groups):
+        event = dict(group["event"], event_index=position)
+        event["event_source_id"] = _canonical_event_source_id(group["key"], event.get("event_source_id"))
+        unique_events.append(event)
+    summary = {
+        "raw_event_records": len(raw_event_records),
+        "unique_events": len(unique_events),
+        "merged_duplicate_records": len(raw_event_records) - len(unique_events),
+        "identity_basis": "netwitness_event_source_id",
+    }
+    return unique_events, summary
 
 
 # [FYP-FUNCTION] build_analyst_summary() — [FYP-INPUT] the key already-
@@ -2156,7 +2440,11 @@ def extract_alert_values_fast(alert: Dict[str, Any], incident: Dict[str, Any]) -
 
     for ev in events:
         if isinstance(ev, dict):
-            _add("hostname", ev.get("domain") or ev.get("alias_host") or ev.get("host_src"))
+            ev_hosts, ev_domains = event_host_and_domain_values(ev)
+            for host in ev_hosts:
+                _add("hostname", host)
+            for domain in ev_domains:
+                _add("domain", domain)
             _add("username", ev.get("user_src") or ev.get("owner"))
             _add("source_ip", ev.get("ip_src"))
             _add("destination_ip", ev.get("ip_dst"))
@@ -2200,10 +2488,10 @@ def normalise_alert_record(
 
     raw_event_records = walk_event_records(alert)
     preliminary_event_type = first(values.get("event_type", []), "Unknown")
-    normalised_events = [
-        normalise_event(record["raw_event"], index, preliminary_event_type)
-        for index, record in enumerate(raw_event_records)
-    ]
+    # One entry per underlying NetWitness event: a Respond alert's
+    # originalAlert.events[] and alert.events[] copies of the same event are
+    # merged (see normalise_unique_events()).
+    normalised_events, event_deduplication = normalise_unique_events(raw_event_records, preliminary_event_type)
     values = merge_event_values(values, normalised_events)
 
     incident_id = first(values.get("incident_id", []))
@@ -2259,7 +2547,7 @@ def normalise_alert_record(
     file_paths = dedupe(values.get("file_path", []))
     file_extensions = dedupe(values.get("file_extension", []))
     if not file_extensions:
-        file_extensions = dedupe(Path(name).suffix.lstrip(".").lower() for name in file_names if Path(name).suffix)
+        file_extensions = dedupe(Path(str(name)).suffix.lstrip(".").lower() for name in file_names if Path(str(name)).suffix)
     file_types = dedupe(values.get("file_type", []))
     file_sizes = numeric_list(values.get("file_size", []), "int")
     file_analysis = dedupe(values.get("file_analysis", []))
@@ -2331,6 +2619,22 @@ def normalise_alert_record(
         child_processes=child_processes,
         command_lines=command_lines,
     )
+
+    # email_indicators.attachment_* carry attachment evidence only: the
+    # attachment metakey / files on email events (attachment_name), file
+    # names in an email subject, and -- for email telemetry with no endpoint
+    # telemetry at all -- the alert's file names. Executables observed on an
+    # endpoint are file/process evidence, never "attachments".
+    endpoint_telemetry = bool(command_lines) or any(
+        _is_endpoint_event(record.get("raw_event") or {}) for record in raw_event_records)
+    attachment_names = dedupe(values.get("attachment_name", []) + infer_file_names(email_subjects))
+    if observed_data_context.get("has_email_data") and not endpoint_telemetry:
+        attachment_names = dedupe(attachment_names + file_names)
+    attachment_extensions = dedupe(Path(str(name)).suffix.lstrip(".").lower()
+                                   for name in attachment_names if Path(str(name)).suffix)
+    if attachment_names and not attachment_extensions:
+        attachment_extensions = dedupe(values.get("file_extension", []))
+    attachment_filetypes = file_types if attachment_names else []
 
     data_quality = evaluate_context_data_quality(
         observed_data_context=observed_data_context,
@@ -2440,7 +2744,7 @@ def normalise_alert_record(
             "event_type": event_type,
             "primary_action": first(observed_actions),
             "observed_actions": observed_actions,
-            "raw_event_count": len(raw_event_records),
+            "raw_event_count": len(normalised_events),
             "analyst_summary": analyst_summary,
         },
         "identifiers": {
@@ -2481,9 +2785,9 @@ def normalise_alert_record(
             "reply_to_emails": reply_to_emails,
             "recipient_emails": destination_emails,
             "mail_clients": mail_clients,
-            "attachment_names": file_names,
-            "attachment_extensions": file_extensions,
-            "attachment_filetypes": file_types,
+            "attachment_names": attachment_names,
+            "attachment_extensions": attachment_extensions,
+            "attachment_filetypes": attachment_filetypes,
         },
         "file_indicators": {
             "file_names": file_names,
@@ -2533,7 +2837,8 @@ def normalise_alert_record(
             "normalisation_status": "success",
             "selected_alert_index": alert_index,
             "alert_count": alert_count,
-            "raw_event_count": len(raw_event_records),
+            "raw_event_count": len(normalised_events),
+            "event_deduplication": event_deduplication,
             "raw_meta_key_count": len(alert),
             "parser_confidence": parser_confidence,
             "parser_confidence_score": parser_confidence_score,
@@ -2783,13 +3088,14 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
         normalised_alerts.append(alert)
         debug_by_alert.append(debug_evidence)
 
-        # Collect event records across all alerts
+        # Collect the unique events across all alerts (same model as each
+        # record's normalised_events -- see normalise_unique_events()).
         raw_events = walk_event_records(raw_alert)
         alert_title = alert.get("alert_summary", {}).get("alert_name") or "Unknown Alert"
         alert_id = alert.get("alert_summary", {}).get("alert_id")
         preliminary_type = alert.get("alert_summary", {}).get("event_type", "Unknown")
-        for evt_idx, record in enumerate(raw_events):
-            parsed_evt = normalise_event(record["raw_event"], evt_idx, preliminary_type)
+        unique_events, _ = normalise_unique_events(raw_events, preliminary_type)
+        for parsed_evt in unique_events:
             parsed_evt["parent_alert_id"] = alert_id
             parsed_evt["parent_alert_title"] = alert_title
             all_parsed_events.append(parsed_evt)

