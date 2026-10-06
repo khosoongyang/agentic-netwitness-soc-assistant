@@ -186,6 +186,20 @@ def _walk_values(data: Any, wanted_keys: set[str]) -> list[Any]:
     return values
 
 
+# [FYP-FUNCTION] `_parsed_as_one_record` — whether the parser treats this dict as ONE aggregate record.
+# [FYP-PROCESS] Delegates to the parser's own shape rule (prune, then detect_input_format()),
+#   so the identity fingerprint cannot drift from prepare_incident_and_alerts(): a bare
+#   record that merely carries alerts[] is parsed as one record whose own id is its identity;
+#   only wrapped shapes ({incident|incident_details, alerts}, full exports) split alerts[] apart.
+# [FYP-USED-BY] extract_alert_identity().
+
+def _parsed_as_one_record(data: dict[str, Any]) -> bool:
+    # Imported here: parser_normaliser imports this module at load time.
+    from agents.parsing.parser_normaliser import detect_input_format, prune_empty_and_null_values
+    pruned = prune_empty_and_null_values(data) or data
+    return detect_input_format(pruned) in BARE_RECORD_INPUT_SHAPES
+
+
 # [FYP-FUNCTION] `extract_alert_identity` — transforms extract alert identity input into the stable representation required by downstream parsing and reporting service processing.
 # [FYP-INPUT] Parameters: `raw_alert`; values come from its direct caller, route, UI event, fixture, or stage handoff.
 # [FYP-PROCESS] Executes the named operation within the Aegis parsing and reporting service workflow; branch rules remain in the body below.
@@ -200,13 +214,25 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
     The dashboard may store a ticket wrapper such as {"alert_id": ..., "raw":
     {"incident": ..., "alerts": [...]}}. Identity checks must use the true raw
     NetWitness object where possible, then fall back to wrapper fields.
+
+    The primary record is whatever the parser itself treats as the record:
+    alerts[0] for wrapped shapes, but the top-level record for a bare
+    incident carrying alerts[] (parsed as one aggregate record). For the
+    latter, child_alert_ids / child_alert_incident_ids record the attached
+    alerts as provenance.
     """
     wrapper = raw_alert if isinstance(raw_alert, dict) else {}
     data = _raw_source(wrapper)
     data = data if isinstance(data, dict) else {}
 
     alerts = data.get("alerts") if isinstance(data.get("alerts"), list) else []
-    primary_alert = next((alert for alert in alerts if isinstance(alert, dict)), None)
+    child_alerts = [alert for alert in alerts if isinstance(alert, dict)]
+    # A bare workflow incident ({"id": "INC-...", ..., "alerts": [...]}, given
+    # directly rather than under a dashboard wrapper) is parsed as ONE aggregate
+    # record, so its primary identity is the record itself -- never alerts[0].
+    # The attached alerts are kept below as child provenance only.
+    aggregate_record = bool(child_alerts) and data is wrapper and _parsed_as_one_record(data)
+    primary_alert = data if aggregate_record else next(iter(child_alerts), None)
     if not primary_alert and isinstance(data.get("alert"), dict):
         primary_alert = data.get("alert")
     if not primary_alert and ("originalAlert" in data or "originalHeaders" in data):
@@ -249,7 +275,7 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
         incident_title,
     ))
 
-    return {
+    identity = {
         "incident_id": _clean(_first(
             incident.get("id"), incident_raw.get("id"), incident_details.get("id"),
             wrapper.get("incident_id"), wrapper.get("incidentId"), wrapper.get("ticket_id"),
@@ -265,6 +291,16 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
         "source_ip": _clean(_first(source_ip_values, wrapper.get("source_ip"), wrapper.get("ip_src"))),
         "destination_ip": _clean(_first(destination_ip_values, wrapper.get("destination_ip"), wrapper.get("ip_dst"))),
     }
+    if aggregate_record:
+        # Child provenance only (added only for this shape, so every other
+        # input's fingerprint is unchanged). Never compared as the record id.
+        identity["child_alert_ids"] = [child_id for child_id in (
+            _clean(_first(alert.get("id"), alert.get("_id"), alert.get("alert_id"), alert.get("alertId")))
+            for alert in child_alerts) if child_id]
+        identity["child_alert_incident_ids"] = list(dict.fromkeys(ref for ref in (
+            _clean(_first(alert.get("incidentId"), alert.get("incident_id")))
+            for alert in child_alerts) if ref))
+    return identity
 
 # [FYP-FUNCTION] `extract_parser_output_identity` — transforms extract parser output identity input into the stable representation required by downstream parsing and reporting service processing.
 # [FYP-INPUT] Parameters: `parser_result`; values come from its direct caller, route, UI event, fixture, or stage handoff.
@@ -463,6 +499,29 @@ def validate_parser_identity(input_identity: dict[str, Any], parser_result: dict
     # Everything below is useful for debugging but must not block a valid parse.
     for field in ("alert_title", "hostname", "username", "source_ip", "destination_ip"):
         add_check(field, hard=False)
+
+    # Aggregate-record child provenance (see extract_alert_identity()): each
+    # attached alert's own incidentId back-reference against the record id.
+    # Diagnostic only -- a differing child incidentId is surfaced as a
+    # warning, never a failure, and never redefines the case (case_id below
+    # still resolves solely from the top-level record).
+    if "child_alert_ids" in input_identity:
+        record_id = input_identity.get("alert_id")
+        child_refs = input_identity.get("child_alert_incident_ids") or []
+        foreign = [ref for ref in child_refs
+                   if _normalise_for_compare(ref) != _normalise_for_compare(record_id)]
+        record = {"field": "child_alert_incident_id", "expected": record_id,
+                  "actual": child_refs, "foreign_incident_ids": foreign, "hard": False}
+        if not record_id or not child_refs:
+            record.update(matched=None, outcome=CASE_IDENTITY_NOT_AVAILABLE, reason="not_enough_information")
+        elif foreign:
+            record.update(matched=False, outcome=CASE_IDENTITY_MISMATCH, severity="warning",
+                          reason=f"Attached alert(s) reference incident(s) {foreign!r}, not the "
+                                 f"parsed record {record_id!r}; the case is unchanged.")
+            warnings.append("child_alert_incident_id")
+        else:
+            record.update(matched=True, outcome=CASE_IDENTITY_MATCH)
+        checks.append(record)
 
     case_identity = None
     if expected_case_id is not None:

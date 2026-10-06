@@ -112,6 +112,13 @@ def _top(events):
     return [e for e in events if not e["parent_span_id"]]
 
 
+def _telemetry_children(events):
+    """Child events of the NetWitness telemetry span only (a completed parse
+    also has post-parser AI summary children, which are not telemetry)."""
+    span = next(e["span_id"] for e in events if e["event_type"] == "telemetry_fetch" and e["status"] == "running")
+    return [e for e in events if e["parent_span_id"] == span]
+
+
 def _reinstall(store, monkeypatch, patches):
     """Swap in fakes for one test. Order matters: uninstall FIRST so the
     monkeypatch saves the real originals (its undo must never restore an
@@ -179,13 +186,12 @@ def test_parsing_is_identical_with_observability_on_and_off(env, tmp_path, scena
 
     assert on == off
     assert events, "observability was active for the 'on' run"
-    # "local_export" fails in BOTH runs: merging the export's alert records
-    # makes the parser's own identity guard reject its output (pre-existing
-    # behaviour, also seen on the live INC-53021 run) - observability does
-    # not change it, and these tests must not either.
-    expected = {"no_telemetry": "Complete", "local_export": "Failed", "parser_failure": "Failed"}
+    # "local_export" merges the export's alert records into the bare
+    # incident; since R1 the parser's identity guard accepts that aggregate
+    # record (before R1 it failed in both runs, as on the live INC-53021 run).
+    expected = {"no_telemetry": "Complete", "local_export": "Complete", "parser_failure": "Failed"}
     assert off["statuses"]["parsing_status"] == expected[scenario]
-    assert len(off["model_calls"]) == (1 if scenario == "no_telemetry" else 0)
+    assert len(off["model_calls"]) == (0 if scenario == "parser_failure" else 1)
 
 
 # ── 1-8, 10-11, 13. The real Parsing timeline ──────────────────────────────
@@ -267,7 +273,7 @@ def test_local_export_is_reported_as_a_local_file_not_a_live_call(env, activity)
     env["export"]()
     env["fresh"]("export")
     events = _events(activity, _run()["run_id"])
-    children = [e for e in events if e["parent_span_id"]]
+    children = _telemetry_children(events)
     assert [(e["source"], e["event_type"]) for e in children] == [("system", "telemetry_export")]
     done = next(e for e in events if e["event_type"] == "telemetry_fetch" and e["status"] != "running")
     assert done["status"] == "completed"
@@ -284,7 +290,7 @@ def test_live_netwitness_success_reports_each_real_api_call(env, activity):
     ])
     env["fresh"]("live")
     events = _events(store, _run()["run_id"])
-    children = [(e["event_type"], e["status"], e["title"]) for e in events if e["parent_span_id"]]
+    children = [(e["event_type"], e["status"], e["title"]) for e in _telemetry_children(events)]
     assert children == [
         ("netwitness_auth", "completed", "NetWitness session token available"),
         ("netwitness_api", "running", "NetWitness API: incident details (FETCH API)"),
@@ -333,9 +339,13 @@ def test_missing_token_is_reported_as_live_retrieval_not_attempted(env, activity
 # ── 9. Parsing failures ────────────────────────────────────────────────────
 
 def test_parser_identity_guard_failure_reports_the_parsers_own_reason(env, activity):
-    env["export"]()
+    # A genuine guard failure: the record's own incident reference names
+    # another case, so the parser's case identity check is a mismatch.
+    # (Before R1 an export-enriched incident tripped the guard instead.)
+    conflicting = dict(INCIDENT, incident_id="INC-OTHER")
     env["fresh"]("identity")
-    ctx = _run()
+    ctx = _run(conflicting)
+    assert ctx["parsing"]["identity_validation"]["hard_failures"] == ["case_id"]
     events = _events(activity, ctx["run_id"])
     parser = [e for e in _top(events) if e["event_type"] == "parser"][-1]
     assert parser["status"] == "failed" and parser["title"] == "Parser returned a failed result"

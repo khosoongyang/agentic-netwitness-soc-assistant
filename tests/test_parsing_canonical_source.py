@@ -510,17 +510,18 @@ def test_attached_alerts_are_parsed_as_one_aggregate_record(tmp_path):
     assert "incident_id" not in normalised["alert_summary"]
 
 
-def test_attached_alert_workflow_parse_still_fails_its_existing_alert_id_check():
-    """Characterisation only: the input fingerprint takes the FIRST attached
-    alert's _id while the aggregate record's alert_id is the incident id, so
-    parser_context_guard's pre-existing hard alert_id check fails. Case
-    identity itself resolves to a match. Unchanged in Phase 5."""
+def test_attached_alert_workflow_parse_passes_its_alert_id_check():
+    """R1: the input fingerprint now takes the same primary record the parser
+    aggregates (the incident itself), so the hard alert_id check compares
+    like with like; the attached alerts' _ids are kept as child provenance.
+    (Before R1 this failed with hard_failures == ["alert_id"].)"""
     ctx, _ = _parse(_multi_alert_incident())
-    assert ctx["stages"]["parsing"] == "failed"
+    assert ctx["stages"]["parsing"] == "completed"
     validation = ctx["parsing"]["identity_validation"]
-    assert validation["hard_failures"] == ["alert_id"]
+    assert validation["hard_failures"] == []
     assert ctx["parsing"]["case_identity"]["status"] == "match"
-    assert wss.get_state(CASE)["parsing_result_json"] is None
+    assert ctx["parsing"]["input_identity"]["child_alert_ids"] == ["mongo-1", "mongo-2", "mongo-3"]
+    assert _envelope()["incident_id"] == CASE
 
 
 # ── 30: no real database is ever opened ─────────────────────────────────────
