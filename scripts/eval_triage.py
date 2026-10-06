@@ -351,6 +351,14 @@ def evaluate(cases: list[dict], repeats: int, runner: Callable, workdir: Path,
         exp = case.get("expected") or {}
         disps = [r["disposition"] for r in runs]
         acceptable = [d in (exp.get("disposition_acceptable") or []) for d in disps] if labelled else []
+        # [IMPROVEMENT #3] needs_info is "acceptable" for every label, so a
+        # model that never decides would score 1.0 on acceptable hits alone.
+        label_value = (case.get("label") or {}).get("value") if labelled else None
+        exact = [d == label_value for d in disps] if labelled else []
+        decisive = [d is not None and d != "needs_info" for d in disps] if labelled else []
+        da_ = da if isinstance(da, dict) else {}
+        without_raw = da_.get("incident_source") == "sqlite_slim" or (
+            bool(da_) and da_.get("alerts_fetch_succeeded") is False)
         violations = [d for d in disps if d in (exp.get("must_not") or [])]
         canary_fail = is_malicious_canary(case) and any(d in BENIGN_SIDE for d in disps)
         latencies = [r["latency_s"] for r in runs if r.get("latency_s") is not None]
@@ -363,6 +371,8 @@ def evaluate(cases: list[dict], repeats: int, runner: Callable, workdir: Path,
             "runs": runs, "dispositions": disps,
             "consistent": len(set(disps)) == 1,
             "acceptable_hits": sum(acceptable), "must_not_violations": len(violations),
+            "exact_hits": sum(exact), "decisive_runs": sum(decisive),
+            "without_raw_alerts": without_raw,
             "canary_failed": canary_fail,
             "latency_s_median": statistics.median(latencies) if latencies else None,
         }
@@ -383,12 +393,17 @@ def compute_metrics(case_results: list[dict]) -> dict:
     by_source: dict[str, dict] = {}
     for c in lab:
         src = c["label"]["source"]
-        s = by_source.setdefault(src, {"cases": 0, "runs": 0, "acceptable_hits": 0})
+        s = by_source.setdefault(src, {"cases": 0, "runs": 0, "acceptable_hits": 0,
+                                       "exact_hits": 0, "decisive_runs": 0})
         s["cases"] += 1
         s["runs"] += len(c["runs"])
         s["acceptable_hits"] += c["acceptable_hits"]
+        s["exact_hits"] += c.get("exact_hits", 0)
+        s["decisive_runs"] += c.get("decisive_runs", 0)
     for s in by_source.values():
         s["acceptable_hit_rate"] = _rate(s["acceptable_hits"], s["runs"])
+        s["exact_match_rate"] = _rate(s["exact_hits"], s["runs"])
+        s["decisive_rate"] = _rate(s["decisive_runs"], s["runs"])
     canaries = [c for c in case_results if c.get("canary")]
     tokens = [r["tokens"]["total_tokens"] for r in all_runs
               if isinstance(r.get("tokens"), dict) and r["tokens"].get("total_tokens")]
@@ -396,6 +411,11 @@ def compute_metrics(case_results: list[dict]) -> dict:
         "n_cases": len(case_results), "n_labelled_cases": len(lab),
         "n_unlabelled_cases": len(case_results) - len(lab), "n_runs": len(all_runs),
         "acceptable_hit_rate": _rate(sum(c["acceptable_hits"] for c in lab), lab_runs),
+        # [IMPROVEMENT #3] exact = final disposition equals the label;
+        # decisive = anything but needs_info (on labelled runs).
+        "exact_match_rate": _rate(sum(c.get("exact_hits", 0) for c in lab), lab_runs),
+        "decisive_rate": _rate(sum(c.get("decisive_runs", 0) for c in lab), lab_runs),
+        "n_labelled_cases_without_raw_alerts": sum(bool(c.get("without_raw_alerts")) for c in lab),
         "acceptable_hit_rate_by_label_source": by_source,
         "must_not_violation_count": sum(c["must_not_violations"] for c in case_results),
         "consistency_rate": _rate(sum(c["consistent"] for c in case_results), len(case_results)),
@@ -442,10 +462,11 @@ def render_markdown(report: dict) -> str:
          f"canary failures: {len(m['canaries']['failures'])})", "",
          "## Summary", "", "| metric | value |", "|---|---|"]
     for key in ("n_cases", "n_labelled_cases", "n_unlabelled_cases", "n_runs", "acceptable_hit_rate",
+                "exact_match_rate", "decisive_rate", "n_labelled_cases_without_raw_alerts",
                 "must_not_violation_count", "consistency_rate", "needs_info_rate",
                 "runs_with_guard_override", "runs_with_citation_errors", "triage_errors",
                 "latency_s_median", "total_tokens"):
-        L.append(f"| {key} | {m[key]} |")
+        L.append(f"| {key} | {m.get(key)} |")
     L += ["", "Distributions:", "",
           f"- final disposition: `{m['disposition_distribution']}`",
           f"- proposed (model) disposition: `{m['proposed_disposition_distribution']}`",
@@ -453,12 +474,21 @@ def render_markdown(report: dict) -> str:
           f"- guard actions: `{m['guard_actions_frequency']}`",
           f"- citation errors: `{m['citation_errors_frequency']}`", "",
           "## Accuracy by label source (beware circular labels)", "",
-          "| label source | cases | runs | acceptable-hit rate |", "|---|---|---|---|"]
+          "| label source | cases | runs | acceptable-hit rate | exact-match rate | decisive rate |",
+          "|---|---|---|---|---|---|"]
     for src, s in sorted(m["acceptable_hit_rate_by_label_source"].items()):
-        L.append(f"| {src} | {s['cases']} | {s['runs']} | {s['acceptable_hit_rate']} |")
+        L.append(f"| {src} | {s['cases']} | {s['runs']} | {s['acceptable_hit_rate']} | "
+                 f"{s.get('exact_match_rate')} | {s.get('decisive_rate')} |")
     L += ["", "`synthetic` and implementer-written `analyst` labels measure consistency with the "
           "design, not real-world accuracy; only `lab_ground_truth`, `public_dataset` and "
           "`mentor_reviewed` labels are independent evidence.", "",
+          "needs_info is acceptable for every label, so read the acceptable-hit rate together "
+          "with the exact-match rate (final disposition == label) and the decisive rate "
+          "(not needs_info). "
+          f"{m.get('n_labelled_cases_without_raw_alerts', 0)} labelled case(s) ran without raw alerts "
+          "(synthetic, or the slim SQLite copy the labelling sheet imports): the guards force "
+          "needs_info there, so they cannot score exact matches. For mentor cases, replace the "
+          "slim incident with a Respond-API export (`incident_file`).", "",
           "## Canaries (abused-tool techniques must never be closed as benign)", "",
           "| canary | technique | dispositions | result |", "|---|---|---|---|"]
     for c in m["canaries"]["malicious"]:

@@ -185,3 +185,54 @@ def test_dry_run_prints_planned_calls_without_running(ev, capsys, tmp_path):
                     "--out-dir", str(tmp_path)]) == 0
     assert "6 case(s) x 3 repeat(s) x 3 calls = 54 planned LLM call(s)" in capsys.readouterr().out
     assert not list(tmp_path.glob("*.json"))
+
+
+# =============================================================================
+# [IMPROVEMENT #3] Abstention must not look like accuracy on independent labels
+# =============================================================================
+
+def _labelled_case(tmp_path, name, value, source="mentor_reviewed", slim=True):
+    case = {"name": name, "incident": {"id": name, "title": f"t for 10.0.0.{len(name)}"},
+            "data_availability": ({"incident_source": "sqlite_slim", "alerts_fetch_attempted": False,
+                                   "alerts_fetch_succeeded": False, "alerts_complete": False,
+                                   "alerts_count": 0} if slim else None),
+            "expected": {"disposition_acceptable": [value, "needs_info"] if value != "needs_info" else ["needs_info"],
+                         "must_not": []},
+            "label": {"value": value, "source": source, "labeller": "M", "date": "2026-10-06",
+                      "rationale": "r"}}
+    p = tmp_path / f"{name}.json"
+    p.write_text(json.dumps(case), encoding="utf-8")
+    return p
+
+
+def test_always_needs_info_scores_zero_exact_match_on_mentor_labels(ev, tmp_path):
+    """needs_info is 'acceptable' for every label, so acceptable_hit_rate alone
+    would award 1.0 to a model that never decides. exact_match_rate and
+    decisive_rate expose it, per label source."""
+    _labelled_case(tmp_path, "m_tp", "true_positive")
+    _labelled_case(tmp_path, "m_be", "benign_expected")
+    out = tmp_path / "r"
+    ev.main(["--mode", "offline", "--repeats", "2", "--cases", str(tmp_path / "m_*.json"),
+             "--out-dir", str(out)], runner=_fixed_runner("needs_info"), parse=_fast_parse)
+    rep = _report(out)
+    m = rep["metrics"]
+    assert m["acceptable_hit_rate"] == 1.0          # the old, flattering number
+    assert m["exact_match_rate"] == 0.0
+    assert m["decisive_rate"] == 0.0
+    src = m["acceptable_hit_rate_by_label_source"]["mentor_reviewed"]
+    assert src["exact_match_rate"] == 0.0 and src["decisive_rate"] == 0.0
+    assert m["n_labelled_cases_without_raw_alerts"] == 2
+    md = sorted(out.glob("*.md"))[0].read_text(encoding="utf-8")
+    assert "exact-match" in md and "without raw alerts" in md
+
+
+def test_exact_match_counts_only_the_labelled_disposition(ev, tmp_path):
+    _labelled_case(tmp_path, "m_tp", "true_positive", slim=False)
+    out = tmp_path / "r"
+    seq = iter(["true_positive", "needs_info"])
+    ev.main(["--mode", "offline", "--repeats", "2", "--cases", str(tmp_path / "m_*.json"),
+             "--out-dir", str(out)], runner=lambda i, p, d: _fixed_runner(next(seq))(i, p, d),
+            parse=_fast_parse)
+    m = _report(out)["metrics"]
+    assert m["exact_match_rate"] == 0.5 and m["decisive_rate"] == 0.5
+    assert m["n_labelled_cases_without_raw_alerts"] == 0

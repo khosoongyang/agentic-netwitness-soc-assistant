@@ -106,8 +106,10 @@ summary. Both are git-ignored.
 | `must_not_violation_count` | Runs whose final disposition is in the case's `must_not` list (e.g. a confirmed-malicious case closed as `false_positive`). | **0**, always. Any value > 0 fails the run. |
 | canaries / `failures` | Malicious canaries closed as `false_positive` or `benign_expected` in any run. | **Empty.** Any entry means the thresholds are broken. |
 | `acceptable_hit_rate` | Share of labelled runs whose disposition is in `disposition_acceptable`. Also split **by label source**. | Read it per source. Only `lab_ground_truth`, `public_dataset` and `mentor_reviewed` are independent evidence. |
+| `exact_match_rate` / `decisive_rate` | Share of labelled runs whose final disposition **equals** the label, and share that are not `needs_info`. Also split by label source. | `needs_info` is acceptable for every label, so a model that never decides scores 1.0 on `acceptable_hit_rate` and 0.0 here. Report both. |
+| `n_labelled_cases_without_raw_alerts` | Labelled cases run without raw alerts (synthetic golden cases, or the slim SQLite copy that labelling-sheet imports use). | The guards force `needs_info` on these, so they cannot score exact matches. Swap mentor cases to an `incident_file` Respond-API export before quoting exact match. |
 | `consistency_rate` / `inconsistent_cases` | Cases where all repeats agree. | High. Inconsistent cases are where the model is guessing. |
-| `needs_info_rate` | Share of runs ending in `needs_info`. | Expect it to be high: business context (`context.*`) is not integrated, so `benign_expected` is only reachable when an analyst note (or an approved suppression match) is cited (Step 3). |
+| `needs_info_rate` | Share of runs ending in `needs_info`. | Expect it to be high on the eval set: cases carry no business context, so `benign_expected` needs a cited analyst note, suppression match or `context.*` leaf (change window, asset inventory, approved prior reviews; see `triage-review.md`). |
 | `proposed_disposition_distribution` vs `disposition_distribution` | What the model proposed vs what survived the guards. | The gap shows how often the guards had to step in. |
 | `guard_actions_frequency` | Which guard rules fired (`a_missing_mandatory_evidence`, `b_strong_signal_floor`, ...). | Frequent `b_strong_signal_floor` on benign proposals means the model is being fooled by mimicry. |
 | `citation_errors_frequency` | `unknown_path` (invented evidence) and `missing_status` (citing unknowns). | Should trend to 0 for a good model and prompt. |
@@ -171,6 +173,23 @@ The sheet deliberately contains **no Aegis verdict**, so the mentor labels
 independently. Imported cases use the slim SQLite copy, which has no raw
 alerts. For a raw-alert evaluation of a labelled incident, export it from the
 Respond API into `demo/` and switch the case to `incident_file`.
+
+Mentor handoff checklist (improvement #3; verified end to end on scratch
+copies: the export gives 40 rows, 5 per stratum, the import writes valid
+`mentor_*.json` cases, and the offline eval runs on them):
+
+1. Export the sheet (command above) and send the CSV. Do **not** include any
+   Aegis output.
+2. The mentor labels from NetWitness itself. `needs_info` is a valid label
+   when the evidence really does not decide it.
+3. Import, then run `python scripts/eval_triage.py --mode live --cases
+   "tests/triage_eval/cases/mentor_*.json"`. Quote `mentor_reviewed`
+   exact-match **and** acceptable-hit rates, together with
+   `n_labelled_cases_without_raw_alerts`. Slim-copy cases will be
+   `needs_info` by design until they are switched to `incident_file`.
+4. For agreement on real analyst decisions, use `scripts/blind_review.py`
+   and then `export_labelling_sheet.py import-reviews` (only
+   `mentor_agreed` labels become cases).
 
 ---
 
