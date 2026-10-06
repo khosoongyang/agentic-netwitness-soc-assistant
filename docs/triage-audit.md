@@ -147,9 +147,9 @@ Guard-branch coverage (G): rules d, e and schema_proposed_disposition are each a
 |---|---|---|---|
 | Detection catalog (Palantir ADS) | Backlog stubs exist; no curated per-rule catalog to cite in triage | M | export_tuning_backlog |
 | Dedup of repeat incidents into cases | Same entity+rule floods analysts; baseline already counts repeats | M | baseline.noisy_pairs |
-| Asset inventory | `context.asset_context` is always missing | L | data source |
+| ~~Asset inventory~~ **Built (ce15350)** | `AEGIS_ASSET_INVENTORY` -> measured `context.asset_context`. An unlisted hostname falls back to the naming tier (inferred). The inventory contents still have to be supplied. | L | data source |
 | Privileged-SID detector | Admin-account activity is a strong signal not modelled | S | raw_alerts users |
-| Change / maintenance calendar | Would fill `context.change_context`; today only analyst_note | M | external system |
+| ~~Change / maintenance calendar~~ **Built (ce15350)** | `AEGIS_CHANGE_WINDOWS` -> measured `context.change_context`. Approved prior reviews -> `context.confirmed_benign_history`. A JSON file today, not a live change-management feed. | M | external system |
 | Business-hours context | `network.offhour` tag exists in digest but no policy | S | site config |
 | Public-only pre-triage threat intel (+GreyNoise) | Cheap noise filter for external IPs before LLM | M | T-11 egress fix |
 | Command-line decoding in the packet | Encoded PowerShell is opaque to guards/LOLBAS | S | powershell_decoder exists in parsing |
@@ -158,7 +158,7 @@ Guard-branch coverage (G): rules d, e and schema_proposed_disposition are each a
 | Cost-aware escalation | 3 LLM calls on every incident regardless of prior | M | baseline |
 | Per-alert verdicts rolled up to incident | 1,000-alert incidents get one verdict | L | raw_alerts signatures |
 | Per-alert-type evidence checklists | Phishing exposure vs compromise need different mandatory evidence | M | MANDATORY_EVIDENCE refactor |
-| Strict structured outputs | JSON repair path still needed | S | OpenAI structured outputs |
+| ~~Strict structured outputs~~ **Built (6bb2811)** | The SOC Classification call binds a strict `json_schema` whose cites are an enum of citable packet paths (OpenAI/Azure hosts). The JSON repair path remains for other hosts. | S | OpenAI structured outputs |
 | Self-consistency runs | Measure LLM variance per incident | M | cost budget |
 | Demote 27-IOC checklist to CIA impact tag | See T-17 | M | - |
 | Tag recommended actions by blast radius / reversibility | No auto-response, but analysts need risk of action | S | - |
