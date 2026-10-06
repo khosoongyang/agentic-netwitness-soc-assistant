@@ -1032,6 +1032,9 @@ def run_triage(incident: dict, progress_fn=None,
         extra["analyst_note"] = analyst_note
     if suppressions:
         extra["suppressions"] = suppressions
+    business_context = _business_context_for(incident)
+    if business_context:
+        extra["business_context"] = business_context
     result = agent.triage(incident, force=force, parsed_context=parsed_context,
                           data_availability=data_availability, **extra)
     _stamp_triage_provenance(result, model=getattr(getattr(agent, "cfg", None), "model", None))
@@ -1053,6 +1056,54 @@ def _stamp_triage_provenance(result: dict, *, model: str | None, mock: bool = Fa
         result["triage_provenance"] = {"prompt_version": "mock", "model": "mock"}
         return
     result["triage_provenance"] = {"prompt_version": TRIAGE_PROMPT_VERSION, "model": model}
+
+
+def _business_context_for(incident: dict) -> dict | None:
+    """[IMPROVEMENT #2] Build the three business-context leaves for one
+    incident from real sources (never raises; a failed lookup = missing):
+      * prior APPROVED analyst reviews for the same detection source + entity
+        (workflow DB, this incident excluded);
+      * the analyst-maintained change windows and asset inventory files
+        (AEGIS_CHANGE_WINDOWS / AEGIS_ASSET_INVENTORY).
+    Returns None when nothing is known, so the cache key is unchanged."""
+    try:
+        from agents.triage import business_context as bc
+        from agents.triage.baseline import detection_source, extract_entity, incident_created_time
+        from workflow import review_store
+        ent = extract_entity(incident) or {}
+        entity, kind = ent.get("value"), ent.get("kind")
+        ds = detection_source(incident) or {}
+        # Same "createdBy / ruleId" form the review store records as scope
+        # (agents/triage/suppression.scope_from_packet).
+        src = None
+        if ds.get("created_by"):
+            src = str(ds["created_by"]).strip()
+            if ds.get("rule_id"):
+                src = f"{src} / {str(ds['rule_id']).strip()}"
+        inc_id = str(incident.get("id") or incident.get("incidentId") or "")
+        prior = []
+        if entity and src:
+            prior = [r for r in review_store.list_reviews()
+                     if r.get("incident_id") != inc_id
+                     and str(r.get("entity") or "").casefold() == str(entity).casefold()
+                     and str(r.get("detection_source") or "").casefold() == str(src).casefold()]
+            prior = _latest_decision_per_run(prior)
+        when, _field = incident_created_time(incident)
+        ctx = {
+            "confirmed_benign_history": bc.benign_history_leaf(prior),
+            "change_context": bc.change_context_leaf(bc.load_change_windows(), entity=entity, when=when),
+            "asset_context": bc.asset_context_leaf(bc.load_asset_inventory(), entity=entity, entity_kind=kind),
+        }
+    except Exception as exc:
+        _log("TRIAGE", f"business context lookup failed (non-fatal, treated as missing): {exc}")
+        return None
+    return ctx if any(v.get("status") != "missing" for v in ctx.values()) else None
+
+
+def _latest_decision_per_run(reviews: list[dict]) -> list[dict]:
+    """One decision per (incident, run): the same rule the metrics use."""
+    from agents.triage.metrics import latest_decisions
+    return latest_decisions(reviews)
 
 
 def _triage_context_inputs(incident_id: str, run_id: str) -> tuple[dict | None, list[dict]]:
@@ -1170,7 +1221,8 @@ from workflow.stage_summaries import (
 
 
 def mock_triage_result(incident: dict, data_availability: dict | None = None,
-                       suppressions: list[dict] | None = None) -> dict:
+                       suppressions: list[dict] | None = None,
+                       business_context: dict | None = None) -> dict:
     """
     [FYP-FUNCTION] [FYP-FALLBACK] Canned Triage Result (offline/LLM-less testing)
 
@@ -1217,7 +1269,9 @@ def mock_triage_result(incident: dict, data_availability: dict | None = None,
     # with run_triage); the guard pipeline below is the real one.
     evidence_packet = build_evidence_packet(
         incident, None, compute_baseline(incident, wss.DB_FILE), data_availability,
-        suppressions=suppressions or None)
+        suppressions=suppressions or None,
+        # [IMPROVEMENT #2] same business context run_triage() feeds the agent.
+        business_context=business_context or None)
     assessment = build_assessment({
         "proposed_disposition": "true_positive",
         "hypotheses": {
@@ -3358,6 +3412,9 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
             # suppressions only passed when present, like run_triage(), so
             # existing stubs of mock_triage_result() keep working.
             _mock_extra = {"suppressions": _suppressions} if _suppressions else {}
+            _mock_ctx = _business_context_for(incident)
+            if _mock_ctx:
+                _mock_extra["business_context"] = _mock_ctx
             triage_result = mock_triage_result(incident, data_availability=data_availability,
                                                **_mock_extra)
             _stamp_triage_provenance(triage_result, model=None, mock=True)

@@ -24,6 +24,8 @@ See [`triage-review.md`](triage-review.md) and [`triage-evaluation.md`](triage-e
 | Variable | Purpose | Required | Default | Example |
 |---|---|---|---|---|
 | `AEGIS_LOLBAS_PATH` | LOLBAS dataset cache used for abused-tool enrichment (`python scripts/update_lolbas.py` downloads it with a `.meta.json` sidecar). A cache whose bytes no longer match the sidecar sha256 is rejected, and enrichment is then reported as unknown, never as safe. | No | `runtime/threat_data/lolbas.json` | `/data/lolbas.json` |
+| `AEGIS_CHANGE_WINDOWS` | JSON list of approved change windows, `[{"id", "entity" or "entities", "start", "end", "description", "approved_by"}]`. A window covering the incident's entity at the incident time becomes measured `context.change_context`, which Triage may cite for `benign_expected` (never past a strong rule signal). | No | `runtime/context/change_windows.json` | `/etc/aegis/changes.json` |
+| `AEGIS_ASSET_INVENTORY` | JSON object `{entity: {"role", "tier", "owner", ...}}` (or a list with `entity`). A listed entity becomes measured `context.asset_context`; unlisted hostnames fall back to the naming-pattern tier (inferred). | No | `runtime/context/asset_inventory.json` | `/etc/aegis/assets.json` |
 | `AEGIS_TICKET_DB` | Triage ticket / result-cache SQLite file (evaluation scripts point it at a temp copy). | No | `<AEGIS_DATA_DIR>/soc_tickets.db` | `/tmp/tickets.db` |
 | `AEGIS_DATA_DIR` | Directory of the LIVE SQLite databases (incidents/workflow, pipeline, tickets). Each is seeded once by copying the tracked `soc_db/` demo file; the app never writes `soc_db/`. Relative paths are resolved from the repository root; `soc_db` restores the old in-place behaviour. | No | `runtime/db` (gitignored) | `/var/lib/aegis/db` |
 

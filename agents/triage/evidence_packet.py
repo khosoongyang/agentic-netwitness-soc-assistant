@@ -359,12 +359,28 @@ def _packet_strong_signals(rule_signals: dict, partial_packet: dict) -> list[str
     return sorted(labels | set(_abused_tool_floor_labels(partial_packet)))
 
 
+_BUSINESS_CONTEXT_KEYS = ("asset_context", "change_context", "confirmed_benign_history")
+_NO_BUSINESS_CONTEXT_SOURCE = "business context not supplied for this run"
+
+
+def _business_leaf(business_context: dict | None, key: str) -> dict:
+    """[IMPROVEMENT #2] A leaf built by agents/triage/business_context.py
+    (asset inventory / change windows / prior approved reviews), supplied by
+    workflow/. Anything malformed is treated as missing, never assumed."""
+    leaf = (business_context or {}).get(key)
+    if isinstance(leaf, dict) and set(leaf) == {"value", "status", "source"} \
+            and leaf.get("status") in ("measured", "inferred", "missing"):
+        return dict(leaf)
+    return _missing(_NO_BUSINESS_CONTEXT_SOURCE)
+
+
 def _context(analyst_note: dict | str | None = None,
-             suppression_leaf: dict | None = None) -> dict:
+             suppression_leaf: dict | None = None,
+             business_context: dict | None = None) -> dict:
     return {
-        "asset_context": _missing(_PLACEHOLDER_SOURCE),
-        "change_context": _missing(_PLACEHOLDER_SOURCE),
-        "confirmed_benign_history": _missing(_PLACEHOLDER_SOURCE),
+        "asset_context": _business_leaf(business_context, "asset_context"),
+        "change_context": _business_leaf(business_context, "change_context"),
+        "confirmed_benign_history": _business_leaf(business_context, "confirmed_benign_history"),
         "analyst_note": _analyst_note_leaf(analyst_note),
         "suppression_match": suppression_leaf or suppression_match_leaf([], []),
     }
@@ -378,7 +394,8 @@ def build_evidence_packet(incident: dict, parsed_context: dict | None,
                           baseline: dict | None,
                           data_availability: dict | None = None,
                           analyst_note: dict | str | None = None,
-                          suppressions: list[dict] | None = None) -> dict:
+                          suppressions: list[dict] | None = None,
+                          business_context: dict | None = None) -> dict:
     """[FYP-FUNCTION] [FYP-EVALUATOR] Assemble and validate the evidence packet.
 
     ``data_availability`` ([FYP-TRIAGE-STEP2]) is the fetch-outcome record
@@ -408,7 +425,7 @@ def build_evidence_packet(incident: dict, parsed_context: dict | None,
         matches = match_suppressions(packet, suppressions)
         suppression_leaf = suppression_match_leaf(
             matches, _packet_strong_signals(packet["rule_signals"], packet) if matches else [])
-    packet["context"] = _context(analyst_note, suppression_leaf)
+    packet["context"] = _context(analyst_note, suppression_leaf, business_context)
     return EvidencePacket.model_validate(packet).model_dump(mode="json")
 
 

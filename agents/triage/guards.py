@@ -132,6 +132,10 @@ CORE_EVIDENCE: tuple[str, ...] = (
     "context.confirmed_benign_history",
 )
 
+# [IMPROVEMENT #2] context.* is now fed from an asset inventory, change
+# windows and prior approved reviews (agents/triage/business_context.py), so
+# "low" becomes reachable exactly as designed below; only MEASURED context
+# counts (an [inferred] hostname-pattern guess does not).
 # Completeness bands. With context.* always missing the maximum completeness
 # is 12/15 = 0.80 (Step 1: 11/14 = 0.79), so "low" uncertainty is not
 # reachable until business context is integrated -- deliberately.

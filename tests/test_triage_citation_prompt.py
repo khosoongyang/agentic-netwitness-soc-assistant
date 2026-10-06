@@ -49,4 +49,4 @@ def test_every_path_the_method_recommends_is_a_real_packet_leaf():
 
 
 def test_prompt_version_bumped_for_the_method_change():
-    assert sta.TRIAGE_PROMPT_VERSION in ("2026-10-citation-paths", "2026-10-constrained-citations")
+    assert sta.TRIAGE_PROMPT_VERSION in ("2026-10-citation-paths", "2026-10-constrained-citations", "2026-10-business-context")

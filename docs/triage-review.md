@@ -55,9 +55,40 @@ The note does **not** lower uncertainty: `uncertainty` measures how complete
 the machine-measured evidence is (`guards.CORE_EVIDENCE`), and a human claim must
 not be reflected back to the reviewer as AI confidence (audit T-18, a deliberate
 choice).
-`TRIAGE_PROMPT_VERSION` = `2026-10-constrained-citations` (OpenAI hosts: the SOC Classification answer uses a strict JSON schema whose citations are an enum of the packet's citable paths; history: `2026-10-step3-analyst-note-suppression` -> `2026-10-audit-prompt-hardening` (T-08) -> `2026-10-audit-observed-metakeys` (T-17) -> `2026-10-citation-paths`: the disposition method defines a citable path exactly and maps INCIDENT-block fields to the packet paths that carry the same evidence, after live runs lost the decisive UAC-disable claims to invented paths).
+`TRIAGE_PROMPT_VERSION` = `2026-10-business-context` (business-context leaves fed from an asset inventory, change windows and prior approved reviews; before that `2026-10-constrained-citations`: OpenAI hosts: the SOC Classification answer uses a strict JSON schema whose citations are an enum of the packet's citable paths; history: `2026-10-step3-analyst-note-suppression` -> `2026-10-audit-prompt-hardening` (T-08) -> `2026-10-audit-observed-metakeys` (T-17) -> `2026-10-citation-paths`: the disposition method defines a citable path exactly and maps INCIDENT-block fields to the packet paths that carry the same evidence, after live runs lost the decisive UAC-disable claims to invented paths).
 
 The ticket's **Matched Meta-Keys** lists only meta keys that carry a value in the incident (audit T-17). The keys implied by the matched IOC-checklist rows stay visible per category in the IOC trace (`category_metakeys`) and as `implied_metakeys` on the trace step.
+
+### Business context (improvement #2)
+
+`workflow/engine.py::_business_context_for()` builds three `context.*` leaves
+for every triage run, on both the live and `--mock-triage` paths
+(`agents/triage/business_context.py`):
+
+| Leaf | Source | Status |
+|---|---|---|
+| `context.confirmed_benign_history` | APPROVED prior triage reviews for the same detection source (`createdBy / ruleId`) and entity, one decision per run, this incident excluded | measured, or missing when there are none |
+| `context.change_context` | `AEGIS_CHANGE_WINDOWS`: a window covering the entity at the incident time | measured or missing |
+| `context.asset_context` | `AEGIS_ASSET_INVENTORY` entry | measured. Falls back to the hostname naming tier (`inferred`, not counted), or missing for an unlisted IP |
+
+Measured leaves count toward evidence completeness, as the Step 1 design
+intended. Missing leaves keep the honest "not supplied" source. When no leaf
+is known, the result-cache key is unchanged.
+
+Live check (gpt-4o-mini, 3 runs per arm, temp DBs), on a routine ESA alert
+with raw alerts parsed and no strong rule signal:
+
+* No context: `needs_info`, uncertainty medium.
+* A change window only: `needs_info`, uncertainty **low**, with the window
+  cited.
+* Window, inventory and 4 approved benign reviews: 1 of 3 runs reached
+  `benign_expected`. The other 2 stayed `needs_info`, citing the risk
+  score.
+* INC-53021 (malicious, strong signals) with a covering change window: 2 of
+  3 runs were `true_positive`, 1 was `needs_info`. It never went
+  benign-side. Guard (b) blocks that regardless of the model.
+
+Context makes a benign close reachable, but it never forces one.
 
 ## 4. Scripts
 
