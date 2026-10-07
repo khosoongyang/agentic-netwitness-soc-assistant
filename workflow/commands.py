@@ -102,6 +102,35 @@ def _canonical_conflict(exc: Exception, *, default_code: str) -> WorkflowCommand
     return WorkflowCommandError(code, message)
 
 
+def _expected_attempt(stage: str, expected_stage_attempt: Any) -> int | None:
+    """Canonical audit R5: an optional client assertion of WHICH stage
+    attempt the analyst reviewed. Only checked (in the state-store
+    transaction) -- never used as the attempt that gets recorded."""
+    if expected_stage_attempt is None:
+        return None
+    if stage != "triage":
+        raise WorkflowCommandError(
+            "INVALID_REQUEST", "expected_stage_attempt is only supported for the triage gate.", 400)
+    try:
+        value = int(expected_stage_attempt)
+    except (TypeError, ValueError):
+        value = 0
+    if isinstance(expected_stage_attempt, bool) or value < 1:
+        raise WorkflowCommandError(
+            "INVALID_REQUEST", "expected_stage_attempt must be a positive integer.", 400)
+    return value
+
+
+def _attempt_mismatch(exc: "wss.ApprovalAttemptMismatchError") -> WorkflowCommandError:
+    return WorkflowCommandError(
+        "STALE_ATTEMPT", str(exc), details={
+            "reason_code": exc.reason_code,
+            "stage": exc.approval_stage,
+            "expected_stage_attempt": exc.expected_stage_attempt,
+            "current_stage_attempt": exc.current_stage_attempt,
+        })
+
+
 def _task_wrapper(run_id: str, target: Callable[..., Any], args: tuple[Any, ...]) -> None:
     try:
         target(*args)
@@ -378,6 +407,7 @@ def approve_stage(
     *,
     analyst: str,
     comments: str = "",
+    expected_stage_attempt: int | None = None,
 ) -> dict[str, Any]:
     """Approve an existing gate without automatically starting its successor."""
     stage = normalise_stage(stage)
@@ -385,10 +415,15 @@ def approve_stage(
         raise WorkflowCommandError(
             "INVALID_STAGE", f"{stage} does not have an analyst approval gate.", 400
         )
+    expected_stage_attempt = _expected_attempt(stage, expected_stage_attempt)
     if not str(analyst or "").strip():
         raise WorkflowCommandError("INVALID_REQUEST", "analyst is required.", 400)
     state = _state_or_error(case_id)
     run_id = _current_run(state)
+    if (expected_stage_attempt is not None
+            and int(state.get("triage_attempt") or 1) != expected_stage_attempt):
+        raise _attempt_mismatch(wss.ApprovalAttemptMismatchError(
+            stage, expected_stage_attempt, int(state.get("triage_attempt") or 1)))
     prior_decisions = [
         item for item in wss.get_approval_history(str(case_id), run_id)
         if item.get("approval_stage") == stage
@@ -404,7 +439,8 @@ def approve_stage(
     try:
         if stage == "triage":
             result = wss.approve_triage(
-                str(case_id), run_id, approved_by=analyst.strip(), comments=comments
+                str(case_id), run_id, approved_by=analyst.strip(), comments=comments,
+                expected_stage_attempt=expected_stage_attempt,
             )
         elif stage == "investigation":
             result = wss.approve_investigation(
@@ -418,6 +454,8 @@ def approve_stage(
             )
     except wss.InvestigationIdentityError as exc:
         raise WorkflowCommandError("INVESTIGATION_IDENTITY_MISMATCH", str(exc)) from exc
+    except wss.ApprovalAttemptMismatchError as exc:
+        raise _attempt_mismatch(exc) from exc
     except wss.ApprovalConflictError as exc:
         decisions = [
             item for item in wss.get_approval_history(str(case_id), run_id)
@@ -442,6 +480,7 @@ def reject_stage(
     *,
     analyst: str,
     comments: str,
+    expected_stage_attempt: int | None = None,
 ) -> dict[str, Any]:
     """Reject an existing gate through the stage's atomic transition."""
     stage = normalise_stage(stage)
@@ -449,6 +488,7 @@ def reject_stage(
         raise WorkflowCommandError(
             "INVALID_STAGE", f"{stage} does not have an analyst approval gate.", 400
         )
+    expected_stage_attempt = _expected_attempt(stage, expected_stage_attempt)
     analyst = str(analyst or "").strip()
     reason = str(comments or "").strip()
     if not analyst:
@@ -462,7 +502,8 @@ def reject_stage(
     try:
         if stage == "triage":
             result = wss.reject_triage(
-                str(case_id), run_id, rejected_by=analyst, reason=reason
+                str(case_id), run_id, rejected_by=analyst, reason=reason,
+                expected_stage_attempt=expected_stage_attempt,
             )
         elif stage == "investigation":
             result = wss.reject_investigation(
@@ -472,6 +513,8 @@ def reject_stage(
             result = wss.reject_reporting(
                 str(case_id), run_id, rejected_by=analyst, reason=reason
             )
+    except wss.ApprovalAttemptMismatchError as exc:
+        raise _attempt_mismatch(exc) from exc
     except wss.ApprovalConflictError as exc:
         decisions = [
             item for item in wss.get_approval_history(str(case_id), run_id)
@@ -643,7 +686,7 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
                     f"Investigation identity mismatch: {identity_problem}. "
                     "Reject or re-run Investigation for this case.")
         if stage in APPROVAL_STAGES and (awaiting or status == "Awaiting Approval"):
-            stage_actions.extend((
+            decision_actions = (
                 {
                     "type": "approve", "label": "Approve", "enabled": approve_enabled,
                     "confirmation": False,
@@ -654,7 +697,14 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
                     "confirmation": True,
                     "reason": None if awaiting else "This approval gate is no longer current.",
                 },
-            ))
+            )
+            if stage == "triage":
+                # Canonical audit R5 (additive): the Triage execution these
+                # decisions apply to; a client may echo it back as
+                # expected_stage_attempt so a stale decision is refused.
+                for action in decision_actions:
+                    action["stage_attempt"] = int(state.get("triage_attempt") or 1)
+            stage_actions.extend(decision_actions)
         if processing_stage == stage:
             stage_actions.append({
                 "type": "resume",

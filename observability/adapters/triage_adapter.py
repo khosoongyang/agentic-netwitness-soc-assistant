@@ -615,7 +615,10 @@ def _decision_after(decision: str):
     def after(call: dict, token: Any, result: Any) -> None:
         incident_id = str(call.get("incident_id"))
         state = _state(incident_id)
-        attempt = state.get("triage_attempt")
+        # Canonical audit R5: the attempt the workflow_approvals row was
+        # actually stamped with (returned by the transition itself).
+        stamped = result.get("stage_attempt") if isinstance(result, dict) else None
+        attempt = stamped or state.get("triage_attempt")
         analyst = _str(call.get("approved_by") if decision == "approve" else call.get("rejected_by"))
         comment = _str(call.get("comments") if decision == "approve" else call.get("reason"))
         ids = {"case_id": incident_id, "run_id": call.get("run_id"), "stage": STAGE,
@@ -692,8 +695,10 @@ def install(patcher: Patcher) -> None:
     patcher.wrap(Target("workflow.state_store", "rerun_stage", ("incident_id", "run_id", "stage")),
                  Hooks(after=_request_after("rerun")))
     patcher.wrap(Target("workflow.state_store", "approve_triage",
-                        ("incident_id", "run_id", "approved_by", "comments")),
+                        ("incident_id", "run_id", "approved_by", "comments",
+                         "expected_stage_attempt")),
                  Hooks(after=_decision_after("approve")))
     patcher.wrap(Target("workflow.state_store", "reject_triage",
-                        ("incident_id", "run_id", "rejected_by", "reason")),
+                        ("incident_id", "run_id", "rejected_by", "reason",
+                         "expected_stage_attempt")),
                  Hooks(after=_decision_after("reject")))

@@ -537,15 +537,13 @@ def _build_approval_context(approval_history: Any, approval_result: dict[str, An
 
     * Run/case binding: only rows whose incident_id AND run_id equal this
       Reporting run's (workflow_metadata) are considered.
-    * Investigation: the current decision must be on the CURRENT
-      investigation_attempt; no row on it -> Pending (an older attempt's
-      decision is never inherited).
+    * Triage / Investigation: the current decision must be on the CURRENT
+      triage_attempt / investigation_attempt; no row on it -> Pending (an
+      older attempt's decision is never inherited). Canonical audit R5:
+      state_store now stamps Triage decisions with the real triage_attempt.
     * Reporting: the document is the candidate generated BEFORE the final
       gate, so the current Reporting gate is always Pending; every recorded
       Reporting decision (earlier attempts) is history only.
-    * Triage: newest decision by (approval_attempt, decided_at) -- Triage
-      decisions are always stamped stage_attempt=1 by state_store, so they
-      cannot be bound to a Triage execution attempt (known issue).
     * Earlier decisions are kept in previous_decisions and never override
       the current status.
     * Legacy (no approval_history, only approval_result.json): that record
@@ -597,19 +595,13 @@ def _build_approval_context(approval_history: Any, approval_result: dict[str, An
                 note=("Awaiting final Reporting approval: this document is the candidate under review; "
                       "the decision is recorded in the workflow audit trail."))
             continue
-        if stage == "triage":
-            stage_rows = sorted(stage_rows, key=lambda r: (int(r.get("approval_attempt") or 0), str(r.get("decided_at") or "")))
-            current_rows, note = stage_rows[-1:], ("Triage decisions carry no reliable execution attempt; "
-                                                   "the newest decision for this run is shown.")
-            stage_attempt = None
+        current_attempt = workflow_metadata.get(f"{stage}_attempt")
+        if current_attempt is None:
+            current_rows, note = stage_rows[-1:], "Current stage attempt not recorded; the newest decision for this run is shown."
         else:
-            current_attempt = workflow_metadata.get(f"{stage}_attempt")
-            if current_attempt is None:
-                current_rows, note = stage_rows[-1:], "Current stage attempt not recorded; the newest decision for this run is shown."
-            else:
-                on_attempt = [r for r in stage_rows if int(r.get("stage_attempt") or 0) == int(current_attempt)]
-                current_rows, note = on_attempt[-1:], ""
-            stage_attempt = current_attempt
+            on_attempt = [r for r in stage_rows if int(r.get("stage_attempt") or 0) == int(current_attempt)]
+            current_rows, note = on_attempt[-1:], ""
+        stage_attempt = current_attempt
         current = _approval_decision_record(current_rows[0]) if current_rows else None
         previous = [_approval_decision_record(r) for r in stage_rows if not current_rows or r is not current_rows[0]]
         context[stage] = _approval_stage_record(current["decision"] if current else "Pending", current, previous,

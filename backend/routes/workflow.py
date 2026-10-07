@@ -54,6 +54,9 @@ def decide_approval(case_id: str, stage: str):
     decision = str(body.get("decision") or "").strip().lower()
     analyst = str(body.get("analyst") or "").strip()
     comments = str(body.get("comments") or "")
+    # Canonical audit R5 (optional, additive): the stage attempt the analyst
+    # reviewed; a stale one is refused with STALE_ATTEMPT, never re-bound.
+    expected = body.get("expected_stage_attempt")
     if decision == "approve":
         result = _command(
             commands.approve_stage,
@@ -61,6 +64,7 @@ def decide_approval(case_id: str, stage: str):
             stage,
             analyst=analyst,
             comments=comments,
+            expected_stage_attempt=expected,
         )
     elif decision == "reject":
         result = _command(
@@ -69,6 +73,7 @@ def decide_approval(case_id: str, stage: str):
             stage,
             analyst=analyst,
             comments=comments,
+            expected_stage_attempt=expected,
         )
     else:
         raise APIError(

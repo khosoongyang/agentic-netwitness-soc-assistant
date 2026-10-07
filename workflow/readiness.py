@@ -59,6 +59,7 @@ _REQUIRED_COLUMNS = frozenset({
     "id", "run_id", "raw_json", "raw_incident_path", "parsing_status", "parsing_result_json",
     "triage_status", "triage_result_json", "threat_intel_status", "threat_intel_result_json",
     "investigation_status", "investigation_result_json", "investigation_attempt",
+    "triage_attempt",
 })
 
 
@@ -209,19 +210,23 @@ def _check_triage(case_id: str, run_id: str, state: dict, inputs: dict) -> None:
     inputs["triage"] = triage
 
 
-def _check_triage_approval(case_id: str, run_id: str) -> None:
-    # Triage decisions carry no reliable execution attempt (known state_store
-    # issue -- always stage_attempt=1), so, as in Phase 4, the newest
-    # decision for THIS run is the current one.
-    newest = _newest(_approval_rows(case_id, run_id, "triage"))
+def _check_triage_approval(case_id: str, run_id: str, state: dict) -> None:
+    # Canonical audit R5: as for Investigation, the current decision must be
+    # on the CURRENT triage attempt of this run; an older attempt's decision
+    # (including a historical row stamped stage_attempt=1 before R5) is never
+    # inherited by a re-run.
+    attempt = int(state.get("triage_attempt") or 1)
+    rows = _approval_rows(case_id, run_id, "triage")
+    newest = _newest([r for r in rows if int(r.get("stage_attempt") or 0) == attempt])
     decision = str((newest or {}).get("decision") or "").lower()
     if decision == "approved":
         return
     if decision == "rejected":
         raise _NotReady("triage_rejected", CATEGORY_APPROVAL,
-                        "Triage: the newest Triage decision for this run is a rejection")
+                        f"Triage: attempt {attempt} was rejected")
+    older = " (an older attempt's decision is not inherited)" if rows else ""
     raise _NotReady("triage_approval_not_recorded", CATEGORY_APPROVAL,
-                    "Triage: no Triage approval is recorded for this run")
+                    f"Triage: no approval is recorded for attempt {attempt}{older}")
 
 
 def _check_threat_intel(case_id: str, run_id: str, state: dict, inputs: dict,
@@ -352,7 +357,7 @@ def evaluate_stage_readiness(case_id: str, stage: str, *, run_id: str | None = N
                 _check_raw_incident(case_id, effective_run, state, inputs, degraded, required=True)
             if "triage" in upstream:
                 _check_triage(case_id, effective_run, state, inputs)
-                _check_triage_approval(case_id, effective_run)
+                _check_triage_approval(case_id, effective_run, state)
             if "threat_intel" in upstream:
                 _check_threat_intel(case_id, effective_run, state, inputs, degraded)
             if "investigation" in upstream:

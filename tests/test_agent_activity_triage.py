@@ -450,6 +450,22 @@ def test_rerun_events_are_grouped_by_attempt(triage_env, activity):
     assert waits == [f"approval:{run_id}:triage:1", f"approval:{run_id}:triage:2"]
 
 
+def test_rerun_approval_decision_names_the_attempt_it_decided(triage_env, activity):
+    # Canonical audit R5: the decision event and the workflow_approvals row
+    # both identify the Triage attempt that was actually approved.
+    case_id, run_id = triage_env["prepare"]("rerun-approve")
+    engine.run_triage_stage(case_id, run_id)
+    commands.approve_stage(case_id, "triage", analyst="Analyst One")
+    commands.rerun_stage(case_id, "triage", executor=lambda *args: None)
+    engine.run_triage_stage(case_id, run_id)
+    commands.approve_stage(case_id, "triage", analyst="Analyst Two", comments="Re-checked.")
+    decisions = [e for e in _events(activity, case_id, run_id) if e["event_type"] == "approval_decision"]
+    assert [(e["stage_attempt"], e["span_id"]) for e in decisions] == [
+        (1, f"approval:{run_id}:triage:1"), (2, f"approval:{run_id}:triage:2")]
+    rows = [r for r in wss.get_approval_history(case_id, run_id) if r["approval_stage"] == "triage"]
+    assert [(r["analyst"], r["stage_attempt"]) for r in rows] == [("Analyst One", 1), ("Analyst Two", 2)]
+
+
 def test_two_incidents_triaged_concurrently_are_attributed_independently(triage_env, activity, tmp_path):
     first = triage_env["prepare"]("c1", dict(INCIDENT, id="INC-C1"))
     # Both runs share one workflow DB for this test.

@@ -728,6 +728,7 @@ def start_run(incident_id: str, *, allow_retry: bool = False) -> str:
             "worker_heartbeat_at": None, "worker_lease_expires_at": None,
             "worker_progress_note": None,
             "last_error": None, "workflow_updated_at": now,
+            "triage_attempt": 1,
             "investigation_attempt": 1, "threat_intel_attempt": 1, "reporting_attempt": 1,
             "ioc_correlation_status": "Pending", "ioc_correlation_result_json": None,
             "ioc_correlation_updated_at": None,
@@ -1053,21 +1054,40 @@ def get_approval_history(incident_id: str, run_id: str | None = None) -> list[di
 # ══════════════════════════════════════════════════════════════════════════
 
 # [FYP-STATE] [FYP-RERUN] approval_stage -> the incidents column tracking how
-# many times THAT stage has been started/rerun. Triage has no such column:
-# its retry path is a fresh start_run(allow_retry=True), so every Triage
-# decision is inherently scoped to a distinct run_id already — stage_attempt
-# is always 1 for it.
+# many times THAT stage has been started/rerun within the current run.
+# Canonical audit R5: Triage is included. Triage re-runs in place on the SAME
+# run_id via rerun_stage(), which advances triage_attempt, so a Triage
+# decision must be stamped with that attempt (it was previously missing here
+# and every Triage decision was stamped stage_attempt=1).
 _APPROVAL_STAGE_ATTEMPT_COLUMN = {
+    "triage": "triage_attempt",
     "investigation": "investigation_attempt",
     "reporting": "reporting_attempt",
 }
+
+
+class ApprovalAttemptMismatchError(ApprovalConflictError):
+    """Canonical audit R5: the analyst's decision was made against a stage
+    attempt that is no longer the current one (e.g. Triage was re-run after
+    the analyst opened attempt N). Never re-bound to the newer attempt."""
+
+    reason_code = "approval_stage_attempt_mismatch"
+
+    def __init__(self, approval_stage: str, expected: int, current: int):
+        self.approval_stage = approval_stage
+        self.expected_stage_attempt = expected
+        self.current_stage_attempt = current
+        super().__init__(
+            f"{approval_stage} decision is stale: it was made for attempt {expected}, "
+            f"but the current {approval_stage} attempt is {current}")
 
 
 def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
                              sets: dict, approval_stage: str, decision: str,
                              analyst: str, comments: str = "",
                              metadata: dict | None = None,
-                             precheck=None) -> dict:
+                             precheck=None,
+                             expected_stage_attempt: int | None = None) -> dict:
     """[FYP-FUNCTION] Atomic Approve/Reject Compare-and-Swap Engine
     [FYP-APPROVAL] [FYP-DECISION] [FYP-STATE] [FYP-EVALUATOR]
     This IS the exact approval-state-transition function every gate is built
@@ -1087,7 +1107,13 @@ def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
     (str, the deciding user), comments (str, free text), metadata (dict |
     None, JSON-encoded verbatim into workflow_approvals.metadata_json — only
     commit_reporting_approval() passes this; every other caller gets NULL).
-    Returns: dict {"incident_id", "run_id", "decided_at"}.
+    expected_stage_attempt (int | None — canonical audit R5: the stage
+    attempt the analyst reviewed; if given and it is not the row's current
+    attempt, ApprovalAttemptMismatchError is raised and NOTHING is written.
+    It is only ever CHECKED — the stamped stage_attempt always comes from the
+    row read inside this transaction).
+    Returns: dict {"incident_id", "run_id", "decided_at", "stage_attempt",
+    "approval_attempt"}.
     Side effects, all in ONE transaction: (1) UPDATE incidents SET {sets}
     WHERE id=? AND run_id=? — also stamps approved_by/approved_at/
     approval_comments if decision=="approved" and those keys aren't already
@@ -1130,6 +1156,16 @@ def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
     def _do(con):
         row = con.execute("SELECT * FROM incidents WHERE id=?",
                           (str(incident_id),)).fetchone()
+        attempt_col = _APPROVAL_STAGE_ATTEMPT_COLUMN.get(approval_stage)
+        # The authoritative attempt is read from THIS transaction's row, so
+        # the decision is bound to the execution that is current at commit
+        # time; a caller-supplied attempt is only ever checked against it
+        # (same run only -- a different run is reported by `expect` below).
+        stage_attempt = int(row[attempt_col] or 1) if (row is not None and attempt_col) else 1
+        if (expected_stage_attempt is not None and row is not None
+                and row["run_id"] == run_id and int(expected_stage_attempt) != stage_attempt):
+            raise ApprovalAttemptMismatchError(approval_stage, int(expected_stage_attempt),
+                                               stage_attempt)
         if row is None or any(row[k] != v for k, v in expect.items()):
             got = {k: (row[k] if row else None) for k in expect}
             raise ApprovalConflictError(
@@ -1147,8 +1183,6 @@ def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
         cols = ", ".join(f"{k}=?" for k in full_sets)
         con.execute(f"UPDATE incidents SET {cols} WHERE id=? AND run_id=?",
                    (*full_sets.values(), str(incident_id), run_id))
-        attempt_col = _APPROVAL_STAGE_ATTEMPT_COLUMN.get(approval_stage)
-        stage_attempt = int(row[attempt_col]) if attempt_col else 1
         # Scoped to THIS stage_attempt, not a running total across every
         # execution ever — each rerun is a fresh execution with its own
         # decision count (almost always 1, since a decision immediately
@@ -1170,12 +1204,13 @@ def _atomic_stage_transition(incident_id: str, run_id: str, *, expect: dict,
         except sqlite3.IntegrityError as exc:
             raise ApprovalConflictError(
                 f"{approval_stage} was already decided for run {run_id!r}") from exc
-        return {"incident_id": str(incident_id), "run_id": run_id, "decided_at": now}
+        return {"incident_id": str(incident_id), "run_id": run_id, "decided_at": now,
+                "stage_attempt": stage_attempt, "approval_attempt": approval_attempt}
     return _tx(_do)
 
 
 def approve_triage(incident_id: str, run_id: str, *, approved_by: str,
-                   comments: str = "") -> dict:
+                   comments: str = "", expected_stage_attempt: int | None = None) -> dict:
     """[FYP-FUNCTION] Approve Triage (Gate 1 of 3)
     [FYP-APPROVAL] [FYP-STAGE-LOCK] [FYP-DECISION] [FYP-EVALUATOR]
     Params: incident_id, run_id (str), approved_by (str, the analyst
@@ -1201,7 +1236,12 @@ def approve_triage(incident_id: str, run_id: str, *, approved_by: str,
     state as "running" — is what stage-lock means throughout this module.
     Error handling: raises ApprovalConflictError (via
     _atomic_stage_transition) if the current state doesn't match `expect` —
-    e.g. already decided, or a stale run_id.
+    e.g. already decided, or a stale run_id — and its
+    ApprovalAttemptMismatchError subclass if `expected_stage_attempt` is
+    given but is no longer the current triage_attempt.
+    Canonical audit R5: the workflow_approvals row is stamped with the
+    current triage_attempt (the Triage execution being decided), read in the
+    same transaction as the decision.
     Approving Triage only unlocks Threat Intelligence — it leaves
     threat_intel_status "Pending" and workflow_status "Awaiting Action"
     (the same idiom run_until_triage_approval() uses for a parsing-only
@@ -1216,11 +1256,12 @@ def approve_triage(incident_id: str, run_id: str, *, approved_by: str,
         sets={"triage_status": "Approved", "threat_intel_status": "Pending",
              "workflow_status": "Awaiting Action", "approval_stage": None},
         approval_stage="triage", decision="approved",
-        analyst=approved_by, comments=comments)
+        analyst=approved_by, comments=comments,
+        expected_stage_attempt=expected_stage_attempt)
 
 
 def reject_triage(incident_id: str, run_id: str, *, rejected_by: str,
-                  reason: str) -> dict:
+                  reason: str, expected_stage_attempt: int | None = None) -> dict:
     """[FYP-FUNCTION] Reject Triage (Gate 1 of 3)
     [FYP-APPROVAL] [FYP-STAGE-LOCK] [FYP-DECISION] [FYP-EVALUATOR]
     Params: incident_id, run_id (str), rejected_by (str, analyst), reason
@@ -1244,7 +1285,8 @@ def reject_triage(incident_id: str, run_id: str, *, rejected_by: str,
         sets={"triage_status": "Rejected", "threat_intel_status": "Blocked",
              "workflow_status": "Rejected", "approval_stage": None},
         approval_stage="triage", decision="rejected",
-        analyst=rejected_by, comments=reason)
+        analyst=rejected_by, comments=reason,
+        expected_stage_attempt=expected_stage_attempt)
 
 
 def approve_investigation(incident_id: str, run_id: str, *, approved_by: str,

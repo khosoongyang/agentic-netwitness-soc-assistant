@@ -451,6 +451,31 @@ def test_fail_investigation_old_attempt_approval_only(e2e):
     _not_ready("reporting", "investigation_approval_not_recorded")
 
 
+def test_triage_rerun_requires_approval_of_the_new_attempt(e2e):
+    # Canonical audit R5 central regression: attempt 1 approved -> Triage
+    # re-run -> TI blocked -> approve attempt 2 -> TI allowed again.
+    run = _parse()
+    _triage(run)
+    _approve("triage", "Alice", "Attempt 1 ok")
+    assert wr.evaluate_stage_readiness(CASE, "threat_intel")["ready"] is True
+    _start("triage", rerun=True)
+    wf.run_triage_stage(CASE, run)
+    s = _state()
+    assert (s["triage_attempt"], s["triage_status"], s["run_id"]) == (2, "Awaiting Approval", run)
+    _not_ready("threat_intel", "triage_not_approved")
+    wss._guarded_update(CASE, run, {"triage_status": "Approved", "workflow_status": "Awaiting Action",
+                                    "approval_stage": None, "threat_intel_status": "Pending"})
+    _not_ready("threat_intel", "triage_approval_not_recorded")   # attempt 1's approval is history only
+    wss._guarded_update(CASE, run, {"triage_status": "Awaiting Approval", "workflow_status": "Awaiting Approval",
+                                    "approval_stage": "triage"})
+    _approve("triage", "Bob", "Attempt 2 ok")
+    rows = [d for d in wss.get_approval_history(CASE, run) if d["approval_stage"] == "triage"]
+    assert [(d["analyst"], d["stage_attempt"], d["approval_attempt"]) for d in rows] == \
+        [("Alice", 1, 1), ("Bob", 2, 1)]
+    _ti(run)
+    assert _state()["threat_intel_status"] in ("Complete", "Complete with Warnings")
+
+
 @pytest.mark.parametrize("mode,code", [("missing", "candidate_manifest_missing"),
                                        ("tamper_file", "candidate_file_hash_mismatch"),
                                        ("wrong_attempt", "candidate_manifest_attempt_mismatch")])

@@ -215,15 +215,20 @@ def test_rejection_followed_by_approval_on_a_later_attempt():
     assert appendix["Investigation Approval Status"] == "Approved"
 
 
-def test_triage_uses_the_newest_decision_by_approval_attempt():
+def test_triage_current_decision_is_bound_to_the_current_attempt():
+    # Canonical audit R5: Triage decisions are stamped with the real
+    # triage_attempt (previously always 1), so the approval of attempt 2 is
+    # its own first decision (approval_attempt=1) and attempt 1's rejection
+    # is history only.
     run = _new_run()
     _decide(CASE, run, "triage", "rejected", "carol", "re-run triage")
     wss._guarded_update(CASE, run, {"triage_attempt": 2})
-    _decide(CASE, run, "triage", "approved", "alice")                     # stamped stage_attempt=1 (known issue)
+    _decide(CASE, run, "triage", "approved", "alice")
     ctx, _ = _report(CASE, run)
     tri = ctx["approval_context"]["triage"]
-    assert tri["status"] == "Approved" and tri["actor"] == "alice" and tri["approval_attempt"] == 2
-    assert [p["decision"] for p in tri["previous_decisions"]] == ["Rejected"]
+    assert tri["status"] == "Approved" and tri["actor"] == "alice"
+    assert (tri["stage_attempt"], tri["approval_attempt"]) == (2, 1)
+    assert [(p["decision"], p["stage_attempt"]) for p in tri["previous_decisions"]] == [("Rejected", 1)]
 
 
 # ── 16, 23-24: Reporting gate, labels, JSON == rendered report ─────────────
