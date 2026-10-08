@@ -748,7 +748,6 @@ function triageSummarySection(ticket, result) {
 }
 
 function triageIOCEvidence(iocStep, ticket, result) {
-  const count = ticket.matched_ioc_count ?? iocStep?.total_ioc_count ?? 0;
   const mono = (v) => _poValue(v, { mono: true });
 
   // Array.isArray / typeof guards: a persisted result the backend sanitizer
@@ -770,15 +769,20 @@ function triageIOCEvidence(iocStep, ticket, result) {
     ...Object.keys(categories).filter((key) => !_TRIAGE_IOC_CATEGORY_ORDER.includes(key)),
   ];
   const categoryLabel = (key) => key.charAt(0).toUpperCase() + key.slice(1);
-  const categoryRows = [];
+  // One row per matched IOC (not per category), so the rows listed always
+  // add up to the "IOCs Matched" count shown above them.
+  const iocRows = [];
   const reasoningItems = [];
   categoryKeys.forEach((key) => {
     const data = categories[key] || {};
     const names = Array.isArray(data.matched_ioc_names) ? data.matched_ioc_names : [];
     if (!names.length) return;
-    categoryRows.push([escapeHTML(categoryLabel(key)), escapeHTML(names.join(", "))]);
+    names.forEach((name) => iocRows.push([escapeHTML(categoryLabel(key)), escapeHTML(name)]));
     if (data.reasoning) reasoningItems.push(`<li><div><strong>${escapeHTML(categoryLabel(key))}:</strong> ${escapeHTML(data.reasoning)}</div></li>`);
   });
+  // Count what is listed whenever the trace step is present; the persisted
+  // ticket count is only a fallback for results without per-category names.
+  const count = iocRows.length || ticket.matched_ioc_count || iocStep?.total_ioc_count || 0;
 
   const ticketKeys = Array.isArray(ticket.metakeys) ? ticket.metakeys : [];
   const traceKeys = Array.isArray(iocStep?.matched_metakeys) ? iocStep.matched_metakeys : [];
@@ -794,8 +798,8 @@ function triageIOCEvidence(iocStep, ticket, result) {
   return `<article class="panel">
     <h3>IOC Evidence</h3>
     ${_triageTable([["IOCs Matched", escapeHTML(String(count))]])}
-    ${observedRows.length ? `<h4 class="triage-subheading">Observed IOC Values</h4>${_triageTable(observedRows)}` : ""}
-    ${categoryRows.length ? `<h4 class="triage-subheading">Matched Categories</h4>${_triageTable(categoryRows)}` : ""}
+    ${iocRows.length ? `<h4 class="triage-subheading">Matched IOCs</h4>${_triageTable(iocRows)}` : ""}
+    ${observedRows.length ? `<h4 class="triage-subheading">Observed Values</h4>${_triageTable(observedRows)}` : ""}
     ${technical ? `<details class="parsing-field-list"><summary>Technical Details</summary>${technical}</details>` : ""}
   </article>`;
 }
@@ -2902,7 +2906,36 @@ async function analystIdentity() {
   return analyst;
 }
 
-async function actionRequest(caseId, action, stage) {
+// Canonical audit R5: the Triage attempt the analyst is deciding is the
+// stage_attempt the backend put on the rendered approve/reject action
+// (workflow/commands.py::available_actions). It is echoed back unchanged as
+// expected_stage_attempt so the backend can refuse a decision made on a
+// stale view; it is never re-fetched or computed here.
+function displayedStageAttempt(stage, action) {
+  if (stage?.key !== "triage") return null;
+  const rendered = (stage.actions || []).find((item) => item.type === action);
+  return Number.isInteger(rendered?.stage_attempt) ? rendered.stage_attempt : null;
+}
+
+function withExpectedAttempt(body, stage, action) {
+  const attempt = displayedStageAttempt(stage, action);
+  return attempt === null ? body : { ...body, expected_stage_attempt: attempt };
+}
+
+export function isStaleAttemptError(error) {
+  return error?.code === "STALE_ATTEMPT" && error?.details?.reason_code === "approval_stage_attempt_mismatch";
+}
+
+export function staleAttemptNotice(error, action) {
+  const details = error?.details || {};
+  const decision = action === "reject" ? "rejection" : "approval";
+  const attempts = details.expected_stage_attempt != null && details.current_stage_attempt != null
+    ? ` You reviewed attempt ${details.expected_stage_attempt}; the current attempt is ${details.current_stage_attempt}.`
+    : "";
+  return `<div class="notice notice-error" data-stale-attempt><strong>Your ${decision} was not recorded.</strong><p>This Triage result has changed or been re-run since you opened it.${escapeHTML(attempts)} The view has been refreshed — review the current attempt before approving or rejecting.</p></div>`;
+}
+
+export async function actionRequest(caseId, action, stage) {
   const base = `/api/cases/${encodeURIComponent(caseId)}`;
   if (action === "start") return [`${base}/stages/${stage.key}/runs`, {}];
   if (action === "rerun") return [`${base}/stages/${stage.key}/reruns`, {}];
@@ -2911,11 +2944,11 @@ async function actionRequest(caseId, action, stage) {
   if (!analyst) throw new Error("An analyst name is required.");
   if (action === "approve") {
     const comments = window.prompt("Approval comments (optional)", "") ?? "";
-    return [`${base}/approvals/${stage.key}`, { decision: "approve", analyst, comments }];
+    return [`${base}/approvals/${stage.key}`, withExpectedAttempt({ decision: "approve", analyst, comments }, stage, "approve")];
   }
   const comments = window.prompt("Rejection reason (required)", "")?.trim() || "";
   if (!comments) throw new Error("A rejection reason is required.");
-  return [`${base}/approvals/${stage.key}`, { decision: "reject", analyst, comments }];
+  return [`${base}/approvals/${stage.key}`, withExpectedAttempt({ decision: "reject", analyst, comments }, stage, "reject")];
 }
 
 function requiresConfirmation(action, stage) {
@@ -3041,6 +3074,14 @@ export async function renderWorkspace(root, { navigate, route }) {
           await refreshWorkflow();
         }
       } catch (error) {
+        if (isStaleAttemptError(error)) {
+          // R5: the displayed Triage attempt is no longer current. Nothing
+          // was recorded; reload the current state and never re-submit.
+          await refreshWorkflow().catch(() => {});
+          const staleRoot = outputRoot.querySelector("#action-status");
+          if (staleRoot) staleRoot.innerHTML = staleAttemptNotice(error, action);
+          return;
+        }
         const statusRoot = outputRoot.querySelector("#action-status");
         if (statusRoot) statusRoot.innerHTML = errorState(error);
       }

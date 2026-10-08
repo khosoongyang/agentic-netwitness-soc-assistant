@@ -37,6 +37,9 @@ _CASE_COLUMNS = (
     "worker_id", "worker_stage", "worker_started_at", "worker_heartbeat_at",
     "worker_lease_expires_at", "worker_progress_note", "investigation_attempt",
     "threat_intel_attempt", "reporting_attempt", "raw_json",
+    # Canonical audit R5: available_actions() puts the current Triage
+    # attempt on the Triage approve/reject actions served by /workflow.
+    "triage_attempt",
 )
 _LIST_COLUMNS = tuple(column for column in _CASE_COLUMNS if not column.endswith("_json"))
 # Numeric part of an incident ID ("INC-9999" -> 9999) so INC-9999 sorts
