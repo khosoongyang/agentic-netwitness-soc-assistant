@@ -238,6 +238,7 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
     incident_title = _title_clean(_first(
         incident.get("title"), incident_raw.get("title"), incident_details.get("title"),
         wrapper.get("incident_title"), wrapper.get("incident_name"),
+        data.get("title"), data.get("name"),
     ))
     alert_title = _title_clean(_first(
         primary_alert.get("title"),
@@ -253,6 +254,7 @@ def extract_alert_identity(raw_alert: Any) -> dict[str, Any]:
         "incident_id": _clean(_first(
             incident.get("id"), incident_raw.get("id"), incident_details.get("id"),
             wrapper.get("incident_id"), wrapper.get("incidentId"), wrapper.get("ticket_id"),
+            data.get("id"), data.get("incident_id"),
         )),
         "alert_id": _clean(_first(
             primary_alert.get("id"), primary_alert.get("_id"), primary_alert.get("alert_id"), primary_alert.get("alertId"),

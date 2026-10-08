@@ -1575,7 +1575,9 @@ def detect_input_format(data: Any) -> str:
     keys = set(data.keys())
     if {"incident_raw", "alerts_full_raw"}.issubset(keys):
         return "full_incident_export"
-    if {"incident", "alerts"}.issubset(keys):
+    if {"incident", "alerts"}.issubset(keys) or (
+        isinstance(data.get("alerts"), list) and data.get("alerts") and {"id", "title", "alertCount"}.intersection(keys)
+    ):
         return "incident_with_alerts"
     if {"incident_details", "alerts"}.issubset(keys):
         return "incident_details_with_alerts"
@@ -1621,7 +1623,7 @@ def prepare_incident_and_alerts(data: Any) -> Tuple[Dict[str, Any], List[Dict[st
         if not isinstance(alerts, list) or not alerts:
             alerts = data.get("alerts_extracted", [])
     elif input_format == "incident_with_alerts":
-        incident = data.get("incident") if isinstance(data.get("incident"), dict) else {}
+        incident = data.get("incident") if isinstance(data.get("incident"), dict) else data
         alerts = data.get("alerts") if isinstance(data.get("alerts"), list) else []
     elif input_format == "incident_details_with_alerts":
         incident = data.get("incident_details") if isinstance(data.get("incident_details"), dict) else {}
@@ -2744,6 +2746,12 @@ def build_standard_alert(data: Any, output_dir: str = "outputs") -> Dict[str, An
             all_parsed_events.append(parsed_evt)
 
     selected_alert = max(normalised_alerts, key=severity_sort_score) if normalised_alerts else None
+    if selected_alert and isinstance(selected_alert.get("alert_summary"), dict):
+        total_events = len(all_parsed_events)
+        if total_events > 0:
+            selected_alert["alert_summary"]["selected_alert_raw_event_count"] = selected_alert["alert_summary"].get("raw_event_count", 0)
+            selected_alert["alert_summary"]["raw_event_count"] = total_events
+            selected_alert["alert_summary"]["total_event_count"] = total_events
     selected_index = selected_alert.get("parser_metadata", {}).get("selected_alert_index", 0) if selected_alert else None
     selected_debug = debug_by_alert[selected_index] if isinstance(selected_index, int) and selected_index < len(debug_by_alert) else {}
 
@@ -3111,7 +3119,7 @@ def run_parser_normalisation_for_dashboard(raw_alert: Any, output_dir: str | Pat
         "warnings": parser_summary.get("warnings", []),
         "parser_summary_card": {
             "input_source": "parser_input",
-            "raw_events_retrieved": (normalised.get("alert_summary") or {}).get("raw_event_count", 0),
+            "raw_events_retrieved": result.get("event_count") if result.get("event_count") is not None else (normalised.get("alert_summary") or {}).get("raw_event_count", 0),
             "important_fields_extracted": len(parser_summary.get("important_extracted_fields", {}) or {}),
             "missing_fields": parser_summary.get("missing_important_fields", []),
             "powershell_decode_status": (normalised.get("powershell_analysis") or {}).get("decode_status") or "not_detected",

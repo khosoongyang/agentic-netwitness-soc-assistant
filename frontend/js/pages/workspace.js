@@ -388,10 +388,13 @@ function _poNotObserved(context, flags) {
 // summary sentence — placed directly after the alert fields. The alert's
 // NetWitness severity/risk score are not repeated here: they are the
 // stage's headline assessment (parsingAssessment()).
-function _poParserSummary(na, summaryTextHTML) {
+function _poParserSummary(na, summaryTextHTML, result) {
   const summary = na.alert_summary || {};
   const ids = na.identifiers || {};
   const alertName = summary.alert_name || summary.alert_title;
+  const rawEventCount = (result?.event_count !== undefined && result?.event_count !== null)
+    ? result.event_count
+    : (summary.total_event_count ?? summary.raw_event_count);
   const rows = _poRows([
     ["Alert Name", alertName],
     ["Incident Title", summary.incident_title !== alertName ? summary.incident_title : null],
@@ -404,7 +407,7 @@ function _poParserSummary(na, summaryTextHTML) {
     ["Event Type", summary.event_type],
     ["Primary Action", summary.primary_action],
     ["Observed Actions", summary.observed_actions],
-    ["Raw Event Count", summary.raw_event_count],
+    ["Raw Event Count", rawEventCount],
     ["Session IDs", ids.session_ids, (v) => _poValue(v, { mono: true })],
     ["Event Source IDs", ids.event_source_ids, (v) => _poValue(v, { mono: true })],
     ["Record IDs", ids.record_ids, (v) => _poValue(v, { mono: true })],
@@ -592,7 +595,7 @@ function parsingOverview(result) {
   ].filter(Boolean).join("");
   return `<div class="parsing-overview">
     ${parsingAssessment(normalisedAlert, context)}
-    ${_poParserSummary(normalisedAlert, summaryTextHTML)}
+    ${_poParserSummary(normalisedAlert, summaryTextHTML, result)}
     ${detailCards ? `<div class="integration-grid">${detailCards}</div>` : ""}
   </div>`;
 }

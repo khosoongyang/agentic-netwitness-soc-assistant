@@ -639,6 +639,15 @@ def get_case_detail(
 
 def get_case_raw(case_id: str, *, database_path: str | Path | None = None) -> dict[str, Any]:
     row = _get_case_row(case_id, database_path)
+    run_id = row.get("run_id")
+    if run_id:
+        try:
+            from workflow.engine import load_raw_incident_for_run
+            enriched = load_raw_incident_for_run(case_id, run_id)
+            if enriched and isinstance(enriched, dict):
+                return {"case_id": case_id, "incident": enriched}
+        except Exception:
+            pass
     return {"case_id": case_id, "incident": _json_object(row.get("raw_json"))}
 
 

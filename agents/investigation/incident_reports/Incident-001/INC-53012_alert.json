@@ -1,0 +1,1499 @@
+{
+  "incident_id": "INC-53012",
+  "classification": {
+    "alert_type": "Suspicious Outbound Network Activity (Unverified)",
+    "severity": "HIGH",
+    "triage_risk_rating": {
+      "likelihood_initiation": "High",
+      "likelihood_occurrence": "High",
+      "likelihood_adverse_impact": "High",
+      "overall_risk": "High",
+      "rationale": "High-risk NetWitness endpoint alert (risk score 70) shows suspicious executable splunkd.exe running from user-writable C:\\Users\\Public\\ with network activity between internal hosts and IOC matches for untrusted binary execution, making initiation, recurrence, and impact highly likely."
+    },
+    "source_risk_score": 70
+  },
+  "incident_details": {
+    "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
+    "timestamp": "2025-07-25T11:41:19+00:00",
+    "description": "NetWitness generated a high-risk endpoint alert for possible autorun abuse involving splunkd.exe executing from the user-writable C:\\Users\\Public\\ path, which is suspicious for unauthorized persistence or masquerading. The host also initiated internal network communication between 192.168.10.204 and 192.168.10.202, but no command line, protocol, or destination context is available to confirm active malware or exfiltration.",
+    "mitre_att&ck": {
+      "tactic": "Persistence",
+      "technique": "T1547.001 Registry Run Keys / Startup Folder"
+    }
+  },
+  "network_indicators": {
+    "source": {
+      "ip_address": "192.168.10.204",
+      "hostname": "KELLYWANG"
+    },
+    "destination": {
+      "ip_address": "192.168.10.202",
+      "port": "8888"
+    }
+  },
+  "endpoint_indicators": {
+    "user": "KELLYWANG\\Kelly Wang",
+    "hostname": "KELLYWANG",
+    "operating_system": "windows",
+    "files": {
+      "filename": [
+        "splunkd.exe",
+        "Password_Reset.hta",
+        "powershell.exe"
+      ],
+      "filepath": [
+        "['C:\\\\Users\\\\Public\\\\']",
+        "C:\\Users\\Public\\"
+      ],
+      "hashes": [
+        "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "6bb54b2d7a3d63578559239a79700ea3",
+        "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+        "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+        "9785001b0dcf755eddb8af294a373c0b87b2498660f724e76c4d53f9c217c7a3"
+      ]
+    }
+  },
+  "alerts": [
+    {
+      "alert_id": "alert_1",
+      "title": "Security Alert",
+      "timestamp": "2025-07-25T11:41:18.027000+00:00",
+      "severity": "Medium",
+      "user": "KELLYWANG\\Kelly Wang",
+      "hostname": "KELLYWANG",
+      "source_ip": "192.168.10.204",
+      "destination_ip": "192.168.10.202"
+    },
+    {
+      "alert_id": "alert_2",
+      "title": "Security Alert",
+      "timestamp": "2025-07-25T11:41:18.030000+00:00",
+      "severity": "Medium",
+      "user": "KELLYWANG\\Kelly Wang",
+      "hostname": "KELLYWANG",
+      "source_ip": "192.168.10.204",
+      "destination_ip": "192.168.10.202"
+    },
+    {
+      "alert_id": "alert_3",
+      "title": "Security Alert",
+      "timestamp": "2025-07-25T11:41:18.082000+00:00",
+      "severity": "Medium",
+      "user": "KELLYWANG\\Kelly Wang",
+      "hostname": "KELLYWANG",
+      "source_ip": "192.168.10.204",
+      "destination_ip": "192.168.10.202"
+    },
+    {
+      "alert_id": "alert_4",
+      "title": "Security Alert",
+      "timestamp": "2025-07-25T11:41:18.124000+00:00",
+      "severity": "Medium",
+      "user": "KELLYWANG\\Kelly Wang",
+      "hostname": "KELLYWANG",
+      "source_ip": "192.168.10.204",
+      "destination_ip": "192.168.10.202"
+    },
+    {
+      "alert_id": "alert_5",
+      "title": "Security Alert",
+      "timestamp": "2025-07-25T11:41:18.123000+00:00",
+      "severity": "Medium",
+      "user": "KELLYWANG\\Kelly Wang",
+      "hostname": "KELLYWANG",
+      "source_ip": "192.168.10.204",
+      "destination_ip": "192.168.10.202"
+    },
+    {
+      "alert_id": "alert_6",
+      "title": "Security Alert",
+      "timestamp": "2025-07-25T11:41:18.126000+00:00",
+      "severity": "Medium",
+      "user": "KELLYWANG\\Kelly Wang",
+      "hostname": "KELLYWANG",
+      "source_ip": "192.168.10.204",
+      "destination_ip": "192.168.10.202"
+    }
+  ],
+  "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Medium\nRisk Score: 60\nRisk Reasons:\n- AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.\n- AlienVault OTX found 3 related pulse(s) for 9785001b0dcf755eddb8af294a373c0b87b2498660f724e76c4d53f9c217c7a3.\n- AlienVault OTX found 3 related pulse(s) for 2e5a8590cf6848968fc23de3fa1e25f1.",
+  "threat_intelligence_enrichment": {
+    "iocs": {
+      "possible_file_name": "splunkd.exe",
+      "file_hash": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+      "powershell_analysis": {
+        "encoded_command_present": false,
+        "powershell_indicator_present": false,
+        "decode_status": "not_found",
+        "encoded_command_count": 0,
+        "decoded_command_count": 0,
+        "decoded_command_summary": "No decodable PowerShell EncodedCommand content was available in the parsed telemetry.",
+        "risk_assessment": {
+          "risk_level": "Low",
+          "risk_score": 0
+        }
+      },
+      "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available.",
+      "file_hashes": [
+        "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "6bb54b2d7a3d63578559239a79700ea3",
+        "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+        "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+        "9785001b0dcf755eddb8af294a373c0b87b2498660f724e76c4d53f9c217c7a3",
+        "2e5a8590cf6848968fc23de3fa1e25f1"
+      ]
+    },
+    "virustotal": {
+      "file_hash": {
+        "status": "completed",
+        "indicator": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "malicious": 0,
+        "suspicious": 0,
+        "harmless": 0,
+        "undetected": 71,
+        "reputation": -16,
+        "meaningful_name": "PowerShell.EXE",
+        "first_submission_date": 1706134374,
+        "last_analysis_date": 1791307128,
+        "timeout": 0,
+        "tags": [
+          "detect-debug-environment",
+          "long-sleeps",
+          "known-distributor",
+          "peexe",
+          "legit"
+        ],
+        "community_votes": {
+          "harmless": 2,
+          "malicious": 8
+        },
+        "detecting_engine_count": 0,
+        "type_description": "Win32 EXE",
+        "size": 435712
+      },
+      "file_hash_results": [
+        {
+          "status": "completed",
+          "indicator": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 71,
+          "reputation": -16,
+          "meaningful_name": "PowerShell.EXE",
+          "first_submission_date": 1706134374,
+          "last_analysis_date": 1791307128,
+          "timeout": 0,
+          "tags": [
+            "detect-debug-environment",
+            "long-sleeps",
+            "known-distributor",
+            "peexe",
+            "legit"
+          ],
+          "community_votes": {
+            "harmless": 2,
+            "malicious": 8
+          },
+          "detecting_engine_count": 0,
+          "type_description": "Win32 EXE",
+          "size": 435712
+        },
+        {
+          "status": "completed",
+          "indicator": "6bb54b2d7a3d63578559239a79700ea3",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 71,
+          "reputation": -16,
+          "meaningful_name": "PowerShell.EXE",
+          "first_submission_date": 1706134374,
+          "last_analysis_date": 1791307128,
+          "timeout": 0,
+          "tags": [
+            "detect-debug-environment",
+            "long-sleeps",
+            "known-distributor",
+            "peexe",
+            "legit"
+          ],
+          "community_votes": {
+            "harmless": 2,
+            "malicious": 8
+          },
+          "detecting_engine_count": 0,
+          "type_description": "Win32 EXE",
+          "size": 435712
+        },
+        {
+          "status": "completed",
+          "indicator": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+          "malicious": 48,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 22,
+          "reputation": 0,
+          "meaningful_name": "sandcat.go-windows",
+          "first_submission_date": 1698294719,
+          "last_analysis_date": 1787235084,
+          "timeout": 0,
+          "tags": [
+            "peexe",
+            "checks-network-adapters",
+            "64bits"
+          ],
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "top_detections": [
+            {
+              "engine": "Bkav",
+              "category": "malicious",
+              "result": "W32.Malware.6F494609"
+            },
+            {
+              "engine": "Lionic",
+              "category": "malicious",
+              "result": "Trojan.Win32.Sandcat.m!c"
+            },
+            {
+              "engine": "MicroWorld-eScan",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            },
+            {
+              "engine": "CTX",
+              "category": "malicious",
+              "result": "exe.trojan.sandcat"
+            },
+            {
+              "engine": "Skyhigh",
+              "category": "malicious",
+              "result": "BehavesLike.Win64.Generic.vh"
+            },
+            {
+              "engine": "ALYac",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            },
+            {
+              "engine": "Malwarebytes",
+              "category": "malicious",
+              "result": "HackTool.Caldera"
+            },
+            {
+              "engine": "VIPRE",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            }
+          ],
+          "detecting_engine_count": 48,
+          "type_description": "Win32 EXE",
+          "size": 6466560,
+          "popular_threat_label": "trojan.sandcat/goldera",
+          "popular_threat_categories": [
+            "trojan",
+            "pua",
+            "hacktool"
+          ],
+          "popular_threat_names": [
+            "sandcat",
+            "goldera",
+            "caldera"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+          "malicious": 48,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 22,
+          "reputation": 0,
+          "meaningful_name": "sandcat.go-windows",
+          "first_submission_date": 1698294719,
+          "last_analysis_date": 1787235084,
+          "timeout": 0,
+          "tags": [
+            "peexe",
+            "checks-network-adapters",
+            "64bits"
+          ],
+          "community_votes": {
+            "harmless": 0,
+            "malicious": 0
+          },
+          "top_detections": [
+            {
+              "engine": "Bkav",
+              "category": "malicious",
+              "result": "W32.Malware.6F494609"
+            },
+            {
+              "engine": "Lionic",
+              "category": "malicious",
+              "result": "Trojan.Win32.Sandcat.m!c"
+            },
+            {
+              "engine": "MicroWorld-eScan",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            },
+            {
+              "engine": "CTX",
+              "category": "malicious",
+              "result": "exe.trojan.sandcat"
+            },
+            {
+              "engine": "Skyhigh",
+              "category": "malicious",
+              "result": "BehavesLike.Win64.Generic.vh"
+            },
+            {
+              "engine": "ALYac",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            },
+            {
+              "engine": "Malwarebytes",
+              "category": "malicious",
+              "result": "HackTool.Caldera"
+            },
+            {
+              "engine": "VIPRE",
+              "category": "malicious",
+              "result": "Generic.Goldera.A.4FD8CBA6"
+            }
+          ],
+          "detecting_engine_count": 48,
+          "type_description": "Win32 EXE",
+          "size": 6466560,
+          "popular_threat_label": "trojan.sandcat/goldera",
+          "popular_threat_categories": [
+            "trojan",
+            "pua",
+            "hacktool"
+          ],
+          "popular_threat_names": [
+            "sandcat",
+            "goldera",
+            "caldera"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "9785001b0dcf755eddb8af294a373c0b87b2498660f724e76c4d53f9c217c7a3",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 71,
+          "reputation": -28,
+          "meaningful_name": "PowerShell.EXE",
+          "first_submission_date": 1706039887,
+          "last_analysis_date": 1791376453,
+          "timeout": 0,
+          "tags": [
+            "64bits",
+            "known-distributor",
+            "long-sleeps",
+            "detect-debug-environment",
+            "legit",
+            "peexe"
+          ],
+          "community_votes": {
+            "harmless": 22,
+            "malicious": 35
+          },
+          "detecting_engine_count": 0,
+          "type_description": "Win32 EXE",
+          "size": 455680
+        },
+        {
+          "status": "completed",
+          "indicator": "2e5a8590cf6848968fc23de3fa1e25f1",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 71,
+          "reputation": -28,
+          "meaningful_name": "PowerShell.EXE",
+          "first_submission_date": 1706039887,
+          "last_analysis_date": 1791376453,
+          "timeout": 0,
+          "tags": [
+            "64bits",
+            "known-distributor",
+            "long-sleeps",
+            "detect-debug-environment",
+            "legit",
+            "peexe"
+          ],
+          "community_votes": {
+            "harmless": 22,
+            "malicious": 35
+          },
+          "detecting_engine_count": 0,
+          "type_description": "Win32 EXE",
+          "size": 455680
+        }
+      ]
+    },
+    "alienvault_otx": {
+      "otx_results": [
+        {
+          "status": "completed",
+          "indicator": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+          "indicator_type": "file",
+          "pulse_count": 1,
+          "related_pulses": [
+            "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing"
+          ],
+          "sections_available": [
+            "general",
+            "analysis"
+          ],
+          "pulses": [
+            {
+              "name": "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing",
+              "created": "2026-05-15T23:01:06.396000",
+              "modified": "2026-05-15T23:01:06.396000",
+              "tags": [
+                "brazil",
+                "banking-trojan",
+                "delphi",
+                "mshta",
+                "dga"
+              ],
+              "malware_families": [
+                "Grandoreiro",
+                "NewGrandoreiro"
+              ],
+              "adversary": "TA558",
+              "attack_ids": [
+                "T1566",
+                "T1055",
+                "T1568.002"
+              ],
+              "tlp": "white"
+            }
+          ],
+          "pulse_tags": [
+            "brazil",
+            "banking-trojan",
+            "delphi",
+            "mshta",
+            "dga",
+            "pga",
+            "lolbin",
+            "phishing",
+            "c2",
+            "python"
+          ],
+          "malware_families": [
+            "Grandoreiro",
+            "NewGrandoreiro",
+            "Newgrandoreiro"
+          ],
+          "adversaries": [
+            "TA558"
+          ],
+          "attack_ids": [
+            "T1566",
+            "T1055",
+            "T1568.002"
+          ],
+          "latest_pulse_modified": "2026-05-15T23:01:06.396000"
+        },
+        {
+          "status": "completed",
+          "indicator": "6bb54b2d7a3d63578559239a79700ea3",
+          "indicator_type": "file",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+          "indicator_type": "file",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+          "indicator_type": "file",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "9785001b0dcf755eddb8af294a373c0b87b2498660f724e76c4d53f9c217c7a3",
+          "indicator_type": "file",
+          "pulse_count": 3,
+          "related_pulses": [
+            "checking hashes for active process",
+            "hashing the main executable in every running process",
+            "checking laptop (active processes)"
+          ],
+          "sections_available": [
+            "general",
+            "analysis"
+          ],
+          "pulses": [
+            {
+              "name": "checking hashes for active process",
+              "created": "2025-03-08T17:50:19.303000",
+              "modified": "2025-05-28T16:43:02.723000",
+              "tlp": "white"
+            },
+            {
+              "name": "hashing the main executable in every running process",
+              "created": "2024-09-18T14:21:55.008000",
+              "modified": "2024-09-18T14:21:55.008000",
+              "tlp": "white"
+            },
+            {
+              "name": "checking laptop (active processes)",
+              "created": "2024-06-18T16:20:13.937000",
+              "modified": "2024-06-18T16:20:13.937000",
+              "tlp": "white"
+            }
+          ],
+          "latest_pulse_modified": "2025-05-28T16:43:02.723000"
+        },
+        {
+          "status": "completed",
+          "indicator": "2e5a8590cf6848968fc23de3fa1e25f1",
+          "indicator_type": "file",
+          "pulse_count": 3,
+          "related_pulses": [
+            "checking hashes for active process",
+            "hashing the main executable in every running process",
+            "checking laptop (active processes)"
+          ],
+          "sections_available": [
+            "general",
+            "analysis"
+          ],
+          "pulses": [
+            {
+              "name": "checking hashes for active process",
+              "created": "2025-03-08T17:50:19.303000",
+              "modified": "2025-05-28T16:43:02.723000",
+              "tlp": "white"
+            },
+            {
+              "name": "hashing the main executable in every running process",
+              "created": "2024-09-18T14:21:55.008000",
+              "modified": "2024-09-18T14:21:55.008000",
+              "tlp": "white"
+            },
+            {
+              "name": "checking laptop (active processes)",
+              "created": "2024-06-18T16:20:13.937000",
+              "modified": "2024-06-18T16:20:13.937000",
+              "tlp": "white"
+            }
+          ],
+          "latest_pulse_modified": "2025-05-28T16:43:02.723000"
+        }
+      ]
+    },
+    "notes": [
+      "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
+    ],
+    "indicators": [
+      {
+        "value": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "type": "hash",
+        "origins": [
+          "Alert field",
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 71,
+            "reputation": -16,
+            "tags": [
+              "detect-debug-environment",
+              "long-sleeps",
+              "known-distributor",
+              "peexe",
+              "legit"
+            ],
+            "community_votes": {
+              "harmless": 2,
+              "malicious": 8
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 71,
+            "last_analysed_at": "2026-10-06T17:18:48+00:00",
+            "meaningful_name": "PowerShell.EXE",
+            "type_description": "Win32 EXE",
+            "first_submitted_at": "2024-01-24T22:12:54+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 1,
+            "related_pulses": [
+              "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing"
+            ],
+            "pulses": [
+              {
+                "name": "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing",
+                "created": "2026-05-15T23:01:06.396000",
+                "modified": "2026-05-15T23:01:06.396000",
+                "tags": [
+                  "brazil",
+                  "banking-trojan",
+                  "delphi",
+                  "mshta",
+                  "dga"
+                ],
+                "malware_families": [
+                  "Grandoreiro",
+                  "NewGrandoreiro"
+                ],
+                "adversary": "TA558",
+                "attack_ids": [
+                  "T1566",
+                  "T1055",
+                  "T1568.002"
+                ],
+                "tlp": "white"
+              }
+            ],
+            "pulse_tags": [
+              "brazil",
+              "banking-trojan",
+              "delphi",
+              "mshta",
+              "dga",
+              "pga",
+              "lolbin",
+              "phishing",
+              "c2",
+              "python"
+            ],
+            "malware_families": [
+              "Grandoreiro",
+              "NewGrandoreiro",
+              "Newgrandoreiro"
+            ],
+            "adversaries": [
+              "TA558"
+            ],
+            "attack_ids": [
+              "T1566",
+              "T1055",
+              "T1568.002"
+            ],
+            "latest_pulse_modified": "2026-05-15T23:01:06.396000"
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "PowerShell.EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2024-01-24T22:12:54+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-06T17:18:48+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2026-05-15T23:01:06.396000",
+            "source": "AlienVault OTX"
+          }
+        ],
+        "hash_type": "sha256"
+      },
+      {
+        "value": "6bb54b2d7a3d63578559239a79700ea3",
+        "type": "hash",
+        "origins": [
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 71,
+            "reputation": -16,
+            "tags": [
+              "detect-debug-environment",
+              "long-sleeps",
+              "known-distributor",
+              "peexe",
+              "legit"
+            ],
+            "community_votes": {
+              "harmless": 2,
+              "malicious": 8
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 71,
+            "last_analysed_at": "2026-10-06T17:18:48+00:00",
+            "meaningful_name": "PowerShell.EXE",
+            "type_description": "Win32 EXE",
+            "first_submitted_at": "2024-01-24T22:12:54+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "PowerShell.EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2024-01-24T22:12:54+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-06T17:18:48+00:00",
+            "source": "VirusTotal"
+          }
+        ],
+        "hash_type": "md5"
+      },
+      {
+        "value": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+        "type": "hash",
+        "origins": [
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 48,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 22,
+            "reputation": 0,
+            "tags": [
+              "peexe",
+              "checks-network-adapters",
+              "64bits"
+            ],
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "top_detections": [
+              {
+                "engine": "Bkav",
+                "category": "malicious",
+                "result": "W32.Malware.6F494609"
+              },
+              {
+                "engine": "Lionic",
+                "category": "malicious",
+                "result": "Trojan.Win32.Sandcat.m!c"
+              },
+              {
+                "engine": "MicroWorld-eScan",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              },
+              {
+                "engine": "CTX",
+                "category": "malicious",
+                "result": "exe.trojan.sandcat"
+              },
+              {
+                "engine": "Skyhigh",
+                "category": "malicious",
+                "result": "BehavesLike.Win64.Generic.vh"
+              },
+              {
+                "engine": "ALYac",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              },
+              {
+                "engine": "Malwarebytes",
+                "category": "malicious",
+                "result": "HackTool.Caldera"
+              },
+              {
+                "engine": "VIPRE",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              }
+            ],
+            "detecting_engine_count": 48,
+            "analysed_vendors": 70,
+            "last_analysed_at": "2026-08-20T14:11:24+00:00",
+            "meaningful_name": "sandcat.go-windows",
+            "type_description": "Win32 EXE",
+            "popular_threat_label": "trojan.sandcat/goldera",
+            "popular_threat_categories": [
+              "trojan",
+              "pua",
+              "hacktool"
+            ],
+            "popular_threat_names": [
+              "sandcat",
+              "goldera",
+              "caldera"
+            ],
+            "first_submitted_at": "2023-10-26T04:31:59+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "sandcat.go-windows",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "popular_threat_label",
+            "label": "Threat label",
+            "value": "trojan.sandcat/goldera",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "popular_threat_names",
+            "label": "Malware family names",
+            "value": "sandcat, goldera, caldera",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2023-10-26T04:31:59+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-08-20T14:11:24+00:00",
+            "source": "VirusTotal"
+          }
+        ],
+        "hash_type": "sha256"
+      },
+      {
+        "value": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+        "type": "hash",
+        "origins": [
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 48,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 22,
+            "reputation": 0,
+            "tags": [
+              "peexe",
+              "checks-network-adapters",
+              "64bits"
+            ],
+            "community_votes": {
+              "harmless": 0,
+              "malicious": 0
+            },
+            "top_detections": [
+              {
+                "engine": "Bkav",
+                "category": "malicious",
+                "result": "W32.Malware.6F494609"
+              },
+              {
+                "engine": "Lionic",
+                "category": "malicious",
+                "result": "Trojan.Win32.Sandcat.m!c"
+              },
+              {
+                "engine": "MicroWorld-eScan",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              },
+              {
+                "engine": "CTX",
+                "category": "malicious",
+                "result": "exe.trojan.sandcat"
+              },
+              {
+                "engine": "Skyhigh",
+                "category": "malicious",
+                "result": "BehavesLike.Win64.Generic.vh"
+              },
+              {
+                "engine": "ALYac",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              },
+              {
+                "engine": "Malwarebytes",
+                "category": "malicious",
+                "result": "HackTool.Caldera"
+              },
+              {
+                "engine": "VIPRE",
+                "category": "malicious",
+                "result": "Generic.Goldera.A.4FD8CBA6"
+              }
+            ],
+            "detecting_engine_count": 48,
+            "analysed_vendors": 70,
+            "last_analysed_at": "2026-08-20T14:11:24+00:00",
+            "meaningful_name": "sandcat.go-windows",
+            "type_description": "Win32 EXE",
+            "popular_threat_label": "trojan.sandcat/goldera",
+            "popular_threat_categories": [
+              "trojan",
+              "pua",
+              "hacktool"
+            ],
+            "popular_threat_names": [
+              "sandcat",
+              "goldera",
+              "caldera"
+            ],
+            "first_submitted_at": "2023-10-26T04:31:59+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 0
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "sandcat.go-windows",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "popular_threat_label",
+            "label": "Threat label",
+            "value": "trojan.sandcat/goldera",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "popular_threat_names",
+            "label": "Malware family names",
+            "value": "sandcat, goldera, caldera",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2023-10-26T04:31:59+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-08-20T14:11:24+00:00",
+            "source": "VirusTotal"
+          }
+        ],
+        "hash_type": "md5"
+      },
+      {
+        "value": "9785001b0dcf755eddb8af294a373c0b87b2498660f724e76c4d53f9c217c7a3",
+        "type": "hash",
+        "origins": [
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 71,
+            "reputation": -28,
+            "tags": [
+              "64bits",
+              "known-distributor",
+              "long-sleeps",
+              "detect-debug-environment",
+              "legit",
+              "peexe"
+            ],
+            "community_votes": {
+              "harmless": 22,
+              "malicious": 35
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 71,
+            "last_analysed_at": "2026-10-07T12:34:13+00:00",
+            "meaningful_name": "PowerShell.EXE",
+            "type_description": "Win32 EXE",
+            "first_submitted_at": "2024-01-23T19:58:07+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 3,
+            "related_pulses": [
+              "checking hashes for active process",
+              "hashing the main executable in every running process",
+              "checking laptop (active processes)"
+            ],
+            "pulses": [
+              {
+                "name": "checking hashes for active process",
+                "created": "2025-03-08T17:50:19.303000",
+                "modified": "2025-05-28T16:43:02.723000",
+                "tlp": "white"
+              },
+              {
+                "name": "hashing the main executable in every running process",
+                "created": "2024-09-18T14:21:55.008000",
+                "modified": "2024-09-18T14:21:55.008000",
+                "tlp": "white"
+              },
+              {
+                "name": "checking laptop (active processes)",
+                "created": "2024-06-18T16:20:13.937000",
+                "modified": "2024-06-18T16:20:13.937000",
+                "tlp": "white"
+              }
+            ],
+            "latest_pulse_modified": "2025-05-28T16:43:02.723000"
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "PowerShell.EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2024-01-23T19:58:07+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-07T12:34:13+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2025-05-28T16:43:02.723000",
+            "source": "AlienVault OTX"
+          }
+        ],
+        "hash_type": "sha256"
+      },
+      {
+        "value": "2e5a8590cf6848968fc23de3fa1e25f1",
+        "type": "hash",
+        "origins": [
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 71,
+            "reputation": -28,
+            "tags": [
+              "64bits",
+              "known-distributor",
+              "long-sleeps",
+              "detect-debug-environment",
+              "legit",
+              "peexe"
+            ],
+            "community_votes": {
+              "harmless": 22,
+              "malicious": 35
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 71,
+            "last_analysed_at": "2026-10-07T12:34:13+00:00",
+            "meaningful_name": "PowerShell.EXE",
+            "type_description": "Win32 EXE",
+            "first_submitted_at": "2024-01-23T19:58:07+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 3,
+            "related_pulses": [
+              "checking hashes for active process",
+              "hashing the main executable in every running process",
+              "checking laptop (active processes)"
+            ],
+            "pulses": [
+              {
+                "name": "checking hashes for active process",
+                "created": "2025-03-08T17:50:19.303000",
+                "modified": "2025-05-28T16:43:02.723000",
+                "tlp": "white"
+              },
+              {
+                "name": "hashing the main executable in every running process",
+                "created": "2024-09-18T14:21:55.008000",
+                "modified": "2024-09-18T14:21:55.008000",
+                "tlp": "white"
+              },
+              {
+                "name": "checking laptop (active processes)",
+                "created": "2024-06-18T16:20:13.937000",
+                "modified": "2024-06-18T16:20:13.937000",
+                "tlp": "white"
+              }
+            ],
+            "latest_pulse_modified": "2025-05-28T16:43:02.723000"
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "PowerShell.EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2024-01-23T19:58:07+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-07T12:34:13+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2025-05-28T16:43:02.723000",
+            "source": "AlienVault OTX"
+          }
+        ],
+        "hash_type": "md5"
+      },
+      {
+        "value": "192.168.10.204",
+        "type": "ip",
+        "roles": [
+          "source"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Alert field",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "192.168.10.202",
+        "type": "ip",
+        "roles": [
+          "destination"
+        ],
+        "origins": [
+          "Parsed network indicators",
+          "Alert field",
+          "Parsed IOC summary",
+          "Related IOCs",
+          "NetWitness alert metadata"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "private",
+        "status_reason": "Private/internal address",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "['kellywang']",
+        "type": "domain",
+        "origins": [
+          "Parsed user/host indicators",
+          "Parsed IOC summary",
+          "Alert field",
+          "Related IOCs"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "internal_hostname",
+        "status_reason": "Internal hostname — no public domain suffix",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "splunkd.exe",
+        "type": "file_name",
+        "origins": [
+          "Parsed file indicators",
+          "Parsed IOC summary",
+          "Alert field",
+          "Related IOCs"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "unsupported_type",
+        "status_reason": "Not enriched — file reputation lookups require a file hash",
+        "providers_queried": 0,
+        "providers_answered": 0
+      },
+      {
+        "value": "kellywang",
+        "type": "domain",
+        "origins": [
+          "Parsed user/host indicators",
+          "Parsed IOC summary",
+          "Related IOCs"
+        ],
+        "eligible": false,
+        "status": "excluded",
+        "status_category": "internal_hostname",
+        "status_reason": "Internal hostname — no public domain suffix",
+        "providers_queried": 0,
+        "providers_answered": 0
+      }
+    ],
+    "coverage": {
+      "extracted": 11,
+      "eligible": 6,
+      "enriched": 6,
+      "excluded": 5,
+      "skipped": 0,
+      "skipped_by_limit": 0,
+      "provider_requests": 12,
+      "limit_per_type": 10,
+      "by_type": {
+        "hash": {
+          "extracted": 6,
+          "enriched": 6,
+          "excluded": 0,
+          "skipped": 0
+        },
+        "ip": {
+          "extracted": 2,
+          "enriched": 0,
+          "excluded": 2,
+          "skipped": 0
+        },
+        "domain": {
+          "extracted": 2,
+          "enriched": 0,
+          "excluded": 2,
+          "skipped": 0
+        },
+        "file_name": {
+          "extracted": 1,
+          "enriched": 0,
+          "excluded": 1,
+          "skipped": 0
+        }
+      }
+    },
+    "provider_coverage": {
+      "virustotal": {
+        "label": "VirusTotal",
+        "configured": true,
+        "state": "available",
+        "applicable": 6,
+        "queried": 6,
+        "returned_data": 6,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      },
+      "abuseipdb": {
+        "label": "AbuseIPDB",
+        "configured": true,
+        "state": "not_applicable",
+        "applicable": 0,
+        "queried": 0,
+        "returned_data": 0,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      },
+      "otx": {
+        "label": "AlienVault OTX",
+        "configured": true,
+        "state": "available",
+        "applicable": 6,
+        "queried": 6,
+        "returned_data": 6,
+        "not_found": 0,
+        "failed": 0,
+        "not_configured": 0
+      }
+    }
+  },
+  "enrichment_risk_score": 60,
+  "enrichment_risk_level": "Medium",
+  "enrichment_risk_reasons": [
+    "AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.",
+    "AlienVault OTX found 3 related pulse(s) for 9785001b0dcf755eddb8af294a373c0b87b2498660f724e76c4d53f9c217c7a3.",
+    "AlienVault OTX found 3 related pulse(s) for 2e5a8590cf6848968fc23de3fa1e25f1."
+  ]
+}
