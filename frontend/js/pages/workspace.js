@@ -1782,7 +1782,7 @@ function _gapProfileTitle(instruction, findings) {
   return instruction.length > 50 ? instruction.slice(0, 48) + "…" : instruction;
 }
 
-function _extractPivotsForStep(step, result) {
+function _extractPivotsForStep(step, result, usedPivots = new Set()) {
   const findings = step?.findings || "";
   const allPivots = [
     ...(Array.isArray(result?.suggested_pivots) ? result.suggested_pivots : []),
@@ -1828,12 +1828,24 @@ function _extractPivotsForStep(step, result) {
     stepPivots.push(...cleanFiles, ...cleanIps, ...otherPivots);
   }
 
-  const filtered = [...new Set(stepPivots)].filter((p) => !/^(?:inc|alert)-\d+/i.test(p));
-  if (!filtered.length) {
-    const fallback = allPivots.filter((p) => !/^(?:inc|alert)-\d+/i.test(p));
-    filtered.push(...fallback.slice(0, 3));
+  // Filter out incident IDs like INC-53033 and any pivot that has already been recommended in an earlier step
+  const candidates = [...new Set(stepPivots)]
+    .filter((p) => !/^(?:inc|alert)-\d+/i.test(p))
+    .filter((p) => !usedPivots.has(p));
+
+  let chosen = candidates.slice(0, 4);
+
+  // If no candidates matched the specific category, check remaining unused general pivots
+  if (!chosen.length) {
+    const fallback = allPivots
+      .filter((p) => !/^(?:inc|alert)-\d+/i.test(p))
+      .filter((p) => !usedPivots.has(p));
+    chosen = fallback.slice(0, 3);
   }
-  return filtered.slice(0, 4);
+
+  // Record chosen pivots so subsequent steps do not repeat them
+  chosen.forEach((p) => usedPivots.add(p));
+  return chosen;
 }
 
 function _generatePivotRecommendation(step, pivots) {
@@ -1886,6 +1898,18 @@ function _generatePivotRecommendation(step, pivots) {
     return `Pivot on indicator ${targets} across host and network logs to gather supporting telemetry.`;
   }
 
+  if (isProcessStep) {
+    return "Search endpoint process creation telemetry and script logs to identify unverified parent-child process relationships.";
+  }
+  if (isNetworkStep) {
+    return "Search network session logs and firewall records to identify unverified inter-host connections.";
+  }
+  if (isIdentityStep) {
+    return "Search authentication and directory logs to verify interactive and remote logon activity.";
+  }
+  if (isExfilStep) {
+    return "Search perimeter egress and proxy logs to identify unusual outbound data transfers.";
+  }
   return "Collect host process execution, authentication records, and network connection logs across the incident timeframe.";
 }
 
@@ -1894,10 +1918,11 @@ function evidenceGapsCard(trace, result) {
   const unmetSteps = trace.filter((s) => s && s.status === "NOT_MET" && !/determine if further investigation/i.test(s.instruction || ""));
   if (!unmetSteps.length) return "";
 
+  const usedPivots = new Set();
   const items = unmetSteps.map((step) => {
     const title = _gapProfileTitle(step.instruction, step.findings);
     const cleanFindings = _cleanGapFindings(step.findings);
-    const pivots = _extractPivotsForStep(step, result);
+    const pivots = _extractPivotsForStep(step, result, usedPivots);
     const recommendation = _generatePivotRecommendation(step, pivots);
 
     const pivotChips = pivots.length
