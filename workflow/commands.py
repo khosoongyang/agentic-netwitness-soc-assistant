@@ -686,25 +686,19 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
                     f"Investigation identity mismatch: {identity_problem}. "
                     "Reject or re-run Investigation for this case.")
         if stage in APPROVAL_STAGES and (awaiting or status == "Awaiting Approval"):
-            decision_actions = (
-                {
-                    "type": "approve", "label": "Approve", "enabled": approve_enabled,
-                    "confirmation": False,
-                    "reason": approve_reason,
-                },
-                {
-                    "type": "reject", "label": "Reject", "enabled": awaiting,
-                    "confirmation": True,
-                    "reason": None if awaiting else "This approval gate is no longer current.",
-                },
-            )
+            approve_action = {
+                "type": "approve",
+                "label": "Approve",
+                "enabled": approve_enabled,
+                "confirmation": False,
+                "reason": approve_reason,
+            }
             if stage == "triage":
-                # Canonical audit R5 (additive): the Triage execution these
-                # decisions apply to; a client may echo it back as
+                # Canonical audit R5 (additive): the Triage execution this
+                # decision applies to; a client may echo it back as
                 # expected_stage_attempt so a stale decision is refused.
-                for action in decision_actions:
-                    action["stage_attempt"] = int(state.get("triage_attempt") or 1)
-            stage_actions.extend(decision_actions)
+                approve_action["stage_attempt"] = int(state.get("triage_attempt") or 1)
+            stage_actions.append(approve_action)
         if processing_stage == stage:
             stage_actions.append({
                 "type": "resume",

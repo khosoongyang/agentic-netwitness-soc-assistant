@@ -153,14 +153,16 @@ def _ui_outcome(response, action):
 # ── 1, 2, 5, 6: current attempt — the displayed attempt is sent and accepted ─
 
 @requires_node
-@pytest.mark.parametrize("action,decision", [("approve", "approved"), ("reject", "rejected")])
+# Reject is no longer offered as a stage action (d9c5d6d), so only Approve is
+# served with the displayed attempt.
+@pytest.mark.parametrize("action,decision", [("approve", "approved")])
 def test_current_attempt_decision_sends_and_binds_the_displayed_attempt(client, action, decision):
     run = _new_run()
     _execute_triage(run)
     _rerun_triage(run)                                       # current attempt is 2
     stage = _displayed_stage(client)
     shown = {a["type"]: a["stage_attempt"] for a in stage["actions"] if a["type"] in ("approve", "reject")}
-    assert shown == {"approve": 2, "reject": 2}              # served by /workflow
+    assert shown == {"approve": 2}                           # served by /workflow
     path, body = _build(action, stage)
     assert path == f"/api/cases/{CASE}/approvals/triage"
     expected_body = {"decision": action, "analyst": "alice",
@@ -187,7 +189,7 @@ def test_first_attempt_approval_sends_attempt_1(client):
 # ── 3, 4: stale view (attempt 1 displayed, backend now at attempt 2) ───────
 
 @requires_node
-@pytest.mark.parametrize("action", ["approve", "reject"])
+@pytest.mark.parametrize("action", ["approve"])
 def test_stale_view_decision_is_refused_and_not_shown_as_success(client, action):
     run = _new_run()
     _execute_triage(run)

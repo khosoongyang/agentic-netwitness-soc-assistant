@@ -2113,9 +2113,6 @@ def build_investigation_context_brief(triage_result: dict, incident: dict, alert
     if not parsing_result:
         dq_lines.append("Parsing result UNAVAILABLE -- normalised telemetry could not be obtained.")
     else:
-        conf = parsing_result.get("parser_confidence")
-        if conf:
-            dq_lines.append(f"Parser confidence: {conf}")
         pw, more_pw = _brief_list(parsing_result.get("warnings"), L["parsing_warnings"])
         if pw:
             dq_lines.append("Parsing warnings: " + "; ".join(map(str, pw)) + (f" (+{more_pw} more)" if more_pw else ""))
@@ -3776,6 +3773,7 @@ def run_investigation(incident_id: str, timeout: int = 600,
         result["severity_justification"] = agent_output.severity_justification
         result["confidence_justification"] = agent_output.confidence_justification
         result["execution_trace"] = [step.model_dump() for step in agent_output.execution_trace]
+        result["suggested_pivots"] = getattr(agent_output, "suggested_pivots", []) or []
     if result["status"] == "completed_limited":
         result["missing_evidence"] = ["Final analysis report was not generated."]
     _annotate_severity_divergence(result, triage_classification)
@@ -4626,7 +4624,6 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
             "selected_alert_id": parsing_result.get("selected_alert_id"),
             "status": parsing_result.get("status"),
             "summary": parsing_result.get("summary"),
-            "parser_confidence": parsing_result.get("parser_confidence"),
             "recommended_next_action": parsing_result.get("recommended_next_action"),
             "important_extracted_fields": parsing_result.get("important_extracted_fields"),
             "missing_important_fields": parsing_result.get("missing_important_fields"),
@@ -4666,8 +4663,7 @@ def run_until_triage_approval(incident: dict, *, use_mock_triage: bool = False,
 
     ctx["stages"]["parsing"] = "completed"
     wss.set_parsing_status(inc_id, run_id, "Complete")
-    _emit("phase_complete", "Parsing and Normalisation",
-          parsing_result.get("parser_confidence") or "")
+    _emit("phase_complete", "Parsing and Normalisation", "")
 
     if parsing_only:
         # Parsing is a discrete case-page action. Do not mark Triage as
@@ -5252,8 +5248,6 @@ def run_investigation_stage(incident_id: str, run_id: str) -> dict:
         triage_cls = ticket.get("classification") or state.get("severity") or "UNRATED"
         alert_list = incident.get("alerts") or (incident.get("alertMeta") or {}).get("AlertTitles") or []
         alert_count = max(len(alert_list), 1)
-        progress_note = f"Ingested {alert_count} alert log(s) for incident {incident_id} (classified as {triage_cls}) — Investigation processing..."
-        set_worker_progress_note(incident_id, run_id, progress_note)
 
         _log("INVESTIGATION", f"running investigation agent for {incident_id} ({alert_count} alerts, {triage_cls})…")
         inv_result = investigate_with_feedback(

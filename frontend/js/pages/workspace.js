@@ -267,7 +267,7 @@ function findings(workspace, stage) {
 
 // One action bar for every stage (see ../stageContinue.js for the labels and
 // the Continue rule): [Run/Re-run <stage>] [Continue to <next stage>] on the
-// left, [Reject <stage>] [Approve <stage>] on the right while a gate is
+// left, [Approve <stage>] on the right while a gate is
 // awaiting a decision. Every button keeps its backend action's enabled state
 // and reason; Continue is enabled only while the NEXT stage's `start` action
 // is (i.e. the backend has unlocked it). `footer` renders the bar as the
@@ -285,7 +285,7 @@ function stageActionButtons(stage, workflow, { footer = false } = {}) {
 }
 
 // Continue = navigation, Run = execution. The stage's own buttons (Run/
-// Re-run/Approve/Reject/Resume) go to onAction(type, stage); Continue only
+// Re-run/Approve/Resume) go to onAction(type, stage); Continue only
 // calls onNavigate(nextStageKey), which selects the next stage so the analyst
 // sees it still Pending with its own Run <Stage> button. Continue never
 // reaches onAction, so it can never start a stage.
@@ -388,10 +388,13 @@ function _poNotObserved(context, flags) {
 // summary sentence — placed directly after the alert fields. The alert's
 // NetWitness severity/risk score are not repeated here: they are the
 // stage's headline assessment (parsingAssessment()).
-function _poParserSummary(na, summaryTextHTML) {
+function _poParserSummary(na, summaryTextHTML, result) {
   const summary = na.alert_summary || {};
   const ids = na.identifiers || {};
   const alertName = summary.alert_name || summary.alert_title;
+  const rawEventCount = (result?.event_count !== undefined && result?.event_count !== null)
+    ? result.event_count
+    : (summary.total_event_count ?? summary.raw_event_count);
   const rows = _poRows([
     ["Alert Name", alertName],
     ["Incident Title", summary.incident_title !== alertName ? summary.incident_title : null],
@@ -404,7 +407,7 @@ function _poParserSummary(na, summaryTextHTML) {
     ["Event Type", summary.event_type],
     ["Primary Action", summary.primary_action],
     ["Observed Actions", summary.observed_actions],
-    ["Raw Event Count", summary.raw_event_count],
+    ["Raw Event Count", rawEventCount],
     ["Session IDs", ids.session_ids, (v) => _poValue(v, { mono: true })],
     ["Event Source IDs", ids.event_source_ids, (v) => _poValue(v, { mono: true })],
     ["Record IDs", ids.record_ids, (v) => _poValue(v, { mono: true })],
@@ -525,23 +528,19 @@ function _poCount(value) {
   return typeof value === "number" ? value : null;
 }
 
-// Parsing is a normalisation stage, so its headline is the two values it
+// Parsing is a normalisation stage, so its headline is the value it
 // actually carries — the NetWitness alert's own severity (as extracted by
-// the parser; Parsing does not produce a severity) and the parser's
-// confidence. No overall "Parsing risk" is invented. Everything else —
-// PowerShell Risk (scoped to PowerShell only), data quality and
+// the parser; Parsing does not produce a severity). No overall "Parsing risk" is invented.
+// Everything else — PowerShell Risk (scoped to PowerShell only), data quality and
 // normalisation metadata — sits in the parsing details view.
 export function parsingAssessment(na, context = na?.observed_data_context || {}) {
   const summary = na.alert_summary || {};
   const risk = na.powershell_analysis?.risk_assessment || {};
   const dq = na.data_quality || {};
   const meta = na.parser_metadata || {};
-  const confidence = dq.parser_confidence || meta.parser_confidence;
-  const score = dq.parser_confidence_score ?? meta.parser_confidence_score;
 
   const headlines = [
     assessmentHeadline("NetWitness Severity", hasValue(summary.severity) ? bandValue(summary.severity) : pendingValue("Not provided in the alert")),
-    assessmentHeadline("Parser Confidence", hasValue(confidence) ? confidenceBadge(confidence) : pendingValue("Not recorded")),
   ];
 
   const rows = _poRows([
@@ -549,9 +548,6 @@ export function parsingAssessment(na, context = na?.observed_data_context || {})
     ["NetWitness Risk Score", summary.risk_score],
     ["PowerShell Risk", risk.risk_level, bandValue],
     ["PowerShell Risk Score", risk.risk_score],
-    ["Parser Confidence", confidence, (v) => confidenceBadge(v)],
-    ["Parser Confidence Score", score, (v) => `<span class="mono">${escapeHTML(String(v))}/100</span>`],
-    ["Confidence Explanation", dq.confidence_explanation],
     ["Normalisation Status", meta.normalisation_status, (v) => escapeHTML(_poHumanise(v))],
     ["Missing Optional Fields", _poCount(dq.missing_optional_fields)],
     ["Not Applicable Fields", _poCount(dq.not_applicable_fields)],
@@ -599,7 +595,7 @@ function parsingOverview(result) {
   ].filter(Boolean).join("");
   return `<div class="parsing-overview">
     ${parsingAssessment(normalisedAlert, context)}
-    ${_poParserSummary(normalisedAlert, summaryTextHTML)}
+    ${_poParserSummary(normalisedAlert, summaryTextHTML, result)}
     ${detailCards ? `<div class="integration-grid">${detailCards}</div>` : ""}
   </div>`;
 }
@@ -701,17 +697,45 @@ function renderParsingStage(root, stage, caseId, lastError, onAction, onNavigate
 const _TRIAGE_METAKEY_LABELS = {
   "ip.src": "Source IP",
   "ip.dst": "Destination IP",
+  "port.src": "Source Port",
+  "port.dst": "Destination Port",
   "host.name": "Host Name",
   "user.name": "User Name",
+  "user.target": "Target User",
+  "group.name": "Group Name",
   "domain": "Domain",
   "event.type": "Event Type",
   "bytes.out": "Bytes Out",
+  "bytes.in": "Bytes In",
+  "packets.out": "Packets Out",
+  "packets.in": "Packets In",
   "protocol": "Protocol",
+  "network.service": "Network Service",
   "geo.country": "Country",
   "file.name": "File Name",
+  "file.path": "File Path",
   "file.hash": "File Hash",
   "process.name": "Process Name",
+  "parent_process.name": "Parent Process Name",
+  "process.pid": "Process PID",
+  "parent_process.pid": "Parent Process PID",
+  "command_line": "Command Line",
+  "powershell.command": "PowerShell Command",
+  "registry.path": "Registry Path",
+  "service.name": "Service Name",
+  "task.name": "Task Name",
+  "change.type": "Change Type",
+  "alert.type": "Alert Type",
+  "signature": "Signature",
+  "payload.snippet": "Payload Snippet",
+  "http.uri": "HTTP URI",
   "os.version": "OS Version",
+  "share.name": "Share Name",
+  "cert.status": "Certificate Status",
+  "process.target": "Target Process",
+  "config.change": "Config Change",
+  "process.privilege": "Process Privilege",
+  "status.code": "Status Code",
 };
 
 const _TRIAGE_IOC_CATEGORY_ORDER = ["confidentiality", "integrity", "availability"];
@@ -724,16 +748,41 @@ function _triageNormText(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-// ticket.summary (the classification phase's own summary) leads; the
-// stage-level ai_summary keeps its "AI-generated summary · model" label and
-// is only dropped when it repeats ticket.summary word-for-word.
-function triageExplanation(ticket, result) {
-  const parts = [];
-  if (ticket.summary) parts.push(`<p class="notice triage-explanation">${escapeHTML(ticket.summary)}</p>`);
-  if (result.ai_summary && _triageNormText(result.ai_summary) !== _triageNormText(ticket.summary)) {
-    parts.push(`<p class="notice triage-explanation">${escapeHTML(result.ai_summary)}<small class="triage-attribution">AI-generated summary${result.ai_summary_model ? ` · ${escapeHTML(result.ai_summary_model)}` : ""}</small></p>`);
+function _mergeTriageSummaries(ticketSummary, aiSummary) {
+  const s1 = String(ticketSummary || "").trim();
+  const s2 = String(aiSummary || "").trim();
+  if (!s1) return s2;
+  if (!s2) return s1;
+  if (_triageNormText(s1) === _triageNormText(s2)) return s2;
+  if (s2.includes(s1)) return s2;
+  if (s1.includes(s2)) return s1;
+
+  const splitSentences = (text) => text.match(/[^.!?]+[.!?]+|\S+/g) || [text];
+  const sentences1 = splitSentences(s1).map((s) => s.trim()).filter(Boolean);
+
+  const getWords = (s) => new Set(s.toLowerCase().replace(/[^a-z0-9]/g, " ").split(/\s+/).filter((w) => w.length > 3));
+  const s2Words = getWords(s2);
+
+  const uniqueAdditional = sentences1.filter((s) => {
+    const words = getWords(s);
+    if (!words.size) return false;
+    let overlap = 0;
+    words.forEach((w) => { if (s2Words.has(w)) overlap++; });
+    return (overlap / words.size) < 0.6;
+  });
+
+  if (!uniqueAdditional.length) {
+    return s2;
   }
-  return parts.join("");
+  return `${s2} ${uniqueAdditional.join(" ")}`.trim();
+}
+
+// Unify ticket.summary and stage-level ai_summary into a single AI summary block.
+function triageExplanation(ticket, result) {
+  const summary = _mergeTriageSummaries(ticket?.summary, result?.ai_summary);
+  if (!summary) return "";
+  const model = result?.ai_summary_model;
+  return `<p class="notice triage-explanation">${escapeHTML(summary)}<small class="triage-attribution">AI-generated summary${model ? ` · ${escapeHTML(model)}` : ""}</small></p>`;
 }
 
 // Classification/category/risk are the Triage assessment (triageAssessment());
@@ -750,13 +799,18 @@ function triageSummarySection(ticket, result) {
 function triageIOCEvidence(iocStep, ticket, result) {
   const mono = (v) => _poValue(v, { mono: true });
 
-  // Array.isArray / typeof guards: a persisted result the backend sanitizer
-  // has redacted-to-string (or any other unexpected shape) must degrade to
-  // "no rows" here rather than throw and blank the whole stage.
-  const rawValues = result.metakeys_payload?.metakey_values;
+  const _IGNORED_OBSERVED_KEYS = new Set([
+    "alert.type", "alert_type", "alerttype", "alert",
+    "risk_score", "riskscore", "risk", "risk_level",
+  ]);
+  const rawValues =
+    result?.metakeys_payload?.metakey_values ||
+    result?.metakey_values ||
+    ticket?.metakey_values ||
+    iocStep?.metakey_values;
   const metakeyValues = rawValues && typeof rawValues === "object" && !Array.isArray(rawValues) ? rawValues : {};
   const observedRows = Object.entries(metakeyValues)
-    .filter(([, value]) => _poHas(value))
+    .filter(([key, value]) => _poHas(value) && !_IGNORED_OBSERVED_KEYS.has(String(key).trim().toLowerCase()))
     .map(([key, value]) => [
       `${escapeHTML(_TRIAGE_METAKEY_LABELS[key] || key)}${_TRIAGE_METAKEY_LABELS[key] ? `<small class="mono triage-metakey">${escapeHTML(key)}</small>` : ""}`,
       mono(value),
@@ -786,12 +840,10 @@ function triageIOCEvidence(iocStep, ticket, result) {
 
   const ticketKeys = Array.isArray(ticket.metakeys) ? ticket.metakeys : [];
   const traceKeys = Array.isArray(iocStep?.matched_metakeys) ? iocStep.matched_metakeys : [];
-  const mkeys = ticketKeys.length ? ticketKeys : traceKeys;
-  const iocSummary = iocStep?.ioc_summary || "";
+  const mkeys = (ticketKeys.length ? ticketKeys : traceKeys).filter((k) => !_IGNORED_OBSERVED_KEYS.has(String(k).trim().toLowerCase()));
 
   const technical = [
     reasoningItems.length ? `<h4 class="triage-subheading">Category Reasoning</h4><ul class="data-list">${reasoningItems.join("")}</ul>` : "",
-    iocSummary ? `<h4 class="triage-subheading">IOC Summary</h4><code class="parsing-overview-code">${escapeHTML(iocSummary)}</code>` : "",
     mkeys.length ? `<h4 class="triage-subheading">Matched Metakeys</h4><div class="parsing-field-chips">${mkeys.map((key) => `<span class="evidence-chip">${escapeHTML(key)}</span>`).join("")}</div>` : "",
   ].join("");
 
@@ -1616,15 +1668,6 @@ function renderThreatIntelStage(root, stage, caseId, lastError, onAction, onNavi
 // fabricating content when its source field is empty/absent.
 // ══════════════════════════════════════════════════════════════════════════
 
-function _provEntry(entry) {
-  return entry && typeof entry === "object" && "value" in entry ? entry : { value: entry };
-}
-
-function provenanceRow(label, entry) {
-  const e = _provEntry(entry);
-  const title = e.source_stage ? `Source: ${e.source_stage}${e.source_field ? ` · ${e.source_field}` : ""}` : "";
-  return `<tr><th scope="row">${escapeHTML(label)}</th><td title="${escapeHTML(title)}">${escapeHTML(e.value ?? "—")}</td></tr>`;
-}
 
 // Display order follows the reference layout; any key the checklist adds
 // later is still shown, after these.
@@ -1712,10 +1755,214 @@ export function investigationAssessment(result) {
   });
 }
 
+function _cleanGapFindings(text) {
+  if (!text) return "No telemetry or event logs were recorded.";
+  let clean = String(text).trim();
+  clean = clean.replace(/^(?:NOT_MET|SKIPPED|MET)[:.\s-]+/i, "").trim();
+  return clean;
+}
+
+function _gapProfileTitle(instruction, findings) {
+  const instr = (instruction || "").toLowerCase();
+  const find = (findings || "").toLowerCase();
+
+  if (/tree|lineage|ancestry/i.test(instr) || /process tree/i.test(find)) {
+    return "Process Tree Lineage & Ancestry";
+  }
+  if (/process|spawned|execution/i.test(instr)) {
+    return "Malicious Process Execution";
+  }
+  if (/horizontal|vertical|lateral|spread/i.test(instr)) {
+    return "Lateral Movement vs. Vertical Privilege Scope";
+  }
+  if (/user|login|credential|identity|auth/i.test(instr)) {
+    return "User Identity & Logon Scope";
+  }
+  if (/exfiltration|egress|outbound/i.test(instr)) {
+    return "Data Exfiltration & Outbound Egress";
+  }
+  return instruction.length > 50 ? instruction.slice(0, 48) + "…" : instruction;
+}
+
+function _extractPivotsForStep(step, result, usedPivots = new Set()) {
+  const findings = step?.findings || "";
+  const allPivots = [
+    ...(Array.isArray(result?.suggested_pivots) ? result.suggested_pivots : []),
+    ...(Array.isArray(result?.indicators) ? result.indicators : []),
+  ].filter(Boolean).map(String);
+
+  // Extract IPs, filenames, and hashes from the step's findings
+  const ipMatches = findings.match(/\b(?:\d{1,3}\.){3}\d{1,3}\b/g) || [];
+  const fileMatches = findings.match(/\b[\w-]+\.(?:exe|dll|bat|cmd|ps1|sh|py|js|vbs|msi)\b/gi) || [];
+  const hashMatches = findings.match(/\b[a-fA-F0-9]{32,64}\b/g) || [];
+
+  const benign = new Set(["127.0.0.1", "0.0.0.0"]);
+  const cleanIps = [...new Set(ipMatches.filter((ip) => !benign.has(ip)))];
+  const cleanFiles = [...new Set(fileMatches.filter((f) => !/^(?:event|eid|id)\./i.test(f)))];
+  const cleanHashes = [...new Set(hashMatches)];
+
+  const pivotIps = allPivots.filter((p) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(p) && !benign.has(p));
+  const pivotFiles = allPivots.filter((p) => /\.(?:exe|dll|bat|cmd|ps1|sh|py|js|vbs|msi)$/i.test(p));
+  const pivotHashes = allPivots.filter((p) => /^[a-fA-F0-9]{32,64}$/.test(p));
+  const otherPivots = allPivots.filter((p) => !pivotIps.includes(p) && !pivotFiles.includes(p) && !pivotHashes.includes(p));
+
+  const instr = (step?.instruction || "").toLowerCase();
+  const isProcessStep = /process|spawned|execution|tree|lineage|ancestry/i.test(instr);
+  const isNetworkStep = /horizontal|vertical|lateral|network|traffic|exfiltration|egress/i.test(instr);
+  const isIdentityStep = /user|login|credential|identity|auth/i.test(instr);
+
+  const stepPivots = [];
+
+  if (isProcessStep) {
+    stepPivots.push(...cleanFiles, ...pivotFiles);
+    if (!stepPivots.length && cleanHashes.length) stepPivots.push(...cleanHashes, ...pivotHashes);
+    if (!stepPivots.length) {
+      if (cleanIps.length) stepPivots.push(...cleanIps);
+      else if (pivotIps.length) stepPivots.push(...pivotIps);
+    }
+  } else if (isNetworkStep) {
+    stepPivots.push(...cleanIps, ...pivotIps);
+  } else if (isIdentityStep) {
+    const userPivots = otherPivots.filter((p) => !/^(?:inc|alert)-/i.test(p));
+    stepPivots.push(...userPivots);
+    if (!stepPivots.length) stepPivots.push(...cleanIps, ...pivotIps);
+  } else {
+    stepPivots.push(...cleanFiles, ...cleanIps, ...otherPivots);
+  }
+
+  // Filter out incident IDs like INC-53033 and any pivot that has already been recommended in an earlier step
+  const candidates = [...new Set(stepPivots)]
+    .filter((p) => !/^(?:inc|alert)-\d+/i.test(p))
+    .filter((p) => !usedPivots.has(p));
+
+  let chosen = candidates.slice(0, 4);
+
+  // If no candidates matched the specific category, check remaining unused general pivots
+  if (!chosen.length) {
+    const fallback = allPivots
+      .filter((p) => !/^(?:inc|alert)-\d+/i.test(p))
+      .filter((p) => !usedPivots.has(p));
+    chosen = fallback.slice(0, 3);
+  }
+
+  // Record chosen pivots so subsequent steps do not repeat them
+  chosen.forEach((p) => usedPivots.add(p));
+  return chosen;
+}
+
+function _generatePivotRecommendation(step, pivots) {
+  const instr = (step?.instruction || "").toLowerCase();
+  const isProcessStep = /process|spawned|execution|tree|lineage|ancestry/i.test(instr);
+  const isNetworkStep = /horizontal|vertical|lateral|network|traffic/i.test(instr);
+  const isIdentityStep = /user|login|credential|identity|auth/i.test(instr);
+  const isExfilStep = /exfiltration|egress|outbound/i.test(instr);
+
+  const filePivots = pivots.filter((p) => /\.(?:exe|dll|bat|cmd|ps1|sh|py|js|vbs|msi)$/i.test(p));
+  const ipPivots = pivots.filter((p) => /^(?:\d{1,3}\.){3}\d{1,3}$/.test(p));
+  const hashPivots = pivots.filter((p) => /^[a-fA-F0-9]{32,64}$/.test(p));
+  const otherPivots = pivots.filter((p) => !filePivots.includes(p) && !ipPivots.includes(p) && !hashPivots.includes(p));
+
+  if (filePivots.length) {
+    const targets = filePivots.join(", ");
+    if (isProcessStep) {
+      return `Search process execution and script logs for filename ${targets} to inspect parent-child execution hierarchy and command-line arguments.`;
+    }
+    return `Search host logs for filename ${targets} to verify whether the binary executed or spawned additional processes.`;
+  }
+
+  if (hashPivots.length) {
+    const targets = hashPivots.join(", ");
+    return `Search file creation and execution events for hash ${targets} to identify execution ancestry and associated binaries.`;
+  }
+
+  if (ipPivots.length) {
+    const targets = ipPivots.join(" and ");
+    if (isNetworkStep) {
+      return `Search network traffic and authentication sessions for IP ${targets} to verify destination ports, protocol type, and whether communication was lateral or vertical.`;
+    }
+    if (isProcessStep) {
+      return `Search host and process creation logs associated with IP ${targets} to identify spawned binaries, command-line arguments, and parent process trees.`;
+    }
+    if (isIdentityStep) {
+      return `Search logon session and authentication logs involving IP ${targets} to determine logged-on accounts and authentication packages.`;
+    }
+    if (isExfilStep) {
+      return `Search network connection and proxy logs for IP ${targets} to inspect outbound byte transfer volume and communication duration.`;
+    }
+    return `Search network traffic and host activity for IP ${targets} to correlate related event logs within the alert window.`;
+  }
+
+  if (otherPivots.length) {
+    const targets = otherPivots.join(", ");
+    if (isIdentityStep) {
+      return `Search authentication and directory logs for user or account ${targets} to verify interactive and network logon activity.`;
+    }
+    return `Pivot on indicator ${targets} across host and network logs to gather supporting telemetry.`;
+  }
+
+  if (isProcessStep) {
+    return "Search endpoint process creation telemetry and script logs to identify unverified parent-child process relationships.";
+  }
+  if (isNetworkStep) {
+    return "Search network session logs and firewall records to identify unverified inter-host connections.";
+  }
+  if (isIdentityStep) {
+    return "Search authentication and directory logs to verify interactive and remote logon activity.";
+  }
+  if (isExfilStep) {
+    return "Search perimeter egress and proxy logs to identify unusual outbound data transfers.";
+  }
+  return "Collect host process execution, authentication records, and network connection logs across the incident timeframe.";
+}
+
+function evidenceGapsCard(trace, result) {
+  if (!Array.isArray(trace) || !trace.length) return "";
+  const unmetSteps = trace.filter((s) => s && s.status === "NOT_MET" && !/determine if further investigation/i.test(s.instruction || ""));
+  if (!unmetSteps.length) return "";
+
+  const usedPivots = new Set();
+  const items = unmetSteps.map((step) => {
+    const title = _gapProfileTitle(step.instruction, step.findings);
+    const cleanFindings = _cleanGapFindings(step.findings);
+    const pivots = _extractPivotsForStep(step, result, usedPivots);
+    const recommendation = _generatePivotRecommendation(step, pivots);
+
+    const pivotChips = pivots.length
+      ? `<div class="finding-evidence">
+          <span class="finding-evidence-label">Suggested Pivots</span>
+          ${pivots.map((p) => `<span class="evidence-chip">${escapeHTML(p)}</span>`).join("")}
+        </div>`
+      : "";
+
+    return `<li class="finding-item">
+      <div>
+        <div class="finding-heading">
+          <strong>${escapeHTML(title)}</strong>
+          <span class="finding-category cat-observed">${escapeHTML(step.step_id || "step")}</span>
+        </div>
+        <p>${highlightEvidence(cleanFindings, result?.indicators)}</p>
+        ${pivotChips}
+        <div class="finding-meta">
+          <span class="finding-source">Recommendation: ${escapeHTML(recommendation)}</span>
+        </div>
+      </div>
+      <span>${badge("NOT MET", "state-failed")}</span>
+    </li>`;
+  }).join("");
+
+  return `<section class="panel">
+    <h3>Evidence Gaps &amp; Hunting Recommendations (${unmetSteps.length})</h3>
+    <ul class="data-list findings-list">${items}</ul>
+  </section>`;
+}
+
 export function investigationOverviewTab(workspace) {
   const ctx = workspace?.overview?.case_context || {};
   const stageFindings = workspace?.overview?.key_findings_by_stage?.investigation || [];
-  const assessment = investigationAssessment(workspace?.output?.investigation_result);
+  const result = workspace?.output?.investigation_result || {};
+  const assessment = investigationAssessment(result);
+  const trace = _pickAnalysisField(result, "execution_trace");
+  const gapsSection = evidenceGapsCard(trace, result);
 
   const findingsSection = stageFindings.length ? `
     <section class="panel" style="margin-top:.75rem">
@@ -1724,26 +1971,17 @@ export function investigationOverviewTab(workspace) {
     </section>
   ` : "";
 
-  if (!Object.keys(ctx).length && !findingsSection) return assessment || emptyState("No case overview is available yet.");
-  const rows = [
-    provenanceRow("NetWitness Severity", ctx.netwitness_severity),
-    provenanceRow("Triage Classification", ctx.triage_classification),
-    provenanceRow("Host", ctx.host),
-    provenanceRow("User", ctx.user),
-    provenanceRow("NetWitness Status", ctx.netwitness_status),
-    provenanceRow("Workflow Status", ctx.workflow_status),
-    provenanceRow("IOC IP Count", ctx.ioc_ip_count),
-  ].join("");
   // Investigation Severity (stage conclusion) and the Unified Verdict
   // (case-level aggregation) are deliberately separate groups: the verdict
   // sits in its own divided .verdict-section, never inside the Investigation
   // assessment.
   const verdict = unifiedVerdictCard(ctx.unified_verdict);
+  if (!assessment && !verdict && !findingsSection && !gapsSection) return emptyState("No case overview is available yet.");
   return `<div class="stage-sections">
     ${assessment}
     ${verdict ? `<div class="verdict-section" aria-label="Case-level assessment">${verdict}</div>` : ""}
     ${findingsSection}
-    <div class="table-wrap case-context-table-wrap"><table class="case-context-table"><tbody>${rows}</tbody></table></div>
+    ${gapsSection}
   </div>`;
 }
 
@@ -1786,14 +2024,11 @@ function investigationOutputTab(workspace) {
       ? "Investigation is currently running."
       : "No Investigation output has been persisted yet.");
   }
+  const trace = _pickAnalysisField(result, "execution_trace");
   const parts = [];
   parts.push(`<p>${result.severity ? severityBadge(result.severity, result.severity_justification) : ""} ${result.confidence ? confidenceBadge(result.confidence, result.confidence_justification) : ""} ${statusBadge(result.status)}</p>`);
   if (output.errors?.length) parts.push(`<p class="notice">${output.errors.map((e) => escapeHTML(e)).join("<br>")}</p>`);
   if (output.last_error) parts.push(`<p class="notice">${escapeHTML(output.last_error)}</p>`);
-  if (output.worker_progress_note) parts.push(`<p class="notice">${escapeHTML(output.worker_progress_note)}</p>`);
-  if (output.warnings?.length) {
-    parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Evidence Gaps</h3><ul class="data-list">${output.warnings.map((w) => `<li>${escapeHTML(w)}</li>`).join("")}</ul></section>`);
-  }
   if (result.summary) {
     parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Summary</h3><p>${escapeHTML(result.summary)}</p></section>`);
   }
@@ -1804,7 +2039,6 @@ function investigationOutputTab(workspace) {
   if (Array.isArray(containment) && containment.length) {
     parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Recommended Containment Actions</h3><ul class="data-list">${containment.map((c) => `<li>${escapeHTML(c)}</li>`).join("")}</ul></section>`);
   }
-  const trace = _pickAnalysisField(result, "execution_trace");
   parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Playbook Execution Trace</h3>${playbookTraceTable(trace)}</section>`);
   const audits = result.investigation_analysis?.policy_audit_logs;
   parts.push(`<section class="panel" style="margin-top:.75rem"><h3>Policy-Based Compliance Audit Log</h3>${policyAuditTable(audits)}</section>`);
@@ -2870,7 +3104,7 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onNavigat
 }
 
 // Reporting stage card: same header/action-bar shape every other stage uses
-// (name, stateBadge, Re-run/Reject/Approve Reporting — the final stage, so
+// (name, stateBadge, Re-run/Approve Reporting — the final stage, so
 // never a Continue control), but with the four-report
 // table (frontend/js/pages/reports.js —
 // the SAME implementation the standalone Reporting page uses, embedded
@@ -3069,7 +3303,8 @@ export async function renderWorkspace(root, { navigate, route }) {
         if (result.run_id) {
           await pollRun(result.run_id, (run) => {
             const statusRoot = outputRoot.querySelector("#action-status");
-            if (statusRoot) statusRoot.innerHTML = run.progress?.note ? `<p class="notice">${escapeHTML(run.progress.note)}</p>` : "";
+            const note = run.progress?.note;
+            if (statusRoot) statusRoot.innerHTML = (note && !note.toLowerCase().startsWith("ingested")) ? `<p class="notice">${escapeHTML(note)}</p>` : "";
           });
           await refreshWorkflow();
         }

@@ -284,7 +284,7 @@ def test_parsing_warnings_and_missing_fields_survive():
     dq = _section(_build()["investigation_context_brief"], "DATA QUALITY / LIMITATIONS")
     assert "Parsing warnings: Missing context-relevant parsing fields: destination_port" in dq
     assert "Parsing missing fields (not present in telemetry): destination_port, protocol" in dq
-    assert "Parser confidence: Medium" in dq
+    assert "Parser confidence" not in dq
 
 
 def test_missing_raw_incident_is_visible():

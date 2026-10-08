@@ -216,7 +216,7 @@ def test_case_workflow_uses_persisted_stage_and_lock_state(client: FlaskClient) 
     assert body["stages"][1]["requires_approval"] is True
     assert body["stages"][1]["result"]["api_key"] == "«redacted»"
     assert [action["type"] for action in body["stages"][1]["actions"]] == [
-        "rerun", "approve", "reject",
+        "rerun", "approve",
     ]
     assert body["stages"][1]["actions"][1]["enabled"] is True
     assert body["evidence_gap"]["mode"] == "automatic"

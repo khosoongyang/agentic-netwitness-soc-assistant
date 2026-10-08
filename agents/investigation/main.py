@@ -887,7 +887,7 @@ async def main_async():
                 # 3. Pass 2 (Always compile final report for dynamic/cluster incidents)
                 report = await orchestrator.compile_final_report(
                     current_alerts, playbook_path, p1_trace, subject_id=subject_id,
-                    timeline_context=timeline_ctx)
+                    timeline_context=timeline_ctx, suggested_pivots=suggested_pivots)
                 
             return (inst_id, incident, current_alerts, report)
 

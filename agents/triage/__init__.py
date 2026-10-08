@@ -38,6 +38,9 @@ from .soc_triage_agent import (
     _TRIAGE_TRIGGER,
     render_triage_trace,
     format_ticket_display,
+    _is_asking_about_other_cases,
+    _format_scope_refusal,
+    _strip_unsolicited_case_report,
 )
 
 __all__ = [
@@ -49,4 +52,7 @@ __all__ = [
     "_TRIAGE_TRIGGER",
     "render_triage_trace",
     "format_ticket_display",
+    "_is_asking_about_other_cases",
+    "_format_scope_refusal",
+    "_strip_unsolicited_case_report",
 ]

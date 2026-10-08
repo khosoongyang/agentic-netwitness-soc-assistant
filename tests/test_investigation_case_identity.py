@@ -628,13 +628,13 @@ def test_command_layer_reports_identity_mismatch_code():
     assert err.value.code == "INVESTIGATION_IDENTITY_MISMATCH"
 
 
-def test_available_actions_disable_approve_but_keep_reject_and_rerun():
+def test_available_actions_disable_approve_but_keep_rerun():
     _state_awaiting("investigation", _contaminated_result())
     actions = {a["type"]: a for a in
                commands.available_actions(wss.get_state(CASE))["stages"]["investigation"]}
     assert actions["approve"]["enabled"] is False
     assert "identity" in actions["approve"]["reason"].lower()
-    assert actions["reject"]["enabled"] is True
+    assert "reject" not in actions          # Reject stage button removed (d9c5d6d)
     assert actions["rerun"]["enabled"] is True
 
 

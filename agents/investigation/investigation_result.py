@@ -100,3 +100,4 @@ class InvestigationAgentOutput(BaseModel):
     mitre_mappings: List[MitreMappingRecord] = Field(default_factory=list)
     mitre_attack_table: Optional[str] = None
     policy_audit_logs: List[PolicyAuditRecordSummary] = Field(default_factory=list)
+    suggested_pivots: List[str] = Field(default_factory=list)

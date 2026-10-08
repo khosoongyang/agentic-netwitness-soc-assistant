@@ -258,7 +258,7 @@ def test_03_parsing_context_reaches_the_deep_dive(model, monkeypatch):
     assert "Decoded PowerShell [Parsing]: status decoded; Downloads a payload." in human
     assert "http://evil.example/p" in human
     assert "Command line: powershell -enc AAA" in human
-    assert "Parser confidence: Medium" in human
+    assert "Parser confidence" not in human
     assert "PARSING-WARNING-TOKEN" in human
     assert "Parsing missing fields (not present in telemetry): destination_port, protocol" in human
     assert "PARSING-AI-SUMMARY-TOKEN" not in human            # canonical result, not the AI summary

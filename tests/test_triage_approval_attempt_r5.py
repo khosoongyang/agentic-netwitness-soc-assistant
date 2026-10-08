@@ -309,7 +309,7 @@ def test_e_rejection_of_attempt_1_is_not_inherited_by_attempt_2():
     state = _state()
     assert (state["triage_status"], state["triage_attempt"]) == ("Awaiting Approval", 2)
     triage_actions = {a["type"]: a for a in commands.available_actions(state)["stages"]["triage"]}
-    assert triage_actions["approve"]["enabled"] is True and triage_actions["reject"]["enabled"] is True
+    assert triage_actions["approve"]["enabled"] is True and "reject" not in triage_actions
     assert triage_actions["approve"]["stage_attempt"] == 2
     assert _ti()["reason_code"] == "triage_not_approved"
     _force_approved_status(run)

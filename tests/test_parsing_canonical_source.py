@@ -425,7 +425,6 @@ def test_investigation_receives_the_same_evidence_and_context_brief():
     assert "10.0.0.5" in brief and "203.0.113.9" in brief                       # entities
     assert "Decoded PowerShell [Parsing]: status success" in brief              # decoded PowerShell
     assert "http://malicious.example.com/payload.ps1" in brief                 # Parsing-extracted IOC
-    assert "Parser confidence: Low" in brief                                    # confidence
     assert "Parsing warnings:" in brief and "Parsing missing fields" in brief   # warnings / missing
     assert ENCODED in json.dumps(now)                                           # command line
 
@@ -442,7 +441,7 @@ def test_parsing_evidence_is_preserved_in_the_canonical_result():
     assert loaded["warnings"] == ["Missing context-relevant parsing fields: "
                                   "alert_time, destination_port, protocol, process_name"]
     assert loaded["missing_important_fields"] == ["alert_time", "destination_port", "protocol", "process_name"]
-    assert loaded["parser_confidence"] == "Low"
+    assert "parser_confidence" not in loaded
 
 
 # ── 18, 28, 29: Reporting ────────────────────────────────────────────────────

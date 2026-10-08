@@ -33,10 +33,10 @@ export const CONTINUE_LABELS = {
 // state and handler. Unlisted types (e.g. "resume") keep the backend label.
 export const STAGE_ACTION_LABELS = {
   parsing: { start: "Run Parsing", rerun: "Re-run Parsing" },
-  triage: { start: "Run Triage", rerun: "Re-run Triage", approve: "Approve Triage", reject: "Reject Triage" },
+  triage: { start: "Run Triage", rerun: "Re-run Triage", approve: "Approve Triage" },
   threat_intel: { start: "Run Threat Intelligence Enrichment", rerun: "Re-run Threat Intelligence" },
-  investigation: { start: "Run Investigation", rerun: "Re-run Investigation", approve: "Approve Investigation", reject: "Reject Investigation" },
-  reporting: { start: "Run Reporting", rerun: "Re-run Reporting", approve: "Approve Reporting", reject: "Reject Reporting" },
+  investigation: { start: "Run Investigation", rerun: "Re-run Investigation", approve: "Approve Investigation" },
+  reporting: { start: "Run Reporting", rerun: "Re-run Reporting", approve: "Approve Reporting" },
 };
 
 export function stageActionLabel(stageKey, action) {
@@ -64,11 +64,11 @@ export function continueControl(workflow, stage) {
 }
 
 // The action bar for one stage: Run/Re-run/Resume plus Continue in the
-// primary group; Reject/Approve (only present while a gate is awaiting a
+// primary group; Approve (only present while a gate is awaiting a
 // decision) in the separate decision group.
 export function stageActionModel(stage, workflow) {
-  const actions = stage?.actions || [];
-  const decisionTypes = ["reject", "approve"];
+  const actions = (stage?.actions || []).filter((action) => action.type !== "reject");
+  const decisionTypes = ["approve"];
   const toButton = (action) => ({
     type: action.type,
     label: stageActionLabel(stage.key, action),

@@ -392,7 +392,7 @@ def test_full_workflow_continue_navigates_and_only_run_executes(monkeypatch, api
     # ── Triage awaiting approval: no Continue, TI cannot be started ───────
     ui = _js_models(_workflow(api))
     assert _labels(ui["triage"]["primary"]) == ["Re-run Triage"]
-    assert _labels(ui["triage"]["decision"]) == ["Reject Triage", "Approve Triage"]
+    assert _labels(ui["triage"]["decision"]) == ["Approve Triage"]
     assert ui["triage"]["continueTo"] is None
     assert _click_continue(_workflow(api), "triage")["rendered"] is False
     assert ui["parsing"]["continueTo"] is None   # Triage has already been started
@@ -447,7 +447,7 @@ def test_full_workflow_continue_navigates_and_only_run_executes(monkeypatch, api
     ui = _js_models(_workflow(api))
     assert ui["threat_intel"]["continueTo"] is None
     assert _labels(ui["investigation"]["primary"]) == ["Re-run Investigation"]
-    assert _labels(ui["investigation"]["decision"]) == ["Reject Investigation", "Approve Investigation"]
+    assert _labels(ui["investigation"]["decision"]) == ["Approve Investigation"]
     assert ui["investigation"]["continueTo"] is None
     assert _click_continue(_workflow(api), "investigation")["rendered"] is False
     assert _action("reporting", "start")["enabled"] is False
@@ -479,7 +479,7 @@ def test_full_workflow_continue_navigates_and_only_run_executes(monkeypatch, api
     ui = _js_models(_workflow(api))
     assert ui["investigation"]["continueTo"] is None
     assert _labels(ui["reporting"]["primary"]) == ["Re-run Reporting"]
-    assert _labels(ui["reporting"]["decision"]) == ["Reject Reporting", "Approve Reporting"]
+    assert _labels(ui["reporting"]["decision"]) == ["Approve Reporting"]
     # Reporting approval stays gated on a submitted reviewed report set.
     approve = next(b for b in ui["reporting"]["decision"] if b["type"] == "approve")
     assert approve["enabled"] is False
@@ -691,17 +691,16 @@ def test_continue_enabled_state_mirrors_the_next_stage_start_action():
 @requires_node
 def test_no_continue_without_a_completed_stage_or_an_available_next_stage():
     approve = {"type": "approve", "label": "Approve", "enabled": True, "reason": None}
-    reject = {"type": "reject", "label": "Reject", "enabled": True, "reason": None}
     ui = _js_models(_synthetic_workflow(
         # Awaiting approval: not completed, so no Continue even though the
         # (hypothetical) next start action is enabled.
-        triage={"completed": False, "actions": [approve, reject]},
+        triage={"completed": False, "actions": [approve]},
         threat_intel={"actions": [dict(_START)]},
         # Next stage exposes no start action (already started/finished).
         investigation={"actions": []},
     ))
     assert ui["triage"]["continueTo"] is None
-    assert _labels(ui["triage"]["decision"]) == ["Reject Triage", "Approve Triage"]
+    assert _labels(ui["triage"]["decision"]) == ["Approve Triage"]
     assert ui["threat_intel"]["continueTo"] is None
 
 

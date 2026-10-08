@@ -25,6 +25,11 @@ No LLM/network/DB access anywhere in this module.
 from __future__ import annotations
 
 from agents.triage.soc_triage_agent import (
+    ALL_IOCS,
+    IOC_AVAILABILITY,
+    IOC_CONFIDENTIALITY,
+    IOC_INTEGRITY,
+    SOC_CLASSIFICATION_TABLE,
     _resolve_ioc_matches,
     format_ticket_display,
     render_triage_trace,
@@ -212,3 +217,39 @@ def test_format_ticket_display_include_header_false_drops_only_the_unc_header():
     assert not without_header.startswith("---")
     # Everything after the header line is byte-identical.
     assert with_header.endswith(without_header)
+
+
+# =============================================================================
+# CIA Triad IOC Checklists & Classification Table Verification
+# =============================================================================
+
+def test_cia_triad_checklists_structure():
+    assert len(IOC_CONFIDENTIALITY) == 8
+    assert len(IOC_INTEGRITY) == 10
+    assert len(IOC_AVAILABILITY) == 6
+    assert ALL_IOCS["confidentiality"] == IOC_CONFIDENTIALITY
+    assert ALL_IOCS["integrity"] == IOC_INTEGRITY
+    assert ALL_IOCS["availability"] == IOC_AVAILABILITY
+
+    for cat_name, ioc_list in ALL_IOCS.items():
+        for item in ioc_list:
+            assert "ioc" in item and isinstance(item["ioc"], str) and item["ioc"]
+            assert "desc" in item and isinstance(item["desc"], str) and item["desc"]
+            assert "metakeys" in item and isinstance(item["metakeys"], list) and len(item["metakeys"]) > 0
+
+
+def test_cia_confidentiality_does_not_assume_known_bad_ip():
+    # Verify no rubric entry assumes "known bad IPs" without threat intel
+    for item in IOC_CONFIDENTIALITY:
+        assert "known bad IPs" not in item["ioc"]
+    # Check that unverified outbound communication exists
+    ioc_names = [item["ioc"] for item in IOC_CONFIDENTIALITY]
+    assert "Anomalous outbound external communication" in ioc_names
+
+
+def test_soc_classification_table_includes_unverified_categories():
+    assert "Suspicious Outbound Network Activity (Unverified)" in SOC_CLASSIFICATION_TABLE["high"]["categories"]
+    assert "Suspicious Outbound Network Activity (Unverified)" in SOC_CLASSIFICATION_TABLE["medium"]["categories"]
+    assert "Anomalous External Traffic / Unconfirmed C2" in SOC_CLASSIFICATION_TABLE["medium"]["categories"]
+    assert "Uncorrelated Host Alert" in SOC_CLASSIFICATION_TABLE["medium"]["categories"]
+

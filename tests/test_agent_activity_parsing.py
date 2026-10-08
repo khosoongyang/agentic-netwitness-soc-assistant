@@ -239,7 +239,7 @@ def test_successful_parsing_timeline_is_real_and_truthfully_labelled(env, activi
     assert fields["Input format"] == parsing["normalised_alert"]["parser_metadata"]["input_format"].replace("_", " ")
     assert fields["Observable indicators"] == str(len(parsing["processed_alert"]["iocs"]))
     assert fields["Identity guard"].startswith("passed")
-    assert fields["Parser confidence (rule-based score)"].startswith(parsing["parser_confidence"])
+    assert "Parser confidence (rule-based score)" not in fields
     assert "not observed as individually timed steps" in parser_done["metadata"]["details"][0]["text"]
 
     # 7. Validation is a RULE event carrying the real checks.

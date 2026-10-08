@@ -321,8 +321,6 @@ def _parser_facts(result: dict) -> dict:
     processed = result.get("processed_alert") or {}
     iocs = processed.get("iocs") if isinstance(processed, dict) else None
     types = Counter(str(i.get("type")) for i in (iocs or []) if isinstance(i, dict))
-    confidence = result.get("parser_confidence") or meta.get("parser_confidence")
-    score = result.get("parser_confidence_score")
     return {
         "status": result.get("status"),
         "input_format": meta.get("input_format"),
@@ -334,8 +332,6 @@ def _parser_facts(result: dict) -> dict:
         "ioc_count": len(iocs) if isinstance(iocs, list) else card.get("ioc_count"),
         "ioc_types": ", ".join(f"{t.replace('_', ' ')} ×{n}" for t, n in sorted(types.items())),
         "powershell": card.get("powershell_decode_status"),
-        "confidence": confidence,
-        "confidence_text": f"{confidence} ({score}/100)" if confidence and score not in (None, "") else confidence,
         "missing": result.get("missing_important_fields") or [],
         "warnings": result.get("warnings") or [],
         "identity": result.get("identity_validation") or {},
@@ -372,7 +368,6 @@ def _parser_after(call: dict, token: Any, result: Any) -> None:
         f"format {_humanise(facts['input_format'])}" if facts["input_format"] else "",
         f"{facts['alert_records']} alert record(s)" if facts["alert_records"] is not None else "",
         f"{facts['ioc_count']} observable indicator(s)" if facts["ioc_count"] is not None else "",
-        f"confidence {facts['confidence']}" if facts["confidence"] else "",
     ) if p)
     emit(source="system", event_type="parser", status="completed" if completed else "failed",
          title="Parsing and normalisation completed" if completed
@@ -392,7 +387,6 @@ def _parser_after(call: dict, token: Any, result: Any) -> None:
                            ("Observable indicators", facts["ioc_count"]),
                            ("Indicator types", facts["ioc_types"]),
                            ("PowerShell decoding", _humanise(facts["powershell"])),
-                           ("Parser confidence (rule-based score)", facts["confidence_text"]),
                            ("Identity guard", identity_text),
                            ("Parser version", facts["parser_version"]),
                            ("Parser run time", details.format_duration_ms(elapsed_ms)),

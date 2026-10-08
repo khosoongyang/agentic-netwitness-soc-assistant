@@ -2117,7 +2117,7 @@ td {
   font-weight: 600;
 }
 
-/* Re-run on the left, Reject/Approve on the right; wraps to stacked rows
+/* Re-run on the left, Approve on the right; wraps to stacked rows
    when the stage panel is narrow. */
 .triage-workflow-actions {
   justify-content: space-between;
