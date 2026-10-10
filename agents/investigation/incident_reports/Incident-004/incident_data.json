@@ -5,7 +5,7 @@
     "status": "TRIAGED",
     "assigned_analyst": "Automated Agent",
     "created_at": 1791102337.6177127,
-    "updated_at": 1791215600.9765804,
+    "updated_at": 1791629665.7258015,
     "source_type": "Network",
     "similar_to_incident": null
   },
@@ -177,18 +177,1188 @@
         "severity": "HIGH",
         "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available."
       }
+    },
+    {
+      "id": "INC-53035",
+      "document": "Incident INC-53035 details are as follows: === INVESTIGATION CONTEXT BRIEF (canonical stage results; bounded) ===\n[CASE]\nCase ID (Investigation subject): INC-53035\nTitle: High Risk Alerts: ESA for 192.168.0.19\nIncident time: 2026-07-25T08:36:39+00:00\nNetWitness: risk score 70; priority HIGH; created 2026-07-25T08:36:39.623+00:00; sources Event Stream Analysis; alerts 67\n[TRIAGE]\nTriage level: MEDIUM (Triage classification -- not the NetWitness severity)\nCategory: Suspicious Internal Network Activity / Unauthorized Industrial Protocol Activity\nRisk dimensions: initiation Medium, occurrence Medium, adverse impact Low, overall Medium\nRisk rationale: The alert has a high risk score (70) and multiple repeated internal network events matching the IOC pair on port 502, but there is no endpoint/process evidence or PowerShell activity, so initiation and occurrence are moderate while adverse impact remains low.\nMITRE (Triage): tactic Lateral Movement; technique not provided\nTriage interpretation (Triage agent's assessment, not a factual incident description): This alert shows repeated internal network communication from 192.168.0.19 to 192.168.0.34 over port 502, with no endpoint, file, or PowerShell evidence to confirm malicious behavior. The activity is unusual and was flagged as high risk by the sensor, but available telemetry only supports unverified suspicious…\nTriage IOC checklist findings: [CONFIDENTIALITY] Anomalous outbound external communication — Matched IOC [1] due to anomalous internal network communication: source_ip 192.168.0.19 connected to destination_ip 192.168.0.34 over destination_port 502 with source_port 55179; alert title/risk context flagged 'High Risk Alerts: ESA for 192.168.0.19' and telemetry shows only network activity between the…\nNetWitness source risk score: 70\n[ENTITIES & TELEMETRY]\nOrigins: P=Parsing, T=Triage metakeys, NW=NetWitness alert metadata, INC=incident record, H=raw-incident heuristic, H-title=incident title heuristic\nSource IPs (2): 192.168.0.19 [T,P,NW,H]; 192.168.20.14 [H]\nDestination IPs (1): 192.168.0.34 [T,P,NW,H]\nNetwork detail [Triage metakeys / NetWitness alert metadata]: destination port 502\nNetWitness alerts listed after this brief: 67\n[THREAT INTELLIGENCE]\n=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available.\nTI stage status: completed\nTI contract: multi-indicator (per-IOC roles, origins and provider verdicts)\nCoverage: extracted 2, eligible 0, enriched 0, excluded 2, skipped 0 (by limit 0; limit 10 per type)\nProvider coverage: AbuseIPDB not_applicable (queried 0/0, failed 0); AlienVault OTX not_applicable (queried 0/0, failed 0); VirusTotal not_applicable (queried 0/0, failed 0)\nIntelligence gaps: No eligible external indicators were available — no provider requests were made.\nNOT enriched: 2 excluded/private -- e.g. 192.168.0.19, 192.168.0.34\nTI warnings: none recorded\nTI recommended next action: No elevated enrichment risk was identified from the available threat intelligence.\nEnriched indicators: none\n[DATA QUALITY / LIMITATIONS]\nParsing warnings: Missing context-relevant parsing fields: protocol\nParsing missing fields (not present in telemetry): protocol\n[DEEP-DIVE ANSWERS (feedback pass)]\nFeedback pass 1: 11 evidence gap(s) re-examined against the raw incident by the Triage deep-dive\n- Gap: step_2: Was it horizontal or vertical -> (n/a) no finding returned\n- Gap: step_3: Was any malicious process spawned on the victim's machine? -> (n/a) no finding returned\n- Gap: step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or da… -> (n/a) no finding returned\n- Gap: step_1: Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System -> (n/a) no finding returned\n- Gap: step_2 -> (medium) The evidence strongly indicates horizontal movement is more plausible than vertical movement, but it is not definitive. Both endpoints are private RFC1918 addresses on the same 192.168.0.0/16 space a… | collect via: Query NetWitness/EDR network telemetry for subnet masks, VLANs, and host roles for 192.168.0.19 and 192.168.0.34; on Wi…\n- Gap: step_3 -> (none) No malicious process spawned on the victim's machine can be confirmed from the incident data. The deep-dive explicitly states that no process fields were observed in any of the 67 NetWitness alerts,… | collect via: Collect endpoint process creation telemetry on the victim host using Windows Security Event ID 4688, Sysmon Event ID 1,…\n- Gap: step_4 -> (none) A process tree analysis for privilege escalation, lateral movement, or data exfiltration cannot be performed from the available telemetry because process, user, and host artifacts are absent. There i… | collect via: Pull full endpoint telemetry for the involved host(s): Sysmon Event IDs 1, 3, 6, 7, 8, 10, 11, 12, 13, 22; Security Eve…\n- Gap: step_1 -> (none) Identity and login context are not present in the incident data, so the username, login details, computer name, and operating system cannot be directly determined. The only directly observed network… | collect via: Query Windows Security logs for Event ID 4624/4625 on 192.168.0.19 and 192.168.0.34 to identify logged-on usernames, so…\n(+3 more gaps)\nDeep-dive extracted values: alert.title=Modbus Non-Whitelisted Source; case.id=INC-53035; case.title=High Risk Alerts: ESA for 192.168.0.19; incident.time=2026-07-25T08:36:39+00:00; netwitness.priority=HIGH; netwitness.risk_score=70; network.action=preset single register; network.action_2=data push\nDeep-dive summary: The available evidence is network-only and cen\n[... DEEP-DIVE ANSWERS (feedback pass) section truncated at 2500 chars ...]\n=== END INVESTIGATION CONTEXT BRIEF === Incident INC-53035 has 67 NetWitness sub-alert record(s) (this case's own source alerts): Alert #1 (6a647592518ca81405d239d0) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:34.979000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:55179 to 192.168.0.34:502. Detail: Alert #2 (6a647592518ca81405d239d1) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:34.981000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:55179 to 192.168.0.34:502. Detail: Alert #3 (6a647593518ca81405d239d3) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.055000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #4 (6a647593518ca81405d239d4) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.055000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #5 (6a647593518ca81405d239d6) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.064000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:55179 to 192.168.0.34:502. Detail: Alert #6 (6a647593518ca81405d239d9) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.064000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:55179 to 192.168.0.34:502. Detail: Alert #7 (6a647593518ca81405d239db) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.065000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #8 (6a647593518ca81405d239e2) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.082000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #9 (6a647593518ca81405d239de) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.076000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #10 (6a647593518ca81405d239dc) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.072000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #11 (6a647593518ca81405d239e5) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.090000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #12 (6a647593518ca81405d239e8) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.094000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #13 (6a647593518ca81405d239ec) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.100000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #14 (6a647593518ca81405d239ed) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.103000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #15 (6a647593518ca81405d239f3) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.112000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #16 (6a647593518ca81405d239f4) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.115000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #17 (6a647593518ca81405d239f8) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.116000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #18 (6a647593518ca81405d239fb) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.130000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #19 (6a647593518ca81405d239fc) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.132000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #20 (6a647593518ca81405d239fe) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.134000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #21 (6a647593518ca81405d23a00) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.136000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #22 (6a647593518ca81405d23a03) - 'Modbus Non-Whitelisted Source' at [2026-07-25T08:36:35.140000+00:00], NetWitness severity: 7, User: not provided, Host: not provided, SrcIP: 192.168.0.19, DstIP: 192.168.0.34, Connection: 192.168.0.19:53728 to 192.168.0.34:502. Detail: Alert #23 (6a647593518ca81405 [TRUNCATED]",
+      "metadata": {
+        "incident_id": "INC-53035",
+        "source_type": "Network",
+        "username": "Unknown",
+        "hostname": "Unknown",
+        "timestamp_str": "2026-07-25T08:36:39+00:00",
+        "timestamp_epoch": 1784968599,
+        "tactic": "Lateral Movement",
+        "technique": "Unknown",
+        "ips": "192.168.0.34,192.168.0.0,192.168.20.14,192.168.0.19",
+        "sha256s": "",
+        "md5s": "",
+        "emails": "",
+        "domains": "network.action,source.ip,case.id,case.title,incident.time,alert.title",
+        "severity": "MEDIUM",
+        "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available."
+      },
+      "alerts": [
+        {
+          "alert_id": "6a647592518ca81405d239d0",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:34.979000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:55179 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647592518ca81405d239d1",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:34.981000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:55179 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239d3",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.055000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239d4",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.055000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239d6",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.064000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:55179 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239d9",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.064000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:55179 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239db",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.065000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239e2",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.082000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239de",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.076000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239dc",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.072000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239e5",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.090000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239e8",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.094000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239ec",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.100000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239ed",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.103000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239f3",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.112000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239f4",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.115000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239f8",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.116000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239fb",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.130000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239fc",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.132000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d239fe",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.134000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a00",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.136000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a03",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.140000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a1b",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.176000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a20",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.182000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a25",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.188000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a28",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.195000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a2b",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.200000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a2c",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.197000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a2e",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.206000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a37",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.215000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a39",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.221000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a38",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.222000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a3e",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.228000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a40",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.231000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a42",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.234000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a43",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.234000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a46",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.240000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a49",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.245000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a4b",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.248000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a4f",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.251000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a50",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.256000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a59",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.265000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a5b",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.271000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a5d",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.271000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a63",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.281000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a64",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.283000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:55179 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a68",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.288000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a84",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.324000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a8e",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.335000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a93",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.340000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a9b",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.351000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23a9c",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.352000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23aa4",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.363000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23aaa",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.371000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23aa9",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.371000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23aac",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.373000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23abe",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.400000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23ac7",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.411000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23ac8",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.413000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23acd",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.433000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23ade",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.457000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23ae5",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.466000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23af6",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.487000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23af7",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.488000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23b00",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.500000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23b03",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.503000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        },
+        {
+          "alert_id": "6a647593518ca81405d23b06",
+          "title": "Modbus Non-Whitelisted Source",
+          "timestamp": "2026-07-25T08:36:35.508000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Network"
+          ],
+          "detection_source": "Event Stream Analysis",
+          "connection_summary": "192.168.0.19:53728 to 192.168.0.34:502",
+          "source_ips": [
+            "192.168.0.19"
+          ],
+          "destination_ips": [
+            "192.168.0.34"
+          ]
+        }
+      ]
     }
   ],
-  "summary_text": "On 2026-07-15T09:33:14+00:00, the incident generated a high-risk internal network alert involving 192.168.0.19 as the source and 192.168.0.34 as the destination. The telemetry available in the record is network-only and does not include protocol, port, payload, PowerShell, endpoint, or process execution details. The alert was characterized as suspicious east-west activity between two private IPs on the internal network, with repeated references to the absence of decoded PowerShell content, file hashes, known-bad external indicators, or any confirmed endpoint compromise. Subsequent triage notes treated the event as an unverified policy-violation style detection requiring investigation rather than confirmed malicious execution. The available analysis does not show a spawned process, privilege escalation chain, service creation, scheduled task, or any other process-level artifact on either host. The incident record therefore only supports the observed internal communication between the two hosts and the conclusion that further authentication, endpoint, and network telemetry would be required to determine whether the traffic represented lateral movement or benign internal activity.",
+  "summary_text": "On 2026-07-25 at 08:36:34.979+00:00, NetWitness began generating repeated alerts titled \"Modbus Non-Whitelisted Source\" for traffic from 192.168.0.19 to 192.168.0.34 on destination port 502, with source ports including 55179 and 53728. The alert stream continued in rapid succession through the 08:36:35 window, with dozens of nearly identical events showing the same pair of internal hosts and the same industrial protocol destination, indicating sustained Modbus activity rather than an isolated connection. The observed records describe the network action as preset single register and data push, but the case telemetry does not provide any user identity, host name, operating system, process execution, or command-line evidence for either endpoint. No endpoint telemetry, file activity, PowerShell activity, or process tree data accompanies the network alerts, so the incident can only be described as repeated anomalous Modbus communication between 192.168.0.19 and 192.168.0.34 during the brief observation window.",
   "indicators": [
-    "192.168.0.",
-    "192.168.0.19",
-    "192.168.0.34",
-    "incident.id",
     "device.name",
-    "192.168.0.0",
+    "network.action",
     "user.name",
+    "192.168.0.34",
+    "incident.title",
+    "incident.id",
+    "192.168.20.14",
+    "source.ip",
+    "192.168.0.19",
     "host.name",
-    "incident.title"
+    "192.168.0.0",
+    "192.168.0.",
+    "case.id",
+    "case.title",
+    "incident.time",
+    "192.168.20.",
+    "alert.title"
   ]
 }

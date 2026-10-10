@@ -1,55 +1,53 @@
 {
-  "incident_id": "INC-53033",
+  "incident_id": "INC-53035",
   "severity": "Medium",
-  "confidence": "Low",
+  "confidence": "Medium",
   "execution_trace": [
     {
       "step_id": "step_1",
       "instruction": "Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System",
-      "status": "MET",
-      "findings": "Partial MET. The timeline identifies the internal source and destination IPs as 192.168.0.19 and 192.168.0.34, and the deep-dive guidance calls for correlating 4624/4625/4672 and EDR inventory to recover identity details. However, the incident data itself does not provide a username, login session details, computer name, or operating system, so only the IP relationship is observed."
+      "status": "NOT_MET",
+      "findings": "The case only provides source IP 192.168.0.19 and destination IP 192.168.0.34, plus repeated Modbus connection details to port 502. No username, login details, computer name, or operating system are present in the telemetry or context brief."
     },
     {
       "step_id": "step_2",
       "instruction": "Was it horizontal or vertical",
       "status": "MET",
-      "findings": "MET. The event sequence is consistent with horizontal activity between peer internal hosts on the same 192.168.0.0/24 network. The timeline explicitly describes east-west/same-subnet communication between 192.168.0.19 and 192.168.0.34, which supports lateral movement more than privilege escalation on a single host."
+      "findings": "The activity is assessed as horizontal movement rather than vertical movement because the observed traffic is between two private RFC1918 hosts on the same 192.168.0.0/16 network, 192.168.0.19 to 192.168.0.34, over Modbus port 502. No evidence indicates elevation within a single host."
     },
     {
       "step_id": "step_3",
       "instruction": "Was any malicious process spawned on the victim's machine?",
       "status": "NOT_MET",
-      "findings": "NOT_MET. No process creation telemetry, PowerShell logs, Sysmon Event ID 1, or EDR process-tree evidence is included. The timeline repeatedly states that endpoint and process telemetry are missing, so no malicious process spawn can be confirmed."
+      "findings": "No malicious process spawn is confirmed. The incident data is network-only and explicitly lacks endpoint process evidence, process creation logs, PowerShell telemetry, or parent-child process information."
     },
     {
       "step_id": "step_4",
       "instruction": "Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
       "status": "NOT_MET",
-      "findings": "NOT_MET. There is no process ancestry, command-line data, child-process chain, or file/network execution evidence available for analysis. As a result, privilege escalation, lateral movement through binaries, and data exfiltration behavior cannot be evaluated from the provided record."
+      "findings": "A process tree analysis cannot be performed because no process, user, host, or command-line artifacts are available. There is insufficient evidence to evaluate privilege escalation, execution chains, or exfiltration from endpoint telemetry."
     },
     {
       "step_id": "step_5",
       "instruction": "Based on the analysis, determine if further investigation is necessary and the containment steps",
       "status": "NOT_MET",
-      "findings": "NOT_MET. The dataset is insufficient for a confident containment decision. The appropriate next step is continued investigation with authentication, endpoint, and process telemetry collection; if new evidence confirms compromise, containment should include host isolation and evidence preservation."
+      "findings": "Further investigation is warranted because the case contains repeated suspicious internal Modbus communication and a high NetWitness risk score, but the available evidence is insufficient to confirm malicious execution or impact. Containment should be scoped only after endpoint and network validation."
     }
   ],
-  "incident_summary": "On 2026-07-15T09:33:14+00:00, the incident generated a high-risk internal network alert involving 192.168.0.19 as the source and 192.168.0.34 as the destination. The telemetry available in the record is network-only and does not include protocol, port, payload, PowerShell, endpoint, or process execution details. The alert was characterized as suspicious east-west activity between two private IPs on the internal network, with repeated references to the absence of decoded PowerShell content, file hashes, known-bad external indicators, or any confirmed endpoint compromise. Subsequent triage notes treated the event as an unverified policy-violation style detection requiring investigation rather than confirmed malicious execution. The available analysis does not show a spawned process, privilege escalation chain, service creation, scheduled task, or any other process-level artifact on either host. The incident record therefore only supports the observed internal communication between the two hosts and the conclusion that further authentication, endpoint, and network telemetry would be required to determine whether the traffic represented lateral movement or benign internal activity.",
+  "incident_summary": "On 2026-07-25 at 08:36:34.979+00:00, NetWitness began generating repeated alerts titled \"Modbus Non-Whitelisted Source\" for traffic from 192.168.0.19 to 192.168.0.34 on destination port 502, with source ports including 55179 and 53728. The alert stream continued in rapid succession through the 08:36:35 window, with dozens of nearly identical events showing the same pair of internal hosts and the same industrial protocol destination, indicating sustained Modbus activity rather than an isolated connection. The observed records describe the network action as preset single register and data push, but the case telemetry does not provide any user identity, host name, operating system, process execution, or command-line evidence for either endpoint. No endpoint telemetry, file activity, PowerShell activity, or process tree data accompanies the network alerts, so the incident can only be described as repeated anomalous Modbus communication between 192.168.0.19 and 192.168.0.34 during the brief observation window.",
   "actions_taken": [
-    "Reviewed the alert and threat-intelligence summary for INC-53033.",
-    "Correlated the repeated timeline entries confirming source 192.168.0.19 and destination 192.168.0.34.",
-    "Checked the playbook trace for evidence of username, hostname, OS, process creation, and process-tree telemetry.",
-    "Verified that no decoded PowerShell, file hash, or external IOC enrichment was available.",
-    "Assessed the incident as requiring additional authentication and endpoint telemetry before containment decisions."
+    "Reviewed the 67 NetWitness alerts associated with INC-53035 and consolidated them as repeated Modbus non-whitelisted source events.",
+    "Verified that the only concrete observed indicators were internal network connections from 192.168.0.19 to 192.168.0.34 over port 502.",
+    "Checked the available triage and deep-dive notes for identity, host, endpoint, process, and PowerShell evidence and confirmed those artifacts were absent.",
+    "Compared the case with correlated historical incidents to validate that the pattern is similar to prior internal Modbus anomaly cases, while keeping the current case analytically separate."
   ],
   "recommended_containment": [
-    "Isolate the suspected source host 192.168.0.19 in EDR or via network quarantine if the activity is still active, while preserving the ability to collect volatile evidence.",
-    "Collect Windows Security logs for 4624, 4625, 4672, 4688, 5140, and 5145 from both 192.168.0.19 and 192.168.0.34 to identify the user, logon type, and any authenticated remote access path.",
-    "Pull Sysmon Event IDs 1, 3, 10, 11, 12, 13, and 22 from both hosts for the incident window to determine whether a process spawned, connected over the network, or created persistence artifacts.",
-    "Acquire the EDR process tree and command-line history for both endpoints and specifically check for lateral-movement tools, LOLBins, scheduled tasks, service creation, or encoded/scripted execution.",
-    "Disable or reset any account tied to suspicious successful logons from the source host until the authentication path is validated.",
-    "Block any newly discovered internal pivoting indicators, remote-service endpoints, or suspicious child-process hashes at the EDR, firewall, and proxy layers.",
-    "Preserve memory and disk evidence from the most likely affected endpoint before remediation if subsequent telemetry confirms compromise."
+    "Immediately block or restrict Modbus/TCP traffic from 192.168.0.19 to 192.168.0.34 at the network control point while validation is performed.",
+    "Place 192.168.0.19 and 192.168.0.34 on heightened monitoring for all port 502 sessions, including packet capture of request/response function codes, source ports, and transaction IDs.",
+    "Collect endpoint telemetry from both hosts for the incident window, including process creation, logon events, service creation, and PowerShell logs, before making any operational changes.",
+    "Validate asset ownership and approved industrial-control communications for both IPs with the OT/engineering team and remove any source that is not in the whitelist.",
+    "If either host is confirmed to be unauthorized for Modbus control traffic, isolate that host from the OT subnet pending forensic review.",
+    "Preserve firewall, switch, and NetWitness logs for the full alert burst so the repeated session pattern can be reconstructed and compared to normal baseline communications."
   ],
   "business_impact_checklist": {
     "critical_system": "unknown",
@@ -57,99 +55,85 @@
     "data_sensitivity": "unknown",
     "operational_impact": "unknown"
   },
-  "severity_justification": "Medium is appropriate because the incident is limited to suspicious internal east-west network activity between two private IPs, with no confirmed malicious payload, no external threat-intelligence match, no endpoint execution evidence, and no documented outage or data exposure. The same-subnet communication raises concern for possible lateral movement, but the evidence remains incomplete and does not meet High or Critical thresholds.",
-  "confidence_justification": "Low confidence is warranted because the available evidence is largely network metadata with no supporting authentication, endpoint, process, or command-line telemetry. The timeline contains repeated statements that key investigative artifacts are missing, which makes the conclusion uncertain and prevents a higher-confidence determination.",
+  "severity_justification": "Medium is appropriate because the case shows repeated suspicious internal Modbus activity with a high NetWitness risk score and multiple alerts, but there is no endpoint, user, process, or data-impact evidence to confirm compromise, privilege misuse, outage, or sensitive-data exposure. The available evidence supports suspicious contained activity rather than confirmed attack impact.",
+  "confidence_justification": "Confidence is Medium because the network evidence is strong and internally consistent across 67 alerts, but it is limited to traffic metadata and lacks endpoint, identity, command-line, or host context. The conclusion that this is suspicious anomalous Modbus communication is well supported, but the absence of corroborating endpoint evidence prevents High confidence.",
   "mitre_mappings": [
     {
-      "timeline_phase": "Initial internal network alert",
-      "observed_evidence": "At 2026-07-15T09:33:14+00:00, alert metadata identified source 192.168.0.19 and destination 192.168.0.34 on a private internal network, with no port, protocol, or payload details and no decoded PowerShell indicators.",
+      "timeline_phase": "Initial anomalous industrial protocol communication",
+      "observed_evidence": "Repeated NetWitness alerts titled \"Modbus Non-Whitelisted Source\" show 192.168.0.19 connecting to 192.168.0.34 on TCP/502, including source ports 55179 and 53728, with actions described as preset single register and data push.",
       "tactic": "Discovery",
-      "technique_name": "System Network Connections Discovery",
-      "technique_id": "T1049"
+      "technique_name": "Network Service Scanning",
+      "technique_id": "T1046"
     },
     {
-      "timeline_phase": "Unverified east-west communication across internal hosts",
-      "observed_evidence": "The alert repeatedly describes high-risk internal IP-to-IP traffic between 192.168.0.19 and 192.168.0.34, and the triage summary notes same-subnet /24 east-west communication without endpoint or process telemetry.",
+      "timeline_phase": "Sustained internal host-to-host Modbus interaction",
+      "observed_evidence": "Dozens of repeated internal connections between 192.168.0.19 and 192.168.0.34 over port 502 occurred within seconds, indicating persistent communication across a private RFC1918 subnet.",
       "tactic": "Lateral Movement",
       "technique_name": "Remote Services",
       "technique_id": "T1021"
     },
     {
-      "timeline_phase": "Potential remote authentication path to another internal host",
-      "observed_evidence": "Triage guidance specifically requests Windows Security Event IDs 4624 and 4625, plus 4648 and 4672, to identify authenticated access between the two hosts and determine whether the activity was horizontal movement.",
-      "tactic": "Lateral Movement",
-      "technique_name": "Remote Services: SMB/Windows Admin Shares",
-      "technique_id": "T1021.002"
-    },
-    {
-      "timeline_phase": "Privilege escalation and execution validation gap",
-      "observed_evidence": "The record explicitly states there is no process creation telemetry, no Sysmon Event ID 1, no 4688 data, and no PowerShell 4104 evidence, so no spawned binary or privilege-elevation chain can be confirmed from the incident payload.",
-      "tactic": "Privilege Escalation",
-      "technique_name": "System Binary Proxy Execution",
-      "technique_id": "T1218"
-    },
-    {
-      "timeline_phase": "Post-compromise behavior not evidenced but explicitly hunted",
-      "observed_evidence": "The investigation guidance instructs analysts to inspect process trees, network connections, and archive or transfer activity for indicators of lateral movement, privilege escalation, or exfiltration, but none of those artifacts are present in the supplied timeline.",
+      "timeline_phase": "Industrial control command delivery over Modbus",
+      "observed_evidence": "The deep-dive extracted network actions of \"preset single register\" and \"data push\" map to direct protocol-level control commands sent from 192.168.0.19 to 192.168.0.34.",
       "tactic": "Command and Control",
-      "technique_name": "Application Layer Protocol",
-      "technique_id": "T1071"
+      "technique_name": "Non-Application Layer Protocol",
+      "technique_id": "T1095"
     }
   ],
-  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial internal network alert | At 2026-07-15T09:33:14+00:00, alert metadata identified source 192.168.0.19 and destination 192.168.0.34 on a private internal network, with no port, protocol, or payload details and no decoded PowerShell indicators. | Discovery | System Network Connections Discovery | T1049 |\n| Unverified east-west communication across internal hosts | The alert repeatedly describes high-risk internal IP-to-IP traffic between 192.168.0.19 and 192.168.0.34, and the triage summary notes same-subnet /24 east-west communication without endpoint or process telemetry. | Lateral Movement | Remote Services | T1021 |\n| Potential remote authentication path to another internal host | Triage guidance specifically requests Windows Security Event IDs 4624 and 4625, plus 4648 and 4672, to identify authenticated access between the two hosts and determine whether the activity was horizontal movement. | Lateral Movement | Remote Services: SMB/Windows Admin Shares | T1021.002 |\n| Privilege escalation and execution validation gap | The record explicitly states there is no process creation telemetry, no Sysmon Event ID 1, no 4688 data, and no PowerShell 4104 evidence, so no spawned binary or privilege-elevation chain can be confirmed from the incident payload. | Privilege Escalation | System Binary Proxy Execution | T1218 |\n| Post-compromise behavior not evidenced but explicitly hunted | The investigation guidance instructs analysts to inspect process trees, network connections, and archive or transfer activity for indicators of lateral movement, privilege escalation, or exfiltration, but none of those artifacts are present in the supplied timeline. | Command and Control | Application Layer Protocol | T1071 |",
+  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial anomalous industrial protocol communication | Repeated NetWitness alerts titled \"Modbus Non-Whitelisted Source\" show 192.168.0.19 connecting to 192.168.0.34 on TCP/502, including source ports 55179 and 53728, with actions described as preset single register and data push. | Discovery | Network Service Scanning | T1046 |\n| Sustained internal host-to-host Modbus interaction | Dozens of repeated internal connections between 192.168.0.19 and 192.168.0.34 over port 502 occurred within seconds, indicating persistent communication across a private RFC1918 subnet. | Lateral Movement | Remote Services | T1021 |\n| Industrial control command delivery over Modbus | The deep-dive extracted network actions of \"preset single register\" and \"data push\" map to direct protocol-level control commands sent from 192.168.0.19 to 192.168.0.34. | Command and Control | Non-Application Layer Protocol | T1095 |",
   "policy_audit_logs": [
     {
-      "audit_id": "AUD-DP07-1791215600-1",
-      "incident_id": "INC-53033",
+      "audit_id": "AUD-DP07-1791629665-1",
+      "incident_id": "INC-53035",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix C",
       "decision_point": "DP-07",
       "input_summary": "Critical System: False, Sensitive Data: False",
       "result": "Pass",
       "decision_made": "Investigate",
-      "timestamp": 1791215600.959559,
+      "timestamp": 1791629665.684677,
       "evidence_reference": "business_impact_checklist",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP08-1791215600-2",
-      "incident_id": "INC-53033",
+      "audit_id": "AUD-DP08-1791629665-2",
+      "incident_id": "INC-53035",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix A",
       "decision_point": "DP-08",
       "input_summary": "Severity classification: Medium",
       "result": "Pass",
       "decision_made": "Investigate",
-      "timestamp": 1791215600.959559,
+      "timestamp": 1791629665.684677,
       "evidence_reference": "incident_summary",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP09-1791215600-3",
-      "incident_id": "INC-53033",
+      "audit_id": "AUD-DP09-1791629665-3",
+      "incident_id": "INC-53035",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix F",
       "decision_point": "DP-09",
-      "input_summary": "Confidence level: Low",
+      "input_summary": "Confidence level: Medium",
       "result": "Warning",
       "decision_made": "Escalate",
-      "timestamp": 1791215600.959559,
+      "timestamp": 1791629665.684677,
       "evidence_reference": "execution_trace",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP10-1791215600-4",
-      "incident_id": "INC-53033",
+      "audit_id": "AUD-DP10-1791629665-4",
+      "incident_id": "INC-53035",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix G",
       "decision_point": "DP-10/DP-11",
-      "input_summary": "Severity: Medium, Confidence: Low, Ransomware: False, Guest OS: False",
+      "input_summary": "Severity: Medium, Confidence: Medium, Ransomware: False, Guest OS: False",
       "result": "Fail",
       "decision_made": "Escalate",
-      "timestamp": 1791215600.959559,
+      "timestamp": 1791629665.684677,
       "evidence_reference": "recommended_containment",
       "human_review_required": true,
       "final_reviewer": null
@@ -158,6 +142,11 @@
   "suggested_pivots": [
     "192.168.0.19",
     "192.168.0.34",
-    "INC-53033"
+    "192.168.20.14",
+    "55179",
+    "502",
+    "INC-53035",
+    "Modbus Non-Whitelisted Source",
+    "High Risk Alerts: ESA for 192.168.0.19"
   ]
 }

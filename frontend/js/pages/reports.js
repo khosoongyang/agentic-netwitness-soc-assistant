@@ -280,11 +280,10 @@ export async function mountReportsPanel(container, { caseId, navigate, embedded 
       </header>`;
     container.innerHTML = `
       ${chrome}
+      ${listing.export_all_available ? `
       <div class="stage-actions reports-panel-actions">
-        <a class="text-button" href="/api/cases/${encodeURIComponent(caseId)}/reports/data/download">Raw JSON</a>
-        <button type="button" class="action-button" id="submit-for-approval">Submit for Approval</button>
-        ${listing.export_all_available ? `<a class="action-button" href="/api/cases/${encodeURIComponent(caseId)}/reports/export-all">Export all</a>` : ""}
-      </div>
+        <a class="action-button" href="/api/cases/${encodeURIComponent(caseId)}/reports/export-all">Export all</a>
+      </div>` : ""}
       ${listing.pending_report_set_id ? `<p class="notice">A reviewed report set is materialised and awaiting approval (set ${escapeHTML(listing.pending_report_set_id.slice(0, 12))}…). Use the stage's Approve action above once ready.</p>` : ""}
       ${listing.warnings.map(value => `<p class="notice">${escapeHTML(value)}</p>`).join("")}
       <div class="table-wrap reports-table-wrap${embedded ? " reports-table-embedded" : ""}">
@@ -298,22 +297,6 @@ export async function mountReportsPanel(container, { caseId, navigate, embedded 
     if (!embedded) {
       container.querySelector("#back-case").addEventListener("click", () => navigate("case", { case: caseId }));
     }
-    // Phase 6/7: materialises a new immutable candidate from the four core
-    // reports' latest REVIEWED versions. Refused server-side (with a clear
-    // per-report message) unless all four are currently Reviewed — this
-    // button never bypasses that gate, it just surfaces the result. The
-    // actual approval decision is made with the stage-level Approve/Reject
-    // controls (workflow/commands.py::available_actions(), which only
-    // enables Approve once a materialised set like this exists) — kept as
-    // the single approval path rather than duplicating it here.
-    container.querySelector("#submit-for-approval").addEventListener("click", async () => {
-      try {
-        const analyst = await analystName();
-        if (!analyst) throw new Error("Analyst identity is required.");
-        await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/reports/submit-for-approval`, { method: "POST", body: { analyst } });
-        await mountReportsPanel(container, { caseId, navigate, embedded });
-      } catch (error) { container.insertAdjacentHTML("afterbegin", errorState(error)); }
-    });
 
     // Export dropdowns: one delegated document-level listener closes any
     // open menu on an outside click; replacing (not stacking) the handler
