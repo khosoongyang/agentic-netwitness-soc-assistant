@@ -698,6 +698,33 @@ def test_submission_needs_a_current_attempt_candidate_set(env):
     assert exc.value.reason_code == "no_current_candidate_set"
 
 
+def _row(run, report_type, set_id, text):
+    attempt = {"report_set_id": set_id,
+               "reports": [{"report_type": report_type, "structured_content": _blocks(text)}]}
+    return re_.report_row_state(CASE, run, report_type, current_attempt=attempt,
+                                reporting_status="Awaiting Approval", reporting_updated_at=None)
+
+
+def test_rerun_advances_untouched_ai_reports_but_keeps_edits_outdated(env):
+    run = wss.start_run(CASE, allow_retry=True)
+    first = _row(run, "executive_summary", "set-attempt-1", "AI attempt 1")
+    re_.mark_reviewed(CASE, run, "executive_summary", "Analyst",
+                      expected_report_version_id=first["report_version_id"])
+    _row(run, "technical_findings", "set-attempt-1", "AI attempt 1")
+    re_.save_report_edit(CASE, run, "technical_findings", _blocks("analyst text"), "Analyst",
+                         source_report_set_id="set-attempt-1")
+
+    # Reporting re-ran (same run_id, new candidate set).
+    untouched = _row(run, "executive_summary", "set-attempt-2", "AI attempt 2")
+    assert untouched["status"] == "Ready for Review"               # new content needs a fresh review
+    assert untouched["blocks"] == _blocks("AI attempt 2") and not untouched["is_stale"]
+    assert _row(run, "executive_summary", "set-attempt-2", "AI attempt 2")["version"] == untouched["version"]
+
+    edited = _row(run, "technical_findings", "set-attempt-2", "AI attempt 2")
+    assert edited["status"] == "Outdated"                           # analyst work is never overwritten
+    assert edited["blocks"] == _blocks("analyst text")
+
+
 # ── report manifest identity (finalize) ─────────────────────────────────────
 
 def _editable_reports():
