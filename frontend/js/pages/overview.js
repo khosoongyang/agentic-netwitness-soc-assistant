@@ -1,9 +1,10 @@
 import { fetchJSON } from "../api.js";
 import { emptyState, errorState, escapeHTML, formatCount, formatDate, loadingState, severityBadge } from "../ui.js";
 import {
-  activeFilterCount, apiParams, chipsRowHTML, clearFilters, filterQueryFields, headerSortDirection,
+  activeFilterCount, apiParams, chipsRowHTML, clearFilters, emptyFilters, filterQueryFields, headerSortDirection,
   mountOverviewControls, nextHeaderSort, overviewURL, removeChip, stateFromParams,
 } from "../components/caseFilters.js";
+import { analyticsSectionHTML, mountAnalytics } from "../components/overviewAnalytics.js";
 
 // Recent Cases shows at most this many rows; the count line says when more match.
 const RECENT_LIMIT = 250;
@@ -140,6 +141,7 @@ export async function renderOverview(root, { navigate, route }) {
         ${summaryCard("search", "investigation", "Under Investigation", summary.under_investigation)}
         ${summaryCard("user", "analyst", "Awaiting Analyst", summary.awaiting_analyst)}
       </section>
+      ${analyticsSectionHTML()}
       <section class="overview-grid">
         <article class="panel">
           <div class="recent-cases-header"><h2>Recent cases</h2><p class="recent-cases-count" id="recent-cases-count" aria-live="polite"></p></div>
@@ -189,6 +191,17 @@ export async function renderOverview(root, { navigate, route }) {
   // Stop writing into the shared root once another view has rendered.
   window.addEventListener("aegis:navigate", () => { active = false; }, { once: true });
   window.addEventListener("popstate", () => { active = false; }, { once: true });
+
+  // A chart drill-down replaces the current search and filters with exactly
+  // the slice that was clicked (so Recent cases matches the chart's count);
+  // the sort order is kept. Chips and the search box show what was applied.
+  mountAnalytics(root, {
+    isActive: () => active,
+    onDrilldown: ({ filters, terms }) => {
+      setState({ q: terms.join(" AND "), filters: { ...emptyFilters(), ...filters }, sort: state.sort });
+      root.querySelector(".overview-grid")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    },
+  });
 
   renderChips();
   await loadCases();
