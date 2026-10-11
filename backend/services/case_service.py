@@ -482,8 +482,8 @@ def list_cases(
     """
     if page < 1:
         raise InvalidQueryError("page must be at least 1.")
-    if limit < 1 or limit > 200:
-        raise InvalidQueryError("limit must be between 1 and 200.")
+    if limit < 1 or limit > 250:
+        raise InvalidQueryError("limit must be between 1 and 250.")
     if sort not in _SORT_COLUMNS:
         raise InvalidQueryError(f"Unsupported sort field: {sort}.")
     direction = direction.lower()

@@ -286,18 +286,18 @@ def test_result_cap_reports_total_matching_count(
     monkeypatch.setattr(wss, "DB_FILE", path)
     wss.db_init()
     with sqlite3.connect(path) as connection:
-        for number in range(1, 251):
+        for number in range(1, 301):
             _insert(connection, (f"INC-{number}", f"Case {number}", "HIGH", "New",
                                  f"2026-01-01T00:{number // 60:02d}:{number % 60:02d}", None,
                                  None, None, None, (None,) * 5))
         connection.commit()
     client = backend.create_app({"TESTING": True, "AEGIS_CASE_DB_PATH": path}).test_client()
 
-    body = client.get("/api/cases?limit=200&sort=created&direction=desc").get_json()
-    assert len(body["items"]) == 200
-    assert body["pagination"]["total"] == 250
-    assert body["items"][0]["id"] == "INC-250"
-    assert client.get("/api/cases?limit=201").status_code == 400
+    body = client.get("/api/cases?limit=250&sort=created&direction=desc").get_json()
+    assert len(body["items"]) == 250
+    assert body["pagination"]["total"] == 300
+    assert body["items"][0]["id"] == "INC-300"
+    assert client.get("/api/cases?limit=251").status_code == 400
 
 
 # ── Workflow stage SQL == _current_stage_from_row() ──────────────────────
@@ -395,7 +395,7 @@ assert.equal(api.get("verdict"), "unrated");
 assert.equal(api.get("time_range"), "24h");
 assert.equal(api.get("sort"), "severity");
 assert.equal(api.get("direction"), "desc");
-assert.equal(api.get("limit"), "200");
+assert.equal(api.get("limit"), "250");
 const byDefault = f.apiParams({ q: "", filters: f.emptyFilters(), sort: f.DEFAULT_SORT });
 assert.deepEqual([byDefault.get("sort"), byDefault.get("direction")], ["created", "desc"]);
 for (const [value, sort, direction] of [["oldest", "created", "asc"], ["id-asc", "id", "asc"],
@@ -465,7 +465,7 @@ def test_overview_uses_server_side_case_query() -> None:
     overview = (FRONTEND / "js" / "pages" / "overview.js").read_text(encoding="utf-8")
     assert "/api/dashboard" in overview
     assert "/api/cases?" in overview
-    assert "RECENT_LIMIT = 200" in overview
+    assert "RECENT_LIMIT = 250" in overview
     assert "replaceState" in overview
     for column in ('"case"', '"severity"', '"last_seen"'):
         assert f"sortableHeader({column}" in overview

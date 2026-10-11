@@ -178,7 +178,7 @@ function utcBound(value) {
   return `${value.length === 16 ? `${value}:00` : value}Z`;
 }
 
-export function apiParams(state, { limit = 200, page = 1 } = {}) {
+export function apiParams(state, { limit = 250, page = 1 } = {}) {
   const option = sortOption(state.sort);
   const params = new URLSearchParams({ page: String(page), limit: String(limit), sort: option.sort, direction: option.direction });
   if (state.q) params.set("query", state.q);
