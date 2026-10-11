@@ -180,7 +180,7 @@ IOC_AVAILABILITY = [
 ]
 
 IOC_CONFIDENTIALITY = [
-    {"ioc": "Anomalous outbound external communication",
+    {"ioc": "Anomalous outbound or internal network communication",
      "desc": "Unusual outbound or internal connection from a host to an IP/domain (e.g., non-standard ports, unclassified sessions, or high-risk SIEM rule triggers) where destination reputation or activity is unverified.",
      "metakeys": ["ip.src", "ip.dst", "port.dst", "protocol"]},
     {"ioc": "High-volume or anomalous data egress",

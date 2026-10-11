@@ -244,7 +244,7 @@ def test_cia_confidentiality_does_not_assume_known_bad_ip():
         assert "known bad IPs" not in item["ioc"]
     # Check that unverified outbound communication exists
     ioc_names = [item["ioc"] for item in IOC_CONFIDENTIALITY]
-    assert "Anomalous outbound external communication" in ioc_names
+    assert "Anomalous outbound or internal network communication" in ioc_names
 
 
 def test_soc_classification_table_includes_unverified_categories():
@@ -252,4 +252,5 @@ def test_soc_classification_table_includes_unverified_categories():
     assert "Suspicious Outbound Network Activity (Unverified)" in SOC_CLASSIFICATION_TABLE["medium"]["categories"]
     assert "Anomalous External Traffic / Unconfirmed C2" in SOC_CLASSIFICATION_TABLE["medium"]["categories"]
     assert "Uncorrelated Host Alert" in SOC_CLASSIFICATION_TABLE["medium"]["categories"]
+
 
