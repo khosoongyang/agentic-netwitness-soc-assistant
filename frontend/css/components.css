@@ -2080,14 +2080,22 @@ td {
 .triage-finding-row {
   display: grid;
   grid-template-columns: 9.5rem minmax(0, 1fr);
-  gap: 0.5rem;
-  margin-top: 0.25rem;
+  gap: 0.5rem 1rem;
+  padding: 0.7rem 0;
+  line-height: 1.6;
   overflow-wrap: anywhere;
 }
 
+.triage-finding-row + .triage-finding-row {
+  border-top: 1px solid var(--border);
+}
+
 .triage-finding-label {
+  padding-top: 0.15rem;
   color: var(--muted);
   font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 @media (max-width: 640px) {
@@ -2098,24 +2106,41 @@ td {
 }
 
 .triage-finding {
-  margin-top: 0.6rem;
-  padding: 0.55rem 0.7rem;
+  margin-top: 1.1rem;
+  padding: 0.9rem 1.1rem;
   border-left: 2px solid var(--border);
 }
 
 .triage-finding-ioc {
-  margin-bottom: 0.2rem;
+  margin-bottom: 0.4rem;
   color: var(--muted);
   font-size: 0.78rem;
 }
 
 .triage-cia-summary {
-  margin: 0.2rem 0 0;
+  margin: 0.5rem 0 0;
+  line-height: 1.6;
 }
 
 .triage-confirm-list {
   margin: 0;
-  padding-left: 1.1rem;
+  padding-left: 1.4rem;
+  list-style: decimal outside;
+}
+
+.triage-confirm-list > li {
+  display: list-item;
+  list-style: decimal outside;
+  padding-left: 0.3rem;
+}
+
+.triage-confirm-list > li::marker {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.triage-confirm-list li + li {
+  margin-top: 0.45rem;
 }
 
 .badge.triage-status-confirmed {

@@ -827,7 +827,7 @@ function _triageFindingBlock(f) {
   const row = (label, html) => (html ? `<div class="triage-finding-row"><span class="triage-finding-label">${label}</span><span>${html}</span></div>` : "");
   const text = (value) => (value ? escapeHTML(value) : "");
   const confirm = Array.isArray(f.would_confirm) && f.would_confirm.length
-    ? `<ul class="triage-confirm-list">${f.would_confirm.map((c) => `<li>${escapeHTML(c)}</li>`).join("")}</ul>`
+    ? `<ol class="triage-confirm-list">${f.would_confirm.map((c) => `<li>${escapeHTML(c)}</li>`).join("")}</ol>`
     : "";
   const title = f.title || f.ioc || "";
   return `<div class="triage-finding">
@@ -836,6 +836,7 @@ function _triageFindingBlock(f) {
     ${row("CIA reasoning", text(f.cia_reasoning))}
     ${row("Why flagged", text(f.why_suspicious))}
     ${row("Not established", text(f.not_established))}
+    ${row("Malicious explanation", text(f.malicious_explanation))}
     ${row("Benign explanation", text(f.benign_explanation))}
     ${row("Would confirm", confirm)}
   </div>`;
@@ -845,9 +846,8 @@ function _triageFindingBlock(f) {
 // three were considered and what each one rests on.
 function _triageCiaItem(label, data) {
   const findings = (Array.isArray(data.findings) ? data.findings : []).filter(Boolean);
-  const confidence = findings.length ? _triageConfidenceBadge(data.confidence) : "";
   return `<li><div class="triage-cia-item">
-    <div class="triage-finding-head"><strong>${escapeHTML(label)}</strong> ${_triageStatusBadge(data.status)} ${confidence}</div>
+    <div class="triage-finding-head"><strong>${escapeHTML(label)}</strong></div>
     ${data.summary ? `<p class="triage-cia-summary">${escapeHTML(data.summary)}</p>` : ""}
     ${findings.map(_triageFindingBlock).join("")}
   </div></li>`;

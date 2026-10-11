@@ -716,6 +716,7 @@ def _stream_or_invoke(text_chain, thinking_container=None) -> str:
 
 _MAX_ALERTS_IN_PROMPT = 12
 _MAX_PROMPT_CHARS     = 9000
+_MAX_PARSED_PROMPT_CHARS = 40000
 
 _ALERT_KEEP_KEYS = (
     "id", "title", "name", "type", "source", "severity", "risk_score",
@@ -750,8 +751,6 @@ def _compact_incident(incident: dict, parsed_context: dict | None = None) -> str
     instead of re-deriving indicators from scratch every time.
     """
     slim: dict = {}
-    if parsed_context:
-        slim["parsed_alert_context"] = parsed_context
     for k, v in incident.items():
         if k in ("alerts", "journalEntries", "alertMeta"):
             continue
@@ -799,7 +798,20 @@ def _compact_incident(incident: dict, parsed_context: dict | None = None) -> str
     text = json.dumps(slim, indent=1, default=str)
     if len(text) > _MAX_PROMPT_CHARS:
         text = text[:_MAX_PROMPT_CHARS] + "\n…(truncated)"
-    return text
+    if not parsed_context:
+        return text
+
+    # The Parsing stage's processed_alert gets its own, larger budget and goes
+    # first: sharing the 9K cap with the raw incident cut it after its first
+    # few normalised events, so the IOC phase reasoned without most of them.
+    parsed = json.dumps(parsed_context, separators=(",", ":"), default=str)
+    if len(parsed) > _MAX_PARSED_PROMPT_CHARS:
+        parsed = parsed[:_MAX_PARSED_PROMPT_CHARS] + "…(truncated)"
+    return (
+        '"parsed_alert_context" (processed_alert from Parsing & Normalisation):\n'
+        f"{parsed}\n\n"
+        f"raw_incident:\n{text}"
+    )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1176,13 +1188,14 @@ def _build_ioc_findings(raw_items: Any, ioc_list: list[dict], haystack: str) -> 
                 "ioc":                 ioc_list[pos]["ioc"],
                 "index":               pos + 1,
                 "title":               _short_text(detail.get("title"), 120),
-                "cia_reasoning":       _short_text(detail.get("cia_reasoning"), 1400),
-                "not_established":     _short_text(detail.get("not_established")),
+                "cia_reasoning":       _short_text(detail.get("cia_reasoning"), 2400),
+                "not_established":     _short_text(detail.get("not_established"), 900),
                 "evidence":            {k: ", ".join(v) for k, v in verified.items()},
                 "unverified_evidence": {k: ", ".join(v) for k, v in unverified.items()},
-                "why_suspicious":      _short_text(detail.get("why_suspicious")),
-                "benign_explanation":  _short_text(detail.get("benign_explanation")),
-                "would_confirm":       [t for t in (_short_text(w, 200) for w in would_confirm[:5]) if t],
+                "why_suspicious":      _short_text(detail.get("why_suspicious"), 900),
+                "malicious_explanation": _short_text(detail.get("malicious_explanation"), 900),
+                "benign_explanation":  _short_text(detail.get("benign_explanation"), 900),
+                "would_confirm":       [t for t in (_short_text(w, 400) for w in would_confirm[:5]) if t],
                 "impact":              _pick_level(detail.get("impact"), _IOC_IMPACT_LEVELS),
                 "confidence":          _pick_level(detail.get("confidence"), _IOC_CONFIDENCE_LEVELS),
             })
@@ -1208,6 +1221,8 @@ def _finding_sentence(f: dict) -> str:
         parts.append("Evidence: " + ", ".join(f"{k}={v}" for k, v in f["evidence"].items()) + ".")
     if f["not_established"]:
         parts.append(f"Not established: {f['not_established']}")
+    if f.get("malicious_explanation"):
+        parts.append(f"Malicious explanation: {f['malicious_explanation']}")
     if f["benign_explanation"]:
         parts.append(f"Benign explanation: {f['benign_explanation']}")
     return " ".join(p.strip() for p in parts)
@@ -1368,10 +1383,19 @@ class TriageAgent:
                 "(OS / software update services, certificate or CRL downloads, CDNs, major cloud providers, internal IT tooling). "
                 "If a benign explanation fully accounts for the activity and nothing else is anomalous, do NOT match. "
                 "If it only partly accounts for it, match with confidence \"low\" and state the benign explanation.\n"
+                "GROUNDING: \"parsed_alert_context\" is the Parsing & Normalisation output for THIS incident and is your primary "
+                "source. Read all of it, especially normalised_alert.normalised_events (one entry per event: action, time, IPs, "
+                "ports), alert_summary (observed_actions, raw_event_count), network_indicators and data_quality. Every "
+                "explanation must be specific to this incident: cite the actual event count, first/last event times, the "
+                "action names observed, the host pair and ports, and how many distinct source ports or sessions appear. "
+                "Interpret what those values mean using your security knowledge (e.g. what service a port normally carries, "
+                "whether an action name is a read or a write/control operation). Never state that a detail is unknown or "
+                "absent when it appears in parsed_alert_context; only data_quality.missing_context_fields and fields that "
+                "genuinely do not appear may be called missing. Generic text that would fit any alert is not acceptable.\n"
                 "Per property:\n"
                 "- status: \"confirmed\" | \"potential\" when at least one IOC matches; otherwise \"no_evidence\" (telemetry shows "
                 "nothing bearing on this property) or \"insufficient_evidence\" (telemetry is too thin to judge it).\n"
-                "- summary: 1-2 sentences. With matches: how the evidence affects this property and what remains unproven. "
+                "- summary: 2-4 sentences. With matches: how the evidence affects this property and what remains unproven. "
                 "Without matches: what kinds of activity were looked for and not observed (e.g. for integrity: no modification of "
                 "files, accounts, configuration or DNS settings).\n"
                 "Rules for each matched IOC (one finding object per IOC):\n"
@@ -1381,18 +1405,27 @@ class TriageAgent:
                 "- evidence: metakey -> value pairs (e.g. ip.src, ip.dst, port.dst, domain, user.name, process.name, command_line, file.hash). "
                 "Copy every value EXACTLY as it appears in the incident; never include a value that is not in the incident. "
                 "When an alert or rule is part of the evidence, cite it by name under the key \"alert.name\".\n"
-                "- cia_reasoning: 4-5 sentences forming the chain observed behaviour -> what could happen -> why that is a loss of "
-                "this property -> how far the current telemetry supports it. Name the specific values involved (hosts, IPs, "
-                "processes, files) in the prose. E.g. \"The process procdump.exe accessed LSASS memory on HOST-01. LSASS holds "
+                "- cia_reasoning: 6-8 sentences forming the chain observed behaviour (what, how often, over what time span, "
+                "per the normalised events) -> what that behaviour technically means -> what could happen -> why that is a "
+                "loss of this property -> how far the current telemetry supports it and what it leaves open. Name the "
+                "specific values involved (hosts, IPs, ports, actions, processes, files, counts, times) in the prose. E.g. \"The process procdump.exe accessed LSASS memory on HOST-01. LSASS holds "
                 "password hashes and Kerberos tickets for logged-on users. Extracting them would expose authentication secrets to "
                 "an unauthorised party, a direct loss of confidentiality, and could enable further access. The telemetry shows the "
                 "memory access but not whether a dump file was written or exfiltrated.\" "
                 "Secondary impacts on another property are described as possible, not as observed.\n"
-                "- why_suspicious: one sentence on what specifically is anomalous. Do not just restate the event (\"A talked to B\").\n"
-                "- not_established: one sentence on what the evidence does NOT prove (e.g. \"Confirms outbound DNS occurred, "
-                "but not that sensitive data was transmitted.\").\n"
-                "- benign_explanation: one sentence on the most plausible legitimate explanation, or \"\" if there is none.\n"
-                "- would_confirm: 2-5 short checks or telemetry values that would confirm or refute the match.\n"
+                "- why_suspicious: 2-3 sentences on what specifically is anomalous in THIS incident's events (volume, "
+                "repetition, timing, action type, port/service, direction) and why that pattern stands out. Do not just "
+                "restate the event (\"A talked to B\").\n"
+                "- not_established: 2-3 sentences on what the evidence does NOT prove and which missing fields or telemetry "
+                "would be needed to prove it (e.g. \"Confirms outbound DNS occurred, but not that sensitive data was "
+                "transmitted; no byte counts or payload were captured.\").\n"
+                "- malicious_explanation: 2-3 sentences on the most plausible malicious explanation for these specific "
+                "hosts, ports and actions: what an attacker would be doing, what they would gain, and which part of the "
+                "observed events fits that scenario. Describe it as a hypothesis, not as an observed fact.\n"
+                "- benign_explanation: 2-3 sentences on the most plausible legitimate explanation for these specific hosts, "
+                "ports and actions, and what would make it believable, or \"\" if there is none.\n"
+                "- would_confirm: 3-5 checks specific to this incident. Each is one full sentence naming the exact host, "
+                "port, action or time window to check and what a positive or negative result would mean.\n"
                 "- impact: \"confirmed\" ONLY if telemetry shows the property was actually affected "
                 "(data left the network, files encrypted, logs cleared, service down); otherwise \"potential\".\n"
                 "- confidence: \"high\", \"medium\" or \"low\".\n"
@@ -1402,7 +1435,7 @@ class TriageAgent:
                 ' "availability": {"status": "<status>", "summary": "<text>", "matched_iocs": [<finding>, ...]}}\n'
                 'where <finding> is {"ioc": <integer>, "title": "<headline>", "evidence": {"<metakey>": "<value>"}, '
                 '"cia_reasoning": "<text>", "why_suspicious": "<sentence>", "not_established": "<sentence>", '
-                '"benign_explanation": "<sentence or empty>", "would_confirm": ["<check>"], '
+                '"malicious_explanation": "<text>", "benign_explanation": "<text or empty>", "would_confirm": ["<check>"], '
                 '"impact": "confirmed|potential", "confidence": "high|medium|low"}'
             )),
             HumanMessage(content=(
@@ -1467,7 +1500,7 @@ class TriageAgent:
             # Every property gets an explicit assessment, matched or not, so
             # "nothing found" reads as considered rather than skipped.
             status  = _category_status(cat_data.get("status"), findings)
-            summary = _short_text(cat_data.get("summary"), 700)
+            summary = _short_text(cat_data.get("summary"), 1200)
 
             per_category[cat_key] = {
                 "matched_ioc_names": matched_names,
