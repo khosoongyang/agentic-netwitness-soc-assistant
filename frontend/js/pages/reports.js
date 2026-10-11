@@ -153,15 +153,45 @@ function createReportOpener({ caseId, detail, tableRoot }) {
     detail.scrollIntoView({ behavior: "smooth", block: "start" });
     try {
       let report = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/reports/${encodeURIComponent(reportType)}`);
+      // The Triage Ticket has no review state (report_service.mark_reviewed()
+      // rejects it), so it never gets a Mark as Reviewed button.
+      const canReview = reportType !== TICKET_REPORT_TYPE;
       const show = () => {
+        const alreadyReviewed = report.status === "Reviewed";
         detail.innerHTML = `
           <div class="page-header"><div><h2>${escapeHTML(report.title)}</h2><p>${escapeHTML(report.status)}${report.is_stale ? " · based on an older candidate" : ""}</p></div></div>
-          <div class="stage-actions"><button type="button" class="action-button" id="edit-report">Edit</button><button type="button" class="action-button" id="confirm-report">Confirm section</button>${report.has_edits ? `<button type="button" class="action-button danger" id="discard-report">Replace with AI version</button>` : ""}</div>
+          <div class="stage-actions"><button type="button" class="action-button" id="edit-report">Edit</button>${canReview && report.exists ? `<button type="button" class="action-button" id="view-mark-reviewed"${alreadyReviewed ? " disabled" : ""}>${alreadyReviewed ? "Reviewed" : "Mark as Reviewed"}</button>` : ""}${report.has_edits ? `<button type="button" class="action-button danger" id="discard-report">Replace with AI version</button>` : ""}</div>
           <div id="report-action"></div><article class="report-preview">${(report.blocks || []).map(renderBlock).join("") || emptyState("This report has not been generated.")}</article>`;
         detail.querySelector("#edit-report").addEventListener("click", edit);
-        detail.querySelector("#confirm-report").addEventListener("click", confirm);
+        detail.querySelector("#view-mark-reviewed")?.addEventListener("click", markReviewed);
         detail.querySelector("#discard-report")?.addEventListener("click", discard);
       };
+      // Phase 3: real persisted per-version review state — records a
+      // report_reviews row against this exact report_versions row
+      // (backend/routes/reports.py POST /<report_type>/review ->
+      // agents/reporting/report_editing.py::mark_reviewed()). A later
+      // edit produces a new version with no review row, so this never
+      // silently "carries over" onto content the analyst didn't review.
+      // Shared by the View panel and the editor footer.
+      async function markReviewed() {
+        try {
+          const analyst = await analystName();
+          report = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/reports/${encodeURIComponent(reportType)}/review`, { method: "POST", body: { analyst, report_version_id: report.report_version_id } });
+          syncTableRow(tableRoot, report);
+          // Reviewing a component report can silently (re)assemble the
+          // Final Incident Report server-side (see report_editing.py's
+          // _maybe_assemble_final_incident_report()) — that row's own
+          // status/last-updated wouldn't otherwise refresh until the
+          // page reloads, so re-fetch it too whenever it might have
+          // changed as a side effect of this action.
+          if (tableRoot && COMPONENT_REPORT_TYPES.has(reportType)) {
+            fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/reports/final_incident_report`)
+              .then(finalReport => syncTableRow(tableRoot, finalReport))
+              .catch(() => {});
+          }
+          show();
+        } catch (error) { detail.querySelector("#report-action").innerHTML = errorState(error); }
+      }
       function edit() {
         const editor = createBlockEditor(report.blocks);
         detail.innerHTML = `
@@ -180,7 +210,7 @@ function createReportOpener({ caseId, detail, tableRoot }) {
             <div class="report-editor-footer-actions">
               <button type="button" class="action-button" id="editor-cancel">Cancel</button>
               <button type="button" class="action-button" id="editor-save-draft">Save Draft</button>
-              <button type="button" class="action-button" id="editor-mark-reviewed">Mark as Reviewed</button>
+              ${canReview ? `<button type="button" class="action-button" id="editor-mark-reviewed">Mark as Reviewed</button>` : ""}
             </div>
           </div>`;
         detail.querySelector("#editor-mount").appendChild(editor.element);
@@ -210,43 +240,13 @@ function createReportOpener({ caseId, detail, tableRoot }) {
             detail.querySelector(".report-editor-meta-row").innerHTML = `<strong>${escapeHTML(report.title)}</strong>${badge(report.status, `report-status-${escapeHTML(report.tone || "info")}`)}`;
           } catch (error) { detail.querySelector("#report-action").innerHTML = errorState(error); }
         });
-        // Phase 3: real persisted per-version review state — records a
-        // report_reviews row against this exact report_versions row
-        // (backend/routes/reports.py POST /<report_type>/review ->
-        // agents/reporting/report_editing.py::mark_reviewed()). A later
-        // edit produces a new version with no review row, so this never
-        // silently "carries over" onto content the analyst didn't review.
-        detail.querySelector("#editor-mark-reviewed").addEventListener("click", async () => {
+        detail.querySelector("#editor-mark-reviewed")?.addEventListener("click", () => {
           if (editor.isDirty()) {
             detail.querySelector("#report-action").innerHTML = errorState({ message: "Save your changes as a draft before marking this report as reviewed." });
             return;
           }
-          try {
-            const analyst = await analystName();
-            report = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/reports/${encodeURIComponent(reportType)}/review`, { method: "POST", body: { analyst, report_version_id: report.report_version_id } });
-            syncTableRow(tableRoot, report);
-            // Reviewing a component report can silently (re)assemble the
-            // Final Incident Report server-side (see report_editing.py's
-            // _maybe_assemble_final_incident_report()) — that row's own
-            // status/last-updated wouldn't otherwise refresh until the
-            // page reloads, so re-fetch it too whenever it might have
-            // changed as a side effect of this action.
-            if (tableRoot && COMPONENT_REPORT_TYPES.has(reportType)) {
-              fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/reports/final_incident_report`)
-                .then(finalReport => syncTableRow(tableRoot, finalReport))
-                .catch(() => {});
-            }
-            show();
-          } catch (error) { detail.querySelector("#report-action").innerHTML = errorState(error); }
+          markReviewed();
         });
-      }
-      async function confirm() {
-        try {
-          const analyst = await analystName();
-          report = await fetchJSON(`/api/cases/${encodeURIComponent(caseId)}/reports/${encodeURIComponent(reportType)}/confirm`, { method: "POST", body: { analyst, report_set_id: report.current_report_set_id } });
-          syncTableRow(tableRoot, report);
-          show();
-        } catch (error) { detail.querySelector("#report-action").innerHTML = errorState(error); }
       }
       async function discard() {
         if (!window.confirm("Discard saved edits and replace them with the current AI version?")) return;
