@@ -99,8 +99,10 @@ class OpenAILLMConfig:
     # Reasoning models spend most of their budget on chain-of-thought BEFORE
     # the final JSON. If max_tokens is too small the response is cut off
     # mid-reasoning, no JSON is ever emitted, and the IOC phase parses as
-    # empty — which presents as "0 IOCs matched" on every run.
-    max_tokens:  int   = 3072
+    # empty — which presents as "0 IOCs matched" on every run. The IOC phase
+    # emits a structured finding object per match plus a CIA assessment for
+    # every property, so leave headroom.
+    max_tokens:  int   = 6144
     timeout:     int   = 300
 
 
@@ -237,6 +239,9 @@ IOC_INTEGRITY = [
     {"ioc": "Unexpected privilege escalation",
      "desc": "Token manipulation, UAC bypass techniques, or execution transition from unprivileged user context to SYSTEM / root.",
      "metakeys": ["user.name", "process.privilege", "command_line", "event.type"]},
+    {"ioc": "Unauthorised modification or encryption of data or system files",
+     "desc": "Bulk modification, encryption, overwriting or deletion of user documents, databases or protected system files outside an approved install/admin workflow (e.g., ransomware file rewrites, tampered binaries).",
+     "metakeys": ["file.path", "file.name", "change.type", "process.name"]},
 ]
 
 ALL_IOCS = {
@@ -1062,6 +1067,176 @@ def _resolve_ioc_matches(raw_items: Any, ioc_list: list[dict]) -> list[int]:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# 8c.  STRUCTURED IOC FINDINGS
+# ══════════════════════════════════════════════════════════════════════════════
+
+# "confirmed" = telemetry shows the CIA property was actually affected (data
+# left, files encrypted, logs cleared, service down); "potential" = behaviour
+# that could lead there. Ordered weakest -> strongest for roll-up.
+_IOC_IMPACT_LEVELS     = ("potential", "confirmed")
+_IOC_CONFIDENCE_LEVELS = ("low", "medium", "high")
+
+
+def _leaf_strings(obj: Any, out: list[str] | None = None) -> list[str]:
+    """Every scalar value in a nested dict/list, as strings."""
+    if out is None:
+        out = []
+    if isinstance(obj, dict):
+        for v in obj.values():
+            _leaf_strings(v, out)
+    elif isinstance(obj, (list, tuple, set)):
+        for v in obj:
+            _leaf_strings(v, out)
+    elif obj is not None and not isinstance(obj, bool):
+        out.append(str(obj))
+    return out
+
+
+def _value_in_incident(value: Any, haystack: str) -> bool:
+    """True when `value` appears in the incident data as a whole token, so a
+    model-cited evidence value can be shown as observed rather than invented."""
+    s = str(value).strip().lower()
+    if not s:
+        return False
+    return re.search(r"(?<![a-z0-9])" + re.escape(s) + r"(?![a-z0-9])", haystack) is not None
+
+
+def _pick_level(raw: Any, levels: tuple[str, ...]) -> str:
+    s = str(raw or "").strip().lower()
+    return s if s in levels else ""
+
+
+def _short_text(raw: Any, limit: int = 400) -> str:
+    s = raw if isinstance(raw, str) else ("" if raw is None else str(raw))
+    s = s.strip()
+    return s[:limit] + "…" if len(s) > limit else s
+
+
+def _evidence_pairs(raw: Any) -> list[tuple[str, str]]:
+    """Normalise the model's `evidence` into (metakey, value) pairs. Accepts
+    the documented {"ip.dst": "1.2.3.4"} object, list values, and the
+    ["ip.dst=1.2.3.4"] / [{"key":..,"value":..}] shapes models drift to."""
+    pairs: list[tuple[str, str]] = []
+    items: list[tuple[Any, Any]] = []
+    if isinstance(raw, dict):
+        items = list(raw.items())
+    elif isinstance(raw, list):
+        for item in raw:
+            if isinstance(item, dict) and "key" in item:
+                items.append((item.get("key"), item.get("value")))
+            elif isinstance(item, str) and "=" in item:
+                k, _, v = item.partition("=")
+                items.append((k, v))
+    for k, v in items:
+        key = str(k or "").strip()
+        if not key:
+            continue
+        for val in (v if isinstance(v, (list, tuple)) else [v]):
+            val_s = _short_text(val, 200)
+            if val_s and (key, val_s) not in pairs:
+                pairs.append((key, val_s))
+    return pairs
+
+
+def _build_ioc_findings(raw_items: Any, ioc_list: list[dict], haystack: str) -> list[dict]:
+    """
+    Turn one category's `matched_iocs` into structured findings.
+
+    Each item is either the documented finding object ({"ioc": 3, "evidence":
+    {...}, ...}) or a bare index/name (the legacy shape) — both resolve through
+    _resolve_ioc_matches. Evidence values the model cites are checked against
+    the incident data: values found there go in `evidence`, the rest in
+    `unverified_evidence`, so the UI never presents an invented value as
+    observed telemetry.
+    """
+    if raw_items is None:
+        return []
+    if not isinstance(raw_items, (list, tuple)):
+        raw_items = [raw_items]
+
+    findings: list[dict] = []
+    seen: set[int] = set()
+    for item in raw_items:
+        detail = item if isinstance(item, dict) else {}
+        ref = (detail.get("ioc", detail.get("index", detail.get("id")))
+               if detail else item)
+        for pos in _resolve_ioc_matches(ref, ioc_list):
+            if pos in seen:
+                continue
+            seen.add(pos)
+            verified: dict[str, list[str]]   = {}
+            unverified: dict[str, list[str]] = {}
+            for key, val in _evidence_pairs(detail.get("evidence")):
+                bucket = verified if _value_in_incident(val, haystack) else unverified
+                bucket.setdefault(key, []).append(val)
+            would_confirm = detail.get("would_confirm") or []
+            if isinstance(would_confirm, str):
+                would_confirm = [would_confirm]
+            findings.append({
+                "ioc":                 ioc_list[pos]["ioc"],
+                "index":               pos + 1,
+                "title":               _short_text(detail.get("title"), 120),
+                "cia_reasoning":       _short_text(detail.get("cia_reasoning"), 1400),
+                "not_established":     _short_text(detail.get("not_established")),
+                "evidence":            {k: ", ".join(v) for k, v in verified.items()},
+                "unverified_evidence": {k: ", ".join(v) for k, v in unverified.items()},
+                "why_suspicious":      _short_text(detail.get("why_suspicious")),
+                "benign_explanation":  _short_text(detail.get("benign_explanation")),
+                "would_confirm":       [t for t in (_short_text(w, 200) for w in would_confirm[:5]) if t],
+                "impact":              _pick_level(detail.get("impact"), _IOC_IMPACT_LEVELS),
+                "confidence":          _pick_level(detail.get("confidence"), _IOC_CONFIDENCE_LEVELS),
+            })
+    return findings
+
+
+def _strongest(values: list[str], levels: tuple[str, ...]) -> str:
+    ranked = [levels.index(v) for v in values if v in levels]
+    return levels[max(ranked)] if ranked else ""
+
+
+def _finding_sentence(f: dict) -> str:
+    """One-line plain-text rendering of a finding, used for the category
+    `reasoning` string and the ioc_summary handed to the Risk phase."""
+    qual = ", ".join(x for x in (
+        f["impact"],
+        f"{f['confidence']} confidence" if f["confidence"] else "",
+    ) if x)
+    head = (f["title"] or f["ioc"]) + (f" ({qual})" if qual else "")
+    body = f["cia_reasoning"] or f["why_suspicious"]
+    parts = [head + (f": {body}" if body else "")]
+    if f["evidence"]:
+        parts.append("Evidence: " + ", ".join(f"{k}={v}" for k, v in f["evidence"].items()) + ".")
+    if f["not_established"]:
+        parts.append(f"Not established: {f['not_established']}")
+    if f["benign_explanation"]:
+        parts.append(f"Benign explanation: {f['benign_explanation']}")
+    return " ".join(p.strip() for p in parts)
+
+
+# Per-property CIA status. A category with findings takes the strongest
+# finding impact; one without findings can only be "no_evidence" (telemetry
+# shows nothing bearing on the property) or "insufficient_evidence"
+# (telemetry is too thin to judge). Neither means "no impact".
+_CIA_STATUS_LABELS = {
+    "confirmed":             "Confirmed impact",
+    "potential":             "Potential impact",
+    "insufficient_evidence": "Insufficient evidence",
+    "no_evidence":           "No evidence",
+}
+
+
+def _category_status(raw_status: Any, findings: list[dict]) -> str:
+    if findings:
+        return _strongest([f["impact"] for f in findings], _IOC_IMPACT_LEVELS) or "potential"
+    s = re.sub(r"[\s-]+", "_", str(raw_status or "").strip().lower())
+    if s == "no_evidence":
+        return s
+    # The model claimed an impact (or something unrecognised) without backing
+    # it with a checklist finding — don't let that stand as an impact.
+    return "insufficient_evidence" if s else "no_evidence"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # 9.  TRIAGE AGENT  (3 direct LLM calls — no pipeline, no tool wrappers)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -1180,19 +1355,55 @@ class TriageAgent:
         messages = [
             SystemMessage(content=(
                 "You are a SOC Analyst performing IOC triage across three categories: Availability, Confidentiality, and Integrity. "
-                "Analyse the incident and identify which IOCs are present in each category based on observed telemetry and indicators. "
-                "For each category, evaluate the checklist against the incident. "
-                "For categories with matched IOCs, keep your reasoning concise citing the specific telemetry values and indicators that triggered each match (e.g. "
-                "destination IP, source IP, hostname, username, process, command line, port, file hash) and detailing what value was matched. "
-                "For categories with NO matched IOCs, set matched_iocs to [] and reasoning to \"\". Do not provide reasoning for categories with no matches.\n"
-                "Rules for the JSON:\n"
-                "- matched_iocs MUST be an array of integer indices from the checklist for that category (e.g. [1, 2]). Use [] if no IOC matches.\n"
-                "- In your reasoning for matched categories, detail the matched indicator values (e.g. destination IP, source IP, user, host, process).\n"
-                "- If no IOC matches a category, set matched_iocs to [] and reasoning to \"\".\n"
+                "Assess EACH of the three CIA properties independently against the observed telemetry, using that property's IOC checklist. "
+                "One activity may support more than one property (e.g. ransomware: integrity AND availability).\n"
+                "STRICT RULE: Do not infer a CIA impact merely from the alert category, alert name or risk score. "
+                "Every Confidentiality, Integrity or Availability assessment must contain an evidence-backed explanation of HOW the "
+                "observed behaviour could affect that specific security property "
+                "(confidentiality = information disclosed to unauthorised parties; integrity = data, configuration, accounts or "
+                "systems altered without authorisation; availability = legitimate users or systems lose access to a service or data). "
+                "If the telemetry does not support that link, return \"no_evidence\" or \"insufficient_evidence\" for the property "
+                "rather than manufacturing a justification.\n"
+                "Before matching any IOC, consider whether known-good infrastructure or routine activity explains it "
+                "(OS / software update services, certificate or CRL downloads, CDNs, major cloud providers, internal IT tooling). "
+                "If a benign explanation fully accounts for the activity and nothing else is anomalous, do NOT match. "
+                "If it only partly accounts for it, match with confidence \"low\" and state the benign explanation.\n"
+                "Per property:\n"
+                "- status: \"confirmed\" | \"potential\" when at least one IOC matches; otherwise \"no_evidence\" (telemetry shows "
+                "nothing bearing on this property) or \"insufficient_evidence\" (telemetry is too thin to judge it).\n"
+                "- summary: 1-2 sentences. With matches: how the evidence affects this property and what remains unproven. "
+                "Without matches: what kinds of activity were looked for and not observed (e.g. for integrity: no modification of "
+                "files, accounts, configuration or DNS settings).\n"
+                "Rules for each matched IOC (one finding object per IOC):\n"
+                "- ioc: the integer index of the IOC in that property's checklist.\n"
+                "- title: a short impact-framed headline (e.g. \"Potential unauthorised external data communication\", "
+                "\"Credential exposure\", \"Unauthorised configuration modification\").\n"
+                "- evidence: metakey -> value pairs (e.g. ip.src, ip.dst, port.dst, domain, user.name, process.name, command_line, file.hash). "
+                "Copy every value EXACTLY as it appears in the incident; never include a value that is not in the incident. "
+                "When an alert or rule is part of the evidence, cite it by name under the key \"alert.name\".\n"
+                "- cia_reasoning: 4-5 sentences forming the chain observed behaviour -> what could happen -> why that is a loss of "
+                "this property -> how far the current telemetry supports it. Name the specific values involved (hosts, IPs, "
+                "processes, files) in the prose. E.g. \"The process procdump.exe accessed LSASS memory on HOST-01. LSASS holds "
+                "password hashes and Kerberos tickets for logged-on users. Extracting them would expose authentication secrets to "
+                "an unauthorised party, a direct loss of confidentiality, and could enable further access. The telemetry shows the "
+                "memory access but not whether a dump file was written or exfiltrated.\" "
+                "Secondary impacts on another property are described as possible, not as observed.\n"
+                "- why_suspicious: one sentence on what specifically is anomalous. Do not just restate the event (\"A talked to B\").\n"
+                "- not_established: one sentence on what the evidence does NOT prove (e.g. \"Confirms outbound DNS occurred, "
+                "but not that sensitive data was transmitted.\").\n"
+                "- benign_explanation: one sentence on the most plausible legitimate explanation, or \"\" if there is none.\n"
+                "- would_confirm: 2-5 short checks or telemetry values that would confirm or refute the match.\n"
+                "- impact: \"confirmed\" ONLY if telemetry shows the property was actually affected "
+                "(data left the network, files encrypted, logs cleared, service down); otherwise \"potential\".\n"
+                "- confidence: \"high\", \"medium\" or \"low\".\n"
                 "Final JSON schema:\n"
-                '{"availability": {"matched_iocs": [<integers>], "reasoning": "<concise reasoning for matches or empty string>"},\n'
-                ' "confidentiality": {"matched_iocs": [<integers>], "reasoning": "<concise reasoning for matches or empty string>"},\n'
-                ' "integrity": {"matched_iocs": [<integers>], "reasoning": "<concise reasoning for matches or empty string>"}}'
+                '{"confidentiality": {"status": "<status>", "summary": "<text>", "matched_iocs": [<finding>, ...]},\n'
+                ' "integrity": {"status": "<status>", "summary": "<text>", "matched_iocs": [<finding>, ...]},\n'
+                ' "availability": {"status": "<status>", "summary": "<text>", "matched_iocs": [<finding>, ...]}}\n'
+                'where <finding> is {"ioc": <integer>, "title": "<headline>", "evidence": {"<metakey>": "<value>"}, '
+                '"cia_reasoning": "<text>", "why_suspicious": "<sentence>", "not_established": "<sentence>", '
+                '"benign_explanation": "<sentence or empty>", "would_confirm": ["<check>"], '
+                '"impact": "confirmed|potential", "confidence": "high|medium|low"}'
             )),
             HumanMessage(content=(
                 f"INCIDENT:\n{_compact_incident(incident, parsed_context)}\n\n"
@@ -1211,6 +1422,10 @@ class TriageAgent:
         if not any(data.get(k) for k in required):
             data = _repair_json(raw_text, required, self.llm)
 
+        # Everything the model could have quoted from — evidence values are
+        # only shown as observed if they appear here.
+        haystack = "\n".join(_leaf_strings(incident) + _leaf_strings(parsed_context or {})).lower()
+
         # Resolve indices → names and metakeys
         all_metakeys: set[str] = set()
         per_category: dict     = {}
@@ -1228,34 +1443,57 @@ class TriageAgent:
             indices = cat_data.get("matched_iocs") or []
             if isinstance(indices, (int, str)):
                 indices = re.findall(r"\d+", str(indices))
-            reasoning = cat_data.get("reasoning", "")
-            if not isinstance(reasoning, str):
-                reasoning = str(reasoning or "")
 
-            matched_names: list[str] = []
+            findings = _build_ioc_findings(indices, ioc_list, haystack)
+            matched_names: list[str] = [f["ioc"] for f in findings]
             cat_metakeys: set[str]   = set()
-            for pos in _resolve_ioc_matches(indices, ioc_list):
-                entry = ioc_list[pos]
-                if entry["ioc"] not in matched_names:
-                    matched_names.append(entry["ioc"])
-                    for mk in entry.get("metakeys", []):
-                        if str(mk).strip().lower() not in _METAKEY_IGNORED:
-                            cat_metakeys.add(mk)
+            for f in findings:
+                for mk in ioc_list[f["index"] - 1].get("metakeys", []):
+                    if str(mk).strip().lower() not in _METAKEY_IGNORED:
+                        cat_metakeys.add(mk)
 
             all_metakeys.update(cat_metakeys)
 
+            # A category-level `reasoning` string is still produced for the
+            # markdown trace, observability and older readers: the model's
+            # own (legacy schema) if it sent one, else composed from findings.
+            reasoning = cat_data.get("reasoning", "")
+            if not isinstance(reasoning, str):
+                reasoning = str(reasoning or "")
+            has_detail = any(f["cia_reasoning"] or f["why_suspicious"] or f["evidence"] for f in findings)
+            if not reasoning and has_detail:
+                reasoning = " ".join(_finding_sentence(f) for f in findings)
+
+            # Every property gets an explicit assessment, matched or not, so
+            # "nothing found" reads as considered rather than skipped.
+            status  = _category_status(cat_data.get("status"), findings)
+            summary = _short_text(cat_data.get("summary"), 700)
+
             per_category[cat_key] = {
                 "matched_ioc_names": matched_names,
-                "matched_indices":   indices,
+                "matched_indices":   [f["index"] for f in findings],
                 "reasoning":         reasoning,
                 "category_metakeys": sorted(cat_metakeys),
+                "findings":          findings,
+                "status":            status,
+                "summary":           summary,
+                "confidence":        _strongest([f["confidence"] for f in findings], _IOC_CONFIDENCE_LEVELS),
             }
 
+            label = _CIA_STATUS_LABELS[status]
             if matched_names:
-                summary_parts.append(
-                    f"[{cat_key.upper()}] {', '.join(matched_names)}"
-                    + (f" — {reasoning}" if reasoning else "")
-                )
+                if has_detail:
+                    summary_parts.append(
+                        f"[{cat_key.upper()}] {label}"
+                        + (f" — {summary.rstrip('.')}" if summary else "") + ". "
+                        + " ".join(_finding_sentence(f) for f in findings))
+                else:
+                    summary_parts.append(
+                        f"[{cat_key.upper()}] {', '.join(matched_names)}"
+                        + (f" — {reasoning}" if reasoning else "")
+                    )
+            elif summary:
+                summary_parts.append(f"[{cat_key.upper()}] {label} — {summary}")
 
         total = sum(len(v["matched_ioc_names"]) for v in per_category.values())
         self._emit("phase_complete", "IOC Checklists", f"{total} IOC(s) matched")
@@ -1587,6 +1825,9 @@ def render_triage_trace(trace: list[dict]) -> str:
                     if reasoning:
                         entry += f" — {reasoning}"
                     lines.append(entry)
+                elif cat_data.get("summary"):
+                    status = _CIA_STATUS_LABELS.get(cat_data.get("status"), "No evidence")
+                    lines.append(f"- **{cat.capitalize()}:** {status} — {cat_data['summary']}")
             if step.get("debug_note"):
                 lines.append(f"\n> ⚠️ {step['debug_note']}")
                 if step.get("raw_tail"):

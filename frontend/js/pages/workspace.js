@@ -796,6 +796,63 @@ function triageSummarySection(ticket, result) {
   return `<section class="panel"><h3>Triage Summary</h3>${rows.length ? _poTable(rows) : ""}${explanation}</section>`;
 }
 
+// Per-property CIA status (soc_triage_agent.py::_category_status). "No
+// evidence" means the telemetry does not support the property — not "no
+// impact".
+const _TRIAGE_CIA_STATUS = {
+  confirmed: "Confirmed impact",
+  potential: "Potential impact",
+  insufficient_evidence: "Insufficient evidence",
+  no_evidence: "No evidence",
+};
+
+function _triageStatusBadge(status) {
+  const label = _TRIAGE_CIA_STATUS[status];
+  return label ? `<span class="badge triage-status-${status}">${escapeHTML(label)}</span>` : "";
+}
+
+function _triageConfidenceBadge(confidence) {
+  if (!["high", "medium", "low"].includes(confidence)) return "";
+  return `<span class="badge triage-confidence-${confidence}">${escapeHTML(confidence.charAt(0).toUpperCase() + confidence.slice(1))} confidence</span>`;
+}
+
+// Impact status + confidence for one structured IOC finding
+// (soc_triage_agent.py::_build_ioc_findings). Empty for legacy results.
+function _triageFindingTags(finding) {
+  if (!finding) return "";
+  return [_triageStatusBadge(finding.impact), _triageConfidenceBadge(finding.confidence)].filter(Boolean).join(" ");
+}
+
+function _triageFindingBlock(f) {
+  const row = (label, html) => (html ? `<div class="triage-finding-row"><span class="triage-finding-label">${label}</span><span>${html}</span></div>` : "");
+  const text = (value) => (value ? escapeHTML(value) : "");
+  const confirm = Array.isArray(f.would_confirm) && f.would_confirm.length
+    ? `<ul class="triage-confirm-list">${f.would_confirm.map((c) => `<li>${escapeHTML(c)}</li>`).join("")}</ul>`
+    : "";
+  const title = f.title || f.ioc || "";
+  return `<div class="triage-finding">
+    <div class="triage-finding-head"><strong>${escapeHTML(title)}</strong> ${_triageFindingTags(f)}</div>
+    ${f.title && f.ioc ? `<div class="triage-finding-ioc">Checklist IOC: ${escapeHTML(f.ioc)}</div>` : ""}
+    ${row("CIA reasoning", text(f.cia_reasoning))}
+    ${row("Why flagged", text(f.why_suspicious))}
+    ${row("Not established", text(f.not_established))}
+    ${row("Benign explanation", text(f.benign_explanation))}
+    ${row("Would confirm", confirm)}
+  </div>`;
+}
+
+// One entry per CIA property — matched or not — so the analyst sees that all
+// three were considered and what each one rests on.
+function _triageCiaItem(label, data) {
+  const findings = (Array.isArray(data.findings) ? data.findings : []).filter(Boolean);
+  const confidence = findings.length ? _triageConfidenceBadge(data.confidence) : "";
+  return `<li><div class="triage-cia-item">
+    <div class="triage-finding-head"><strong>${escapeHTML(label)}</strong> ${_triageStatusBadge(data.status)} ${confidence}</div>
+    ${data.summary ? `<p class="triage-cia-summary">${escapeHTML(data.summary)}</p>` : ""}
+    ${findings.map(_triageFindingBlock).join("")}
+  </div></li>`;
+}
+
 function triageIOCEvidence(iocStep, ticket, result) {
   const mono = (v) => _poValue(v, { mono: true });
 
@@ -827,25 +884,31 @@ function triageIOCEvidence(iocStep, ticket, result) {
   // add up to the "IOCs Matched" count shown above them.
   const iocRows = [];
   const reasoningItems = [];
+  // Results triaged with the CIA assessment carry a status on every
+  // property; older results only have free-text reasoning on matched ones.
+  const hasCiaAssessment = categoryKeys.some((key) => _TRIAGE_CIA_STATUS[categories[key]?.status]);
   categoryKeys.forEach((key) => {
     const data = categories[key] || {};
     const names = Array.isArray(data.matched_ioc_names) ? data.matched_ioc_names : [];
-    if (!names.length) return;
-    names.forEach((name) => iocRows.push([escapeHTML(categoryLabel(key)), escapeHTML(name)]));
-    if (data.reasoning) reasoningItems.push(`<li><div><strong>${escapeHTML(categoryLabel(key))}:</strong> ${escapeHTML(data.reasoning)}</div></li>`);
+    const findings = Array.isArray(data.findings) ? data.findings : [];
+    const byName = new Map(findings.map((f) => [f?.ioc, f]));
+    names.forEach((name) => {
+      const tags = _triageFindingTags(byName.get(name));
+      iocRows.push([escapeHTML(categoryLabel(key)), `${escapeHTML(name)}${tags ? ` ${tags}` : ""}`]);
+    });
+    if (hasCiaAssessment) {
+      reasoningItems.push(_triageCiaItem(categoryLabel(key), data));
+    } else if (names.length && data.reasoning) {
+      reasoningItems.push(`<li><div><strong>${escapeHTML(categoryLabel(key))}:</strong> ${escapeHTML(data.reasoning)}</div></li>`);
+    }
   });
   // Count what is listed whenever the trace step is present; the persisted
   // ticket count is only a fallback for results without per-category names.
   const count = iocRows.length || ticket.matched_ioc_count || iocStep?.total_ioc_count || 0;
 
-  const ticketKeys = Array.isArray(ticket.metakeys) ? ticket.metakeys : [];
-  const traceKeys = Array.isArray(iocStep?.matched_metakeys) ? iocStep.matched_metakeys : [];
-  const mkeys = (ticketKeys.length ? ticketKeys : traceKeys).filter((k) => !_IGNORED_OBSERVED_KEYS.has(String(k).trim().toLowerCase()));
-
-  const technical = [
-    reasoningItems.length ? `<h4 class="triage-subheading">Category Reasoning</h4><ul class="data-list">${reasoningItems.join("")}</ul>` : "",
-    mkeys.length ? `<h4 class="triage-subheading">Matched Metakeys</h4><div class="parsing-field-chips">${mkeys.map((key) => `<span class="evidence-chip">${escapeHTML(key)}</span>`).join("")}</div>` : "",
-  ].join("");
+  const technical = reasoningItems.length
+    ? `<h4 class="triage-subheading">${hasCiaAssessment ? "CIA Impact Assessment" : "Category Reasoning"}</h4><ul class="data-list triage-findings">${reasoningItems.join("")}</ul>`
+    : "";
 
   return `<article class="panel">
     <h3>IOC Evidence</h3>

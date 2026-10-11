@@ -366,7 +366,7 @@ def _ioc_after(scope, span, elapsed_ms, result) -> None:
         names = cat.get("matched_ioc_names") or []
         counts.append(f"{label.lower()} {len(names)}")
         blocks.append(details.items(f"{label} — matched IOCs", names))
-        blocks.append(details.text(f"{label} — model explanation", cat.get("reasoning")))
+        blocks.append(details.text(f"{label} — model explanation", cat.get("reasoning") or cat.get("summary")))
     warning = result.get("debug_note")
     blocks.append(details.text("Note", warning))
     emit(source="ai", ai_content_kind="explanation", event_type="ai_phase",

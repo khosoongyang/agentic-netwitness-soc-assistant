@@ -30,6 +30,8 @@ from agents.triage.soc_triage_agent import (
     IOC_CONFIDENTIALITY,
     IOC_INTEGRITY,
     SOC_CLASSIFICATION_TABLE,
+    TriageAgent,
+    _build_ioc_findings,
     _resolve_ioc_matches,
     format_ticket_display,
     render_triage_trace,
@@ -101,6 +103,172 @@ def test_bool_items_are_skipped_not_treated_as_int_one_or_zero():
 
 def test_blank_and_unmatched_tokens_are_ignored():
     assert _resolve_ioc_matches(["", "   ", "nothing recognisable here"], _IOC_LIST) == []
+
+
+# =============================================================================
+# Structured IOC findings (_build_ioc_findings / _run_ioc)
+# =============================================================================
+
+# The Windows Update CTL lookup from the Triage screenshot: high-risk alert,
+# external DNS, but a well-known benign destination.
+_CTL_INCIDENT = {
+    "id": "INC-1",
+    "title": "High Risk Alerts: NetWitness Packets",
+    "alertMeta": {"SourceIp": ["192.168.10.207"], "DestinationIp": ["4.175.87.197"]},
+    "alerts": [{"name": "DNS query to external resolver", "domain": "ctldl.windowsupdate.com",
+                "events": [{"destination": {"port": 53}}]}],
+}
+
+_CTL_FINDING = {
+    "ioc": 1,
+    "title": "Potential unauthorised external data communication",
+    "evidence": {"ip.src": "192.168.10.207", "ip.dst": "4.175.87.197",
+                 "port.dst": "53", "domain": "ctldl.windowsupdate.com",
+                 "bytes.out": "9999999"},
+    "cia_reasoning": ("The endpoint sent DNS to an unverified external resolver. DNS can carry "
+                      "hostnames or encoded data out of the network, which would be an "
+                      "unauthorised disclosure."),
+    "not_established": "Confirms outbound DNS occurred, not that sensitive data was transmitted.",
+    "why_suspicious": "DNS sent directly to an external IP instead of the internal resolver.",
+    "benign_explanation": "ctldl.windowsupdate.com is Microsoft's certificate trust list endpoint.",
+    "would_confirm": ["bytes.out well above DNS norms", "high-entropy subdomains"],
+    "impact": "Potential",
+    "confidence": "LOW",
+}
+
+
+def _haystack(incident: dict) -> str:
+    from agents.triage.soc_triage_agent import _leaf_strings
+    return "\n".join(_leaf_strings(incident)).lower()
+
+
+def test_finding_objects_resolve_and_normalise_levels():
+    [f] = _build_ioc_findings([_CTL_FINDING], IOC_CONFIDENTIALITY, _haystack(_CTL_INCIDENT))
+    assert f["ioc"] == "Anomalous outbound or internal network communication"
+    assert f["index"] == 1
+    assert f["impact"] == "potential"
+    assert f["confidence"] == "low"
+    assert f["would_confirm"] == ["bytes.out well above DNS norms", "high-entropy subdomains"]
+
+
+def test_evidence_values_absent_from_the_incident_are_marked_unverified():
+    [f] = _build_ioc_findings([_CTL_FINDING], IOC_CONFIDENTIALITY, _haystack(_CTL_INCIDENT))
+    assert f["evidence"] == {"ip.src": "192.168.10.207", "ip.dst": "4.175.87.197",
+                             "port.dst": "53", "domain": "ctldl.windowsupdate.com"}
+    assert f["unverified_evidence"] == {"bytes.out": "9999999"}
+
+
+def test_evidence_match_is_whole_token_not_substring():
+    # "4.175.87.19" is a prefix of the real IP, not the same value.
+    [f] = _build_ioc_findings([{"ioc": 1, "evidence": {"ip.dst": "4.175.87.19"}}],
+                              IOC_CONFIDENTIALITY, _haystack(_CTL_INCIDENT))
+    assert f["evidence"] == {}
+    assert f["unverified_evidence"] == {"ip.dst": "4.175.87.19"}
+
+
+def test_legacy_integer_matches_still_produce_bare_findings():
+    findings = _build_ioc_findings([1, 3], IOC_CONFIDENTIALITY, "")
+    assert [f["index"] for f in findings] == [1, 3]
+    assert all(f["impact"] == "" and f["evidence"] == {} for f in findings)
+
+
+def test_unknown_levels_are_dropped_and_duplicates_collapsed():
+    findings = _build_ioc_findings(
+        [{"ioc": 2, "impact": "severe", "confidence": "certain"}, 2, "#2"],
+        IOC_CONFIDENTIALITY, "")
+    assert len(findings) == 1
+    assert findings[0]["impact"] == "" and findings[0]["confidence"] == ""
+
+
+def _ioc_agent(model_json: dict) -> TriageAgent:
+    import json
+    agent = TriageAgent.__new__(TriageAgent)
+    agent.progress_fn = None
+    agent.thinking_container = None
+    agent.llm = None
+    agent._call = lambda messages, label: json.dumps(model_json)
+    return agent
+
+
+_CTL_MODEL_JSON = {
+    "confidentiality": {
+        "status": "potential",
+        "summary": "Information may leave the trusted environment via an unverified DNS resolver.",
+        "matched_iocs": [_CTL_FINDING]},
+    "integrity": {
+        "status": "no_evidence",
+        "summary": "No modification of files, accounts, configuration or DNS settings was observed."},
+    "availability": {
+        "status": "No Evidence",
+        "summary": "No service interruption or resource exhaustion was observed."},
+}
+
+
+def test_run_ioc_exposes_findings_rollup_and_composed_reasoning():
+    out = _ioc_agent(_CTL_MODEL_JSON)._run_ioc(_CTL_INCIDENT)
+    conf = out["per_category"]["confidentiality"]
+    assert conf["matched_ioc_names"] == ["Anomalous outbound or internal network communication"]
+    assert conf["matched_indices"] == [1]
+    assert conf["status"] == "potential"
+    assert conf["confidence"] == "low"
+    f = conf["findings"][0]
+    assert f["title"] == "Potential unauthorised external data communication"
+    assert "unauthorised disclosure" in f["cia_reasoning"]
+    assert f["not_established"].startswith("Confirms outbound DNS occurred")
+    assert f["evidence"]["domain"] == "ctldl.windowsupdate.com"
+    # Composed for the markdown trace / observability / Risk phase.
+    assert conf["reasoning"].startswith(
+        "Potential unauthorised external data communication (potential, low confidence):")
+    assert "Not established:" in conf["reasoning"]
+    assert "Benign explanation:" in conf["reasoning"]
+    assert "bytes.out=9999999" not in conf["reasoning"]
+    assert out["total_ioc_count"] == 1
+
+
+def test_every_cia_property_gets_an_assessment_and_reaches_the_risk_phase():
+    out = _ioc_agent(_CTL_MODEL_JSON)._run_ioc(_CTL_INCIDENT)
+    integ = out["per_category"]["integrity"]
+    avail = out["per_category"]["availability"]
+    assert integ["status"] == "no_evidence" and integ["findings"] == []
+    assert avail["status"] == "no_evidence"   # "No Evidence" normalised
+    lines = out["ioc_summary"].splitlines()
+    assert len(lines) == 3
+    assert any(l.startswith("[CONFIDENTIALITY] Potential impact — Information may leave") for l in lines)
+    assert any(l.startswith("[INTEGRITY] No evidence — No modification of files") for l in lines)
+    assert any(l.startswith("[AVAILABILITY] No evidence — No service interruption") for l in lines)
+
+
+def test_an_impact_claimed_without_a_checklist_finding_is_downgraded():
+    out = _ioc_agent({
+        "confidentiality": {"status": "confirmed", "summary": "Alert says exfiltration.",
+                            "matched_iocs": []},
+        "integrity": {"status": "insufficient evidence", "summary": "Only one packet session."},
+        "availability": {"matched_iocs": []},
+    })._run_ioc(_CTL_INCIDENT)
+    assert out["per_category"]["confidentiality"]["status"] == "insufficient_evidence"
+    assert out["per_category"]["integrity"]["status"] == "insufficient_evidence"
+    assert out["per_category"]["availability"]["status"] == "no_evidence"
+
+
+def test_render_triage_trace_shows_unmatched_property_assessments():
+    out = _ioc_agent(_CTL_MODEL_JSON)._run_ioc(_CTL_INCIDENT)
+    rendered = render_triage_trace([{"step": "IOC Checklist", "status": "ok",
+                                     "total_ioc_count": 1, "per_category": out["per_category"]}])
+    assert "**Integrity:** No evidence — No modification of files" in rendered
+    assert "**Confidentiality:** Anomalous outbound or internal network communication" in rendered
+
+
+def test_run_ioc_keeps_model_reasoning_for_the_legacy_schema():
+    agent = _ioc_agent({
+        "availability": {"matched_iocs": [], "reasoning": ""},
+        "confidentiality": {"matched_iocs": [1], "reasoning": "Outbound to an external IP."},
+        "integrity": {"matched_iocs": []},
+    })
+    out = agent._run_ioc(_CTL_INCIDENT)
+    conf = out["per_category"]["confidentiality"]
+    assert conf["reasoning"] == "Outbound to an external IP."
+    assert out["ioc_summary"] == ("[CONFIDENTIALITY] Anomalous outbound or internal network "
+                                  "communication — Outbound to an external IP.")
 
 
 # =============================================================================
@@ -225,7 +393,7 @@ def test_format_ticket_display_include_header_false_drops_only_the_unc_header():
 
 def test_cia_triad_checklists_structure():
     assert len(IOC_CONFIDENTIALITY) == 8
-    assert len(IOC_INTEGRITY) == 10
+    assert len(IOC_INTEGRITY) == 11
     assert len(IOC_AVAILABILITY) == 6
     assert ALL_IOCS["confidentiality"] == IOC_CONFIDENTIALITY
     assert ALL_IOCS["integrity"] == IOC_INTEGRITY

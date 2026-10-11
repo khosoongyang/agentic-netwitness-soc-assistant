@@ -2063,6 +2063,85 @@ td {
   font-size: 0.75rem;
 }
 
+/* Structured IOC findings (Triage > IOC Evidence > Technical Details):
+   one block per matched IOC with labelled evidence / rationale rows. */
+.triage-findings > li + li {
+  margin-top: 0.75rem;
+}
+
+.triage-finding-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.triage-finding-row {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  overflow-wrap: anywhere;
+}
+
+.triage-finding-label {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .triage-finding-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+}
+
+.triage-finding {
+  margin-top: 0.6rem;
+  padding: 0.55rem 0.7rem;
+  border-left: 2px solid var(--border);
+}
+
+.triage-finding-ioc {
+  margin-bottom: 0.2rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.triage-cia-summary {
+  margin: 0.2rem 0 0;
+}
+
+.triage-confirm-list {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.badge.triage-status-confirmed {
+  color: #ffc0c7;
+  border-color: #6e3540;
+}
+
+.badge.triage-status-potential {
+  color: #ffe08a;
+  border-color: #5a4726;
+}
+
+.badge.triage-status-insufficient_evidence,
+.badge.triage-status-no_evidence {
+  color: #8290a4;
+}
+
+.badge.triage-confidence-high {
+  color: #a9d2ff;
+  border-color: #315d87;
+}
+
+.badge.triage-confidence-low {
+  color: #8290a4;
+}
+
 .triage-why {
   margin-top: 0.9rem;
 }
