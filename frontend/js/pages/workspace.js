@@ -3116,7 +3116,7 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onNavigat
 // Approve control is the one approval path; there is no second "confirm"
 // button competing with it.
 function renderReportingStage(root, stage, caseId, lastError, onAction, onNavigate, workflow) {
-  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>${stageActionButtons(stage, workflow)}<div id="action-status" aria-live="polite"></div><section id="reporting-agent-activity"></section><div id="reporting-panel"></div>`;
+  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div><section id="reporting-agent-activity"></section><div id="reporting-panel"></div>${stageActionButtons(stage, workflow, { footer: true })}<div id="action-status" aria-live="polite"></div>`;
   bindStageActions(root, stage, workflow, onAction, onNavigate);
   // Live trace while Reporting runs; afterwards the full trace stays above
   // the unchanged reports UI, expanded while it awaits the analyst's
