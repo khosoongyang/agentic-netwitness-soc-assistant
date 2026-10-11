@@ -934,7 +934,7 @@ def _extract_metakey_values(incident: dict, metakeys: list[str], parsed_context:
     (source.device.ipAddress, …), so exact top-level lookups almost always
     missed. Match flattened key PATHS case-insensitively by suffix instead,
     walking keys in sorted order so repeat runs stay deterministic. Multiple
-    distinct hits are kept (capped) — downstream consumers accept lists.
+    distinct hits are all kept (uncapped) — downstream consumers accept lists.
     """
     flat = _flatten(incident)
     if parsed_context and isinstance(parsed_context, dict):
@@ -982,8 +982,6 @@ def _extract_metakey_values(incident: dict, metakeys: list[str], parsed_context:
                         for item in val:
                             if item not in hits and str(item).strip().lower() not in _METAKEY_NOISE:
                                 hits.append(item)
-                if len(hits) >= 5:
-                    break
             if hits:
                 break
         if hits:
