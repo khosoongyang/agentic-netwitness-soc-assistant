@@ -1,53 +1,50 @@
-# INVESTIGATION SUMMARY: INC-53033 (Incident-004)
+# INVESTIGATION SUMMARY: INC-53020 (Incident-004)
 
-**Final Severity:** Medium
-*Medium is appropriate because the incident is limited to suspicious internal east-west network activity between two private IPs, with no confirmed malicious payload, no external threat-intelligence match, no endpoint execution evidence, and no documented outage or data exposure. The same-subnet communication raises concern for possible lateral movement, but the evidence remains incomplete and does not meet High or Critical thresholds.*
+**Final Severity:** High
+*High is appropriate because the case contains a high-risk NetWitness endpoint alert involving internal host-to-host communication on an important internal asset, with suspicious activity credible enough to warrant investigation. However, the evidence is incomplete and does not confirm malware, privilege misuse, data exposure, repeated activity, or service impact, so the incident does not meet Critical. It is above Medium because the alert is high-risk and touches a business user/host with an internal IOC, but the available evidence remains partial.*
 
-**Confidence Level:** Low
-*Low confidence is warranted because the available evidence is largely network metadata with no supporting authentication, endpoint, process, or command-line telemetry. The timeline contains repeated statements that key investigative artifacts are missing, which makes the conclusion uncertain and prevents a higher-confidence determination.*
+**Confidence Level:** Medium
+*Confidence is Medium because the record provides a consistent high-risk NetWitness alert and a clear internal source and destination IP pair, but the case lacks destination port, protocol, attached alert details, process telemetry, and authenticated session data. The evidence is therefore partially sufficient, with no conflicting data but significant gaps preventing a high-confidence conclusion.*
 
 ## Investigative Workflow
-- Reviewed the alert and threat-intelligence summary for INC-53033.
-- Correlated the repeated timeline entries confirming source 192.168.0.19 and destination 192.168.0.34.
-- Checked the playbook trace for evidence of username, hostname, OS, process creation, and process-tree telemetry.
-- Verified that no decoded PowerShell, file hash, or external IOC enrichment was available.
-- Assessed the incident as requiring additional authentication and endpoint telemetry before containment decisions.
+- Reviewed the NetWitness high-risk alert metadata for INC-53020.
+- Mapped the available telemetry to host 192.168.10.204 and destination 192.168.10.202.
+- Validated that no destination port, protocol, or attached alert payload was available in the incident record.
+- Checked the playbook steps for evidence of process creation, privilege escalation, or lateral movement; none was present.
+- Determined that further investigation is required due to incomplete telemetry and unresolved suspicion.
 
 ## Technical Chronology & MITRE ATT&CK TTP Mapping
 
-On 2026-07-15T09:33:14+00:00, the incident generated a high-risk internal network alert involving 192.168.0.19 as the source and 192.168.0.34 as the destination. The telemetry available in the record is network-only and does not include protocol, port, payload, PowerShell, endpoint, or process execution details. The alert was characterized as suspicious east-west activity between two private IPs on the internal network, with repeated references to the absence of decoded PowerShell content, file hashes, known-bad external indicators, or any confirmed endpoint compromise. Subsequent triage notes treated the event as an unverified policy-violation style detection requiring investigation rather than confirmed malicious execution. The available analysis does not show a spawned process, privilege escalation chain, service creation, scheduled task, or any other process-level artifact on either host. The incident record therefore only supports the observed internal communication between the two hosts and the conclusion that further authentication, endpoint, and network telemetry would be required to determine whether the traffic represented lateral movement or benign internal activity.
+On 2025-12-01T07:11:11+00:00, NetWitness generated a high-risk endpoint alert for internal host 192.168.10.204 associated with user and host name KELLYWANG. The available record shows a single internal network interaction from 192.168.10.204 to 192.168.10.202, but the case data does not include destination port, protocol, or an attached alert payload, so the activity cannot be tied to a confirmed login type, authenticated session, or specific service. The deep-dive metadata confirms the alert was first seen at 2025-12-01T06:16:40.811Z and last updated at 2025-12-01T07:11:11.142Z, but no endpoint process telemetry, command lines, parent-child process tree, hashes, or privilege-change evidence was available. As a result, the observable behavior in this case remains limited to suspicious internal host-to-host communication between 192.168.10.204 and 192.168.10.202, with no confirmed malicious process execution, no verified privilege escalation sequence, and no demonstrated lateral movement beyond the network connection itself.
 
 | Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |
 | --- | --- | --- | --- | --- |
-| Initial internal network alert | At 2026-07-15T09:33:14+00:00, alert metadata identified source 192.168.0.19 and destination 192.168.0.34 on a private internal network, with no port, protocol, or payload details and no decoded PowerShell indicators. | Discovery | System Network Connections Discovery | T1049 |
-| Unverified east-west communication across internal hosts | The alert repeatedly describes high-risk internal IP-to-IP traffic between 192.168.0.19 and 192.168.0.34, and the triage summary notes same-subnet /24 east-west communication without endpoint or process telemetry. | Lateral Movement | Remote Services | T1021 |
-| Potential remote authentication path to another internal host | Triage guidance specifically requests Windows Security Event IDs 4624 and 4625, plus 4648 and 4672, to identify authenticated access between the two hosts and determine whether the activity was horizontal movement. | Lateral Movement | Remote Services: SMB/Windows Admin Shares | T1021.002 |
-| Privilege escalation and execution validation gap | The record explicitly states there is no process creation telemetry, no Sysmon Event ID 1, no 4688 data, and no PowerShell 4104 evidence, so no spawned binary or privilege-elevation chain can be confirmed from the incident payload. | Privilege Escalation | System Binary Proxy Execution | T1218 |
-| Post-compromise behavior not evidenced but explicitly hunted | The investigation guidance instructs analysts to inspect process trees, network connections, and archive or transfer activity for indicators of lateral movement, privilege escalation, or exfiltration, but none of those artifacts are present in the supplied timeline. | Command and Control | Application Layer Protocol | T1071 |
+| Initial internal network activity | NetWitness high-risk alert on 2025-12-01T07:11:11+00:00 involving source IP 192.168.10.204 and destination IP 192.168.10.202 on internal network telemetry; host name associated with the source is KELLYWANG. | Lateral Movement | Internal Remote Services | T1021 |
+| Suspicious host-to-host communication without port/protocol context | A single internal connection from 192.168.10.204 to 192.168.10.202 was observed, but the incident record lacks destination port, protocol, and authenticated session data needed to confirm the exact service used. | Lateral Movement | Remote Services: SMB/Windows Admin Shares | T1021.002 |
+| Unhandled unresolved suspicious network interaction | The alert remained high-risk with no supporting endpoint telemetry, process tree, or decoded command line, leaving the activity as an unresolved suspicious internal connection rather than a confirmed execution chain. | Command and Control | Application Layer Protocol | T1071 |
 
 ## Playbook Execution Trace
 | Step ID | Instruction | Status | Findings |
 | --- | --- | --- | --- |
-| `step_1` | Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System | **MET** | Partial MET. The timeline identifies the internal source and destination IPs as 192.168.0.19 and 192.168.0.34, and the deep-dive guidance calls for correlating 4624/4625/4672 and EDR inventory to recover identity details. However, the incident data itself does not provide a username, login session details, computer name, or operating system, so only the IP relationship is observed. |
-| `step_2` | Was it horizontal or vertical | **MET** | MET. The event sequence is consistent with horizontal activity between peer internal hosts on the same 192.168.0.0/24 network. The timeline explicitly describes east-west/same-subnet communication between 192.168.0.19 and 192.168.0.34, which supports lateral movement more than privilege escalation on a single host. |
-| `step_3` | Was any malicious process spawned on the victim's machine? | **NOT_MET** | NOT_MET. No process creation telemetry, PowerShell logs, Sysmon Event ID 1, or EDR process-tree evidence is included. The timeline repeatedly states that endpoint and process telemetry are missing, so no malicious process spawn can be confirmed. |
-| `step_4` | Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. | **NOT_MET** | NOT_MET. There is no process ancestry, command-line data, child-process chain, or file/network execution evidence available for analysis. As a result, privilege escalation, lateral movement through binaries, and data exfiltration behavior cannot be evaluated from the provided record. |
-| `step_5` | Based on the analysis, determine if further investigation is necessary and the containment steps | **NOT_MET** | NOT_MET. The dataset is insufficient for a confident containment decision. The appropriate next step is continued investigation with authentication, endpoint, and process telemetry collection; if new evidence confirms compromise, containment should include host isolation and evidence preservation. |
+| `step_1` | Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System | **MET** | Username identified as KELLYWANG. Source IP identified as 192.168.10.204. Login details are not fully available; the case references authenticated session context as missing. Computer name is KELLYWANG. Operating system was not provided in the available telemetry. |
+| `step_2` | Was it horizontal or vertical | **NOT_MET** | Insufficient evidence to determine whether movement was horizontal or vertical. The timeline only shows internal host-to-host communication between 192.168.10.204 and 192.168.10.202, but lacks destination port, protocol, and authenticated session details needed to classify the movement. |
+| `step_3` | Was any malicious process spawned on the victim's machine? | **NOT_MET** | No process telemetry is present for the victim host. The timeline does not show process creation events, parent-child process chains, command lines, or hashes, so malicious process spawning cannot be confirmed. |
+| `step_4` | Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration. | **NOT_MET** | Process tree analysis could not be performed because the record lacks process creation telemetry, parent/child relationships, command lines, privilege changes, and endpoint evidence of lateral movement or exfiltration. |
+| `step_5` | Based on the analysis, determine if further investigation is necessary and the containment steps | **MET** | Further investigation is necessary. The case is only partially substantiated, so containment should begin with collection of the missing NetWitness alert attachment and endpoint telemetry, and host isolation should be considered if suspicious activity persists or additional evidence confirms malicious behavior. |
 
 ## Recommended Containment Actions
-- Isolate the suspected source host 192.168.0.19 in EDR or via network quarantine if the activity is still active, while preserving the ability to collect volatile evidence.
-- Collect Windows Security logs for 4624, 4625, 4672, 4688, 5140, and 5145 from both 192.168.0.19 and 192.168.0.34 to identify the user, logon type, and any authenticated remote access path.
-- Pull Sysmon Event IDs 1, 3, 10, 11, 12, 13, and 22 from both hosts for the incident window to determine whether a process spawned, connected over the network, or created persistence artifacts.
-- Acquire the EDR process tree and command-line history for both endpoints and specifically check for lateral-movement tools, LOLBins, scheduled tasks, service creation, or encoded/scripted execution.
-- Disable or reset any account tied to suspicious successful logons from the source host until the authentication path is validated.
-- Block any newly discovered internal pivoting indicators, remote-service endpoints, or suspicious child-process hashes at the EDR, firewall, and proxy layers.
-- Preserve memory and disk evidence from the most likely affected endpoint before remediation if subsequent telemetry confirms compromise.
+- Query EDR and NetWitness for the full alert attachment for 2025-12-01T06:16:40.811Z through 2025-12-01T07:11:11.142Z and preserve the raw event payload before any tuning or suppression.
+- Collect process creation, command-line, parent-child tree, and hash telemetry for host 192.168.10.204 for at least the surrounding two-hour window, including Windows Security 4688, Sysmon Event ID 1, and PowerShell 4104 if enabled.
+- Pull authentication records for user KELLYWANG and host 192.168.10.204, including logon type, source workstation, and any 4624/4625/4672 events correlated to the time window.
+- If the same internal connection recurs or any suspicious process is confirmed, isolate 192.168.10.204 in EDR and block host-to-host communication to 192.168.10.202 pending analyst review.
+- Hunt for any additional connections from 192.168.10.204 to adjacent internal assets in the 192.168.10.0/24 subnet and verify whether 192.168.10.202 is expected for the user or device role.
+- Preserve volatile evidence on 192.168.10.204, including active network connections, logged-on sessions, and running processes, before remediation actions are taken.
 
 ## Appendix M: Policy-Based Compliance Audit Log
 
 | Audit ID | Decision Point | Policy Reference | Input Summary | Result | Decision Made | Human Review? | Timestamp |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `AUD-DP07-1791215600-1` | **DP-07** | Appendix C | Critical System: False, Sensitive Data: False | *Pass* | `Investigate` | Yes | 2026-10-05T15:53:20Z |
-| `AUD-DP08-1791215600-2` | **DP-08** | Appendix A | Severity classification: Medium | *Pass* | `Investigate` | Yes | 2026-10-05T15:53:20Z |
-| `AUD-DP09-1791215600-3` | **DP-09** | Appendix F | Confidence level: Low | *Warning* | `Escalate` | Yes | 2026-10-05T15:53:20Z |
-| `AUD-DP10-1791215600-4` | **DP-10/DP-11** | Appendix G | Severity: Medium, Confidence: Low, Ransomware: False, Guest OS: False | *Fail* | `Escalate` | Yes | 2026-10-05T15:53:20Z |
+| `AUD-DP07-1791639068-1` | **DP-07** | Appendix C | Critical System: False, Sensitive Data: False | *Pass* | `Investigate` | Yes | 2026-10-10T13:31:08Z |
+| `AUD-DP08-1791639068-2` | **DP-08** | Appendix A | Severity classification: High | *Warning* | `Escalate` | Yes | 2026-10-10T13:31:08Z |
+| `AUD-DP09-1791639068-3` | **DP-09** | Appendix F | Confidence level: Medium | *Warning* | `Escalate` | Yes | 2026-10-10T13:31:08Z |
+| `AUD-DP10-1791639068-4` | **DP-10/DP-11** | Appendix G | Severity: High, Confidence: Medium, Ransomware: False, Guest OS: False | *Fail* | `Escalate` | Yes | 2026-10-10T13:31:08Z |
