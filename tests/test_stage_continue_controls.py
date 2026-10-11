@@ -480,9 +480,9 @@ def test_full_workflow_continue_navigates_and_only_run_executes(monkeypatch, api
     assert ui["investigation"]["continueTo"] is None
     assert _labels(ui["reporting"]["primary"]) == ["Re-run Reporting"]
     assert _labels(ui["reporting"]["decision"]) == ["Approve Reporting"]
-    # Reporting approval stays gated on a submitted reviewed report set.
+    # Reporting approval is available as soon as the reports are generated.
     approve = next(b for b in ui["reporting"]["decision"] if b["type"] == "approve")
-    assert approve["enabled"] is False
+    assert approve["enabled"] is True
     assert ui["reporting"]["continueTo"] is None
     assert _click_continue(_workflow(api), "reporting")["rendered"] is False
 

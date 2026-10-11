@@ -2691,3 +2691,60 @@ td {
   font-style: normal;
 }
 
+
+/* Case closure — Reporting approval (frontend/js/pages/workspace.js) */
+.case-closure {
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid var(--success);
+  background: #0a1f1a;
+  color: var(--text);
+}
+
+.case-closure p {
+  margin: 0.4rem 0 0;
+}
+
+.case-closure-badge {
+  color: var(--success);
+  border-color: var(--success);
+}
+
+.case-closure-comments {
+  color: var(--muted);
+}
+
+.case-closed-toast {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 1000;
+  max-width: min(26rem, calc(100vw - 2.5rem));
+  padding: 0.9rem 2.25rem 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--success);
+  border-radius: 0.45rem;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.case-closed-toast strong {
+  color: var(--success);
+}
+
+.case-closed-toast p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+}
+
+.case-closed-toast-close {
+  position: absolute;
+  top: 0.4rem;
+  right: 0.5rem;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+}

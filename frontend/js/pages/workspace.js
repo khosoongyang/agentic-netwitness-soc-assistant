@@ -3110,11 +3110,11 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onNavigat
 // the SAME implementation the standalone Reporting page uses, embedded
 // directly here) in place of a raw JSON dump. Raw Reporting JSON is still
 // available, just as a secondary "Raw JSON" link inside that panel rather
-// than the primary view. Approve is only enabled once a reviewed candidate
-// has actually been materialised (Submit for Approval, inside the reports
-// panel) — see workflow/commands.py::available_actions() — so this single
-// Approve control is the one approval path; there is no second "confirm"
-// button competing with it.
+// than the primary view. Approve is enabled as soon as the reports have
+// been generated (reviewing them first is optional — see
+// workflow/commands.py::available_actions()); this single Approve control
+// is the one approval path. Approval closes the case: the button gives way
+// to a persistent closure record (caseClosureNotice()).
 //
 // Like every other stage, the reports table only appears once the stage has
 // succeeded (awaiting_approval / completed). While Processing, only the live
@@ -3153,13 +3153,58 @@ function renderReportingStage(root, stage, caseId, lastError, onAction, onNaviga
     return;
   }
 
-  root.innerHTML = `${header}<section id="reporting-agent-activity"></section><div id="reporting-panel"></div>${stageActionButtons(stage, workflow, { footer: true })}<div id="action-status" aria-live="polite"></div>`;
+  // Once approved, the Approve button (no longer offered by the backend) is
+  // replaced by a persistent closure record read from the workflow state.
+  const closure = stage.state === "completed" ? caseClosureNotice(workflow) : "";
+  root.innerHTML = `${header}${closure}<section id="reporting-agent-activity"></section><div id="reporting-panel"></div>${stageActionButtons(stage, workflow, { footer: true })}<div id="action-status" aria-live="polite"></div>`;
   bindStageActions(root, stage, workflow, onAction, onNavigate);
   // Full trace stays available above the reports UI, expanded while it
   // awaits the analyst's decision.
   mountStageActivity(root.querySelector("#reporting-agent-activity"), caseId, stage, workflow,
     { collapsed: stage.state !== "awaiting_approval" });
   mountReportsPanel(root.querySelector("#reporting-panel"), { caseId, navigate: null, embedded: true });
+}
+
+// "11 October 2026 at 6:57 PM (SGT)" — the backend stores approved_at in
+// UTC; it is always displayed in Singapore time regardless of browser zone.
+export function formatSGT(value) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return "";
+  const zone = { timeZone: "Asia/Singapore" };
+  const day = date.toLocaleDateString("en-GB", { ...zone, day: "numeric", month: "long", year: "numeric" });
+  const time = date.toLocaleTimeString("en-US", { ...zone, hour: "numeric", minute: "2-digit", hour12: true });
+  return `${day} at ${time} (SGT)`;
+}
+
+// The case is closed only by the final (Reporting) approval, which is the
+// sole transition that sets workflow_status "Complete" and stamps
+// approved_by/approved_at (workflow/state_store.py::commit_reporting_approval).
+function caseClosure(workflow) {
+  if (workflow?.workflow_status !== "Complete" || !workflow.approved_by) return null;
+  return { analyst: workflow.approved_by, when: formatSGT(workflow.approved_at), comments: workflow.approval_comments };
+}
+
+function closureSentence(closure) {
+  return `This case was closed by SOC Analyst ${escapeHTML(closure.analyst)}${closure.when ? ` on ${escapeHTML(closure.when)}` : ""}.`;
+}
+
+function caseClosureNotice(workflow) {
+  const closure = caseClosure(workflow);
+  if (!closure) return "";
+  return `<div class="case-closure" data-case-closure><span class="badge case-closure-badge">✓ Reporting Approved · Case Closed</span><p>${closureSentence(closure)}</p>${closure.comments ? `<p class="case-closure-comments">Comments: ${escapeHTML(closure.comments)}</p>` : ""}</div>`;
+}
+
+function showCaseClosedToast(workflow) {
+  const closure = caseClosure(workflow);
+  if (!closure) return;
+  document.querySelector(".case-closed-toast")?.remove();
+  const toast = document.createElement("div");
+  toast.className = "case-closed-toast";
+  toast.setAttribute("role", "status");
+  toast.innerHTML = `<button type="button" class="case-closed-toast-close" aria-label="Dismiss">×</button><strong>Case Successfully Closed</strong><p>${closureSentence(closure)}</p>`;
+  toast.querySelector("button").addEventListener("click", () => toast.remove());
+  document.body.appendChild(toast);
+  window.setTimeout(() => toast.remove(), 8000);
 }
 
 async function analystIdentity() {
@@ -3331,6 +3376,9 @@ export async function renderWorkspace(root, { navigate, route }) {
           _watchedLive.add(`${caseId}|${result.run_id}|${stage.key}`);
         }
         await refreshWorkflow();
+        // Only after the backend has confirmed the final approval (and the
+        // refreshed workflow reports the case Complete) is closure announced.
+        if (action === "approve" && stage.key === "reporting") showCaseClosedToast(workflow);
         if (result.run_id) {
           await pollRun(result.run_id, (run) => {
             const statusRoot = outputRoot.querySelector("#action-status");

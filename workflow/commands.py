@@ -652,29 +652,11 @@ def available_actions(state: dict[str, Any]) -> dict[str, Any]:
             and status == "Awaiting Approval"
         )
         approve_enabled, approve_reason = awaiting, (None if awaiting else "This approval gate is no longer current.")
-        if stage == "reporting" and awaiting:
-            # Reporting redesign Phase 6/7: approve_reporting_candidate()
-            # approves whichever reviewed candidate was last materialised
-            # via POST .../reports/submit-for-approval (itself gated there
-            # on all four core reports being Reviewed). The workflow-level
-            # "awaiting" check above only knows the coarse Awaiting
-            # Approval state, not whether that step has actually happened
-            # yet — without this, Approve would still be clickable and
-            # would silently fall back to approving the original,
-            # unreviewed AI-generated candidate. This is the one place
-            # that decides whether Approve is actionable, so the UI never
-            # needs a second, competing approval control.
-            # Canonical audit Phase 7: only a reviewed set materialised for
-            # the CURRENT Reporting attempt counts (a cheap path check -- the
-            # actual approval still fully verifies it); an earlier attempt's
-            # materialised row never enables Approve.
-            from agents.reporting.reporting_approval import current_attempt_materialised_set
-
-            pending_reviewed_set = current_attempt_materialised_set(
-                str(state.get("id") or ""), state.get("run_id"), int(state.get("reporting_attempt") or 1))
-            if pending_reviewed_set is None:
-                approve_enabled = False
-                approve_reason = "Submit the reviewed report set for approval first (all four reports must be Reviewed)."
+        # Reporting: Approve is actionable as soon as the report set has been
+        # generated (Awaiting Approval). Reviewing/submitting the four reports
+        # is optional — approve_reporting_candidate() prefers a reviewed set
+        # materialised for the CURRENT attempt and otherwise approves the
+        # generated candidate set, fully re-verifying whichever it binds to.
         if stage in {"investigation", "reporting"} and awaiting:
             # C1: never offer Approve for an Investigation result (or a report
             # built on one) whose canonical identity is another case. Reject

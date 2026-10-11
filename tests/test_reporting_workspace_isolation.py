@@ -523,7 +523,7 @@ def _approve_action(state):
     return next(a for a in commands.available_actions(state)["stages"]["reporting"] if a["type"] == "approve")
 
 
-def test_attempt_one_materialised_set_never_enables_or_drives_attempt_two_approval(env):
+def test_attempt_one_materialised_set_never_drives_attempt_two_approval(env):
     run, _, _ = _attempt_one_rejected_then_rerun(env)
     _materialised_row(CASE, run, 1, "reviewed-in-attempt-1")
     _, second = _run_reporting(CASE, run, rerun=True)
@@ -531,8 +531,8 @@ def test_attempt_one_materialised_set_never_enables_or_drives_attempt_two_approv
     assert state["reporting_status"] == "Awaiting Approval" and state["reporting_attempt"] == 2
 
     assert ra.current_attempt_materialised_set(CASE, run, 2) is None
-    approve = _approve_action(state)
-    assert approve["enabled"] is False and "Submit the reviewed report set" in approve["reason"]
+    # Approve is available once the reports are generated; review is optional.
+    assert _approve_action(state)["enabled"] is True
     _materialised_row(CASE, run, 2, "reviewed-in-attempt-2")
     assert ra.current_attempt_materialised_set(CASE, run, 2)["report_set_id"] == "reviewed-in-attempt-2"
     assert _approve_action(wss.get_state(CASE))["enabled"] is True
