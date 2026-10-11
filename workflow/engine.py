@@ -379,7 +379,11 @@ def _log(tag: str, msg: str) -> None:
     flushed immediately so output interleaves correctly with subprocess
     streaming (see _run_subprocess_streaming). Used throughout this module
     wherever a plain print() with a consistent prefix is wanted."""
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] [{tag}] {msg}", flush=True)
+    try:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] [{tag}] {msg}", flush=True)
+    except (OSError, ValueError):
+        # Console/pipe gone (e.g. WinError 233) — logging is advisory only.
+        pass
 
 
 def _write_json(path: Path, data: Any) -> None:

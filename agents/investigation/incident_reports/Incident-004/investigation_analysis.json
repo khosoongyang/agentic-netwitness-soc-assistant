@@ -1,146 +1,159 @@
 {
-  "incident_id": "INC-53035",
-  "severity": "High",
+  "incident_id": "INC-52813",
+  "severity": "Medium",
   "confidence": "Medium",
   "execution_trace": [
     {
       "step_id": "step_1",
       "instruction": "Identify 1. username 2. IP address 3. Login Details 4. Computer name 5. Operating System",
       "status": "NOT_MET",
-      "findings": "The case confirms source IP 192.168.0.19 and destination IP 192.168.0.34, with repeated internal Modbus/TCP sessions over destination port 502. Username, login details, computer name, and operating system are not available in the telemetry, so identity and endpoint context remain unconfirmed."
+      "findings": "Primary source IP identified as 192.168.10.207, with 192.168.20.14 appearing as an additional heuristic source IP in supporting metadata. No username, login details, hostname/computer name, or operating system are present in the provided telemetry."
     },
     {
       "step_id": "step_2",
       "instruction": "Was it horizontal or vertical",
       "status": "NOT_MET",
-      "findings": "The evidence shows host-to-host internal communication between 192.168.0.19 and 192.168.0.34, which is more consistent with lateral activity than privilege escalation. However, no authentication, process, or privilege telemetry is present, so horizontal versus vertical movement cannot be conclusively determined."
+      "findings": "The evidence does not establish horizontal versus vertical movement. The alerting behavior is network-rule based and lacks authentication, host identity, or process context needed to determine movement direction."
     },
     {
       "step_id": "step_3",
       "instruction": "Was any malicious process spawned on the victim's machine?",
       "status": "NOT_MET",
-      "findings": "No malicious process can be confirmed. The alert set is network-only, and the case brief explicitly notes that process fields were absent across all 67 alerts, leaving no endpoint evidence of process creation on the victim host."
+      "findings": "No malicious process execution is evidenced. The case explicitly states process fields were absent across the alerts, and there is no process creation, command line, or endpoint telemetry confirming execution on 192.168.10.207."
     },
     {
       "step_id": "step_4",
       "instruction": "Analyze the process tree for signs of malicious activity, such as privilege escalation, lateral movement, or data exfiltration.",
       "status": "NOT_MET",
-      "findings": "A process tree analysis cannot be performed because there are no process, parent-child, user, or host telemetry fields in the available data. No evidence supports privilege escalation, process-driven lateral movement, or data exfiltration from endpoint telemetry in this case."
+      "findings": "A process tree cannot be assessed because there is no process telemetry, no parent-child ancestry, no PowerShell logs, and no spawned child processes available in the record."
     },
     {
       "step_id": "step_5",
       "instruction": "Based on the analysis, determine if further investigation is necessary and the containment steps",
       "status": "MET",
-      "findings": "Further investigation is necessary due to repeated unauthorized-looking internal Modbus communications on port 502 between two internal hosts. Containment should prioritize isolating the involved assets or segmenting the traffic path, preserving logs, and collecting endpoint/authentication telemetry to determine whether the activity was authorized or malicious."
+      "findings": "Further investigation is warranted because key host and process details are missing, but the current evidence most strongly supports benign or false-positive Microsoft update/connectivity traffic rather than confirmed compromise. Containment should be conditional and evidence-driven."
     }
   ],
-  "incident_summary": "At 2026-07-25T08:36:34.979+00:00, NetWitness began generating repeated high-risk alerts labeled \"Modbus Non-Whitelisted Source\" for traffic from 192.168.0.19 to 192.168.0.34 over destination port 502, with the first observed connection using source port 55179. Within milliseconds, additional alerts repeated the same internal Modbus session pattern, including recurring connections from 192.168.0.19:55179 and 192.168.0.19:53728 to 192.168.0.34:502, indicating sustained internal protocol activity rather than a single isolated connection. The case brief identifies 67 related NetWitness alerts in total, all tied to the same two IPs and the same destination service, while no username, host name, operating system, process creation, or authentication telemetry was available. The deep-dive context states that the event action was a preset single register / data push and that the source was labeled as a non-whitelisted Modbus source, but no endpoint evidence confirms a spawned process, privilege escalation, or any user-interactive execution on either host. The observable behavior in this case is therefore repeated internal Modbus communications between 192.168.0.19 and 192.168.0.34 on TCP/502 with no corroborating host telemetry to show who initiated the traffic or whether the activity was authorized.",
+  "incident_summary": "On 2025-07-14 at 11:02:49 UTC, NetWitness generated a high-risk alert sequence titled \"Chu Wen - Lateral Move Detected\" for source host 192.168.10.207. The earliest visible events show repeated DNS traffic from 192.168.10.207 to 8.8.8.8:53 from multiple source ports, alongside outbound HTTPS sessions to Microsoft-related infrastructure including 52.123.129.14:443 and 4.145.79.81:443. Additional alerts in the same burst show multicast name-resolution traffic from 192.168.10.207 to 224.0.0.252:5355 and 224.0.0.251:5353, consistent with local network discovery and service resolution behavior. The incident metadata associates the traffic with Windows update and connectivity domains such as ctldl.windowsupdate.com, download.windowsupdate.com, www.msftconnecttest.com, msedge.f.dl.delivery.mp.microsoft.com, msedge.b.tlu.dl.delivery.mp.microsoft.com, and adl.windows.com, with related files observed in the alert metadata including disallowedcertstl.cab, connecttest.txt, authrootstl.cab, pieceshash, and 43584905_a7b4453f15ca0abbac4b199cc68a19b73cc63bc9.cab. The telemetry does not include username, hostname, operating system, command line, or process creation data, and no malicious process execution, privilege escalation, or lateral movement was directly observed in the available evidence. The case therefore documents a burst of update/connectivity-related network activity from 192.168.10.207 with no confirmed host compromise or downstream malicious execution.",
   "actions_taken": [
-    "Reviewed the 67 NetWitness alerts for common source and destination IPs, ports, and recurring patterns.",
-    "Confirmed the repeated internal Modbus/TCP traffic from 192.168.0.19 to 192.168.0.34 on port 502.",
-    "Checked for supporting user, host, authentication, and process telemetry in the case context and found none.",
-    "Assessed historical correlation for similar prior cases involving the same IP pair and related internal network activity.",
-    "Determined that additional endpoint and authentication telemetry is required before any confirmation of privilege escalation or malicious process activity."
+    "Reviewed the NetWitness alert burst for source host 192.168.10.207 and extracted observed destination IPs, ports, and related Microsoft update/connectivity domains.",
+    "Checked the case telemetry for username, host name, operating system, process creation, command line, and process ancestry details; none were present.",
+    "Compared the alert content against available historical/correlated cases for pattern similarity and false-positive indicators.",
+    "Assessed the case for signs of malicious execution, lateral movement, and data exfiltration; none were confirmed from the provided evidence."
   ],
   "recommended_containment": [
-    "Immediately segment or temporarily block Modbus/TCP traffic on port 502 between 192.168.0.19 and 192.168.0.34 at the nearest switch, firewall, or industrial security gateway until the traffic owner is identified.",
-    "Place both 192.168.0.19 and 192.168.0.34 into a monitored containment VLAN or equivalent network quarantine to prevent continued internal protocol exchange while preserving reachability for IR collection.",
-    "Preserve and export the full NetWitness event set for all 67 alerts, including raw packet metadata, timestamps, source/destination ports, and any protocol decoding fields, before any log rotation occurs.",
-    "Collect endpoint telemetry from both hosts immediately: Sysmon Event IDs 1, 3, 5, 7, 11, 13, 22; Windows Security Event IDs 4624, 4625, 4648, 4672, 4688; and any EDR network/process logs covering the alert window.",
-    "Validate whether 192.168.0.19 is an authorized industrial controller, engineering workstation, or automation host, and confirm whether the repeated Modbus writes to 192.168.0.34 align with an approved change window or maintenance activity.",
-    "If either host is not expected to initiate Modbus writes, disable the interface or service generating the traffic and perform controlled packet capture to identify the specific Modbus function code, register target, and source application.",
-    "Hunt for the same source IP, destination IP, or Modbus function pattern in other network sensors to determine whether the activity is isolated to one segment or recurring across the environment."
+    "Escalate the case to the SOC Analyst or Incident Response Team.",
+    "Do not immediately shut down the affected computer at IP 192.168.10.207.",
+    "Disconnect the infected computer at IP 192.168.10.207 from the network and storage devices to limit spread.",
+    "Validate host identity and recent activity for 192.168.10.207 using EDR and endpoint telemetry, then confirm whether the observed traffic aligns with Windows Update, certificate list retrieval, or connectivity-check activity.",
+    "Query Windows Security logs and EDR process-creation telemetry on 192.168.10.207 for the alert window (2025-07-14 11:02:49 UTC onward) to confirm whether any suspicious child processes, PowerShell activity, or script execution occurred.",
+    "If the endpoint generates any additional non-update network indicators, immediately isolate 192.168.10.207 from the network segment pending analyst review.",
+    "Block or restrict outbound access only to newly observed suspicious destinations not associated with Microsoft update/connectivity infrastructure; do not disrupt known update domains until benignity is verified.",
+    "Collect a full memory and disk triage package from 192.168.10.207 if endpoint telemetry later shows process execution or authentication anomalies, preserving evidence before remediation."
   ],
   "business_impact_checklist": {
     "critical_system": "unknown",
     "essential_service": "unknown",
     "data_sensitivity": "unknown",
-    "operational_impact": "unknown"
+    "operational_impact": "no"
   },
-  "severity_justification": "High is appropriate because the case shows repeated internal non-whitelisted Modbus/TCP activity across 67 alerts between two internal hosts on port 502, which is a strong suspicious indicator affecting an important operational protocol and fits the policy for strongly suspected cyber activity affecting important systems. The evidence is insufficient to elevate to Critical because there is no confirmation of malware, exfiltration, outage, or sensitive data exposure, and no endpoint telemetry confirms compromise. The repeated nature and industrial-style protocol traffic support a High severity investigation.",
-  "confidence_justification": "Medium confidence is warranted because the conclusion is supported by multiple consistent NetWitness alerts and a coherent timeline of repeated internal Modbus connections, but the evidence is still partial. The case lacks user, host, process, authentication, and endpoint telemetry, and the timeline explicitly notes missing protocol context and absent process fields. Under the evidence sufficiency and confidence rules, this supports a suspicious but unconfirmed assessment rather than a high-confidence confirmed compromise.",
+  "severity_justification": "Medium is appropriate because the case contains suspicious network activity and a high-risk alert burst, but the available evidence does not confirm compromise, privileged access, malware execution, sensitive data exposure, or service impact. Severity-reduction factors are strong: no process telemetry, no user context, no observed outage, and the visible destinations and filenames are consistent with Microsoft update/connectivity behavior. Escalation factors are limited to repeated network activity and a rule aligned to lateral movement, but the impact remains unconfirmed.",
+  "confidence_justification": "Medium confidence is warranted because multiple sources align on the same network behavior pattern: NetWitness alerts, domain/IP metadata, and the deep-dive review all point to Microsoft update/connectivity traffic and the absence of process evidence. Confidence is not high because critical fields are missing, including username, hostname, operating system, command line, and endpoint process telemetry, leaving the conclusion partially inferred rather than fully proven.",
   "mitre_mappings": [
     {
-      "timeline_phase": "Initial network activity and repeated internal connection attempts",
-      "observed_evidence": "NetWitness generated 67 alerts labeled 'Modbus Non-Whitelisted Source' for traffic from 192.168.0.19 to 192.168.0.34 over TCP/502, including connections 192.168.0.19:55179 -> 192.168.0.34:502 and 192.168.0.19:53728 -> 192.168.0.34:502.",
+      "timeline_phase": "Initial network burst from source host",
+      "observed_evidence": "On 2025-07-14T11:02:49Z, 192.168.10.207 generated repeated DNS queries to 8.8.8.8:53 from multiple source ports while the NetWitness rule 'Chu Wen - Lateral Move Detected' fired.",
       "tactic": "Command and Control",
-      "technique_name": "Application Layer Protocol",
-      "technique_id": "T1071"
+      "technique_name": "Non-Application Layer Protocol",
+      "technique_id": "T1095"
     },
     {
-      "timeline_phase": "Observed industrial protocol write activity across the same internal session pattern",
-      "observed_evidence": "Deep-dive context identifies the event action as 'preset single register / data push' over Modbus between 192.168.0.19 and 192.168.0.34, indicating application-layer register manipulation rather than ordinary web or file traffic.",
-      "tactic": "Impact",
-      "technique_name": "Data Manipulation",
-      "technique_id": "T1565.001"
+      "timeline_phase": "Follow-on connectivity and update infrastructure access",
+      "observed_evidence": "The same source host 192.168.10.207 established outbound HTTPS sessions to Microsoft-related infrastructure including 52.123.129.14:443, 4.145.79.81:443, and 52.231.186.36:443, with associated domains such as ctldl.windowsupdate.com, download.windowsupdate.com, msedge.f.dl.delivery.mp.microsoft.com, and adl.windows.com.",
+      "tactic": "Command and Control",
+      "technique_name": "Application Layer Protocol: Web Protocols",
+      "technique_id": "T1071.001"
+    },
+    {
+      "timeline_phase": "Local network discovery and name-resolution activity",
+      "observed_evidence": "Alerts from 192.168.10.207 show multicast traffic to 224.0.0.252:5355 and 224.0.0.251:5353 during the same burst, matching local name-resolution/discovery behavior.",
+      "tactic": "Discovery",
+      "technique_name": "Multicast DNS",
+      "technique_id": "T1046"
     }
   ],
-  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial network activity and repeated internal connection attempts | NetWitness generated 67 alerts labeled 'Modbus Non-Whitelisted Source' for traffic from 192.168.0.19 to 192.168.0.34 over TCP/502, including connections 192.168.0.19:55179 -> 192.168.0.34:502 and 192.168.0.19:53728 -> 192.168.0.34:502. | Command and Control | Application Layer Protocol | T1071 |\n| Observed industrial protocol write activity across the same internal session pattern | Deep-dive context identifies the event action as 'preset single register / data push' over Modbus between 192.168.0.19 and 192.168.0.34, indicating application-layer register manipulation rather than ordinary web or file traffic. | Impact | Data Manipulation | T1565.001 |",
+  "mitre_attack_table": "| Timeline Phase / Activity | Observed Evidence | MITRE Tactic | MITRE Technique Name | MITRE ID |\n| --- | --- | --- | --- | --- |\n| Initial network burst from source host | On 2025-07-14T11:02:49Z, 192.168.10.207 generated repeated DNS queries to 8.8.8.8:53 from multiple source ports while the NetWitness rule 'Chu Wen - Lateral Move Detected' fired. | Command and Control | Non-Application Layer Protocol | T1095 |\n| Follow-on connectivity and update infrastructure access | The same source host 192.168.10.207 established outbound HTTPS sessions to Microsoft-related infrastructure including 52.123.129.14:443, 4.145.79.81:443, and 52.231.186.36:443, with associated domains such as ctldl.windowsupdate.com, download.windowsupdate.com, msedge.f.dl.delivery.mp.microsoft.com, and adl.windows.com. | Command and Control | Application Layer Protocol: Web Protocols | T1071.001 |\n| Local network discovery and name-resolution activity | Alerts from 192.168.10.207 show multicast traffic to 224.0.0.252:5355 and 224.0.0.251:5353 during the same burst, matching local name-resolution/discovery behavior. | Discovery | Multicast DNS | T1046 |",
   "policy_audit_logs": [
     {
-      "audit_id": "AUD-DP07-1791712160-1",
-      "incident_id": "INC-53035",
+      "audit_id": "AUD-DP07-1791723737-1",
+      "incident_id": "INC-52813",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix C",
       "decision_point": "DP-07",
       "input_summary": "Critical System: False, Sensitive Data: False",
       "result": "Pass",
       "decision_made": "Investigate",
-      "timestamp": 1791712160.369536,
+      "timestamp": 1791723737.6530244,
       "evidence_reference": "business_impact_checklist",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP08-1791712160-2",
-      "incident_id": "INC-53035",
+      "audit_id": "AUD-DP08-1791723737-2",
+      "incident_id": "INC-52813",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix A",
       "decision_point": "DP-08",
-      "input_summary": "Severity classification: High",
-      "result": "Warning",
-      "decision_made": "Escalate",
-      "timestamp": 1791712160.369536,
+      "input_summary": "Severity classification: Medium",
+      "result": "Pass",
+      "decision_made": "Investigate",
+      "timestamp": 1791723737.6530244,
       "evidence_reference": "incident_summary",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP09-1791712160-3",
-      "incident_id": "INC-53035",
+      "audit_id": "AUD-DP09-1791723737-3",
+      "incident_id": "INC-52813",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix F",
       "decision_point": "DP-09",
       "input_summary": "Confidence level: Medium",
       "result": "Warning",
       "decision_made": "Escalate",
-      "timestamp": 1791712160.369536,
+      "timestamp": 1791723737.6530244,
       "evidence_reference": "execution_trace",
       "human_review_required": true,
       "final_reviewer": null
     },
     {
-      "audit_id": "AUD-DP10-1791712160-4",
-      "incident_id": "INC-53035",
+      "audit_id": "AUD-DP10-1791723737-4",
+      "incident_id": "INC-52813",
       "agent_name": "Investigation Agent",
       "policy_reference": "Appendix G",
       "decision_point": "DP-10/DP-11",
-      "input_summary": "Severity: High, Confidence: Medium, Ransomware: False, Guest OS: False",
+      "input_summary": "Severity: Medium, Confidence: Medium, Ransomware: True, Guest OS: False",
       "result": "Fail",
       "decision_made": "Escalate",
-      "timestamp": 1791712160.369536,
+      "timestamp": 1791723737.6530244,
       "evidence_reference": "recommended_containment",
       "human_review_required": true,
       "final_reviewer": null
     }
   ],
   "suggested_pivots": [
-    "192.168.0.19",
-    "192.168.0.34",
-    "55179",
-    "53728",
-    "502",
-    "Modbus Non-Whitelisted Source",
-    "INC-53035"
+    "192.168.10.207",
+    "192.168.20.14",
+    "ctldl.windowsupdate.com",
+    "www.msftconnecttest.com",
+    "download.windowsupdate.com",
+    "msedge.f.dl.delivery.mp.microsoft.com",
+    "msedge.b.tlu.dl.delivery.mp.microsoft.com",
+    "4.175.87.197",
+    "20.50.80.210",
+    "8.8.8.8",
+    "8.8.4.4",
+    "52.123.129.14",
+    "52.231.186.36"
   ]
 }

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from flask import Flask, send_from_directory
 
+from .console_safety import install_safe_console
 from .errors import install_error_handlers
 from .routes import api_blueprint
 from .routes.activity import activity_blueprint
@@ -28,6 +29,10 @@ FRONTEND_DIR = PROJECT_ROOT / "frontend"
 
 def create_app(test_config: dict | None = None) -> Flask:
     """Create the canonical Aegis Flask application shell."""
+    if not test_config:
+        # A closed launching console must not fail stages via print()
+        # (WinError 233); tests keep pytest's own capture streams.
+        install_safe_console()
     app = Flask(
         "aegis",
         static_folder=str(FRONTEND_DIR),
