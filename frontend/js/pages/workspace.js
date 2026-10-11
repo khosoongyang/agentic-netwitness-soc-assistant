@@ -3115,20 +3115,51 @@ function renderSelectedStage(root, stage, caseId, lastError, onAction, onNavigat
 // panel) — see workflow/commands.py::available_actions() — so this single
 // Approve control is the one approval path; there is no second "confirm"
 // button competing with it.
+//
+// Like every other stage, the reports table only appears once the stage has
+// succeeded (awaiting_approval / completed). While Processing, only the live
+// Agent Activity panel is shown (as in renderInvestigationStage(), with the
+// lease-lapsed Resume action); a failure shows the trace plus the error.
 function renderReportingStage(root, stage, caseId, lastError, onAction, onNavigate, workflow) {
-  root.innerHTML = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div><section id="reporting-agent-activity"></section><div id="reporting-panel"></div>${stageActionButtons(stage, workflow, { footer: true })}<div id="action-status" aria-live="polite"></div>`;
-  bindStageActions(root, stage, workflow, onAction, onNavigate);
-  // Live trace while Reporting runs; afterwards the full trace stays above
-  // the unchanged reports UI, expanded while it awaits the analyst's
-  // decision or after a failure.
+  const header = `<div class="page-header"><div><h2>${escapeHTML(stage.name)}</h2></div>${stateBadge(stage)}</div>`;
   if (stage.state === "in_progress") {
+    const resumable = { ...stage, actions: (stage.actions || []).filter((action) => action.type === "resume" && action.enabled) };
+    root.innerHTML = `
+      ${header}
+      <section id="reporting-agent-activity"></section>
+      ${stageActionButtons(resumable, workflow, { footer: true })}
+      <div id="action-status" aria-live="polite"></div>
+    `;
     mountStageActivity(root.querySelector("#reporting-agent-activity"), caseId, stage, workflow, { live: true });
-  } else if (stage.state !== "not_started" && stage.state !== "locked") {
-    mountStageActivity(root.querySelector("#reporting-agent-activity"), caseId, stage, workflow,
-      { collapsed: stage.state !== "awaiting_approval" && stage.state !== "failed" });
+    bindStageActions(root, stage, workflow, onAction, onNavigate);
+    return;
   }
-  const panel = root.querySelector("#reporting-panel");
-  mountReportsPanel(panel, { caseId, navigate: null, embedded: true });
+
+  const succeeded = stage.state === "awaiting_approval" || stage.state === "completed";
+  if (!succeeded) {
+    root.innerHTML = `
+      ${header}
+      ${stage.state === "failed" ? `<section id="reporting-agent-activity"></section>` : ""}
+      ${stage.state === "failed"
+        ? `<div class="state-panel error"><div>${escapeHTML(lastError || "Reporting failed for this run.")}</div></div>`
+        : emptyState("Reports will appear here once Reporting has completed for this run.")}
+      ${stageActionButtons(stage, workflow, { footer: true })}
+      <div id="action-status" aria-live="polite"></div>
+    `;
+    if (stage.state === "failed") {
+      mountStageActivity(root.querySelector("#reporting-agent-activity"), caseId, stage, workflow);
+    }
+    bindStageActions(root, stage, workflow, onAction, onNavigate);
+    return;
+  }
+
+  root.innerHTML = `${header}<section id="reporting-agent-activity"></section><div id="reporting-panel"></div>${stageActionButtons(stage, workflow, { footer: true })}<div id="action-status" aria-live="polite"></div>`;
+  bindStageActions(root, stage, workflow, onAction, onNavigate);
+  // Full trace stays available above the reports UI, expanded while it
+  // awaits the analyst's decision.
+  mountStageActivity(root.querySelector("#reporting-agent-activity"), caseId, stage, workflow,
+    { collapsed: stage.state !== "awaiting_approval" });
+  mountReportsPanel(root.querySelector("#reporting-panel"), { caseId, navigate: null, embedded: true });
 }
 
 async function analystIdentity() {
