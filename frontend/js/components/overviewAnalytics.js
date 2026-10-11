@@ -25,6 +25,15 @@ const RANGES = [
   { value: "all", label: "All time", phrase: "" },
 ];
 const DEFAULT_RANGE = "all";
+const COLLAPSE_STORAGE_KEY = "aegis:analytics-collapsed";
+
+function storedCollapsed() {
+  try {
+    return localStorage.getItem(COLLAPSE_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 // Hex (not CSS variables) because SVG presentation attributes cannot read
 // var(). Severity/state hues were checked with the dataviz palette
@@ -70,17 +79,22 @@ const CARDS = [
 ];
 
 export function analyticsSectionHTML() {
-  return `<section class="analytics" aria-labelledby="analytics-title">
+  const collapsed = storedCollapsed();
+  return `<section class="analytics${collapsed ? " is-collapsed" : ""}" aria-labelledby="analytics-title">
     <div class="analytics-toolbar">
       <div class="analytics-heading">
-        <h2 id="analytics-title">Threat analytics</h2>
+        <h2 id="analytics-title">
+          <button type="button" class="analytics-collapse-toggle" aria-expanded="${!collapsed}" aria-controls="analytics-body">
+            <span class="analytics-caret" aria-hidden="true">▾</span>Threat analytics
+          </button>
+        </h2>
         <p class="analytics-meta" id="analytics-meta">All times UTC</p>
       </div>
-      <div class="range-toggle" role="group" aria-label="Analytics time range">
+      <div class="range-toggle" role="group" aria-label="Analytics time range"${collapsed ? " hidden" : ""}>
         ${RANGES.map((range) => `<button type="button" class="range-toggle-button" data-range="${range.value}" aria-pressed="${range.value === DEFAULT_RANGE}">${range.label}</button>`).join("")}
       </div>
     </div>
-    <div class="analytics-grid">
+    <div class="analytics-grid" id="analytics-body"${collapsed ? " hidden" : ""}>
       ${CARDS.map((card) => `<article class="panel chart-card chart-card-${card.id}" aria-labelledby="chart-${card.id}-title">
         <header class="chart-card-header">
           <div class="chart-card-heading">
@@ -126,6 +140,7 @@ export function mountAnalytics(root, { onDrilldown, isActive }) {
   let typeView = "rules";
   let requestId = 0;
   let data = null;
+  let loaded = false;
 
   const part = (id, name) => section.querySelector(`#chart-${id}-${name}`);
   const set = (id, name, html) => { part(id, name).innerHTML = html; };
@@ -296,7 +311,24 @@ export function mountAnalytics(root, { onDrilldown, isActive }) {
     renderCard("heatmap", renderHeatmap);
   }
 
+  // Collapsed sections skip the fetch until they are first opened; charts
+  // drawn while hidden redraw through renderResponsive once they have a width.
+  function setCollapsed(collapsed) {
+    section.classList.toggle("is-collapsed", collapsed);
+    section.querySelector(".analytics-collapse-toggle").setAttribute("aria-expanded", String(!collapsed));
+    section.querySelector(".analytics-grid").hidden = collapsed;
+    section.querySelector(".range-toggle").hidden = collapsed;
+    if (collapsed) hideTooltip();
+    try {
+      localStorage.setItem(COLLAPSE_STORAGE_KEY, collapsed ? "1" : "0");
+    } catch {
+      // Ignore storage failures (e.g. private browsing); collapse still works for this session.
+    }
+    if (!collapsed && !loaded) load();
+  }
+
   async function load() {
+    loaded = true;
     const current = ++requestId;
     section.classList.add("is-refreshing");
     section.setAttribute("aria-busy", "true");
@@ -325,6 +357,11 @@ export function mountAnalytics(root, { onDrilldown, isActive }) {
   }
 
   section.addEventListener("click", (event) => {
+    const collapseButton = event.target.closest(".analytics-collapse-toggle");
+    if (collapseButton) {
+      setCollapsed(collapseButton.getAttribute("aria-expanded") === "true");
+      return;
+    }
     const rangeButton = event.target.closest("[data-range]");
     if (rangeButton && rangeButton.dataset.range !== range) {
       range = rangeButton.dataset.range;
@@ -342,5 +379,5 @@ export function mountAnalytics(root, { onDrilldown, isActive }) {
     if (event.target.closest("[data-analytics-retry]")) load();
   });
 
-  load();
+  if (!section.classList.contains("is-collapsed")) load();
 }

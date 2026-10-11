@@ -42,6 +42,42 @@
   font-size: 1.05rem;
 }
 
+.analytics-collapse-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
+.analytics-collapse-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.analytics-caret {
+  color: var(--muted);
+  font-size: 0.75rem;
+  transition: transform 0.15s ease;
+}
+
+.analytics-collapse-toggle[aria-expanded="false"] .analytics-caret {
+  transform: rotate(-90deg);
+}
+
+.analytics.is-collapsed .analytics-toolbar {
+  margin-bottom: 0;
+}
+
+.analytics .range-toggle[hidden],
+.analytics-grid[hidden] {
+  display: none;
+}
+
 .analytics-meta {
   margin-top: 0.25rem;
   color: var(--muted);
